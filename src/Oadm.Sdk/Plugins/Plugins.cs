@@ -132,6 +132,13 @@ public interface ICorePlugin : IPlugin
     Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct);
 
     /// <summary>
+    /// <c>--self-check</c> of the published server (SDK 0.12.0): proves that what this plugin needs at run time really works, such as a
+    /// native library or a model it ships. No device, no network, no change. Null when all is well, else the problem in plain words.
+    /// </summary>
+    /// <param name="pluginDirectory">The plugin's folder.</param>
+    string? SelfCheck(string pluginDirectory) => null;
+
+    /// <summary>
     /// False: the plugin has no page in the client's navigation rail (no rail entry at all); its client part is e.g. a
     /// toolbar plugin that calls <see cref="InvokeAsync(string, string?, CancellationToken)"/> through <c>IToolbarContext.InvokePluginAsync</c>. Default true.
     /// </summary>

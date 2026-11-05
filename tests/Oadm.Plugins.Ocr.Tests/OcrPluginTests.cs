@@ -207,4 +207,18 @@ public sealed class OcrPluginTests
         var list = new ReaderList { Readers = [new ReaderSummary { Id = "r1", Name = "Gate 2", Mode = ReaderMode.OnAction, LastText = "MSCU 123456 7" }] };
         Assert.Equal(OcrJson.Serialize(list), OcrJson.Serialize(OcrJson.Deserialize<ReaderList>(OcrJson.Serialize(list))));
     }
+
+    [Fact]
+    public void TheSelfCheckSaysWhenAModelIsMissing()
+    {
+        var folder = Directory.CreateTempSubdirectory("oadm-ocr-check-").FullName;
+        try
+        {
+            Assert.Equal("The model det_mobile.onnx is missing.", new OcrPlugin().SelfCheck(folder));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
 }

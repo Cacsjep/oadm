@@ -305,7 +305,7 @@ public sealed class RecipientSessionPoolTests
         stage.Factory.Connect = _ => Task.CompletedTask;
         await stage.Timers.CreatedAsync(TimeSpan.FromSeconds(1));
         stage.Time.Advance(TimeSpan.FromSeconds(1));
-        await Eventually.TrueAsync(() => published.Reports[^1] == 0 && published.Reports.Count > 1, "the event ends");
+        await Eventually.TrueAsync(() => published.Reports.Count > 1 && published.Reports.Last() == 0, "the event ends");
     }
 
     /// <summary>The fake clock of the rig; a test waits for the timer of a wait before it advances, and proves the wait's length.</summary>
@@ -341,11 +341,11 @@ public sealed class RecipientSessionPoolTests
     {
         public IReadOnlyDictionary<string, string>? Last { get; private set; }
 
-        public List<int> Reports { get; } = [];
+        public ConcurrentQueue<int> Reports { get; } = new();
 
         public void SetState(string typeId, Guid? deviceId, bool isOn, IReadOnlyDictionary<string, string>? data = null) => Last = data;
 
-        public void ReplaceStates(string typeId, IReadOnlyCollection<Guid> onDevices) => Reports.Add(onDevices.Count);
+        public void ReplaceStates(string typeId, IReadOnlyCollection<Guid> onDevices) => Reports.Enqueue(onDevices.Count);
 
         public void Fire(string typeId, Guid? deviceId, IReadOnlyDictionary<string, string>? data = null)
         {

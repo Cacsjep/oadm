@@ -297,10 +297,10 @@ public sealed class ModbusSessionTests
     [Fact]
     public async Task NoPortMeansAPlainReason()
     {
-        using var unused = new TcpListener(IPAddress.Loopback, 0);
-        unused.Start();
-        var port = ((IPEndPoint)unused.LocalEndpoint).Port;
-        unused.Stop();
+        // Bound but not listening: the port refuses the connection and no other test can take it.
+        using var taken = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        taken.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        var port = ((IPEndPoint)taken.LocalEndPoint!).Port;
         await using var session = new ModbusSession("127.0.0.1", port, 1);
 
         var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => session.ConnectAsync(CancellationToken.None));

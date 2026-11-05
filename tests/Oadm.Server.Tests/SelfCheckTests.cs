@@ -3,6 +3,7 @@ using System.Runtime.Loader;
 
 using Oadm.Contracts.Plugins;
 using Oadm.Server.Hosting;
+using Oadm.Tests.Shared;
 
 namespace Oadm.Server.Tests;
 
@@ -25,6 +26,7 @@ public sealed class SelfCheckTests
             }
         }
 
+        File.Copy(TestRepository.Path("plugins", "Oadm.Plugins.Notifications", "plugin.json"), Path.Combine(plugin, "plugin.json"));
         return app;
     }
 

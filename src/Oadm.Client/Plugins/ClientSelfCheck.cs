@@ -10,7 +10,11 @@ internal static class ClientSelfCheck
 {
     public const string Argument = "--self-check";
 
-    public static int Run(TextWriter output, string? appFolder = null)
+    /// <summary>The unpacked add-ons to check too.</summary>
+    public static IReadOnlyList<string> AddOnFolders(string[] args) =>
+        [.. args.Skip(1).Where((_, i) => string.Equals(args[i], "--add-on", StringComparison.OrdinalIgnoreCase))];
+
+    public static int Run(TextWriter output, string? appFolder = null, IReadOnlyList<string>? addOns = null)
     {
         var problems = new List<string>();
         if (LiveView.DecoderSelfCheck.Run(output) != 0)
@@ -29,13 +33,14 @@ internal static class ClientSelfCheck
 
         var checkedParts = 0;
         var root = Path.Combine(appFolder ?? AppContext.BaseDirectory, "plugins");
-        foreach (var folder in (Directory.Exists(root) ? Directory.GetDirectories(root) : []).Order(StringComparer.Ordinal))
+        var bundled = (Directory.Exists(root) ? Directory.GetDirectories(root) : []).Order(StringComparer.Ordinal).Select(f => (Folder: f, AddOn: false));
+        foreach (var (folder, addOn) in bundled.Concat((addOns ?? []).Select(f => (Folder: f, AddOn: true))))
         {
             foreach (var dll in Directory.GetFiles(folder, "*.Client.dll").Order(StringComparer.Ordinal))
             {
                 checkedParts++;
-                var name = Path.GetFileName(folder);
-                var context = new PluginLoadContext(Path.GetFullPath(dll));
+                var name = Path.GetFileName(folder.TrimEnd('/', '\\'));
+                var context = new PluginLoadContext(Path.GetFullPath(dll), addOn);
                 try
                 {
                     problems.AddRange(PluginAssemblyCheck.Problems(context.LoadWithoutLock(Path.GetFullPath(dll)), context, IsServerPart).Select(p => $"{name}: {p}"));

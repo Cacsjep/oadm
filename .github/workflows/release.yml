@@ -212,6 +212,13 @@ jobs:
             folder="artifacts/publish/${app%%/*}/${{ matrix.rid }}"
             "$folder/${app##*/}" --self-check
           done
+          # The optional plugins as users get them: the ZIP unpacked, its native libraries and models really started.
+          for id in $(bash packaging/addons/addon-ids.sh); do
+            unpacked="$RUNNER_TEMP/addon-$id"
+            unzip -q "artifacts/packages/oadm-addon-$id-${{ steps.version.outputs.version }}-${{ matrix.rid }}.zip" -d "$unpacked"
+            "artifacts/publish/server/${{ matrix.rid }}/Oadm.Server" --self-check --add-on "$unpacked"
+            "artifacts/publish/client/${{ matrix.rid }}/Oadm.Client" --self-check --add-on "$unpacked"
+          done
 
       - name: License texts next to the published exes
         shell: bash

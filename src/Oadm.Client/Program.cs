@@ -28,7 +28,7 @@ internal static class Program
 
         if (args.Contains(Plugins.ClientSelfCheck.Argument, StringComparer.OrdinalIgnoreCase))
         {
-            return Plugins.ClientSelfCheck.Run(Console.Out);
+            return Plugins.ClientSelfCheck.Run(Console.Out, addOns: Plugins.ClientSelfCheck.AddOnFolders(args));
         }
 
         AppOptions options = AppOptions.Parse(args);

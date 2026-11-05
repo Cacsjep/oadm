@@ -18,7 +18,7 @@ if (args.Contains(Oadm.Server.Updates.HelperArguments.Flag, StringComparer.Ordin
 
 if (args.Contains(SelfCheck.Argument, StringComparer.OrdinalIgnoreCase))
 {
-    Environment.ExitCode = SelfCheck.Run(Console.Out);
+    Environment.ExitCode = SelfCheck.Run(Console.Out, addOns: SelfCheck.AddOnFolders(args));
     return;
 }
 

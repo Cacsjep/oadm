@@ -30,6 +30,19 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
     private readonly ConcurrentDictionary<Guid, (DateTimeOffset At, CameraOptions Options)> _cameraOptions = new();
     private volatile bool _useGpu = true;
 
+    /// <summary>Starts ONNX Runtime on a model of the package, on the processor: what a reader needs before its first picture.</summary>
+    public string? SelfCheck(string pluginDirectory)
+    {
+        var model = Path.Combine(Recognition.ModelFiles.Folder(pluginDirectory), Recognition.ModelFiles.DetectionMobile);
+        if (!File.Exists(model))
+        {
+            return "The model " + Path.GetFileName(model) + " is missing.";
+        }
+
+        using var session = Recognition.SessionFactory.Create(model, Recognition.ExecutionTarget.Cpu, threads: 1);
+        return null;
+    }
+
     /// <summary>The plugin as the host loads it: the real recognition, matcher, camera pictures and cut-outs (<see cref="ReaderParts.Real"/>).</summary>
     public OcrPlugin()
         : this(ReaderParts.Real())
