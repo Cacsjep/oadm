@@ -55,6 +55,15 @@ public sealed class RecipientCertificateTests
         return "ca:" + Convert.ToHexString(SHA256.HashData(root.RawData));
     }
 
+    /// <summary>Makes the row the certificate of the EST server's policy.</summary>
+    private static async Task<string> ShowOnEstServerAsync(PkiHarness pki, string id)
+    {
+        var local = pki.Service.Local.List.Single(l => l.RowId == id);
+        var saved = await pki.Service.SavePolicyAsync(pki.Policies.FirstOf(PolicyKinds.EstServer)! with { CertificateId = local.Stored.Id }, "admin", CancellationToken.None);
+        Assert.Null(saved.Error);
+        return id;
+    }
+
     private static Task<DeleteCertificatesReply> DeleteAsync(PkiHarness pki, params string[] ids) =>
         pki.InvokeAsync<DeleteCertificatesReply>(CertificateMethods.Delete, new DeleteCertificatesRequest(ids));
 
@@ -192,6 +201,79 @@ public sealed class RecipientCertificateTests
         {
             listener.Stop();
         }
+    }
+
+    [Fact]
+    public async Task The_EST_servers_certificate_is_no_client_certificate_and_its_key_never_loads()
+    {
+        await using var pki = await PkiHarness.StartAsync();
+        var id = await ShowOnEstServerAsync(pki, await CreateAsync(pki));
+        var free = await CreateAsync(pki, "free.example.com");
+
+        var choice = Assert.Single(await Offer(pki).ClientCertificatesAsync(CancellationToken.None));
+        Assert.Equal(free, choice.Value);
+        Assert.Null(await Offer(pki).LoadAsync(id, CancellationToken.None));
+        Assert.Null(pki.Service.LoadRecipientCertificate(id, withKey: true));
+    }
+
+    [Fact]
+    public async Task A_certificate_a_server_shows_loads_without_its_key_as_a_trusted_one()
+    {
+        await using var pki = await PkiHarness.StartAsync();
+        var id = await ShowOnEstServerAsync(pki, await ImportAsync(pki, Pfx(), FilePassword));
+
+        var chain = pki.Service.LoadRecipientCertificate(id, withKey: false);
+
+        using var certificate = Assert.Single(chain!);
+        Assert.False(certificate.HasPrivateKey);
+        Assert.Contains(await Offer(pki).TrustedCertificatesAsync(CancellationToken.None), c => c.Value == id);
+    }
+
+    [Fact]
+    public async Task The_servers_own_rows_never_load()
+    {
+        await using var pki = await PkiHarness.StartAsync();
+
+        Assert.Null(pki.Service.LoadRecipientCertificate(LocalCertificates.ServerPrefix + "est", withKey: true));
+        Assert.Null(pki.Service.LoadRecipientCertificate(LocalCertificates.ServerPrefix + "est", withKey: false));
+    }
+
+    [Fact]
+    public async Task Without_its_key_a_client_certificate_still_loads_with_its_issuers()
+    {
+        await using var pki = await PkiHarness.StartAsync();
+        var id = await CreateAsync(pki);
+
+        var chain = pki.Service.LoadRecipientCertificate(id, withKey: false)!;
+        try
+        {
+            Assert.True(chain.Count >= 2);
+            Assert.All(chain, certificate => Assert.False(certificate.HasPrivateKey));
+        }
+        finally
+        {
+            foreach (var certificate in chain)
+            {
+                certificate.Dispose();
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_key_that_does_not_fit_is_null_and_nothing_throws(bool anotherRealKey)
+    {
+        await using var pki = await PkiHarness.StartAsync();
+        var id = await ImportAsync(pki, Pfx(), FilePassword);
+        var row = pki.Service.Local.List.Single(l => l.RowId == id).Stored;
+        using var other = RSA.Create(2048);
+        byte[] key = anotherRealKey ? other.ExportPkcs8PrivateKey() : [1, 2, 3];
+        var damaged = row with { KeyProtected = pki.Secrets!.Protect(Convert.ToBase64String(key), "pki:certificate:" + row.Id) };
+        await pki.Records.SetManyAsync(LocalCertificates.Collection, [new(row.Id, PkiJson.Serialize(damaged))], CancellationToken.None);
+        await pki.Service.Local.LoadAsync(CancellationToken.None);
+
+        Assert.Null(await Offer(pki).LoadAsync(id, CancellationToken.None));
     }
 
     [Fact]

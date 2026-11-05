@@ -448,8 +448,9 @@ certificates and the certificates created, signed or imported here. Two cards of
   red Delete; all or none, the first refusal says why): every device certificate, created and signed ones no server policy
   shows, imported ones nothing uses or that ended, ended server certificates. Refused for a certificate a server policy
   shows ("Used by the policy 802.1X server. Pick another certificate first."), for one a recipient uses ("Used by the
-  recipient Plant broker. Pick another certificate first.", also when it ended) and for a CA ("Delete CAs in Certificate
-  authorities."). A still valid one OADM issued (a device certificate, a created or signed one) goes on PKI's list of
+  recipient Plant broker. Pick another certificate first.", also when it ended; the check reads the uses outside PKI's lock, so a
+  recipient saved during a Delete can lose that race, accepted because it fails closed: its next session ends with "The chosen
+  certificate no longer exists. Choose another one.") and for a CA ("Delete CAs in Certificate authorities."). A still valid one OADM issued (a device certificate, a created or signed one) goes on PKI's list of
   certificates **no longer accepted** (see "Current and pending"), so a copy left on a camera or elsewhere is refused by the
   802.1X and EST servers ("Certificate deleted in OADM") until it ends; the server log says "PKI: N still valid certificates
   deleted by <user> are no longer accepted until they end". That list is never shown.
@@ -460,12 +461,14 @@ certificates and the certificates created, signed or imported here. Two cards of
 - An event `certificates` (at most one per second) makes every open tab read its page again.
 - **Recipients** (`IRecipientCertificates`, offered through `ctx.Services` while PKI runs, `PkiRecipientCertificates`; only the
   host reads it, docs/spec/recipient-sessions.md "Security"): the value of a choice is the row's id (`local:<id>`, `ca:<SHA-256>`).
-  Client certificates: the rows with a key OADM holds that have not ended and are still accepted, no CA, no certificate of a
-  running server (those keys stay in the servers). Trusted: the CAs of the list and the imported certificates. Text like the
-  policy choices ("EST server (OADM Root CA SERVER01), until 2035-10-25", a self-signed one names itself once). `LoadAsync`:
-  the certificate with its key when OADM holds one (`LocalCertificates.WithKey`, decrypted with the same purpose, through
-  PKCS#12 like the EST server's, in no certificate store), then the issuers PKI lists; null when the row left the list, is no
-  longer accepted or its key cannot be read. An ended certificate still loads: the peer's refusal says more than "no longer
+  Client certificates: the rows with a key OADM holds that have not ended and are still accepted, no CA, no certificate a server
+  policy shows (`Policies.ShowingCertificate`, those keys stay in the servers). Trusted: the CAs of the list and the imported certificates. Text like the
+  policy choices ("EST server (OADM Root CA SERVER01), until 2035-10-25", a self-signed one names itself once). `LoadAsync`
+  (`LoadRecipientCertificate(id, withKey: true)`): the certificate with its key when OADM holds one (`LocalCertificates.LoadWithKey`,
+  decrypted with the same purpose, through PKCS#12 like the EST server's, in no certificate store), then the issuers PKI lists; null
+  when the row left the list, is no longer accepted, a server policy shows it (its key is never handed out, however it got
+  chosen) or its key cannot be read or does not fit. `withKey: false` loads the certificate and its issuers without a key, for
+  the trusted certificate of a session, also one a server policy shows. An ended certificate still loads: the peer's refusal says more than "no longer
   exists". PKI reads what recipients use from `ctx.Services.Find<IRecipientCertificateUse>()` (the host's; null: no uses),
   once per request (`RecipientUsesAsync`): the rows' Used by, the CA card's Used by, the refusals of Delete and of Delete CA.
   Users limited to a device group get no recipient names.

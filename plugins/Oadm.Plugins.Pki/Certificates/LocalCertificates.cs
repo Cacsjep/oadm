@@ -257,6 +257,29 @@ public sealed partial class LocalCertificates(IPluginRecords records, ISecretPro
         }
     }
 
+    /// <summary>A row's certificate with its key, the key cleared afterwards; null without a key or when the two do not fit.</summary>
+    public X509Certificate2? LoadWithKey(LocalCertificate row)
+    {
+        if (KeyOf(row) is not { } pkcs8)
+        {
+            return null;
+        }
+
+        try
+        {
+            return WithKey(row.Der, pkcs8);
+        }
+        catch (Exception ex) when (ex is CryptographicException or ArgumentException)
+        {
+            LogKeyDoesNotFit(row.Stored.Id);
+            return null;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(pkcs8);
+        }
+    }
+
     /// <summary>
     /// A certificate with its PKCS#8 key, in memory: through PKCS#12, so Windows TLS can use the key (an in-memory key fails
     /// there). Never in a certificate store; a load without <see cref="X509KeyStorageFlags.PersistKeySet"/> takes the key with it
@@ -356,4 +379,7 @@ public sealed partial class LocalCertificates(IPluginRecords records, ISecretPro
 
     [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the key of the certificate {Id} cannot be decrypted (other master key)")]
     private partial void LogKeyUnreadable(string id);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "PKI: the key of the certificate {Id} is damaged or does not fit the certificate")]
+    private partial void LogKeyDoesNotFit(string id);
 }

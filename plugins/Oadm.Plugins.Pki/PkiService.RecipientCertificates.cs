@@ -28,13 +28,13 @@ public sealed partial class PkiService
         RecipientCertificateUse?.Invoke() is { } host ? new RecipientUses(await host.UsesAsync(ct).ConfigureAwait(false)) : RecipientUses.None;
 
     /// <summary>
-    /// Rows with a key OADM holds that have not ended and are still accepted. No CA, and no certificate of a running server:
+    /// Rows with a key OADM holds that have not ended and are still accepted. No CA, and no certificate a server policy shows:
     /// the servers keep those keys to themselves.
     /// </summary>
     internal IReadOnlyList<ActionChoice> RecipientClientCertificates()
     {
         var now = Now.UtcDateTime;
-        return [.. _local.List.Where(l => l.HasKey && l.NotAfterUtc > now && !_issued.IsRevoked(l.Serial))
+        return [.. _local.List.Where(l => l.HasKey && l.NotAfterUtc > now && !_issued.IsRevoked(l.Serial) && Policies.ShowingCertificate(l.Stored.Id) is null)
             .Select(l => new ActionChoice(l.RowId, ChoiceText(l.Stored.Name, l.IssuerName, l.NotAfterUtc)))];
     }
 
@@ -47,10 +47,11 @@ public sealed partial class PkiService
     ];
 
     /// <summary>
-    /// The certificate of a row, with its key when OADM holds one, then its issuers; null when it left the list, is no longer
-    /// accepted or its key cannot be read. The caller disposes them; the decrypted key stays only inside the certificate.
+    /// The certificate of a row, then its issuers; with <paramref name="withKey"/> also its key when OADM holds one. Null when it
+    /// left the list or is no longer accepted, and with <paramref name="withKey"/> when a server policy shows it or its key
+    /// cannot be read. The caller disposes them; the decrypted key stays only inside the certificate.
     /// </summary>
-    internal IReadOnlyList<X509Certificate2>? LoadRecipientCertificate(string id)
+    internal IReadOnlyList<X509Certificate2>? LoadRecipientCertificate(string id, bool withKey)
     {
         ArgumentNullException.ThrowIfNull(id);
         if (id.StartsWith(AuthorityRowPrefix, StringComparison.Ordinal))
@@ -64,24 +65,12 @@ public sealed partial class PkiService
             return null;
         }
 
-        if (!local.HasKey)
+        if (!withKey || !local.HasKey)
         {
             return WithIssuers(X509CertificateLoader.LoadCertificate(local.Der));
         }
 
-        if (_local.KeyOf(local) is not { } pkcs8)
-        {
-            return null;
-        }
-
-        try
-        {
-            return WithIssuers(LocalCertificates.WithKey(local.Der, pkcs8));
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(pkcs8);
-        }
+        return Policies.ShowingCertificate(local.Stored.Id) is null && _local.LoadWithKey(local) is { } certificate ? WithIssuers(certificate) : null;
     }
 
     /// <summary>The certificate first, then the issuers PKI lists up to the root: an issuer it does not list ends the chain.</summary>
@@ -158,5 +147,5 @@ internal sealed class PkiRecipientCertificates(PkiService service) : IRecipientC
     public Task<IReadOnlyList<ActionChoice>> TrustedCertificatesAsync(CancellationToken ct) => Task.FromResult(service.RecipientTrustedCertificates());
 
     /// <inheritdoc />
-    public Task<IReadOnlyList<X509Certificate2>?> LoadAsync(string id, CancellationToken ct) => Task.FromResult(service.LoadRecipientCertificate(id));
+    public Task<IReadOnlyList<X509Certificate2>?> LoadAsync(string id, CancellationToken ct) => Task.FromResult(service.LoadRecipientCertificate(id, withKey: true));
 }
