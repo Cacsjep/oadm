@@ -234,11 +234,11 @@ public sealed partial class FakeOadmApi
     private static RecipientTypeEntry FakeHttpRecipient()
     {
         var type = new RecipientTypeEntry { Id = FakeHttpRecipientType, DisplayName = "HTTP", IconKey = "send", Available = true };
-        type.Fields.Add(new ActionFieldEntry { Key = "url", Label = "URL", Kind = ActionFieldKind.ActionFieldText, Required = true, EmptyText = "Enter a URL.", MaxLength = 1000 });
+        type.Fields.Add(new ActionFieldEntry { Key = "url", Label = "URL", Kind = ActionFieldKind.ActionFieldText, Required = true, EmptyText = "Enter a URL.", Format = ActionTextFormat.Url, MaxLength = 1000 });
         type.Fields.Add(Choice("auth", "Login", "none", ("none", "None"), ("basic", "Basic"), ("digest", "Digest"), ("bearer", "Bearer token")));
-        type.Fields.Add(new ActionFieldEntry { Key = "user", Label = "User name", Kind = ActionFieldKind.ActionFieldText, VisibleWhenKey = "auth", VisibleWhenValue = "basic|digest", MaxLength = 1000 });
+        type.Fields.Add(new ActionFieldEntry { Key = "user", Label = "User name", Kind = ActionFieldKind.ActionFieldText, Required = true, EmptyText = "Enter the user name.", VisibleWhenKey = "auth", VisibleWhenValue = "basic|digest", MaxLength = 1000 });
         type.Fields.Add(new ActionFieldEntry { Key = "password", Label = "Password", Kind = ActionFieldKind.ActionFieldPassword, VisibleWhenKey = "auth", VisibleWhenValue = "basic|digest", MaxLength = 256 });
-        type.Fields.Add(new ActionFieldEntry { Key = "token", Label = "Token", Kind = ActionFieldKind.ActionFieldPassword, VisibleWhenKey = "auth", VisibleWhenValue = "bearer", MaxLength = 4096 });
+        type.Fields.Add(new ActionFieldEntry { Key = "token", Label = "Token", Kind = ActionFieldKind.ActionFieldPassword, Required = true, EmptyText = "Enter the token.", VisibleWhenKey = "auth", VisibleWhenValue = "bearer", MaxLength = 4096 });
         type.Fields.Add(new ActionFieldEntry { Key = "allowUntrusted", Label = "Allow untrusted certificates", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
         return type;
     }
@@ -246,21 +246,21 @@ public sealed partial class FakeOadmApi
     private static RecipientTypeEntry FakeEmailRecipient()
     {
         var type = new RecipientTypeEntry { Id = FakeEmailRecipientType, DisplayName = "Email", IconKey = "send", Available = true };
-        type.Fields.Add(new ActionFieldEntry { Key = "host", Label = "Mail server", Kind = ActionFieldKind.ActionFieldText, Required = true, EmptyText = "Enter a host name or IP address.", MaxLength = 1000 });
+        type.Fields.Add(new ActionFieldEntry { Key = "host", Label = "Mail server", Kind = ActionFieldKind.ActionFieldText, Required = true, EmptyText = "Enter a host name or IP address.", Format = ActionTextFormat.Host, MaxLength = 1000 });
         type.Fields.Add(new ActionFieldEntry { Key = "port", Label = "Port", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 65535, DefaultValue = "587" });
         type.Fields.Add(Choice("security", "Encryption", "starttls", ("starttls", "STARTTLS (usually port 587)"), ("tls", "TLS (usually port 465)"), ("none", "None")));
         type.Fields.Add(new ActionFieldEntry { Key = "allowUntrusted", Label = "Allow untrusted certificates", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
         type.Fields.Add(new ActionFieldEntry { Key = "user", Label = "User name", Kind = ActionFieldKind.ActionFieldText, Hint = "Optional", MaxLength = 1000 });
         type.Fields.Add(new ActionFieldEntry { Key = "password", Label = "Password", Kind = ActionFieldKind.ActionFieldPassword, MaxLength = 256 });
-        type.Fields.Add(new ActionFieldEntry { Key = "from", Label = "From", Kind = ActionFieldKind.ActionFieldText, Required = true, EmptyText = "Enter an email address.", MaxLength = 1000 });
-        type.Fields.Add(new ActionFieldEntry { Key = "to", Label = "To", Kind = ActionFieldKind.ActionFieldText, Required = true, Hint = "Several addresses separated by commas", EmptyText = "Enter an email address.", MaxLength = 1000 });
+        type.Fields.Add(new ActionFieldEntry { Key = "from", Label = "From", Kind = ActionFieldKind.ActionFieldText, Required = true, EmptyText = "Enter an email address.", Format = ActionTextFormat.Email, MaxLength = 1000 });
+        type.Fields.Add(new ActionFieldEntry { Key = "to", Label = "To", Kind = ActionFieldKind.ActionFieldText, Required = true, Hint = "Several addresses separated by commas", EmptyText = "Enter an email address.", Format = ActionTextFormat.EmailList, MaxLength = 1000 });
         return type;
     }
 
     private static RecipientTypeEntry FakeTcpRecipient()
     {
         var type = new RecipientTypeEntry { Id = FakeTcpRecipientType, DisplayName = "TCP", IconKey = "send", Available = true };
-        type.Fields.Add(new ActionFieldEntry { Key = "host", Label = "Host", Kind = ActionFieldKind.ActionFieldText, Required = true, Hint = "Host name or IP address", EmptyText = "Enter a host name or IP address.", MaxLength = 1000 });
+        type.Fields.Add(new ActionFieldEntry { Key = "host", Label = "Host", Kind = ActionFieldKind.ActionFieldText, Required = true, Hint = "Host name or IP address", EmptyText = "Enter a host name or IP address.", Format = ActionTextFormat.Host, MaxLength = 1000 });
         type.Fields.Add(new ActionFieldEntry { Key = "port", Label = "Port", Kind = ActionFieldKind.ActionFieldNumber, Required = true, Min = 1, Max = 65535, DefaultValue = "8000" });
         type.Fields.Add(new ActionFieldEntry { Key = "tls", Label = "Use TLS", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false" });
         type.Fields.Add(new ActionFieldEntry { Key = "allowUntrusted", Label = "Allow untrusted certificates", Kind = ActionFieldKind.ActionFieldBool, DefaultValue = "false", VisibleWhenKey = "tls", VisibleWhenValue = "true" });

@@ -696,6 +696,7 @@ public sealed partial class ActionFieldViewModel : ObservableObject
     {
         Required = entry.Required,
         EmptyText = entry.EmptyText.Length == 0 ? null : entry.EmptyText,
+        Format = (ActionFieldFormat)(int)entry.Format,
         Default = entry.HasDefaultValue ? entry.DefaultValue : null,
         Min = entry.Min,
         Max = entry.Max == 0 ? int.MaxValue : entry.Max,

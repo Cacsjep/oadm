@@ -36,7 +36,7 @@ public sealed class RecipientServiceTests
 
         public IReadOnlyList<RecipientType> RecipientTypes { get; } =
         [
-            new(TypeId, "Hook", "send", [ActionField.Text("url", "URL", required: true), ActionField.Password("token", "Token")], "test.hook-action") { Target = "{url}" },
+            new(TypeId, "Hook", "send", [ActionField.Text("url", "URL", required: true), ActionField.Password("token", "Token"), ActionField.Text("relay", "Relay") with { Format = ActionFieldFormat.Host }], "test.hook-action") { Target = "{url}" },
         ];
 
         public IReadOnlyList<ActionField> Fields { get; } = [ActionField.Recipient("recipient", "Recipient", [TypeId])];
@@ -83,6 +83,7 @@ public sealed class RecipientServiceTests
         {
             var catalog = await events.GetCatalogAsync(new Proto.Empty());
             var type = Assert.Single(catalog.RecipientTypes, t => t.Id == TypeId);
+            Assert.Equal(Proto.ActionTextFormat.Host, type.Fields.Single(f => f.Key == "relay").Format); // the form checks it while the user types
             Assert.Equal("Hook", type.DisplayName);
             Assert.True(type.Available);
             Assert.Equal(Proto.ActionFieldKind.ActionFieldPassword, type.Fields.Single(f => f.Key == "token").Kind);

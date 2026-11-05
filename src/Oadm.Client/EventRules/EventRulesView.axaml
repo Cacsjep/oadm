@@ -102,16 +102,6 @@
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
-            <DataGridTemplateColumn Width="104" MinWidth="104" SortMemberPath="UsedByCount" CellStyleClasses="number">
-              <DataGridTemplateColumn.Header>
-                <TextBlock Classes="numberHeader" Text="Used by" />
-              </DataGridTemplateColumn.Header>
-              <DataGridTemplateColumn.CellTemplate>
-                <DataTemplate x:DataType="vm:RecipientRowViewModel">
-                  <TextBlock Text="{Binding UsedByCount}" ToolTip.Tip="{Binding UsedByText}" Background="Transparent" />
-                </DataTemplate>
-              </DataGridTemplateColumn.CellTemplate>
-            </DataGridTemplateColumn>
           </DataGrid.Columns>
         </DataGrid>
         <TextBlock Grid.Row="2" Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="16,0"

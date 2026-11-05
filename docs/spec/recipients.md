@@ -11,7 +11,8 @@ how to reach something, the action says what to send. Agreed with the maintainer
 | Name | **Recipients**, one word for the whole concept, in every UI text and doc |
 | Link | A rule keeps a link to its recipient. Axis copies the values into the rule and keeps no link; OADM does not: change a recipient and all its rules follow |
 | Direction | Output only. A recipient never feeds events into OADM |
-| Types | HTTP (http and https in one type), Email, TCP. No FTP, SFTP or Network share: OADM sends no files. Later persistent types (MQTT, OPC UA) add a shared session, so a type is declared by its plugin, never hard-coded in the host |
+| Used by | No column in the list; a refused delete names the rules |
+| Types | HTTP (http and https in one type), Email, TCP. No FTP, SFTP or Network share: OADM sends no files. Later persistent types (MQTT, Modbus, OPC UA) add a shared session, so a type is declared by its plugin, never hard-coded in the host |
 | What moves | The recipient holds the target and its login, the action keeps the message (table below). No placeholders in a recipient: a target is fixed |
 | Email | From and To belong to the recipient: an Email recipient is one mailbox or group ("Gate team"). A second audience is a second recipient |
 | Existing rules | The user moves them. No conversion. An old Send email, Send HTTP request or Send TCP message action has no recipient: its rule shows "Send email: Choose a recipient.", the action does not run (event log: Failed with that text) and the rule cannot be saved until one is chosen. The old values stay unread in the stored action and go at the next save, passwords included |
@@ -30,7 +31,10 @@ how to reach something, the action says what to send. Agreed with the maintainer
 
 - New field type `ActionFieldType.Recipient` with `ActionField.Recipient(key, label, typeIds)`: required, the value is the
   recipient's id. `ActionField.EmptyText`: the error of a required field left empty, for a label that does not read in a
-  sentence ("To", "URL"); default "Enter" and the label. One `Recipient` field per action: the merge is flat, a second one would
+  sentence ("To", "URL"); default "Enter" and the label. `ActionField.Format` (`ActionFieldFormat`: Url, Host, Email, EmailList,
+  `ActionFormats`): what a text field must hold, part of `ActionSettings.Check`, so the dialog shows the error while the user types
+  and the server refuses the same. Url: http or https, no placeholders, no spaces, no login in it (the target shows in the list and
+  the audit log). The checks of a plugin's `Validate` run on the server only, for what a format cannot say. One `Recipient` field per action: the merge is flat, a second one would
   replace the keys of the first. New SDK members are default interface members; this is SDK 0.11.0 (the table in
   `website/src/content/docs/dev/compatibility.md`, `SdkInfo.Version`, `Oadm.Plugin.Versions.props`).
 - `RecipientType(Id, DisplayName, IconKey, Fields, TestActionId)`: the fields use the `ActionField` kinds and their checks.
@@ -75,7 +79,7 @@ how to reach something, the action says what to send. Agreed with the maintainer
   (`EventRulesView.StackedBelowWidth`, small screens, `docs/spec/visual-style.md`). The toolbars of both cards are
   `ui:ToolbarOverflowPanel`, the grids scroll sideways at their minimum.
 - **Recipients card:** header row New, Edit, Delete (red, apart) and below it a search box (`SearchBox.stretch`: the card is too narrow
-  for one row); a virtualized `DataGrid`: Name, Type, Target (the full text as tooltip), Used by (count, the names as tooltip). The list
+  for one row); a virtualized `DataGrid`: Name, Type, Target (the full text as tooltip). The list
   is read when the page opens, after a change here and when the rules list shows a change of what the rules run. Empty list: "Create a recipient, then choose it in a rule." Hidden without the right to
   see event rules. Without "Change event rules" New, Edit and Delete are off with the read-only hint.
 - **Recipient dialog** (one form, `Border.dialogBody`, like `ui:MessageWindow`'s padding): Type (only for a new one), Name, then

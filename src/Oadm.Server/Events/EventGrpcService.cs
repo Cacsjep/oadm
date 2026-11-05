@@ -364,6 +364,7 @@ public sealed class EventGrpcService(
             Required = field.Required,
             Hint = field.Hint ?? string.Empty,
             EmptyText = field.EmptyText ?? string.Empty,
+            Format = (Proto.ActionTextFormat)(int)field.Format,
             Min = field.Min,
             Max = field.Max,
             MaxLength = field.MaxLength,

@@ -6,7 +6,7 @@ namespace Oadm.Sdk.Actions;
 
 /// <summary>
 /// The host's checks of declarative action settings (<see cref="ActionField"/>), shared by the server (before a rule is
-/// saved) and the rule dialog (errors below the fields): required values, number ranges, choices, lengths.
+/// saved) and the forms of the client (errors below the fields): required values, number ranges, choices, lengths, formats.
 /// </summary>
 public static class ActionSettings
 {
@@ -117,7 +117,7 @@ public static class ActionSettings
                 ActionFieldType.Choice => field.Choices.Any(c => string.Equals(c.Value, value, StringComparison.Ordinal)) ? null : "Choose one of the list.",
                 _ => value.Length > field.MaxLength
                     ? string.Create(CultureInfo.InvariantCulture, $"At most {field.MaxLength:N0} characters.")
-                    : null,
+                    : ActionFormats.Problem(field.Format, value),
             };
             if (problem is not null)
             {

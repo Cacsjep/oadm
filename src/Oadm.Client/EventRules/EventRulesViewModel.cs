@@ -106,11 +106,6 @@ public sealed class RecipientRowViewModel(RecipientEntry entry, string typeText)
 
     public string Target => Entry.Target;
 
-    public int UsedByCount => Entry.UsedBy.Count;
-
-    /// <summary>The names of the rules that use it; null when none does.</summary>
-    public string? UsedByText => Entry.UsedBy.Count == 0 ? null : string.Join(", ", Entry.UsedBy);
-
     public bool Matches(string text) =>
         Name.Contains(text, StringComparison.OrdinalIgnoreCase) || TypeText.Contains(text, StringComparison.OrdinalIgnoreCase) || Target.Contains(text, StringComparison.OrdinalIgnoreCase);
 }

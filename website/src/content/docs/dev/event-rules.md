@@ -45,7 +45,7 @@ and its tests; `dotnet new oadm-action -n MyAction` creates a working copy (in a
 | `MaxRunTime(settings)` | More than the 30 s a run gets, e.g. a pulse the device answers only after it ended |
 | `ListChoicesAsync` | The choices of a `DynamicChoice` field, read while the rule is edited |
 
-A field can carry `Required`, `EmptyText` (the error when a required field is empty, for a label such as "To"), `Hint`, `Default`, `Min` / `Max`, `MaxLength`, `VisibleWhenKey` / `VisibleWhenValue` (show
+A field can carry `Required`, `EmptyText` (the error when a required field is empty, for a label such as "To"), `Format` (Url, Host, Email or EmailList, checked while the user types and on the server), `Hint`, `Default`, `Min` / `Max`, `MaxLength`, `VisibleWhenKey` / `VisibleWhenValue` (show
 it only for one choice of another field) and `OffEdge` (a setting of "When the rule turns off"). The same checks run in
 the dialog and on the server.
 

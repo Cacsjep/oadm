@@ -143,6 +143,15 @@ enum ActionFieldKind {
   ACTION_FIELD_RECIPIENT = 10; // the id of a recipient of recipient_types
 }
 
+// The numbers of Oadm.Sdk.Actions.ActionFieldFormat.
+enum ActionTextFormat {
+  ACTION_TEXT_FORMAT_NONE = 0;
+  ACTION_TEXT_FORMAT_URL = 1;
+  ACTION_TEXT_FORMAT_HOST = 2;
+  ACTION_TEXT_FORMAT_EMAIL = 3;
+  ACTION_TEXT_FORMAT_EMAIL_LIST = 4;
+}
+
 message ActionFieldEntry {
   string key = 1;
   string label = 2;
@@ -163,6 +172,7 @@ message ActionFieldEntry {
   repeated string accept = 17;      // file field: the file name endings it takes (".cfg")
   repeated string recipient_types = 18; // recipient field: the ids of the types it takes
   string empty_text = 19;           // the error of a required field left empty; empty = "Enter" and the label
+  ActionTextFormat format = 20;     // what a text field must hold
 }
 
 message ActionEntry {

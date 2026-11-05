@@ -79,9 +79,6 @@ public sealed class RecipientTests : IDisposable
         var gate = page.Recipients.Single(r => r.Name == "Gate team");
         Assert.Equal("Email", gate.TypeText);
         Assert.Equal("smtp.office365.com:587", gate.Target);
-        Assert.Equal(1, gate.UsedByCount);
-        Assert.Equal("Camera offline in Building A", gate.UsedByText);
-        Assert.Null(page.Recipients.Single(r => r.Name == "Alarm panel").UsedByText);
 
         page.RecipientSearchText = "hooks";
         Assert.Equal("Teams webhook", Assert.Single(page.Recipients).Name);
@@ -245,6 +242,34 @@ public sealed class RecipientTests : IDisposable
     });
 
     [Fact]
+    public Task A_wrong_value_shows_below_its_field_while_typing_and_keeps_save_off() => _ui.RunAsync(async () =>
+    {
+        var (api, _) = await ApiAsync();
+        var http = await EditorAsync(api, typeId: FakeOadmApi.FakeHttpRecipientType);
+        http.Name = "Hook";
+
+        Field(http, "url").Text = "http://127.0.0.1/acs asdasd";
+        Assert.Equal("Enter a URL without spaces.", Field(http, "url").Error);
+        Assert.False(http.SaveCommand.CanExecute(null));
+
+        Field(http, "url").Text = "http://127.0.0.1/acs";
+        Assert.Null(Field(http, "url").Error);
+        Assert.True(http.SaveCommand.CanExecute(null));
+
+        var email = await EditorAsync(api, typeId: FakeOadmApi.FakeEmailRecipientType);
+        Field(email, "from").Text = "abc";
+        Field(email, "to").Text = "a@example.com, nope";
+        Field(email, "host").Text = "mail server";
+        Assert.Equal("Enter an email address.", Field(email, "from").Error);
+        Assert.Equal("Enter email addresses separated by commas.", Field(email, "to").Error);
+        Assert.Equal("Enter a host name or IP address.", Field(email, "host").Error);
+
+        var tcp = await EditorAsync(api, typeId: FakeOadmApi.FakeTcpRecipientType);
+        Field(tcp, "host").Text = "panel:8000";
+        Assert.Equal("Enter a host name or IP address.", Field(tcp, "host").Error);
+    });
+
+    [Fact]
     public Task Test_shows_the_reason_as_text_and_sends_nothing_with_errors() => _ui.RunAsync(async () =>
     {
         var (api, _) = await ApiAsync();
@@ -373,6 +398,13 @@ public sealed class RecipientTests : IDisposable
                 dialog.Show();
                 await PumpUntilAsync(() => dialog.GetVisualDescendants().OfType<SettingsFormView>().Any());
                 Capture(dialog, outDir, $"recipients-dialog-{name}.png");
+                if (name == "http")
+                {
+                    editor.Name = "local";
+                    Field(editor, "url").Text = "http://127.0.0.1/acs asdasd";
+                    await PumpUntilAsync(() => true);
+                    Capture(dialog, outDir, "recipients-dialog-url-error.png");
+                }
                 if (typeId == FakeOadmApi.FakeEmailRecipientType)
                 {
                     FillEmail(editor);

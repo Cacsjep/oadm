@@ -122,6 +122,9 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
     /// <summary>The error of a required field left empty; null = "Enter" and the label, for a label that does not read in a sentence.</summary>
     public string? EmptyText { get; init; }
 
+    /// <summary>What a <see cref="ActionFieldType.Text"/> field must hold, checked while the user types and on the server.</summary>
+    public ActionFieldFormat Format { get; init; }
+
     /// <summary>The choices of a <see cref="ActionFieldType.Choice"/> field.</summary>
     public IReadOnlyList<ActionChoice> Choices { get; init; } = [];
 

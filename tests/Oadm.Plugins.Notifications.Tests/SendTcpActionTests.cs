@@ -117,9 +117,7 @@ public sealed class SendTcpActionTests
     {
         var action = new SendTcpAction();
         var bad = Settings(1, "02 4", "hex");
-        bad["host"] = "not a host!";
         var errors = action.Validate(Run.Element(bad), statefulRule: true);
-        Assert.Equal("Enter a host name or IP address.", errors["host"]);
         Assert.Equal("Enter hex bytes, for example 02 41 42 03.", errors["message"]);
 
         Assert.Equal("The message is not valid JSON.", action.Validate(Run.Element(Settings(1, "{\"a\": ", "json")), true)["message"]);

@@ -64,21 +64,6 @@ public sealed class SendHttpAction : IActionPlugin
         var invocation = new ActionInvocation(Guid.Empty, string.Empty, ActionEdge.Fired, settings, null,
             new ActionTrigger(string.Empty, string.Empty, null, null, null, null, DateTimeOffset.UnixEpoch, new Dictionary<string, string>()));
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
-        var url = invocation.Get("url")?.Trim() ?? string.Empty;
-        if (url.Length > 0 && !IsHttpUrl(url))
-        {
-            errors["url"] = "Enter a URL that starts with http:// or https://.";
-        }
-        else if (url.AsSpan().IndexOfAny('{', '}') >= 0)
-        {
-            errors["url"] = "Enter a fixed URL, without placeholders.";
-        }
-
-        if (invocation.Get("auth") is "basic" or "digest" && string.IsNullOrWhiteSpace(invocation.Get("user")))
-        {
-            errors["user"] = "Enter the user name.";
-        }
-
         foreach (var header in invocation.GetPairs("headers"))
         {
             if (!IsToken(header.Key))

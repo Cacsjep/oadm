@@ -61,17 +61,12 @@ public sealed partial class SendEmailAction : IActionPlugin
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
         if (invocation.Get("from") is { Length: > 0 } from && !MailboxAddress.TryParse(from, out _))
         {
-            errors["from"] = "Enter an email address.";
+            errors["from"] = ActionFormats.EnterEmail;
         }
 
         if (invocation.Get("to") is { Length: > 0 } to && Addresses(to) is null)
         {
-            errors["to"] = "Enter email addresses separated by commas.";
-        }
-
-        if (invocation.Get("host") is { Length: > 0 } host && Uri.CheckHostName(host.Trim()) == UriHostNameType.Unknown)
-        {
-            errors["host"] = NotificationRecipients.EnterHost;
+            errors["to"] = ActionFormats.EnterEmailList;
         }
 
         return errors;

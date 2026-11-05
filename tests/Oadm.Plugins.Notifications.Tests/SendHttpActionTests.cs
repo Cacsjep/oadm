@@ -116,25 +116,19 @@ public sealed class SendHttpActionTests
     }
 
     [Fact]
-    public void Validation_checks_url_login_headers_and_json_with_placeholders()
+    public void Validation_checks_headers_and_json_with_placeholders()
     {
         var action = new SendHttpAction();
-        var settings = Settings("ftp://x");
-        settings["auth"] = "basic";
+        var settings = Settings("https://hooks.example.com/in");
         settings["headers"] = Run.Pairs(("Bad Header", "1"));
         settings["body"] = "{\"count\": {total}, \"id\": \"{objectId}\""; // missing }
         var errors = action.Validate(Run.Element(settings), statefulRule: true);
-        Assert.Equal("Enter a URL that starts with http:// or https://.", errors["url"]);
-        Assert.Equal("Enter the user name.", errors["user"]);
         Assert.Contains("Bad Header", errors["headers"], StringComparison.Ordinal);
         Assert.Equal("The body is not valid JSON.", errors["body"]);
 
         var good = Settings("https://hooks.example.com/in");
         good["body"] = "{\"count\": {total}, \"id\": \"{objectId}\"}"; // a placeholder may stand for a number
         Assert.Empty(action.Validate(Run.Element(good), statefulRule: true));
-
-        // A target is fixed: placeholders stay in the action's query, headers and body.
-        Assert.Equal("Enter a fixed URL, without placeholders.", action.Validate(Run.Element(Settings("https://hooks.example.com/{serial}")), statefulRule: true)["url"]);
     }
 
     [Fact]
