@@ -88,7 +88,7 @@ public static partial class NoticesWriter
 
             if (licenseText is null)
             {
-                licenseText = info.LicenseFile is not null ? $"see the file {info.LicenseFile} of the package (section 4)"
+                licenseText = info.LicenseFile is not null ? LicenseFileText(info)
                     : info.LicenseUrl is not null ? info.LicenseUrl + (info.Files.Count > 0 ? " (license files of the package in section 4)" : string.Empty)
                     : info.Files.Count > 0 ? "see the license files of the package (section 4)"
                     : "unknown";
@@ -197,6 +197,19 @@ public static partial class NoticesWriter
         return new NoticesResult(sb.ToString(), packages.Count, warnings);
     }
 
+    /// <summary>
+    /// A package with a license file instead of an SPDX expression. A license that names itself on a line of its own ("OPC Foundation
+    /// MIT License 1.00") is listed by that name, so the list says what it is.
+    /// </summary>
+    private static string LicenseFileText(PackageInfo info)
+    {
+        var text = info.Files.FirstOrDefault(f => string.Equals(f.Path, info.LicenseFile, StringComparison.OrdinalIgnoreCase))?.Text;
+        var name = text is null ? null : LicenseNameRegex().Match(text);
+        return name is { Success: true }
+            ? $"{name.Value.Trim()} (the file {info.LicenseFile} of the package, section 4)"
+            : $"see the file {info.LicenseFile} of the package (section 4)";
+    }
+
     /// <summary>Server first, then client, then plugins.</summary>
     private static int UsedByOrder(string usedBy) => usedBy switch
     {
@@ -215,4 +228,7 @@ public static partial class NoticesWriter
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex WhitespaceRegex();
+
+    [GeneratedRegex(@"^[ \t]*\S.*\bLicense \d+(\.\d+)*[ \t]*$", RegexOptions.Multiline)]
+    private static partial Regex LicenseNameRegex();
 }
