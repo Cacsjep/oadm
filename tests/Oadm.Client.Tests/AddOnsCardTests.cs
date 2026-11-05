@@ -84,7 +84,7 @@ public sealed class AddOnsCardTests
             gate.Release(3);
             await install;
             Pump();
-            Assert.Contains(OptionalPluginTexts.Installed, Visible(window));
+            Assert.Contains(OptionalPluginTexts.UpToDate, Visible(window));
             Assert.Contains("Remove", Visible(window));
             Assert.DoesNotContain(OptionalPluginTexts.Download, Visible(window));
             Assert.DoesNotContain(OptionalPluginTexts.Source, Visible(window)); // it names the link

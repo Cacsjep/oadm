@@ -250,8 +250,8 @@ must never break.
 - **[Add-on plugins](docs/spec/add-ons.md)** (built; users see "Optional plugins", never "add-on"): OADM's own plugins
   outside the installers (the vision plugins), installed on demand on the Plugins page without a restart (removed files go at the next start); the user downloads the ZIP and sends it
   through the client, the server never downloads one; only the exact genuine ZIP of this server's version and system installs (its SHA-256 built into every server build, checked before
-  unpacking, an OADM login must not become code as SYSTEM or root), Administrators only, audited; clients get the client part from the server; after a server update Install again, OADM runs
-  as usual; a build without the hash only takes a folder by hand, which must pass the version rule too.
+  unpacking, an OADM login must not become code as SYSTEM or root), Administrators only, audited; clients get the client part from the server; after a server update an older plugin keeps running, a fingerprint of its source says Up to date or Update available, with a dialog for
+  Administrators; a plugin that cannot load stays off and OADM runs as usual; a build without the hash only takes a folder by hand, which must pass the version rule too.
 - **[Text recognition](docs/spec/ocr.md)** (built, hardware runs open; add-on `oadm.ocr`, rail group Vision, free, off by
   default): readers (camera, up to 8 areas, Any text or a format such as `@@@U ###### #`) read text only inside their
   areas, on a usable graphics card (DirectML on Windows, CUDA on Linux x64) unless a model is clearly slower there, else on the CPU, which always works (ONNX Runtime, PaddleOCR models, never

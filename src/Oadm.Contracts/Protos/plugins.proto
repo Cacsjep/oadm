@@ -135,6 +135,7 @@ message AddOnInfo {
   bool can_install = 9;
   string client_digest = 10;
   string download_url = 11;
+  bool update_available = 12;  // an older OADM version's add-on keeps running; Install takes the ZIP of this version
 }
 message AddOnList { repeated AddOnInfo add_ons = 1; }
 message AddOnIdRequest { string id = 1; }

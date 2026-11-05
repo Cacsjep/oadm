@@ -3,7 +3,7 @@
 #   check-server-hash.sh <publish folder> <zip> <plugin id>
 # The hash is assembly metadata of Oadm.Server (AssemblyAddOnHashes): a custom attribute with key and value in plain text,
 # so it is found in the single-file exe without running it (macOS and arm64 runners build what they cannot always run).
-# In the attribute a one-byte length (64 = "@") sits between key and value. Needs grep, sha256sum or shasum.
+# In the attribute a one-byte length (64 = "@") sits between key and value. Needs grep, unzip, sha256sum or shasum.
 set -euo pipefail
 
 folder="$1"
@@ -21,4 +21,12 @@ key="OadmAddOnSha256:$id"
 found="$(LC_ALL=C grep -aoE "$(printf '%s' "$key" | sed 's/\./\\./g')@[0-9a-f]{64}" "$exe" | sed 's/.*@//' | sort -u || true)"
 [ -n "$found" ] || fail "no hash of $id built in"
 [ "$found" = "$want" ] || fail "the hash of $id is $found, $(basename "$zip") has $want"
+
+# The fingerprint: without it every older add-on would show Update available for ever. "none" (built outside git) is not built in.
+content="$(unzip -p "$zip" oadm-content.txt | tr -d '\r\n')"
+if [ "$content" != none ]; then
+  key="OadmAddOnContent:$id"
+  found="$(LC_ALL=C grep -aoE "$(printf '%s' "$key" | sed 's/\./\\./g')@[0-9a-f]{64}" "$exe" | sed 's/.*@//' | sort -u || true)"
+  [ "$found" = "$content" ] || fail "the fingerprint of $id is '$found', $(basename "$zip") has '$content'"
+fi
 echo "$(basename "$exe"): hash of $id matches $(basename "$zip")"

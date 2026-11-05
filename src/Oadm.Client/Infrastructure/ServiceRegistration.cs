@@ -113,6 +113,7 @@ public static class ServiceRegistration
         // Add-ons (docs/spec/add-ons.md rule 6): their client parts from the server, cached per server and version in the
         // data folder's plugin-cache (never the server's addons/: both may share the data folder); the files of removed
         // add-ons and of versions no longer used go here, at the start, before any add-on loads.
+        services.AddSingleton<Plugins.AddOns.AddOnNotice>();
         services.AddSingleton<Plugins.AddOns.IAddOnPartLoader>(sp => (Plugins.AddOns.IAddOnPartLoader)sp.GetRequiredService<IClientPluginRegistry>());
         services.AddSingleton(sp =>
         {

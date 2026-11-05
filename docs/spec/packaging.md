@@ -41,7 +41,7 @@ The file layout of every installer and the user-facing install notes are in `pac
   Windows). It builds on any system (cross-publish; bash needs `zip` or `python3`).
 - The ZIP holds the plugin folder's content at the top (no top folder), dot files included in both scripts: `plugin.json`,
   the server part, the client part, their `*.deps.json`, the native libraries and models of that platform, and
-  `oadm-version.txt` (the version, one line, written by the scripts; the server loads a folder only with its own exact
+  `oadm-content.txt` (the fingerprint, `docs/spec/add-ons.md` "Release files"), `oadm-version.txt` (the version, one line, written by the scripts; the server loads a folder only of its own or an older
   version in it). The server unpacks it into
   `<datafolder>/addons/<id>/`. Before zipping the scripts check `plugin.json` (id), `*.Server.dll`, `*.Client.dll` (when
   the add-on has a client project), `THIRD-PARTY-NOTICES.txt`, `oadm-version.txt` and that no native library of another
@@ -60,7 +60,7 @@ The file layout of every installer and the user-facing install notes are in `pac
   `pr.yml` and the `tests` and `installers` jobs of `release.yml` keep the cache with `actions/cache`, keyed by the OS and
   the hash of `Models.targets`.
 - **The ZIPs come before the server** (`docs/spec/add-ons.md` rule 2): the server holds the SHA-256 of each ZIP of its
-  system. `manage package addons` writes `artifacts/publish/addons/<rid>/addon-hashes-<version>.txt` (one "`<id> <sha256>`"
+  system. `manage package addons` writes `artifacts/publish/addons/<rid>/addon-hashes-<version>.txt` (one "`<id> <sha256> <fingerprint>`"
   per line, after the ZIP's check); `manage publish` and `manage package <system>` pass the file of their version and platform
   to the server only (`-p:OadmAddOnHashFile`, `Oadm.Server.csproj` makes assembly metadata of it), so it survives
   `PublishSingleFile`. Without the file the server is published with a warning and cannot install optional plugins. A ZIP

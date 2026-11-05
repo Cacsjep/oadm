@@ -39,7 +39,8 @@
                           Command="{Binding $parent[UserControl].((addons:AddOnsViewModel)DataContext).CancelUploadCommand}" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding !IsInstalling}">
-                  <ui:StatusChip Text="{x:Static addons:OptionalPluginTexts.Installed}" IsOk="True" VerticalAlignment="Center" IsVisible="{Binding IsInstalled}" />
+                  <ui:StatusChip Text="{Binding InstalledText}" IsOk="True" VerticalAlignment="Center" IsVisible="{Binding ShowInstalledChip}" />
+                  <ui:StatusChip Text="{x:Static addons:OptionalPluginTexts.UpdateAvailable}" IsWarning="True" VerticalAlignment="Center" IsVisible="{Binding UpdateAvailable}" />
                   <ui:StatusChip Text="{x:Static addons:OptionalPluginTexts.RemovedState}" IsWarning="True" VerticalAlignment="Center" IsVisible="{Binding IsRemoved}" />
                   <ui:StatusChip Text="{x:Static addons:OptionalPluginTexts.NotInstalled}" VerticalAlignment="Center" IsVisible="{Binding ShowNotInstalled}" />
                   <Button Classes="link" Content="{x:Static addons:OptionalPluginTexts.Download}" VerticalAlignment="Center" IsVisible="{Binding ShowDownload}"

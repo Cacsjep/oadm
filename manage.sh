@@ -465,10 +465,31 @@ write_notices() {
   "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.Notices/Oadm.Notices.csproj" -c Release --     --repo "$REPO_ROOT" --rid "$RID" --version "$(app_version)" --plugins "$PLUGIN_STAGE" "$@"
 }
 
-# The SHA-256 of the add-on ZIPs of one platform and version, one "<plugin id> <sha256>" per line (docs/spec/add-ons.md rule 2):
+# The SHA-256 of the add-on ZIPs of one platform and version, one "<plugin id> <sha256> <fingerprint>" per line (docs/spec/add-ons.md rule 2):
 # written by package addons, built into that server. Arguments: rid, version.
 addon_hash_file() {
   echo "$REPO_ROOT/artifacts/publish/addons/$1/addon-hashes-$2.txt"
+}
+
+# The fingerprint of an add-on (docs/spec/add-ons.md "Release files"): the SHA-256 of the git file list of what decides its
+# build: its project folders (arguments, the paths of their .csproj), the Shared files they link, the build props,
+# global.json and content-epoch.txt, without *.md, .gitignore and .gitattributes. The same in manage.ps1. "none" outside
+# git: the server then offers the update.
+addon_content() {
+  local p lines paths=(Directory.Build.props Directory.Build.targets global.json packaging/addons/content-epoch.txt)
+  for p in "$@"; do
+    paths+=("$(dirname "${p#"$REPO_ROOT"/}")")
+    while IFS= read -r linked; do
+      [ -n "$linked" ] && paths+=("plugins/Shared/$linked")
+    done < <(grep -oE 'Include="\.\.[\\/]Shared[\\/][^"*]+' "$p" | sed -E 's/^Include="\.\.[\\/]Shared[\\/]//; s/\\/\//g' || true)
+  done
+  lines="$(git -C "$REPO_ROOT" ls-tree -r HEAD -- "${paths[@]}" 2>/dev/null)" || { echo none; return; }
+  [ -n "$lines" ] || { echo none; return; }
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s\n' "$lines" | grep -vE '(\.md|/\.gitignore|/\.gitattributes)$' | LC_ALL=C sort | sha256sum | cut -d' ' -f1
+  else
+    printf '%s\n' "$lines" | grep -vE '(\.md|/\.gitignore|/\.gitattributes)$' | LC_ALL=C sort | shasum -a 256 | cut -d' ' -f1
+  fi
 }
 
 sha256_of() {
@@ -523,7 +544,7 @@ package_nuget() {
   "$DOTNET" run --project "$REPO_ROOT/tools/Oadm.NewPlugin/Oadm.NewPlugin.csproj" -c Release -- \
     --templates "$templates" --version "$(app_version)" --repo "$REPO_ROOT" || exit 1
   for project in src/Oadm.Sdk src/Oadm.Sdk.Client src/Oadm.Sdk.Testing src/Oadm.Plugin.Sdk tools/Oadm.Tools; do
-    "$DOTNET" pack "$REPO_ROOT/$project" -c Release "-p:Version=$(app_version)" -o "$out" || exit 1
+    "$DOTNET" pack "$REPO_ROOT/$project" -c Release "-p:Version=$(app_version)" -p:OadmPackageValidation=true -o "$out" || exit 1
   done
   "$DOTNET" pack "$REPO_ROOT/templates/Oadm.Plugin.Templates.csproj" -c Release "-p:Version=$(app_version)" \
     "-p:OadmTemplatesContent=$templates/" -o "$out" || exit 1
@@ -595,6 +616,7 @@ check_addon_folder() {
   if [ "$has_client" = yes ]; then ls "$dir"/*.Client.dll >/dev/null 2>&1 || { echo "error: add-on $id: no *.Client.dll" >&2; exit 1; }; fi
   [ -f "$dir/THIRD-PARTY-NOTICES.txt" ] || { echo "error: add-on $id: THIRD-PARTY-NOTICES.txt missing" >&2; exit 1; }
   [ -f "$dir/oadm-version.txt" ] || { echo "error: add-on $id: oadm-version.txt missing" >&2; exit 1; }
+  [ -f "$dir/oadm-content.txt" ] || { echo "error: add-on $id: oadm-content.txt missing" >&2; exit 1; }
   case "$rid" in win-*) foreign='\.(so|dylib)$|\.so\.' ;; linux-*) foreign='\.dylib$' ;; *) foreign='\.so$|\.so\.' ;; esac
   bad="$(cd "$dir" && find . -type f | grep -E "$foreign" || true)"
   if [ -n "$bad" ]; then echo "error: add-on $id $rid: native libraries of another platform: $bad" >&2; exit 1; fi
@@ -629,7 +651,7 @@ with zipfile.ZipFile(sys.argv[1], "w", zipfile.ZIP_DEFLATED) as z:
 # artifacts/publish/addons/<rid>/<id>/ and as oadm-addon-<id>-<version>-<rid>.zip (AddOnCatalog.ReleaseFileName) into
 # artifacts/packages, and the ZIPs' SHA-256 into addon_hash_file for the server's publish that follows.
 package_addons() {
-  local rids rid out ids id p stage zip has_client hashes projects=()
+  local rids rid out ids id p stage zip has_client hashes content parts projects=()
   if [ -n "$OPT_RID" ]; then
     case " $ADDON_RIDS " in *" $OPT_RID "*) ;; *) usage_error package "--rid for package addons is ${ADDON_RIDS// /, }" ;; esac
     rids="$OPT_RID"
@@ -661,6 +683,11 @@ package_addons() {
       find "$stage" -type f \( -name 'DirectML.Debug.dll' -o -name 'DirectML.Debug.pdb' -o -name 'DirectML.pdb' -o -name 'onnxruntime.lib' \) -delete
       # The release it belongs to: the server records a folder put in by hand with this version.
       printf '%s\n' "$(app_version)" > "$stage/oadm-version.txt"
+      # What it was built from: a later OADM with the same fingerprint has nothing new for it.
+      parts=()
+      for p in "${projects[@]}"; do [ "$(plugin_id "$p")" = "$id" ] && parts+=("$p"); done
+      content="$(addon_content "${parts[@]}")"
+      printf '%s\n' "$content" > "$stage/oadm-content.txt"
       # Packages shipped outside deps.json (OadmNoticePackage items, e.g. DirectML.dll): read by the notices, then deleted.
       { echo '['; local first=yes
         for p in "${projects[@]}"; do
@@ -677,7 +704,7 @@ package_addons() {
       zip="$out/oadm-addon-$id-$(app_version)-$rid.zip"
       zip_folder "$stage" "$zip"
       bash "$REPO_ROOT/packaging/addons/check-addon-zip.sh" "$zip" "$id" "$rid" || exit 1
-      printf '%s %s\n' "$id" "$(sha256_of "$zip")" >> "$hashes"
+      printf '%s %s %s\n' "$id" "$(sha256_of "$zip")" "$content" >> "$hashes"
       echo "add-on $id $rid: $zip ($(du -k "$zip" | cut -f1) KB)"
     done
   done

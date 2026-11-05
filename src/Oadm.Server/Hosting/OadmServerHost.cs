@@ -667,7 +667,7 @@ public static partial class OadmServerHost
 
         loader.LoadFromRoots(roots);
         // Add-ons after the bundled and installed plugins (an id in both: the bundled one wins). Removed ones are deleted now;
-        // one of another version (after an update or a restore) waits for Install again. No add-on folder is used when the
+        // an older one keeps running, one that cannot waits for Install again. No add-on folder is used when the
         // service had to fix the data folder at this start (until now others could write it).
         await addOns.LoadInstalledAsync(foldersTrusted: !dataFolderFixed, ct).ConfigureAwait(false);
         foreach (var plugin in registry.TaskPlugins)

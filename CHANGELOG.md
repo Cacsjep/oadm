@@ -10,6 +10,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Added
 
 - Event rules: the action Log entry writes a message to the server log, good for testing a rule.
+- Optional plugins keep running after an OADM update; the Plugins page says Up to date or Update available, and Administrators get a dialog when one needs an update.
 - Text recognition: a lightning icon on On action readers reads now and fires the event, to test a rule.
 - Text recognition: the event No text read tells a rule when text left an area or Read text found nothing.
 

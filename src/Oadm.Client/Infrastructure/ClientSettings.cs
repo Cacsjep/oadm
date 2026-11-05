@@ -34,6 +34,9 @@ public sealed class ClientSettings
 
     public bool BottomPaneExpanded { get; set; } = true;
 
+    /// <summary>The optional plugins dialog: "server/user" -> the state it was shown for (<c>AddOnNotice</c>).</summary>
+    public Dictionary<string, string> AddOnNotices { get; set; } = [];
+
     /// <summary>Add page "Use DNS names instead of IP addresses" (Discovery and Network range).</summary>
     public bool AddByDnsName { get; set; }
 

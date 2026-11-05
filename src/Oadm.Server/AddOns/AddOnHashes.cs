@@ -10,6 +10,9 @@ public interface IAddOnHashes
 {
     /// <summary>The lowercase hex SHA-256 of the add-on's ZIP; null for a build without it.</summary>
     string? Find(string id);
+
+    /// <summary>What the ZIP of this version was built from (its <c>oadm-content.txt</c>); null for a build without it.</summary>
+    string? FindContent(string id) => null;
 }
 
 /// <summary>
@@ -23,7 +26,11 @@ public sealed class AssemblyAddOnHashes : IAddOnHashes
     /// <summary>The start of the metadata key; <c>packaging/addons/check-server-hash.sh</c> looks for it in the published exe.</summary>
     public const string MetadataPrefix = "OadmAddOnSha256:";
 
+    /// <summary>The start of the metadata key of the fingerprint.</summary>
+    public const string ContentPrefix = "OadmAddOnContent:";
+
     private readonly Dictionary<string, string> _hashes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _contents = new(StringComparer.OrdinalIgnoreCase);
 
     public AssemblyAddOnHashes(Assembly? assembly = null)
     {
@@ -33,10 +40,16 @@ public sealed class AssemblyAddOnHashes : IAddOnHashes
             {
                 _hashes[metadata.Key[MetadataPrefix.Length..]] = metadata.Value!.ToLowerInvariant();
             }
+            else if (metadata.Key.StartsWith(ContentPrefix, StringComparison.Ordinal) && IsHash(metadata.Value))
+            {
+                _contents[metadata.Key[ContentPrefix.Length..]] = metadata.Value!.ToLowerInvariant();
+            }
         }
     }
 
     public string? Find(string id) => _hashes.GetValueOrDefault(id ?? string.Empty);
+
+    public string? FindContent(string id) => _contents.GetValueOrDefault(id ?? string.Empty);
 
     private static bool IsHash(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
 }

@@ -150,7 +150,7 @@ public sealed partial class PluginGrpcService
         }
 
         // The add-on is installed: audited first, even when the caller has gone meanwhile.
-        await audit.WriteAsync(AuditActions.AddOnInstalled, $"{entry.DisplayName} V{installed.Version}", null, CancellationToken.None).ConfigureAwait(false);
+        await audit.WriteAsync(AuditActions.AddOnInstalled, $"{entry.DisplayName} V{installed.InstalledVersion ?? installed.Version}", null, CancellationToken.None).ConfigureAwait(false);
         Write(new Proto.AddOnProgress { Step = Proto.AddOnStep.Install, Percent = 100, Done = true });
         await WrittenAsync().ConfigureAwait(false);
     }
@@ -232,6 +232,7 @@ public sealed partial class PluginGrpcService
                 Version = s.Version,
                 CanInstall = s.CanInstall,
                 DownloadUrl = s.DownloadUrl ?? string.Empty,
+                UpdateAvailable = s.UpdateAvailable,
             };
             if (s.State == AddOnState.Installed)
             {

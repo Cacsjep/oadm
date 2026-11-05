@@ -198,7 +198,7 @@ used again.
     (Admin; reply: the whole list). See `docs/spec/plugins.md` "Plugins on and off" and "Plugin licenses".
   - Add-ons (`docs/spec/add-ons.md`): `ListAddOns(ListAddOnsRequest)` (any user; field 1 reserved, `check_reach` before
     4.10.0; `AddOnList` of `AddOnInfo` {id, display_name, description, state, percent, message, version, can_install,
-    client_digest = 10, download_url = 11; field 4 reserved}, every add-on of the server's version from `AddOnCatalog`;
+    client_digest = 10, download_url = 11, update_available = 12; field 4 reserved}, every add-on of the server's version from `AddOnCatalog`;
     `client_digest` while installed; `download_url` the ZIP of this version and system, empty in a build without the
     hash), `UploadAddOn(stream AddOnUploadChunk)` (Admin; bidirectional; first message `AddOnUploadHeader` {id, file_name, size},
     then data chunks of 256 KB; answers a stream of `AddOnProgress` {step Upload, Check or Install, percent, done, error},

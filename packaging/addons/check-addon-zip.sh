@@ -9,7 +9,8 @@
 #     unpacked and without native libraries;
 #   - THIRD-PARTY-NOTICES.txt at the top (tools/Oadm.Notices --addon); a win-* ZIP with DirectML.dll only when the notices
 #     hold its license (MICROSOFT SOFTWARE LICENSE TERMS ... DIRECTML, from the add-on's OadmNoticePackage items);
-#   - oadm-version.txt at the top with the version of the ZIP's name (the server records the add-on with it).
+#   - oadm-version.txt at the top with the version of the ZIP's name (the server records the add-on with it);
+#   - oadm-content.txt at the top, the fingerprint of what it was built from.
 # The limits are kept equal to the server's constants by a test (AddOnPackagingTests): AddOnFolders.MaxZipBytes
 # and AddOnFolders.MaxClientPartBytes.
 # Needs unzip (Linux, macOS, Git Bash on Windows).
@@ -42,6 +43,7 @@ grep -qx 'THIRD-PARTY-NOTICES.txt' <<< "$names" || fail "no THIRD-PARTY-NOTICES.
 unzip -p "$zip" plugin.json | grep -Eq "\"id\"[[:space:]]*:[[:space:]]*\"$id\"" || fail "plugin.json has another id than $id"
 grep -Eq '^[^/]+\.Server\.dll$' <<< "$names" || fail "no server part (*.Server.dll)"
 grep -qx 'oadm-version.txt' <<< "$names" || fail "no oadm-version.txt at the top"
+grep -qx 'oadm-content.txt' <<< "$names" || fail "no oadm-content.txt at the top"
 expected="$(basename "$zip")"
 expected="${expected#oadm-addon-$id-}"
 expected="${expected%-$rid.zip}"

@@ -12,6 +12,9 @@ public interface IDialogService
 
     Task<bool> ConfirmAsync(string title, string message, string confirmText);
 
+    /// <summary>The same with another text on the button that says no ("Later").</summary>
+    Task<bool> ConfirmAsync(string title, string message, string confirmText, string cancelText) => ConfirmAsync(title, message, confirmText);
+
     /// <summary>The new version dialog; returns when it closed (the view model holds the choices).</summary>
     Task ShowUpdateAsync(Updates.UpdateViewModel update);
 

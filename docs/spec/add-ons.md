@@ -32,11 +32,21 @@ computer. A client loads the client part its server hands it: the user must trus
    is refused in the row. The hash is per system, so it also settles the system and the version. The server never downloads
    an add-on and never reaches the internet for one. A build without the hash (development, `dotnet run`) refuses Install
    and says so. Third-party plugins keep the manual install (`website/.../dev/plugin-sdk.md` "Ship it").
-3. **Same version as OADM.** An add-on loads only when its folder's `oadm-version.txt` is the server's exact version string
-   (the folder of `4.11.0-rc.1` is not the add-on of `4.11.0`), at the install and at every start, also a folder put in by
-   hand. After a server update the installed add-on no longer matches: it stays unloaded, OADM runs as usual, and its row
-   says so and offers Install again with the download link. Same after a restore of a backup (the list stays, the files
-   are gone). Pre-releases work like releases: their own ZIP, their own hash.
+3. **An older add-on keeps running** (decision 2026-11-05, replaces "same version as OADM"; the hash checks the install, not
+   the run). At every start an add-on loads when its folder's `oadm-version.txt` is the server's version or an older one
+   (`AddOnFolders.IsOlder`; a pre-release is older than its release), also a folder put in by hand. Readers and rules keep
+   working after an update. The fingerprint (`oadm-content.txt`, "Release files") decides whether anything is new: the same as
+   this version's ZIP: row **Up to date**, nothing to do; another or none: **Update available** with Install and the download
+   link, and the dialog of "Plugins page". **The floor:** `AddOnCatalog.OldestRunningVersion` (4.10.0) is the oldest version
+   whose add-ons run on this server. A release that breaks them raises it, together with `PackageValidationBaselineVersion` of
+   `Oadm.Sdk` and `Oadm.Sdk.Client`: `manage package nuget` validates both SDKs against that baseline, so a binary break fails
+   the release until someone raises the floor. A change only in a theme key or in the host is not seen by that check: raise the
+   floor by hand. Below the floor, a newer add-on, a folder without a version, an older add-on that does not load or registers
+   no plugin, and a restore of a backup on another computer (the list stays, the files are not there) stay unloaded: state
+   Failed, row and dialog ask to install it again. Two pre-releases of one version count as equal, so the add-on of `rc.1` is
+   not loaded on `rc.2`. Install takes only the exact ZIP of this server's version (rule 2) and is refused while an add-on is
+   Up to date: to replace one, Remove it, restart the server and install. Pre-releases work like releases: their own ZIP, their
+   own hash.
 4. **Administrators only.** Install and Remove need the Plugins permission of turning plugins on and off; both are in
    the audit log ("Installed optional plugin Text recognition V4.11.0", "Removed optional plugin ...", a refused or failed
    install "Could not install optional plugin" with the reason). The install is audited before its last message, also when the
@@ -75,8 +85,17 @@ computer. A client loads the client part its server hands it: the user must trus
   csproj, e.g. DirectML with its full license) and its models' licenses (`tools/Oadm.Notices --addon`,
   `docs/spec/packaging.md` "Add-on ZIPs").
 - `oadm-version.txt` (`AddOnFolders.VersionFileName`, written by `manage package addons`): the version the add-on belongs
-  to. The server loads a folder only with its own exact version in it (rule 3) and refuses a ZIP whose file is missing or
-  names another.
+  to. The server loads a folder of its version or an older one (rule 3) and refuses a ZIP whose file is missing or names
+  another version than the server's.
+- `oadm-content.txt` (`AddOnFolders.ContentFileName`, written by `manage package addons`, `Get-AddOnContent` /
+  `addon_content`, the same in both scripts): the fingerprint: the SHA-256 of the sorted `git ls-tree -r HEAD` lines of the
+  add-on's project folders, the `plugins/Shared` files they link, `Directory.Build.props`, `Directory.Build.targets`,
+  `global.json` and `packaging/addons/content-epoch.txt`, without `*.md`, `.gitignore` and `.gitattributes`; "none" outside git.
+  Tree ids do not depend on line endings or the system, so every runner of a release gets one value. Dependency versions and
+  `Models.targets` are in the project folders. Raise `content-epoch.txt` to offer an update for a change outside these paths
+  (the packaging, the notices). The server has this version's value built in like the hash (`OadmAddOnContent:<id>`, third
+  field of the hash file; `check-server-hash.sh` checks it). ZIPs from before it have no file: the first update after it offers
+  the new ZIP. A change in the SDK or host is the floor's matter (rule 3), not the fingerprint's.
 - The built-in hash: `manage package addons` writes `artifacts/publish/addons/<rid>/addon-hashes-<version>.txt`, one
   "`<id> <sha256>`" per line; the server's publish passes it as `-p:OadmAddOnHashFile=<file>`; `Oadm.Server.csproj` turns each
   line into assembly metadata `OadmAddOnSha256:<id>`; `AssemblyAddOnHashes` reads it (`IAddOnHashes`). Assembly metadata
@@ -94,7 +113,8 @@ computer. A client loads the client part its server hands it: the user must trus
 ## Server
 
 - Folder: `<datafolder>/addons/<id>/`, writable by the service. Folders starting with a dot are never add-ons
-  (`.upload/`, `.new-*` and `.old-*` while one is swapped) and are emptied at every start; folders of ids this version
+  (`.upload/`, `.new-*` and `.old-*` while one is swapped, `.update-<id>` for a waiting update) and are emptied at every start,
+  a waiting update after it was used; folders of ids this version
   does not offer are deleted at the start (log line) and dropped from the list. The list of installed add-ons is the
   server setting `AddOns.Installed` (JSON array of {id, version, removed}, `SettingsAddOnListStore`); backups hold the
   list, not the files. A folder put in by hand is
@@ -105,8 +125,9 @@ computer. A client loads the client part its server hands it: the user must trus
   "Service: firewall and folders") before it loads. The loader reads it after the plugin folder next to the exe; an id in
   both: the bundled one wins and the add-on is not loaded (log line).
 - Start (`OadmServerHost`): `AddOnInstaller.LoadInstalledAsync` right after `PluginLoader.LoadFromRoots` deletes the
-  folders of removed add-ons and loads every add-on whose folder names this exact version (no event, the start reads the
-  registry). Any other installed add-on (after an update, after a restore, a folder of another version) stays unloaded: state
+  folders of removed add-ons and loads every add-on whose folder names this version or an older one (no event, the start reads the
+  registry). A waiting update comes first: it must pass the folder check and name this exact version, and the old folder comes
+  back when it does not load. Any other installed add-on (see rule 3) stays unloaded: state
   Failed with "Not loaded. Install it again for this OADM version." (`AddOnTexts.InstallAgain`, one phrase for all of them);
   its old folder stays until the new one is in place or the add-on is removed. When the service had to fix the data
   folder's permissions at this start no add-on folder is used, listed or not: each is deleted (log line) and a listed add-on
@@ -156,7 +177,7 @@ computer. A client loads the client part its server hands it: the user must trus
 
 - **Event Optional plugin not loaded** (`AddOns/AddOnEventSource`, decision 2026-11-04, issue #33): one stateful server event of the
   host, folder Optional plugins, on while an installed add-on is not loaded (`AddOnInstaller.NotLoaded`: the state Failed, so
-  Install again after an update or a restore and a load that failed), values `count` and `plugin` (the names). A plugin that is
+  a version that may not run here, a restore and a load that failed), values `count` and `plugin` (the names). A plugin that is
   not loaded sends nothing, so the host says it. Reported after every install or remove and at the start, once the rules run.
 
 ## Client
@@ -176,17 +197,22 @@ computer. A client loads the client part its server hands it: the user must trus
 
 - Right below the plugin list (at every window size: the list is as high as its rows and scrolls when the window is too
   small, the card follows directly) a card **Optional plugins**: one row per add-on of this version: name, one line,
-  version, state (Not installed, Upload 42 %, Check, Install, Installing 42 % for another administrator's install, Installed,
-  Removed), the server's sentence when there is one (why it is not loaded, when the files go), a refusal in red, and:
+  version, state (Not installed, Upload 42 %, Check, Install, Installing 42 % for another administrator's install, Up to date,
+  Update available, Removed), the server's sentence when there is one (why it is not loaded, when the files go), a refusal in red, and:
   - **Download ZIP** (link, tooltip the file name, for a server without internet): opens the ZIP of the server's exact
     version and system in the browser, shown while Install asks for a file. The client opens only OADM's own release
     (`GitHubReleaseFeed.DownloadPrefix`), whatever a server sends.
-  - **Install** (not installed, not loaded, removed): asks for a ZIP on this computer and sends it, with its progress and
-    **Cancel** during the upload in the row. A removed add-on comes back without a file.
+  - **Install** (not installed, not loaded, Update available, removed): asks for a ZIP on this computer and sends it, with its
+    progress and **Cancel** during the upload in the row. A removed add-on comes back without a file. An older add-on that runs
+    is never swapped (rule 5): the new one waits in `addons/.update-<id>`, the row says "Installed. The new version starts at
+    the next restart of the server.", and the next start puts it in place when it names this exact version.
   - **Remove** (installed, not loaded; red, with the confirmation "Remove <name>? It turns off now. Its settings are kept.").
 
   Below the rows, while a row has the link: "Click Download ZIP, then Install and choose the file. Clients get the plugin
   from the server." A server without add-ons hides the card.
+- **Dialog** (`AddOnNotice`, started by `AppShell` over the main window after the new version dialog, Administrators only): "Update optional plugins" names each add-on with Update
+  available or not loaded, with **Open Plugins** and **Later**. Once per server, user and state (`ClientSettings.AddOnNotices`, stored when the dialog closed):
+  it comes back when the state changes, so an OADM update with nothing new for the add-on shows nothing.
 - The plugin list shows an installed add-on like every other plugin, without a mark (decision 2026-11-03: the list stays as it was).
 
 ## Tests
@@ -196,7 +222,9 @@ computer. A client loads the client part its server hands it: the user must trus
   bytes than announced, no space, a client that stands still, an update running); a failed install leaves the previous state; the
   loader's refusal brings the old folder back; the state after an update and a restore; the version rule for folders put in by
   hand; the stored choice survives Install again; the hash read back from assembly metadata; the audit with a caller that has
-  gone; a caller that goes right after the upload; a Failed add-on whose folder stays. Hashes are injected (`IAddOnHashes`).
+  gone; a caller that goes right after the upload; a Failed add-on whose folder stays; an older add-on that runs, is up to date,
+  registers nothing or lies below the floor; a waiting update (swap, fallback, another version, folder check, untrusted start,
+  Remove, the audit's version). Hashes are injected (`IAddOnHashes`). The scripts' fingerprint rules: `AddOnPackagingTests`.
 - Client: the file picker, the steps, Cancel, a refusal, the link (only OADM's own release), the row after an update; the
   client part is checked against the server's SHA-256 and digest, cached per server and version and loaded
   after the plugin list; a wrong hash is refused; a changed cache is fetched again; the client asks again while the

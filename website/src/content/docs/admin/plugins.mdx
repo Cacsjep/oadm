@@ -31,7 +31,7 @@ with **Turn on** on its tab of the PKI page; they need OADM PRO.
 ## Optional plugins
 
 Some plugins of OADM are not in its installers because they are large. The **Optional plugins** card below the list
-shows the ones of your OADM version with their state: **Not installed**, **Installing 42 %**, **Installed** or **Removed**.
+shows the ones of your OADM version with their state: **Not installed**, **Installing 42 %**, **Up to date**, **Update available** or **Removed**.
 
 | Optional plugin | What it does |
 |---|---|
@@ -46,7 +46,7 @@ shows the ones of your OADM version with their state: **Not installed**, **Insta
    [OADM releases](https://github.com/Cacsjep/oadm/releases) list it as `oadm-addon-<id>-<version>-<system>.zip`.
 2. Click **Install** and choose the ZIP on this computer. The row shows **Upload**, **Check** and **Install** with their
    progress. **Cancel** stops the upload.
-3. When the row says **Installed**, turn the plugin on in the list above. It starts off.
+3. When the row says **Up to date**, turn the plugin on in the list above. It starts off.
 
 </Steps>
 
@@ -62,7 +62,7 @@ Only administrators install and remove optional plugins. Both are written to the
 ### Install by hand
 
 A build you made yourself cannot check the ZIP, so **Install** stays off. Unpack the ZIP into `addons/<id>` of the data
-folder and restart the server. A folder loads only when it is of this exact OADM version.
+folder and restart the server. A folder loads when it is of this OADM version or an older one.
 
 ### Remove
 
@@ -72,12 +72,19 @@ restart, **Install** brings it back at once, without a file.
 
 ### Updates and backups
 
-An optional plugin works only with the OADM version it was built for. After you update OADM, the plugin stays off, OADM
-runs as usual, and its row says **Not loaded. Install it again for this OADM version.**: click **Download ZIP** and
-**Install**. Your choice of on or off and your settings are kept.
+After you update OADM, an optional plugin keeps running. Its row tells you what to do, whatever version number it shows:
 
-A backup holds the list of installed optional plugins, not their files. After a restore the row says the same: install the
-plugin again.
+| Row | What it means |
+|---|---|
+| **Up to date** | This OADM has nothing newer for the plugin |
+| **Update available** | Click **Download ZIP** and **Install**. The new version starts at the next restart of the server |
+| **Not loaded. Install it again for this OADM version.** | The plugin cannot run on this OADM: click **Download ZIP** and **Install** |
+
+Administrators also get a dialog after they sign in when a plugin needs an update. Your choice of on or off and your settings
+are kept.
+
+A backup holds the list of installed optional plugins, not their files. After a restore on another computer the row says **Not loaded**:
+install the plugin again.
 
 ### Messages
 

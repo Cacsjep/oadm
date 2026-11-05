@@ -24,7 +24,8 @@ public sealed partial class AppShell(
     MainWindowViewModel main,
     ILogger<AppShell> logger,
     LiveView.GpuDecodingService? gpu = null,
-    Updates.UpdateNotifier? updates = null)
+    Updates.UpdateNotifier? updates = null,
+    Plugins.AddOns.AddOnNotice? addOnNotice = null)
 {
     public const string SessionEndedMessage = "Your session has ended. Log in again.";
 
@@ -196,13 +197,25 @@ public sealed partial class AppShell(
             main.Start();
         }
 
-        // Once per start, over the main window: a newer OADM release (2 s at most, silent without an answer).
+        _ = ShowStartDialogsAsync();
+        return window;
+    }
+
+    /// <summary>
+    /// Over the main window, one after the other: a newer OADM release (2 s at most, silent without an answer), then the optional
+    /// plugins that need an update. Neither throws.
+    /// </summary>
+    private async Task ShowStartDialogsAsync()
+    {
         if (updates is not null)
         {
-            _ = updates.ShowIfNewerAsync(CancellationToken.None);
+            await updates.ShowIfNewerAsync(CancellationToken.None).ConfigureAwait(true);
         }
 
-        return window;
+        if (addOnNotice is not null && await addOnNotice.ShowIfNeededAsync(CancellationToken.None).ConfigureAwait(true))
+        {
+            main.NavigateTo(Oadm.Sdk.Client.HostPages.Plugins);
+        }
     }
 
     private async Task LogoutAsync(string? message)

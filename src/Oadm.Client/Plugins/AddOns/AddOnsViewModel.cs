@@ -41,18 +41,24 @@ public sealed partial class AddOnRowViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsInstalled), nameof(IsRemoved), nameof(IsNotInstalled), nameof(ShowInstall), nameof(ShowRemove),
-        nameof(ShowNotInstalled), nameof(IsInstalling), nameof(ProgressText), nameof(MessageIsError), nameof(IsFailed), nameof(ShowDownload))]
+        nameof(ShowNotInstalled), nameof(IsInstalling), nameof(ProgressText), nameof(MessageIsError), nameof(IsFailed), nameof(ShowDownload),
+        nameof(ShowInstalledChip))]
     public partial AddOnState State { get; private set; }
 
     /// <summary>The server's reason why it cannot be installed or is not loaded; empty otherwise.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasMessage), nameof(InstallTip))]
+    [NotifyPropertyChangedFor(nameof(HasMessage), nameof(InstallTip), nameof(InstalledText))]
     public partial string Message { get; private set; } = string.Empty;
 
     /// <summary>False in a server build without the check of this plugin, or while the server updates.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanInstall), nameof(InstallTip))]
     public partial bool ServerCanInstall { get; private set; } = true;
+
+    /// <summary>The add-on of an older OADM version runs: Install takes the ZIP of this version.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowInstall), nameof(ShowDownload), nameof(ShowInstalledChip))]
+    public partial bool UpdateAvailable { get; private set; }
 
     /// <summary>The ZIP of the server's version and system; empty when the server gives none or it is not OADM's own release.</summary>
     [ObservableProperty]
@@ -94,6 +100,12 @@ public sealed partial class AddOnRowViewModel : ObservableObject
 
     public bool IsInstalled => State == AddOnState.AddOnInstalled;
 
+    /// <summary>The green chip; an older version shows Update available instead.</summary>
+    public bool ShowInstalledChip => IsInstalled && !UpdateAvailable;
+
+    /// <summary>"Up to date"; "Installed" while the server's note says a new version waits for its restart.</summary>
+    public string InstalledText => HasMessage ? OptionalPluginTexts.Installed : OptionalPluginTexts.UpToDate;
+
     public bool IsRemoved => State == AddOnState.AddOnRemoved;
 
     public bool IsNotInstalled => State is AddOnState.AddOnNotInstalled or AddOnState.AddOnFailed;
@@ -104,13 +116,13 @@ public sealed partial class AddOnRowViewModel : ObservableObject
     public string ProgressText => Step is { } step ? OptionalPluginTexts.Progress(step, Percent) : OptionalPluginTexts.Installing(Percent);
 
     /// <summary>
-    /// Administrators: Install for an add-on that is not installed, not loaded after an update, or removed (the server keeps
-    /// the loaded one, no file is asked for).
+    /// Administrators: Install for an add-on that is not installed, not loaded after an update, of an older version, or removed
+    /// (the server keeps the loaded one, no file is asked for).
     /// </summary>
-    public bool ShowInstall => _owner.IsAdmin && (IsNotInstalled || IsRemoved) && !IsInstalling;
+    public bool ShowInstall => _owner.IsAdmin && (IsNotInstalled || IsRemoved || UpdateAvailable) && !IsInstalling;
 
     /// <summary>Administrators: the link beside Install, whenever Install asks for a file.</summary>
-    public bool ShowDownload => _owner.IsAdmin && IsNotInstalled && !IsInstalling && DownloadUrl.Length > 0;
+    public bool ShowDownload => _owner.IsAdmin && (IsNotInstalled || UpdateAvailable) && !IsInstalling && DownloadUrl.Length > 0;
 
     /// <summary>The file name, for a server without internet: the link's tooltip.</summary>
     public string DownloadTip => DownloadUrl[(DownloadUrl.LastIndexOf('/') + 1)..];
@@ -139,6 +151,7 @@ public sealed partial class AddOnRowViewModel : ObservableObject
         State = info.State;
         Message = info.Message;
         ServerCanInstall = info.CanInstall;
+        UpdateAvailable = info.UpdateAvailable;
 
         // A server opens only OADM's own release (the client trusts no other link it is handed).
         DownloadUrl = info.DownloadUrl.StartsWith(GitHubReleaseFeed.DownloadPrefix, StringComparison.Ordinal) ? info.DownloadUrl : string.Empty;
@@ -244,7 +257,7 @@ public sealed partial class AddOnsViewModel : ObservableObject
     public bool HasError => !string.IsNullOrEmpty(ErrorText);
 
     /// <summary>The line below the rows: only while a row has the link it names.</summary>
-    public bool ShowSteps => IsAdmin && AddOns.Any(r => r.IsNotInstalled && r.DownloadUrl.Length > 0);
+    public bool ShowSteps => IsAdmin && AddOns.Any(r => (r.IsNotInstalled || r.UpdateAvailable) && r.DownloadUrl.Length > 0);
 
     /// <summary>The client parts are coming from the server: the card shows a progress row.</summary>
     [ObservableProperty]

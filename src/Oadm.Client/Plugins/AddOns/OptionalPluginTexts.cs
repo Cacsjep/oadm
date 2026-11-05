@@ -24,6 +24,26 @@ public static class OptionalPluginTexts
 
     public const string Installed = "Installed";
 
+    /// <summary>The chip of an optional plugin with nothing newer in this OADM, whatever version number it shows.</summary>
+    public const string UpToDate = "Up to date";
+
+    /// <summary>The chip of an optional plugin of an older OADM version that keeps running.</summary>
+    public const string UpdateAvailable = "Update available";
+
+    /// <summary>The dialog after a connect, for Administrators.</summary>
+    public const string NoticeTitle = "Update optional plugins";
+
+    /// <summary>The dialog's button: the Plugins page.</summary>
+    public const string OpenPlugins = "Open Plugins";
+
+    /// <summary>The dialog's other button.</summary>
+    public const string Later = "Later";
+
+    /// <summary>One line per optional plugin: an older version that keeps running, or not loaded.</summary>
+    public static string Notice(IEnumerable<AddOnInfo> rows) => string.Join("\n", rows.Select(r => r.UpdateAvailable
+        ? $"{r.DisplayName} {Meta(r.Version)} is older than this OADM. It keeps running. Install the new version."
+        : $"{r.DisplayName} is not loaded. Install it again."));
+
     public const string NotInstalled = "Not installed";
 
     /// <summary>The chip of a removed optional plugin (the server's message says when its files go).</summary>

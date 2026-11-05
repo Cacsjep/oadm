@@ -26,14 +26,16 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
         await MessageWindow.ShowMessageAsync(owner, title, message).ConfigureAwait(true);
     }
 
-    public async Task<bool> ConfirmAsync(string title, string message, string confirmText)
+    public Task<bool> ConfirmAsync(string title, string message, string confirmText) => ConfirmAsync(title, message, confirmText, "Cancel");
+
+    public async Task<bool> ConfirmAsync(string title, string message, string confirmText, string cancelText)
     {
         if (CurrentOwner() is not { } owner)
         {
             return false;
         }
 
-        return await MessageWindow.ConfirmAsync(owner, title, message, confirmText).ConfigureAwait(true);
+        return await MessageWindow.ConfirmAsync(owner, title, message, confirmText, cancelText).ConfigureAwait(true);
     }
 
     public async Task ShowUpdateAsync(Updates.UpdateViewModel update)

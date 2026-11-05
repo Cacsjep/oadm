@@ -200,6 +200,24 @@ public sealed partial class AddOnPackagingTests
         Assert.True(Function(ps1, "function Invoke-PackageAddOns {").IndexOf("check-addon-zip.sh", StringComparison.Ordinal) < Function(ps1, "function Invoke-PackageAddOns {").IndexOf("Add-AddOnHash", StringComparison.Ordinal));
         Assert.True(Function(sh, "package_addons() {").IndexOf("check-addon-zip.sh", StringComparison.Ordinal) < Function(sh, "package_addons() {").IndexOf("sha256_of", StringComparison.Ordinal));
         Assert.Contains("-p:OadmAddOnHashFile=", ps1, StringComparison.Ordinal);
+        foreach (var script in new[] { ps1, sh })
+        {
+            // The fingerprint's inputs are the same in both scripts.
+            foreach (var input in new[] { "Directory.Build.props", "Directory.Build.targets", "global.json", "packaging/addons/content-epoch.txt", "ls-tree -r HEAD", "(\\.md|/\\.gitignore|/\\.gitattributes)$", "oadm-content.txt", "-p:OadmPackageValidation=true" })
+            {
+                Assert.Contains(input, script, StringComparison.Ordinal);
+            }
+        }
+
+        // A build fails only on a binary break against the oldest version whose add-ons still run.
+        foreach (var sdk in new[] { "src/Oadm.Sdk/Oadm.Sdk.csproj", "src/Oadm.Sdk.Client/Oadm.Sdk.Client.csproj" })
+        {
+            Assert.Contains($"<PackageValidationBaselineVersion>{AddOnCatalog.OldestRunningVersion}</PackageValidationBaselineVersion>", Read(sdk.Split('/')), StringComparison.Ordinal);
+        }
+
+        Assert.True(File.Exists(TestRepository.Path("packaging", "addons", "content-epoch.txt")));
+        Assert.Contains("OadmAddOnContent:", Read("packaging", "addons", "check-server-hash.sh"), StringComparison.Ordinal);
+        Assert.Contains("'%(Identity) none'", Read("src", "Oadm.Server", "Oadm.Server.csproj"), StringComparison.Ordinal);
         Assert.Contains("-p:OadmAddOnHashFile=", sh, StringComparison.Ordinal);
         Assert.Contains("Publish-App $ServerProject $out (Get-AddOnHashArgument)", ps1, StringComparison.Ordinal);
         Assert.Contains("publish_app \"$SERVER_PROJECT\" \"$out\" \"$(addon_hash_argument)\"", sh, StringComparison.Ordinal);

@@ -77,9 +77,9 @@ installer results, disk space; no offline path).
    answer `AuthService.Status` on this computer with the new version.
 4. **The new version answers:** done. **The installer failed** (on Windows the MSI rolled back and the old server runs
    again): the helper writes the installer's error into the record. **The new version does not answer**: the helper writes
-   that; the service restarts it on failure, and the server that starts reads the record. Installed optional plugins no
-   longer match the new version: they stay unloaded and their rows offer Install again (`docs/spec/add-ons.md` rule 3); the
-   update never waits for them.
+   that; the service restarts it on failure, and the server that starts reads the record. Installed optional plugins keep
+   running on the new version, or their rows offer an update or Install again (`docs/spec/add-ons.md` rule 3); the update never
+   waits for them.
 5. Clients: while the server is away the client shows "Updating the server to V4.9.0" instead of "Connection lost". After
    the reconnect: "Server updated to V4.9.0", or "The update failed. The server runs V4.8.0." with the reason and the
    installer log's path on the server. Not back after 10 minutes: "The server did not come back" and what to check (the

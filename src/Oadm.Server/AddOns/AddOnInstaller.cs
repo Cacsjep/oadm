@@ -55,8 +55,8 @@ public sealed record AddOnInstallerOptions(string DataDirectory, string ServerVe
 /// next start. One install or remove at a time, none while a self update runs; any failure leaves the state as it was.
 /// <para>
 /// Server start (wiring in <c>OadmServerHost</c>): <see cref="LoadInstalledAsync(bool, CancellationToken)"/> right after the
-/// bundled plugins are loaded. An add-on whose folder does not name this exact version, or has no folder (after an update or a
-/// restore), stays unloaded and its row asks to install it again; OADM runs as usual.
+/// bundled plugins are loaded. An add-on of an older version keeps running; one that may not, does not load or has no folder
+/// (after a restore) stays unloaded and its row asks to install it again; OADM runs as usual.
 /// </para>
 /// </summary>
 public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
@@ -111,6 +111,11 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
     private string FolderOf(AddOnEntry entry) => Path.Combine(Root, entry.Id);
 
+    /// <summary>The ZIP of this version, unpacked, while the older add-on runs; it takes the folder's place at the next start.</summary>
+    private string WaitingFolderOf(AddOnEntry entry) => Path.Combine(Root, WaitingPrefix + entry.Id);
+
+    private const string WaitingPrefix = ".update-";
+
     // ----- Server start -----
 
     /// <summary>The start of a server whose data folder was not fixed at this start (tests, a console run).</summary>
@@ -119,15 +124,17 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
     /// <summary>
     /// Server start, right after the bundled plugins are loaded: deletes the folders of removed add-ons, of ids this version
     /// does not offer and the leftovers of an install that stopped, takes up folders put in by hand, and loads every installed
-    /// add-on whose folder names this exact version (no event: the start reads the registry afterwards). An id a bundled
-    /// plugin has is not loaded (log line). Any other add-on stays unloaded with <see cref="AddOnTexts.InstallAgain"/>.
+    /// add-on whose folder names this version or an older one that may keep running (no event: the start reads the registry
+    /// afterwards). A waiting update of this version takes the folder's place first; the old folder comes back when the new one
+    /// does not load. An id a bundled plugin has is not loaded (log line). An older add-on that does not load, a newer one and a
+    /// folder without a version stay unloaded with <see cref="AddOnTexts.InstallAgain"/>.
     /// Without <paramref name="foldersTrusted"/> (the service had to fix the data folder's permissions at this start, a folder
     /// there could come from anyone) no add-on folder is used: each is deleted, a listed add-on is installed again.
     /// </summary>
     public async Task LoadInstalledAsync(bool foldersTrusted, CancellationToken ct)
     {
         Directory.CreateDirectory(Root);
-        AddOnFolders.CleanTemporary(Root);
+        AddOnFolders.CleanTemporary(Root, keep: foldersTrusted ? WaitingPrefix : null);
         var list = (await _list.ReadAsync(ct).ConfigureAwait(false)).ToList();
         var changed = list.RemoveAll(a => !AddOnCatalog.Contains(a.Id)) > 0;
 
@@ -227,38 +234,127 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 }
             }
 
-            // The exact version, read from the folder itself: the folder of "4.11.0-rc.1" is not the add-on of 4.11.0.
-            var folderVersion = File.Exists(Path.Combine(FolderOf(entry), PluginLoader.ManifestFileName)) ? AddOnFolders.ReadVersion(FolderOf(entry)) : null;
-            if (!string.Equals(folderVersion, _options.ServerVersion, StringComparison.Ordinal))
+            // A waiting update first: the old folder stays until the new one has loaded.
+            var old = foldersTrusted ? ApplyWaitingUpdate(entry) : null;
+            changed |= LoadByVersion(entry, slot, list, installed);
+            if (old is not null)
             {
-                lock (_sync)
+                if (IsLoaded(slot))
                 {
-                    slot.Version = installed.Version;
-                    slot.Failed = AddOnTexts.InstallAgain;
+                    AddOnFolders.DropOld(old);
                 }
-
-                LogOtherVersion(_logger, entry.Id, folderVersion ?? "none", _options.ServerVersion);
-                continue;
+                else
+                {
+                    AddOnFolders.Restore(old, FolderOf(entry));
+                    changed |= LoadByVersion(entry, slot, list, list.Find(a => Same(a.Id, entry.Id))!);
+                }
             }
-
-            if (!string.Equals(installed.Version, folderVersion, StringComparison.Ordinal))
-            {
-                list[list.IndexOf(installed)] = installed with { Version = _options.ServerVersion };
-                changed = true;
-            }
-
-            LoadAtStart(entry, slot, _options.ServerVersion);
         }
 
+        AddOnFolders.CleanTemporary(Root);
         if (changed)
         {
             await _list.WriteAsync(list, ct).ConfigureAwait(false);
         }
     }
 
+    /// <summary>
+    /// Loads the add-on by the version its folder names (the folder itself, not the list: the folder of "4.11.0-rc.1" is not the
+    /// add-on of 4.11.0): this version, or an older one that may keep running. True when the list changed.
+    /// </summary>
+    private bool LoadByVersion(AddOnEntry entry, Slot slot, List<InstalledAddOn> list, InstalledAddOn installed)
+    {
+        var folderVersion = File.Exists(Path.Combine(FolderOf(entry), PluginLoader.ManifestFileName)) ? AddOnFolders.ReadVersion(FolderOf(entry)) : null;
+        if (AddOnFolders.MayKeepRunning(folderVersion, _options.ServerVersion, AddOnCatalog.OldestRunningVersion))
+        {
+            // It keeps running after an update. Built from the same source as this version's ZIP: nothing to do. Else the
+            // user installs the new one when it suits (Install, the dialog of the client).
+            LoadAtStart(entry, slot, folderVersion!);
+            lock (_sync)
+            {
+                slot.Older = slot.Loaded && !HasThisContent(entry);
+                if (!slot.Loaded)
+                {
+                    slot.Failed = AddOnTexts.InstallAgain;
+                }
+            }
+
+            LogOlderRuns(_logger, entry.Id, folderVersion!, _options.ServerVersion);
+            return false;
+        }
+
+        if (!string.Equals(folderVersion, _options.ServerVersion, StringComparison.Ordinal))
+        {
+            lock (_sync)
+            {
+                slot.Version = installed.Version;
+                slot.Failed = AddOnTexts.InstallAgain;
+            }
+
+            LogOtherVersion(_logger, entry.Id, folderVersion ?? "none", _options.ServerVersion);
+            return false;
+        }
+
+        var changed = !string.Equals(installed.Version, folderVersion, StringComparison.Ordinal);
+        if (changed)
+        {
+            list[list.IndexOf(installed)] = installed with { Version = _options.ServerVersion };
+        }
+
+        LoadAtStart(entry, slot, _options.ServerVersion);
+        return changed;
+    }
+
+    private bool IsLoaded(Slot slot)
+    {
+        lock (_sync)
+        {
+            return slot.Loaded;
+        }
+    }
+
+    /// <summary>The add-on's folder was built from the same source as this version's ZIP (never without both fingerprints).</summary>
+    private bool HasThisContent(AddOnEntry entry) =>
+        _hashes.FindContent(entry.Id) is { Length: > 0 } expected
+        && string.Equals(AddOnFolders.ReadContent(FolderOf(entry)), expected, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A waiting update that names this exact version and passes the folder check takes the add-on's folder (nothing is loaded
+    /// yet); returns the old folder, kept until the new one has loaded. Anything else leaves the add-on as it is: the leftover
+    /// goes with the temporary folders.
+    /// </summary>
+    private string? ApplyWaitingUpdate(AddOnEntry entry)
+    {
+        var waiting = WaitingFolderOf(entry);
+        if (!Directory.Exists(waiting))
+        {
+            return null;
+        }
+
+        try
+        {
+            if (_loader.FolderCheck?.Invoke(waiting) is { } refused)
+            {
+                LogUpdateNotApplied(_logger, entry.Id, refused);
+                return null;
+            }
+
+            AddOnFolders.CheckManifest(waiting, entry);
+            AddOnFolders.CheckVersion(waiting, _options.ServerVersion);
+            var old = AddOnFolders.SwapIn(waiting, FolderOf(entry), Root);
+            LogUpdateApplied(_logger, entry.Id, _options.ServerVersion);
+            return old;
+        }
+        catch (Exception ex) when (ex is AddOnException or IOException or UnauthorizedAccessException)
+        {
+            LogUpdateNotApplied(_logger, entry.Id, ex.Message);
+            return null;
+        }
+    }
+
     private void LoadAtStart(AddOnEntry entry, Slot slot, string version)
     {
-        var loaded = _loader.LoadPackage(FolderOf(entry)) is not null;
+        var loaded = _loader.LoadPackage(FolderOf(entry)) is { Registered: > 0 };
         lock (_sync)
         {
             slot.Version = version;
@@ -350,23 +446,49 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
         try
         {
             var slot = SlotOf(entry);
+            bool waits;
             lock (_sync)
             {
                 RefuseWhenInPlace(entry, slot);
-                if (slot.Loaded)
+                if (slot.Loaded && slot.Removed)
                 {
                     throw new InvalidOperationException(AddOnTexts.Removed); // loaded: Install takes it back, without a file
                 }
+
+                waits = slot.Loaded; // the older add-on runs: the new one waits for the next start
             }
 
             var expected = _hashes.Find(entry.Id) ?? throw new InvalidOperationException(AddOnTexts.NoHash);
             var version = _options.ServerVersion;
+            if (waits)
+            {
+                try
+                {
+                    AddOnFolders.DropOld(await StageAsync(entry, upload, expected, slot, progress, WaitingFolderOf(entry), ct).ConfigureAwait(false));
+                }
+                finally
+                {
+                    lock (_sync)
+                    {
+                        slot.Installing = null;
+                    }
+                }
+
+                lock (_sync)
+                {
+                    slot.UpdateWaits = true;
+                }
+
+                progress.Report(new AddOnProgress(AddOnStep.Install, 100));
+                LogInstalled(_logger, entry.Id, version);
+                return StatusOf(entry) with { InstalledVersion = version };
+            }
 
             // A first install starts off; Install again after an update keeps the administrator's choice.
             var firstInstall = !_activation.HasChoice(entry.Id);
             try
             {
-                var old = await StageAsync(entry, upload, expected, slot, progress, ct).ConfigureAwait(false);
+                var old = await StageAsync(entry, upload, expected, slot, progress, FolderOf(entry), ct).ConfigureAwait(false);
                 progress.Report(new AddOnProgress(AddOnStep.Install, 60));
                 LoadNow(entry, old);
             }
@@ -403,7 +525,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             throw new InvalidOperationException(AddOnTexts.PartOfServer(entry.DisplayName));
         }
 
-        if (slot.Loaded && !slot.Removed)
+        if (slot.Loaded && !slot.Removed && (!slot.Older || slot.UpdateWaits))
         {
             throw new InvalidOperationException(AddOnTexts.AlreadyInstalled(entry.DisplayName));
         }
@@ -461,6 +583,12 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
             // Off at once, still loaded (never an unload at run time); the folder goes at the next start.
             await _activation.TurnOffAsync(entry.Id, ct).ConfigureAwait(false);
+            AddOnFolders.TryDelete(WaitingFolderOf(entry));
+            lock (_sync)
+            {
+                slot.UpdateWaits = false;
+            }
+
             await SaveAsync(entry.Id, new InstalledAddOn(entry.Id, version, Removed: true), CancellationToken.None).ConfigureAwait(false);
             lock (_sync)
             {
@@ -556,7 +684,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
     /// the old folder as it was; <see cref="AddOnException"/> says why. Nothing is unpacked before the hash holds.
     /// </summary>
     /// <returns>Where the old folder waits until the new one loaded; null without one.</returns>
-    private async Task<string?> StageAsync(AddOnEntry entry, AddOnUpload upload, string expected, Slot slot, IProgress<AddOnProgress> progress, CancellationToken ct)
+    private async Task<string?> StageAsync(AddOnEntry entry, AddOnUpload upload, string expected, Slot slot, IProgress<AddOnProgress> progress, string target, CancellationToken ct)
     {
         void Report(AddOnStep step, int percent, int overall)
         {
@@ -587,7 +715,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             Report(AddOnStep.Install, 0, 95);
             try
             {
-                return AddOnFolders.SwapIn(staged, FolderOf(entry), Root);
+                return AddOnFolders.SwapIn(staged, target, Root);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -818,7 +946,15 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
             if (slot.Loaded)
             {
-                return new AddOnStatus(entry, AddOnState.Installed, slot.Version) { CanInstall = canInstall };
+                return slot.Older
+                    ? new AddOnStatus(entry, AddOnState.Installed, slot.Version)
+                    {
+                        CanInstall = canInstall && !slot.UpdateWaits,
+                        UpdateAvailable = !slot.UpdateWaits,
+                        Message = slot.UpdateWaits ? AddOnTexts.UpdateWaits : hash ? null : AddOnTexts.NoHash,
+                        DownloadUrl = slot.UpdateWaits ? null : url,
+                    }
+                    : new AddOnStatus(entry, AddOnState.Installed, slot.Version) { CanInstall = canInstall };
             }
 
             if (slot.Failed is { } failed)
@@ -893,6 +1029,12 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
         public bool Bundled { get; set; }
 
+        /// <summary>The add-on of an older OADM version runs.</summary>
+        public bool Older { get; set; }
+
+        /// <summary>The ZIP of this version waits for the next start.</summary>
+        public bool UpdateWaits { get; set; }
+
         public int? Installing { get; set; }
 
         /// <summary>Why it is not loaded; stays until an install succeeds or it is removed.</summary>
@@ -904,6 +1046,15 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} {Version} installed")]
     private static partial void LogInstalled(ILogger logger, string id, string version);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} of OADM {Folder} keeps running on {Server}")]
+    private static partial void LogOlderRuns(ILogger logger, string id, string folder, string server);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} updated to {Version}")]
+    private static partial void LogUpdateApplied(ILogger logger, string id, string version);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Optional plugin {Id}: the waiting update was not used: {Reason}")]
+    private static partial void LogUpdateNotApplied(ILogger logger, string id, string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} removed: off now, its folder goes at the next start")]
     private static partial void LogRemoved(ILogger logger, string id);

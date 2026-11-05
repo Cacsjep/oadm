@@ -15,7 +15,11 @@ public sealed record LoadedPluginPackage(
     PluginManifest Manifest,
     string Directory,
     IReadOnlyList<Assembly> Assemblies,
-    AssemblyLoadContext LoadContext);
+    AssemblyLoadContext LoadContext)
+{
+    /// <summary>How many task, core and action plugins it registered; 0: nothing of it runs.</summary>
+    public int Registered { get; init; }
+}
 
 /// <summary>
 /// Discovers plugins and registers them into a <see cref="PluginRegistry"/>.
@@ -178,7 +182,7 @@ public sealed partial class PluginLoader
                 _registry.AddError(new PluginLoadError(manifest.Id, "Package contains no task or core plugin."));
             }
 
-            var package = new LoadedPluginPackage(manifest, directory, assemblies, context);
+            var package = new LoadedPluginPackage(manifest, directory, assemblies, context) { Registered = registered };
             lock (_sync)
             {
                 _packages.Add(package);

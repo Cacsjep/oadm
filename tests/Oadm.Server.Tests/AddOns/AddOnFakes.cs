@@ -20,6 +20,11 @@ internal sealed class FakeAddOnHashes : IAddOnHashes
 
     public string? Find(string id) => _hashes.GetValueOrDefault(id);
 
+    /// <summary>The fingerprint of this version's ZIP; null: none.</summary>
+    public string? Content { get; set; }
+
+    public string? FindContent(string id) => Content;
+
     public void Allow(byte[] zip, string id = AddOnCatalog.TextRecognitionId) => _hashes[id] = Convert.ToHexStringLower(SHA256.HashData(zip));
 
     public void Clear() => _hashes.Clear();

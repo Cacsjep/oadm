@@ -10,6 +10,8 @@ using Oadm.Server.AddOns;
 
 [assembly: AssemblyMetadata(Oadm.Server.AddOns.AssemblyAddOnHashes.MetadataPrefix + "oadm.test", "ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789")]
 [assembly: AssemblyMetadata(Oadm.Server.AddOns.AssemblyAddOnHashes.MetadataPrefix + "oadm.short", "abcdef")]
+[assembly: AssemblyMetadata(Oadm.Server.AddOns.AssemblyAddOnHashes.ContentPrefix + "oadm.test", "1234567890abcdef1234567890abcdef1234567890abcdef1234567890ABCDEF")]
+[assembly: AssemblyMetadata(Oadm.Server.AddOns.AssemblyAddOnHashes.ContentPrefix + "oadm.short", "none")]
 
 namespace Oadm.Server.Tests.AddOns;
 
@@ -29,15 +31,232 @@ public sealed class AddOnInstallerTests
         return rig;
     }
 
-    /// <summary>A server after an update to <see cref="AddOnRig.Version"/>: the folder and list of 4.10.0.</summary>
+    /// <summary>A server after an update to <see cref="AddOnRig.Version"/>: the folder and list of 4.12.0.</summary>
     private static async Task<AddOnRig> UpdatedAsync()
     {
         var rig = new AddOnRig();
-        rig.PlaceFolder(version: "4.10.0");
-        rig.List.Items = [new InstalledAddOn(Id, "4.10.0")];
+        rig.PlaceFolder(version: "4.12.0");
+        rig.List.Items = [new InstalledAddOn(Id, "4.12.0")];
         rig.Activation.Choices.Add(Id); // the administrator had chosen on or off
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
         return rig;
+    }
+
+    [Theory]
+    [InlineData("4.10.0", "4.11.0", true)]
+    [InlineData("4.10.1", "4.11.0", true)]
+    [InlineData("4.9.3", "4.11.0", false)] // below the floor
+    [InlineData("4.11.0-rc.1", "4.11.0", true)]
+    [InlineData("4.11.0", "4.11.0", false)]
+    [InlineData("4.12.0", "4.11.0", false)]
+    [InlineData("4.11.0-rc.1", "4.11.0-rc.2", false)]
+    [InlineData("not a version", "4.11.0", false)]
+    [InlineData(null, "4.11.0", false)]
+    public void OnlyAnOlderVersionAboveTheFloorKeepsRunning(string? folder, string server, bool runs) =>
+        Assert.Equal(runs, AddOnFolders.MayKeepRunning(folder, server, "4.10.0"));
+
+    private static async Task<AddOnRig> OlderAsync(string? content = null)
+    {
+        var rig = new AddOnRig();
+        rig.PlaceFolder(version: "4.10.0");
+        if (content is not null)
+        {
+            File.WriteAllText(Path.Combine(rig.Folder, AddOnFolders.ContentFileName), content + "\n");
+        }
+
+        rig.List.Items = [new InstalledAddOn(Id, "4.10.0")];
+        rig.Activation.Choices.Add(Id);
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+        return rig;
+    }
+
+    [Fact]
+    public async Task AnOlderAddOnKeepsRunningAndOffersTheUpdate()
+    {
+        using var rig = await OlderAsync();
+
+        Assert.True(rig.Registry.HasPackage(Id));
+        Assert.Empty(rig.Installer.NotLoaded);
+        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        Assert.Equal((AddOnState.Installed, "4.10.0", true, null), (row.State, row.Version, row.UpdateAvailable, row.Message));
+        Assert.True(row.CanInstall);
+        Assert.NotNull(row.DownloadUrl);
+    }
+
+    [Fact]
+    public async Task AnOlderAddOnBuiltFromTheSameSourceHasNothingToUpdate()
+    {
+        using var rig = new AddOnRig();
+        rig.Hashes.Content = "abc123";
+        rig.PlaceFolder(version: "4.10.0");
+        File.WriteAllText(Path.Combine(rig.Folder, AddOnFolders.ContentFileName), "abc123\n");
+        rig.List.Items = [new InstalledAddOn(Id, "4.10.0")];
+
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        Assert.Equal((AddOnState.Installed, "4.10.0", false), (row.State, row.Version, row.UpdateAvailable));
+        Assert.Null(row.Message);
+    }
+
+    [Fact]
+    public async Task AnOlderAddOnFromAnotherSourceOffersTheUpdate()
+    {
+        using var rig = new AddOnRig();
+        rig.Hashes.Content = "abc123";
+        rig.PlaceFolder(version: "4.10.0");
+        File.WriteAllText(Path.Combine(rig.Folder, AddOnFolders.ContentFileName), "different\n");
+        rig.List.Items = [new InstalledAddOn(Id, "4.10.0")];
+
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        Assert.True(Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
+    }
+
+    [Fact]
+    public async Task TheUpdateOfARunningAddOnWaitsForTheNextStart()
+    {
+        using var rig = await OlderAsync();
+
+        var status = await rig.InstallAsync();
+
+        Assert.Equal((AddOnState.Installed, false, AddOnTexts.UpdateWaits), (status.State, status.UpdateAvailable, status.Message));
+        Assert.Equal("4.10.0", AddOnFolders.ReadVersion(rig.Folder)); // never swapped while it runs
+        await Assert.ThrowsAsync<InvalidOperationException>(() => rig.InstallAsync());
+
+        rig.Restart();
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        Assert.Equal(AddOnRig.Version, AddOnFolders.ReadVersion(rig.Folder));
+        Assert.True(rig.Registry.HasPackage(Id));
+        Assert.Equal([new InstalledAddOn(Id, AddOnRig.Version)], rig.List.Items);
+        Assert.False(Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
+        Assert.DoesNotContain(rig.Leftovers(), p => p.StartsWith(".update-", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task AWaitingUpdateOfAnotherVersionIsNotUsed()
+    {
+        using var rig = await OlderAsync();
+        await rig.InstallAsync();
+        var waiting = Path.Combine(rig.Root, $".update-{Id}");
+        File.WriteAllText(Path.Combine(waiting, AddOnFolders.VersionFileName), "4.12.0\n");
+
+        rig.Restart();
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        Assert.Equal("4.10.0", AddOnFolders.ReadVersion(rig.Folder));
+        Assert.True(Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
+        Assert.False(Directory.Exists(waiting));
+    }
+
+    [Fact]
+    public async Task AnOlderAddOnThatRegistersNothingIsNotLoaded()
+    {
+        using var rig = new AddOnRig();
+        rig.PlaceFolder(version: "4.10.0");
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "xunit.core.dll"), Path.Combine(rig.Folder, "Oadm.Plugins.Ocr.Server.dll"), overwrite: true);
+        rig.List.Items = [new InstalledAddOn(Id, "4.10.0")];
+
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        Assert.Equal((AddOnState.Failed, AddOnTexts.InstallAgain), (row.State, row.Message));
+        Assert.Equal([row.Entry.DisplayName], rig.Installer.NotLoaded);
+    }
+
+    [Fact]
+    public async Task AnOlderAddOnBelowTheFloorIsNotLoaded()
+    {
+        using var rig = new AddOnRig();
+        rig.PlaceFolder(version: "4.9.0");
+        rig.List.Items = [new InstalledAddOn(Id, "4.9.0")];
+
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        Assert.False(rig.Registry.HasPackage(Id));
+        Assert.Equal(AddOnTexts.InstallAgain, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).Message);
+    }
+
+    [Fact]
+    public async Task TheAuditHearsTheVersionThatWasInstalledNotTheOneThatRuns()
+    {
+        using var rig = await OlderAsync();
+
+        var status = await rig.InstallAsync();
+
+        Assert.Equal(("4.10.0", AddOnRig.Version), (status.Version, status.InstalledVersion));
+    }
+
+    [Fact]
+    public async Task AWaitingUpdateThatDoesNotLoadBringsTheOldFolderBack()
+    {
+        using var rig = await OlderAsync();
+        await rig.InstallAsync();
+        var waiting = Path.Combine(rig.Root, $".update-{Id}");
+        File.WriteAllBytes(Path.Combine(waiting, "Oadm.Plugins.Ocr.Server.dll"), [0, 1, 2]);
+
+        rig.Restart();
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        Assert.Equal("4.10.0", AddOnFolders.ReadVersion(rig.Folder));
+        Assert.True(rig.Registry.HasPackage(Id));
+        Assert.True(Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
+        Assert.DoesNotContain(rig.Leftovers(), p => p.StartsWith('.') && p != AddOnFolders.UploadFolderName);
+    }
+
+    [Fact]
+    public async Task AWaitingUpdateThatFailsTheFolderCheckIsNotUsed()
+    {
+        using var rig = await OlderAsync();
+        await rig.InstallAsync();
+        var waiting = Path.Combine(rig.Root, $".update-{Id}");
+
+        rig.Restart();
+        rig.Loader.FolderCheck = folder => Path.GetFullPath(folder) == Path.GetFullPath(waiting) ? "others can write it" : null;
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        Assert.Equal("4.10.0", AddOnFolders.ReadVersion(rig.Folder));
+        Assert.False(Directory.Exists(waiting));
+    }
+
+    [Fact]
+    public async Task AWaitingUpdateIsNotUsedWhenTheFoldersAreNotTrusted()
+    {
+        using var rig = await OlderAsync();
+        await rig.InstallAsync();
+
+        rig.Restart();
+        await rig.Installer.LoadInstalledAsync(foldersTrusted: false, CancellationToken.None);
+
+        Assert.False(Directory.Exists(Path.Combine(rig.Root, $".update-{Id}")));
+    }
+
+    [Fact]
+    public async Task RemoveDropsAWaitingUpdate()
+    {
+        using var rig = await OlderAsync();
+        await rig.InstallAsync();
+
+        await rig.Installer.RemoveAsync(Id, CancellationToken.None);
+
+        Assert.False(Directory.Exists(Path.Combine(rig.Root, $".update-{Id}")));
+    }
+
+    [Fact]
+    public async Task AnOlderAddOnThatCannotLoadAsksForTheNewZip()
+    {
+        using var rig = new AddOnRig();
+        rig.PlaceFolder(version: "4.10.0");
+        var manifest = Path.Combine(rig.Folder, PluginLoader.ManifestFileName);
+        File.WriteAllText(manifest, File.ReadAllText(manifest).Replace("0.10.0", "99.0.0", StringComparison.Ordinal));
+        rig.List.Items = [new InstalledAddOn(Id, "4.10.0")];
+
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        Assert.False(rig.Registry.HasPackage(Id));
+        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        Assert.Equal((AddOnState.Failed, AddOnTexts.InstallAgain), (row.State, row.Message));
     }
 
     [Fact]
@@ -93,14 +312,14 @@ public sealed class AddOnInstallerTests
     [Fact]
     public async Task APreReleaseInstallsItsOwnZip()
     {
-        using var rig = await StartedAsync("4.11.0-rc.1");
+        using var rig = await StartedAsync("4.12.0-rc.1");
 
         var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
         var status = await rig.InstallAsync();
 
         Assert.True(row.CanInstall);
         Assert.Null(row.Message);
-        Assert.Equal((AddOnState.Installed, "4.11.0-rc.1"), (status.State, status.Version));
+        Assert.Equal((AddOnState.Installed, "4.12.0-rc.1"), (status.State, status.Version));
     }
 
     // ----- Refusals: nothing happens -----
@@ -148,11 +367,11 @@ public sealed class AddOnInstallerTests
         await Assert.ThrowsAsync<AddOnException>(() => rig.InstallAsync(AddOnRig.Zip(extraBytes: 10)));
 
         Assert.Equal(before, rig.Leftovers().Where(p => p != AddOnFolders.UploadFolderName));
-        Assert.Equal([new InstalledAddOn(Id, "4.10.0")], rig.List.Items);
+        Assert.Equal([new InstalledAddOn(Id, "4.12.0")], rig.List.Items);
         var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
         Assert.Equal((AddOnState.Failed, AddOnTexts.InstallAgain), (row.State, row.Message));
         Assert.Equal([row.Entry.DisplayName], rig.Installer.NotLoaded); // the event rules hear of it
-        Assert.Equal("4.10.0", AddOnFolders.ReadVersion(rig.Folder));
+        Assert.Equal("4.12.0", AddOnFolders.ReadVersion(rig.Folder));
     }
 
     [Fact]
@@ -171,8 +390,8 @@ public sealed class AddOnInstallerTests
 
     [Theory]
     [InlineData("oadm-addon-oadm.other-4.11.0-linux-x64.zip", "wrong plugin")]
-    [InlineData("oadm-addon-oadm.ocr-4.10.0-linux-x64.zip", "wrong version")]
-    [InlineData("oadm-addon-oadm.ocr-4.11.0-rc.1-linux-x64.zip", "wrong version")]
+    [InlineData("oadm-addon-oadm.ocr-4.12.0-linux-x64.zip", "wrong version")]
+    [InlineData("oadm-addon-oadm.ocr-4.12.0-rc.1-linux-x64.zip", "wrong version")]
     [InlineData("oadm-addon-oadm.ocr-4.11.0-win-x64.zip", "wrong system")]
     public async Task AFileNamedForAnotherPluginVersionOrSystemIsRefusedBeforeItIsSent(string fileName, string reason)
     {
@@ -208,8 +427,8 @@ public sealed class AddOnInstallerTests
     }
 
     [Theory]
-    [InlineData("4.10.0")]
-    [InlineData("4.11.0-rc.1")]
+    [InlineData("4.12.0")]
+    [InlineData("4.12.0-rc.1")]
     [InlineData(null)]
     public async Task AnotherVersionInTheZipIsRefused(string? version)
     {
@@ -410,7 +629,7 @@ public sealed class AddOnInstallerTests
         var failed = await Assert.ThrowsAsync<AddOnException>(() => rig.InstallAsync(zip));
 
         Assert.Equal(AddOnTexts.CouldNotLoad(Name), failed.Message);
-        Assert.Equal("4.10.0", AddOnFolders.ReadVersion(rig.Folder));
+        Assert.Equal("4.12.0", AddOnFolders.ReadVersion(rig.Folder));
         Assert.DoesNotContain(rig.Leftovers(), p => p.StartsWith(".new-", StringComparison.Ordinal) || p.StartsWith(".old-", StringComparison.Ordinal));
         Assert.Equal(AddOnTexts.InstallAgain, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).Message);
     }
@@ -558,10 +777,10 @@ public sealed class AddOnInstallerTests
 
         Assert.False(rig.Registry.HasPackage(Id)); // never the old one
         var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
-        Assert.Equal((AddOnState.Failed, AddOnTexts.InstallAgain, true, "4.10.0"), (row.State, row.Message, row.CanInstall, row.Version));
+        Assert.Equal((AddOnState.Failed, AddOnTexts.InstallAgain, true, "4.12.0"), (row.State, row.Message, row.CanInstall, row.Version));
         Assert.Equal(AddOnCatalog.DownloadUrl(Id, AddOnRig.Version, AddOnRig.Runtime), row.DownloadUrl);
         Assert.True(File.Exists(Path.Combine(rig.Folder, "plugin.json"))); // the old files stay until the new ones are in
-        Assert.Equal([new InstalledAddOn(Id, "4.10.0")], rig.List.Items);
+        Assert.Equal([new InstalledAddOn(Id, "4.12.0")], rig.List.Items);
 
         // Install again takes the new ZIP, in place of the old folder, and keeps the stored choice.
         var installed = await rig.InstallAsync();
@@ -609,15 +828,15 @@ public sealed class AddOnInstallerTests
         using (rig)
         {
             rig.Restart();
-            rig.PlaceFolder(version: "4.10.0");
-            rig.List.Items = [new InstalledAddOn(Id, "4.10.0")];
+            rig.PlaceFolder(version: "4.12.0");
+            rig.List.Items = [new InstalledAddOn(Id, "4.12.0")];
             await rig.Installer.LoadInstalledAsync(CancellationToken.None);
 
             var removed = await rig.Installer.RemoveAsync(Id, CancellationToken.None);
 
             Assert.Equal(AddOnState.NotInstalled, removed.State);
             Assert.True(Directory.Exists(rig.Folder));
-            Assert.Equal([new InstalledAddOn(Id, "4.10.0", Removed: true)], rig.List.Items);
+            Assert.Equal([new InstalledAddOn(Id, "4.12.0", Removed: true)], rig.List.Items);
 
             // The next start tries the folder again and loads nothing.
             rig.Restart();
@@ -632,8 +851,8 @@ public sealed class AddOnInstallerTests
     public async Task APreReleaseFolderIsNotTheAddOnOfTheRelease()
     {
         using var rig = new AddOnRig();
-        rig.PlaceFolder(version: "4.11.0-rc.1");
-        rig.List.Items = [new InstalledAddOn(Id, "4.11.0-rc.1")];
+        rig.PlaceFolder(version: "4.12.0-rc.1");
+        rig.List.Items = [new InstalledAddOn(Id, "4.12.0-rc.1")];
 
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
 
@@ -669,7 +888,7 @@ public sealed class AddOnInstallerTests
     }
 
     [Theory]
-    [InlineData("4.10.0")]
+    [InlineData("4.12.0")]
     [InlineData(null)]
     public async Task AFolderPutInByHandOfAnotherVersionIsNotLoaded(string? version)
     {
@@ -687,7 +906,7 @@ public sealed class AddOnInstallerTests
     public async Task AFolderReplacedByHandBehindTheListIsReadFromItsOwnVersionFile()
     {
         using var rig = new AddOnRig();
-        rig.PlaceFolder(version: "4.10.0");
+        rig.PlaceFolder(version: "4.12.0");
         rig.List.Items = [new InstalledAddOn(Id, AddOnRig.Version)];
 
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
@@ -700,7 +919,7 @@ public sealed class AddOnInstallerTests
     {
         using var rig = new AddOnRig();
         rig.PlaceFolder();
-        rig.List.Items = [new InstalledAddOn(Id, "4.10.0")];
+        rig.List.Items = [new InstalledAddOn(Id, "4.12.0")];
 
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
 
@@ -828,7 +1047,7 @@ public sealed class AddOnInstallerTests
         var unknown = Path.Combine(rig.Root, "oadm.gone");
         Directory.CreateDirectory(unknown);
         await File.WriteAllTextAsync(Path.Combine(unknown, "plugin.json"), "{}");
-        rig.List.Items = [new InstalledAddOn("oadm.gone", "4.10.0")];
+        rig.List.Items = [new InstalledAddOn("oadm.gone", "4.12.0")];
 
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
 
@@ -872,18 +1091,18 @@ public sealed class AddOnInstallerTests
     [Fact]
     public async Task TheRowLinksTheZipOfThisVersionAndSystem()
     {
-        using var rig = await StartedAsync("4.11.0-rc.1");
+        using var rig = await StartedAsync("4.12.0-rc.1");
 
         var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
 
         Assert.Equal(
-            GitHubReleaseFeed.DownloadPrefix + "v4.11.0-rc.1/oadm-addon-oadm.ocr-4.11.0-rc.1-linux-x64.zip",
+            GitHubReleaseFeed.DownloadPrefix + "v4.12.0-rc.1/oadm-addon-oadm.ocr-4.12.0-rc.1-linux-x64.zip",
             row.DownloadUrl);
     }
 
     [Theory]
     [InlineData("oadm-addon-oadm.ocr-4.11.0-win-x64.zip", "oadm.ocr", "4.11.0", "win-x64")]
-    [InlineData("oadm-addon-oadm.ocr-4.11.0-rc.1-linux-arm64.zip", "oadm.ocr", "4.11.0-rc.1", "linux-arm64")]
+    [InlineData("oadm-addon-oadm.ocr-4.12.0-rc.1-linux-arm64.zip", "oadm.ocr", "4.12.0-rc.1", "linux-arm64")]
     [InlineData("oadm-addon-oadm.foo-bar-4.11.0-osx-x64.zip", "oadm.foo-bar", "4.11.0", "osx-x64")]
     public void AReleaseFileNameIsRead(string fileName, string id, string version, string runtimeId) =>
         Assert.Equal(new AddOnFileName(id, version, runtimeId), AddOnCatalog.ParseReleaseFileName(fileName));
@@ -912,6 +1131,8 @@ public sealed class AddOnInstallerTests
         Assert.Equal(hashes.Find("oadm.test"), hashes.Find("OADM.TEST"));
         Assert.Null(hashes.Find("oadm.short")); // no SHA-256: as good as none
         Assert.Null(hashes.Find("oadm.nope"));
+        Assert.Equal("1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", hashes.FindContent("oadm.test"));
+        Assert.Null(hashes.FindContent("oadm.short")); // built outside git
     }
 
     [Fact]

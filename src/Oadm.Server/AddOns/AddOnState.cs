@@ -15,7 +15,7 @@ public enum AddOnState
     /// <summary>Removed: turned off, still loaded; its folder goes at the next server start.</summary>
     Removed = 3,
 
-    /// <summary>Installed before, not loaded now: another version after an update, no files after a restore, or refused by the loader.</summary>
+    /// <summary>Installed before, not loaded now: a version that may not run here, no files after a restore, or refused by the loader.</summary>
     Failed = 4,
 }
 
@@ -39,6 +39,12 @@ public sealed record AddOnStatus(AddOnEntry Entry, AddOnState State, string Vers
 
     /// <summary>Where the ZIP of this server's version and system can be downloaded; null in a build that cannot install it.</summary>
     public string? DownloadUrl { get; init; }
+
+    /// <summary>The add-on of an older OADM version runs; Install takes the ZIP of this version, which starts at the next restart.</summary>
+    public bool UpdateAvailable { get; init; }
+
+    /// <summary>The version an install just put in place when <see cref="Version"/> still is the running one (for the audit).</summary>
+    public string? InstalledVersion { get; init; }
 }
 
 /// <summary>The steps of an install, in this order.</summary>
@@ -96,8 +102,11 @@ public static class AddOnTexts
     /// <summary>A build without the hash of this add-on (development): Install stays off.</summary>
     public const string NoHash = "This OADM build cannot check optional plugins. Put the plugin into its folder by hand.";
 
-    /// <summary>Installed before, not loaded now: after an update, after a restore or a folder of another version.</summary>
+    /// <summary>Installed before, not loaded now: a version that may not run here, after a restore, or it does not load.</summary>
     public const string InstallAgain = "Not loaded. Install it again for this OADM version.";
+
+    /// <summary>The ZIP of this version is in place while the older add-on still runs (a running plugin is never swapped).</summary>
+    public const string UpdateWaits = "Installed. The new version starts at the next restart of the server.";
 
     /// <summary>Install or remove while a self update runs.</summary>
     public const string Updating = "The server is updating.";

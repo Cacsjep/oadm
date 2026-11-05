@@ -43,6 +43,9 @@ public sealed partial class FakeOadmApi
     /// <summary>Tests: the version of the add-on on the server (a server update brings a newer one).</summary>
     public string AddOnVersion { get; set; } = FakeServerVersion;
 
+    /// <summary>Tests: the add-on of an older OADM version runs and an update is offered.</summary>
+    public bool AddOnUpdateAvailable { get; set; }
+
     /// <summary>Tests: how often the client part was asked for.</summary>
     public int AddOnClientPartCalls { get; private set; }
 
@@ -202,6 +205,7 @@ public sealed partial class FakeOadmApi
             Description = "Reads text in camera pictures.",
             State = _textRecognitionState,
             Version = AddOnVersion,
+            UpdateAvailable = AddOnUpdateAvailable,
             CanInstall = _textRecognitionState == AddOnState.AddOnRemoved || (!AddOnsWithoutHash && _textRecognitionState != AddOnState.AddOnInstalling),
             Message = _textRecognitionState switch
             {

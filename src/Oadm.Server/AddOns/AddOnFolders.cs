@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using Oadm.Core.Plugins;
 using Oadm.Sdk.Plugins;
 
+using Oadm.Contracts.Updates;
+
 namespace Oadm.Server.AddOns;
 
 /// <summary>
@@ -32,9 +34,26 @@ public static class AddOnFolders
 
     /// <summary>
     /// The file "manage package addons" writes at the top of every add-on folder: the OADM version it belongs to ("4.11.0",
-    /// one line). An add-on loads only when it names the server's exact version.
+    /// one line). An add-on loads when it names the server's version or an older one that may keep running.
     /// </summary>
     public const string VersionFileName = "oadm-version.txt";
+
+    /// <summary>The fingerprint of what the add-on was built from (docs/spec/add-ons.md "Release files").</summary>
+    public const string ContentFileName = "oadm-content.txt";
+
+    /// <summary>The fingerprint of an add-on folder; null when the file is missing (a ZIP of an OADM before fingerprints).</summary>
+    public static string? ReadContent(string folder)
+    {
+        try
+        {
+            var path = Path.Combine(folder, ContentFileName);
+            return !File.Exists(path) || new FileInfo(path).Length > 256 ? null : File.ReadAllText(path).Trim().ToLowerInvariant();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>The version in <see cref="VersionFileName"/> of an add-on folder; null when the file is missing or empty.</summary>
     public static string? ReadVersion(string folder)
@@ -67,6 +86,13 @@ public static class AddOnFolders
             throw new AddOnException(AddOnTexts.WrongVersion(version));
         }
     }
+
+    /// <summary>
+    /// Whether <paramref name="folder"/> may keep running on <paramref name="server"/>: older, and not older than
+    /// <paramref name="oldest"/> (<see cref="AddOnCatalog.OldestRunningVersion"/>). A version that cannot be read does not.
+    /// </summary>
+    public static bool MayKeepRunning(string? folder, string server, string oldest) =>
+        folder is not null && UpdateVersions.IsOlder(folder, server) && !UpdateVersions.IsOlder(folder, oldest);
 
     /// <summary><c>&lt;datafolder&gt;/addons</c>.</summary>
     public static string Root(string dataDirectory)
@@ -349,7 +375,7 @@ public static class AddOnFolders
     }
 
     /// <summary>Removes the leftovers of an install that stopped (<c>.upload</c>, <c>.new-*</c>, <c>.old-*</c>).</summary>
-    public static void CleanTemporary(string root)
+    public static void CleanTemporary(string root, string? keep = null)
     {
         if (!Directory.Exists(root))
         {
@@ -358,7 +384,8 @@ public static class AddOnFolders
 
         foreach (var folder in Directory.GetDirectories(root))
         {
-            if (Path.GetFileName(folder).StartsWith('.'))
+            var name = Path.GetFileName(folder);
+            if (name.StartsWith('.') && (keep is null || !name.StartsWith(keep, StringComparison.Ordinal)))
             {
                 TryDelete(folder);
             }

@@ -16,4 +16,11 @@
   <ItemGroup>
     <ProjectReference Include="..\Oadm.Sdk\Oadm.Sdk.csproj" />
   </ItemGroup>
+  <!-- At release (manage package nuget): a binary break against this baseline fails the pack. Add-ons of older OADM versions keep
+       running on this SDK (docs/spec/add-ons.md rule 3): keep it equal to AddOnCatalog.OldestRunningVersion, raise both together. -->
+  <PropertyGroup Condition="'$(OadmPackageValidation)' == 'true'">
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationBaselineVersion>4.10.0</PackageValidationBaselineVersion>
+  </PropertyGroup>
+
 </Project>

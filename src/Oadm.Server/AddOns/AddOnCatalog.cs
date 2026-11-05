@@ -25,6 +25,12 @@ public sealed record AddOnFileName(string Id, string Version, string RuntimeId);
 /// </summary>
 public static partial class AddOnCatalog
 {
+    /// <summary>
+    /// The oldest OADM version whose add-ons still run on this server (docs/spec/add-ons.md rule 3). Raise it in the release that
+    /// breaks them, for example a binary change of the SDK or a theme key they use: older ones then ask to be installed again.
+    /// </summary>
+    public const string OldestRunningVersion = "4.10.0";
+
     /// <summary>The id of Text recognition (docs/spec/ocr.md).</summary>
     public const string TextRecognitionId = "oadm.ocr";
 

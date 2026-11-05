@@ -7,7 +7,7 @@ namespace Oadm.Server.AddOns;
 
 /// <summary>
 /// The event "Optional plugin not loaded" of the event rules (docs/spec/add-ons.md): one stateful server event, on while an
-/// installed optional plugin is not loaded (Install again after an update or a restore, a load that failed). The host
+/// installed optional plugin is not loaded (a version that may not run here, after a restore, a load that failed). The host
 /// publishes it because a plugin that is not loaded cannot send anything.
 /// </summary>
 public sealed class AddOnEventSource : IHostEventSource

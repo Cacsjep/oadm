@@ -324,7 +324,8 @@ Deliberate decision (2026-11-04): an optional plugin runs inside the server, as 
 become code on the computer. The server installs only the exact ZIP whose SHA-256 is built into it, per version and system,
 checked before anything is unpacked (`docs/spec/add-ons.md` rule 2); that works offline and asks nothing of the user. The ZIPs
 are not signed: the user trusts the server's installer, and the hash comes with it. The remaining risk is the manual folder
-install, which has no hash: it needs write access to the server's disk, which already means control of the computer. Every
+install, which has no hash: it needs write access to the server's disk, which already means control of the computer. The hash
+checks the install, not the run: files accepted by an older server keep running after an update (`docs/spec/add-ons.md` rule 3). Every
 client loads the client part its server hands it, checked against the SHA-256 the server sends; the user must trust their
 server.
 

@@ -502,14 +502,43 @@ function Write-Notices([string[]]$Apps, [string[]]$Outs) {
     Invoke-Dotnet $a
 }
 
-# The SHA-256 of the add-on ZIPs of one platform and version, one "<plugin id> <sha256>" per line (docs/spec/add-ons.md rule 2):
+# The SHA-256 of the add-on ZIPs of one platform and version, one "<plugin id> <sha256> <fingerprint>" per line (docs/spec/add-ons.md rule 2):
 # written by package addons, built into that server.
 function Get-AddOnHashFile([string]$Rid, [string]$Version) {
     return Join-Path $RepoRoot "artifacts/publish/addons/$Rid/addon-hashes-$Version.txt"
 }
 
-function Add-AddOnHash([string]$File, [string]$Id, [string]$Zip) {
-    [IO.File]::AppendAllText($File, "$Id $((Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash.ToLowerInvariant())`n")
+function Add-AddOnHash([string]$File, [string]$Id, [string]$Zip, [string]$Content) {
+    [IO.File]::AppendAllText($File, "$Id $((Get-FileHash -LiteralPath $Zip -Algorithm SHA256).Hash.ToLowerInvariant()) $Content`n")
+}
+
+# The fingerprint of an add-on (docs/spec/add-ons.md "Release files"): the SHA-256 of the git file list of what decides its
+# build: its project folders, the Shared files they link, the build props, global.json and content-epoch.txt, without
+# *.md, .gitignore and .gitattributes. The same in manage.sh. "none" outside git: the server then offers the update.
+function Get-AddOnContent($Parts) {
+    $paths = @('Directory.Build.props', 'Directory.Build.targets', 'global.json', 'packaging/addons/content-epoch.txt')
+    foreach ($p in $Parts) {
+        $paths += $p.Directory.FullName.Substring($RepoRoot.Length).TrimStart('\', '/').Replace('\', '/')
+        foreach ($m in [regex]::Matches((Get-Content -LiteralPath $p.FullName -Raw), 'Include="\.\.[\\/]Shared[\\/]([^"*]+)')) {
+            $paths += 'plugins/Shared/' + $m.Groups[1].Value.Replace('\', '/')
+        }
+    }
+    $before = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $lines = @(& git -C $RepoRoot ls-tree -r HEAD -- @paths 2>$null)
+        $code = $LASTEXITCODE
+    } catch {
+        $code = 1
+    } finally {
+        $ErrorActionPreference = $before
+    }
+    if ($code -ne 0 -or $lines.Count -eq 0) { return 'none' }
+    [string[]]$kept = @($lines | Where-Object { $_ -notmatch '(\.md|/\.gitignore|/\.gitattributes)$' })
+    [Array]::Sort($kept, [StringComparer]::Ordinal)
+    $text = ($kept -join "`n") + "`n"
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($text))) -replace '-', '').ToLowerInvariant() } finally { $sha.Dispose() }
 }
 
 # The MSBuild argument of the server's publish; none without ZIPs of this version and platform (a warning: Install stays off).
@@ -566,7 +595,7 @@ function Invoke-PackageNuget {
     Invoke-Dotnet @('run', '--project', (Join-Path $RepoRoot 'tools/Oadm.NewPlugin/Oadm.NewPlugin.csproj'), '-c', 'Release', '--',
         '--templates', $templates, '--version', $version, '--repo', $RepoRoot)
     foreach ($project in 'src/Oadm.Sdk', 'src/Oadm.Sdk.Client', 'src/Oadm.Sdk.Testing', 'src/Oadm.Plugin.Sdk', 'tools/Oadm.Tools') {
-        Invoke-Dotnet @('pack', (Join-Path $RepoRoot $project), '-c', 'Release', "-p:Version=$version", '-o', $out)
+        Invoke-Dotnet @('pack', (Join-Path $RepoRoot $project), '-c', 'Release', "-p:Version=$version", '-p:OadmPackageValidation=true', '-o', $out)
     }
     Invoke-Dotnet @('pack', (Join-Path $RepoRoot 'templates/Oadm.Plugin.Templates.csproj'), '-c', 'Release', "-p:Version=$version",
         "-p:OadmTemplatesContent=$templates$([System.IO.Path]::DirectorySeparatorChar)", '-o', $out)
@@ -634,6 +663,7 @@ function Test-AddOnFolder([string]$Folder, [string]$Id, [string]$Rid, [bool]$Has
     if ($HasClient -and @(Get-ChildItem -LiteralPath $Folder -Filter '*.Client.dll' -File).Count -eq 0) { Exit-Environment "add-on ${Id}: no *.Client.dll" }
     if (-not (Test-Path -LiteralPath (Join-Path $Folder 'THIRD-PARTY-NOTICES.txt'))) { Exit-Environment "add-on ${Id}: THIRD-PARTY-NOTICES.txt missing" }
     if (-not (Test-Path -LiteralPath (Join-Path $Folder 'oadm-version.txt'))) { Exit-Environment "add-on ${Id}: oadm-version.txt missing" }
+    if (-not (Test-Path -LiteralPath (Join-Path $Folder 'oadm-content.txt'))) { Exit-Environment "add-on ${Id}: oadm-content.txt missing" }
     $foreign = switch ($Rid.Split('-')[0]) { 'win' { '\.(so|dylib)$|\.so\.' } 'linux' { '\.dylib$' } 'osx' { '\.so$|\.so\.' } }
     $bad = @(Get-ChildItem -LiteralPath $Folder -Recurse -File | Where-Object { $_.Name -match $foreign })
     if ($bad.Count -gt 0) { Exit-Environment "add-on $Id ${Rid}: native libraries of another platform: $(($bad | ForEach-Object Name) -join ', ')" }
@@ -686,6 +716,9 @@ function Invoke-PackageAddOns {
             Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object { $_.Name -in 'DirectML.Debug.dll', 'DirectML.Debug.pdb', 'DirectML.pdb', 'onnxruntime.lib' } | Remove-Item -Force
             # The release it belongs to: the server records a folder put in by hand with this version.
             [IO.File]::WriteAllText((Join-Path $stage 'oadm-version.txt'), "$version`n")
+            # What it was built from: a later OADM with the same fingerprint has nothing new for it.
+            $content = Get-AddOnContent $parts
+            [IO.File]::WriteAllText((Join-Path $stage 'oadm-content.txt'), "$content`n")
             # Packages shipped outside deps.json (OadmNoticePackage items, e.g. DirectML.dll): read by the notices, then deleted.
             $extra = foreach ($p in $parts) {
                 $answer = & $script:Dotnet msbuild $p.FullName -nologo -getItem:OadmNoticePackage -p:Configuration=Release "-p:RuntimeIdentifier=$rid"
@@ -708,7 +741,7 @@ function Invoke-PackageAddOns {
             } else {
                 Write-Warning 'bash not found: the ZIP check of packaging/addons/check-addon-zip.sh is left to release.yml'
             }
-            Add-AddOnHash $hashes $id $zip
+            Add-AddOnHash $hashes $id $zip $content
             Write-Host ('add-on {0} {1}: {2} ({3:N0} KB)' -f $id, $rid, $zip, ((Get-Item -LiteralPath $zip).Length / 1KB))
         }
     }

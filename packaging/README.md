@@ -89,7 +89,7 @@ publishes every add-on plugin, server and client part together, for one platform
   native libraries and models of that platform only). The server installs it into `<datafolder>/addons/<plugin id>/`;
   by hand, unpack it there.
 - Build it before the server: its SHA-256 goes into the server's publish of that version and platform
-  (`docs/spec/add-ons.md` rule 2); `artifacts/publish/addons/<rid>/addon-hashes-<version>.txt` carries it. A server published
+  (`docs/spec/add-ons.md` rule 2); `artifacts/publish/addons/<rid>/addon-hashes-<version>.txt` carries it, with the fingerprint that tells a later OADM whether the plugin changed (`docs/spec/add-ons.md` "Release files"; raise `addons/content-epoch.txt` for a change the fingerprint does not cover). A server published
   without that file cannot install optional plugins.
 - Limits: the ZIP at most 1 GB; the client part (`plugin.json`, top-level `*.Client.dll` and `*.Server.dll`, `client/`) at most 24 MB,
   no native libraries in it.
