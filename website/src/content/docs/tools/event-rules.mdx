@@ -93,6 +93,9 @@ falls back the rule turns off. An event that does not send the value never passe
 - **Send HTTP request**: calls a web service, for example a webhook of Teams or Slack or a building system. Choose a
   [recipient](#recipients), then the method, query parameters, headers and a body as JSON, XML, text or form.
 - **Send email**: sends a mail to a [recipient](#recipients), as text or HTML.
+- **Publish MQTT message**: publishes a message to a topic on an MQTT broker, a [recipient](#recipients).
+- **Write Modbus value**: writes on or off, a number or text to a PLC or gateway, a [recipient](#recipients). Addresses count from 0.
+- **Write OPC UA value**: writes on or off, a number or text to a node of an OPC UA server, a [recipient](#recipients).
 - **Send TCP message**: sends a message to a [recipient](#recipients), for example a building, alarm or video system that
   listens on a TCP port. Text, JSON, XML or hex bytes (`02 41 42 03`), with an optional line end. **Wait for an
   answer** with **Answer must contain** fails the action when the other side does not confirm.
@@ -148,6 +151,17 @@ OADM does not move these rules for you. A Send email, Send HTTP request or Send 
 recipient.**, does not run, and the event log says so. Create the recipient, open the rule and choose it. The old server settings
 go when you save the rule.
 :::
+
+### MQTT, Modbus and OPC UA
+
+An MQTT, Modbus or OPC UA recipient keeps one connection open, which all its rules share. It connects at the first action and closes after 5 minutes
+without one. The icon in the list shows the state, the tooltip the reason. **Test** only connects, it sends nothing.
+
+A new recipient needs only its address. TLS for MQTT, and security and login for OPC UA, are there when you need them. Certificates come from the
+[PKI](/tools/pki/) page: import or create one there, then choose it in the recipient. OPC UA with security needs a certificate imported into PKI.
+
+An action never waits for a connection that is down: it fails, and the event log says why. Nothing is sent later. Use the event
+**Recipient not connected** to act on it.
 
 ## Manage rules
 

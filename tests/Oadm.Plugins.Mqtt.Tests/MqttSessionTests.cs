@@ -131,9 +131,10 @@ public sealed class MqttSessionTests
             ids.Enqueue(e.ClientId);
             return Task.CompletedTask;
         });
-        await using var session = new MqttSession(Sessions.Request(broker.Port, new { clientId = " " }));
+        var recipient = Guid.NewGuid();
+        await using var session = new MqttSession(Sessions.Request(broker.Port, new { clientId = " " }) with { RecipientId = recipient });
         await session.ConnectAsync(Sessions.Patient);
-        Assert.Equal(MqttRecipient.DefaultClientId, Assert.Single(ids));
+        Assert.Equal(MqttRecipient.DefaultClientId(recipient), Assert.Single(ids));
     }
 
     [Theory]

@@ -86,6 +86,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.DeviceConfig(.Client)/     Maintenance: Export / Import configuration, Configure devices, Create configuration file
   Oadm.Plugins.Outputs/                   event rule action "Set output" (relays, outputs)
   Oadm.Plugins.Notifications/             event rule actions "Send email", "Send HTTP request", "Send TCP message" (each to a recipient) and "Log entry"
+  Oadm.Plugins.Modbus/                    event rule action "Write Modbus value" and the recipient type Modbus, our own client, write functions only
   Oadm.Plugins.Mqtt/                      event rule action "Publish MQTT message" and the recipient type MQTT (MQTTnet, one connection per recipient)
   Oadm.Plugins.OpcUa/                     event rule action "Write OPC UA value", recipient type OPC UA (one session per recipient)
   Oadm.Plugins.IoMonitor(.Client)/        core plugin: live inputs and outputs of one device (off by default)
@@ -259,7 +260,7 @@ must never break.
   areas, on a usable graphics card (DirectML on Windows, CUDA on Linux x64) unless a model is clearly slower there, else on the CPU, which always works (ONNX Runtime, PaddleOCR models, never
   in git: downloaded and checked at build), on the action Read text or watching the MJPEG stream at 1 to 15 fps, frames overlapping only with room, results in order (watching
   readers by the CPU cores, 4 per site); events Text read, No text read and Reader problem for the rules; read only, pictures never stored.
-- **[Recipients](docs/spec/recipients.md)** ([recipient sessions](docs/spec/recipient-sessions.md): spec, parked): shared
+- **[Recipients](docs/spec/recipients.md)** ([recipient sessions](docs/spec/recipient-sessions.md): MQTT, Modbus, OPC UA, one shared connection per recipient, output only): shared
   targets of event rule actions (HTTP, Email, TCP, declared by plugins, at most 200); a rule keeps a link, the host merges the
   recipient's fields into the action's settings before a run; no placeholders in a target, old rules are never converted ("Choose a
   recipient."), delete refused while a rule uses one, passwords encrypted and never sent back; output only.

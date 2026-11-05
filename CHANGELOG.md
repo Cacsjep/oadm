@@ -11,11 +11,16 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 - Event rules: Recipients, shared targets for Send email, Send HTTP request and Send TCP message; change a recipient and all its rules follow.
 - Event rules: a recipient has a Test button that says why a send failed.
+- Event rules: MQTT, Modbus and OPC UA recipients, with the actions Publish MQTT message, Write Modbus value and Write OPC UA value.
+- Event rules: the Recipients card shows whether a recipient is connected, and the event Recipient not connected tells a rule when it is gone.
+- Event rules: MQTT and OPC UA recipients can use certificates from the PKI page.
 
 ### Changed
 
 - Event rules: the mail server, URL or host of an action moves to a recipient; rules from older versions show Choose a recipient until you pick one.
 - Event rules: the target of a recipient is fixed, placeholders work in the message only.
+- The client's first start after an install or update takes under a second instead of about 5.
+- The client removes the folders older versions left in the temp folder.
 
 ## [4.11.0] - 2026-11-05
 

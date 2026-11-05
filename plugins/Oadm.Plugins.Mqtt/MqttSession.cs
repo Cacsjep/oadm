@@ -71,7 +71,7 @@ public sealed class MqttSession : IRecipientSession, IMqttPublisher
         var builder = new MqttClientOptionsBuilder()
             .WithTcpServer(host, port)
             .WithProtocolVersion(request.Get("protocolVersion") == MqttRecipient.Version311 ? MqttProtocolVersion.V311 : MqttProtocolVersion.V500)
-            .WithClientId(string.IsNullOrEmpty(clientId) ? MqttRecipient.DefaultClientId : clientId)
+            .WithClientId(string.IsNullOrEmpty(clientId) ? MqttRecipient.DefaultClientId(request.RecipientId) : clientId)
             .WithTimeout(AnswerTimeout);
         var user = request.Get("user") ?? string.Empty;
         var password = request.Get("password");

@@ -99,7 +99,12 @@ public sealed class PublishMqttActionTests
         Assert.Equal(ActionFieldType.TrustedCertificate, type.Fields.Single(f => f.Key == "trustedCa").Type);
         Assert.Equal(ActionFieldType.ClientCertificate, type.Fields.Single(f => f.Key == "clientCertificate").Type);
         Assert.Equal(ActionFieldType.Password, type.Fields.Single(f => f.Key == "password").Type);
-        Assert.StartsWith("oadm-", MqttRecipient.DefaultClientId, StringComparison.Ordinal);
+        var recipient = Guid.NewGuid();
+        Assert.Equal(MqttRecipient.DefaultClientId(recipient), MqttRecipient.DefaultClientId(recipient));
+        Assert.NotEqual(MqttRecipient.DefaultClientId(recipient), MqttRecipient.DefaultClientId(Guid.NewGuid()));
+        Assert.NotEqual(MqttRecipient.DefaultClientId(null), MqttRecipient.DefaultClientId(null));
+        Assert.StartsWith("oadm-", MqttRecipient.DefaultClientId(recipient), StringComparison.Ordinal);
+        Assert.Equal(23, MqttRecipient.DefaultClientId(recipient).Length);
     }
 
     [Fact]

@@ -131,7 +131,7 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
         try
         {
-            (session, loaded) = await CreateAsync(type, values, linked.Token).ConfigureAwait(false);
+            (session, loaded) = await CreateAsync(type, values, null, linked.Token).ConfigureAwait(false);
             await session.ConnectAsync(linked.Token).WaitAsync(linked.Token).ConfigureAwait(false);
             return (true, RecipientSessionTexts.Connected);
         }
@@ -266,7 +266,7 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
                 throw new InvalidOperationException("This type of recipient is turned off");
             }
 
-            (session, loaded) = await CreateAsync(type, _recipients.DecryptSettings(recipient), ct).ConfigureAwait(false);
+            (session, loaded) = await CreateAsync(type, _recipients.DecryptSettings(recipient), slot.Id, ct).ConfigureAwait(false);
             session.Dropped += OnDropped;
             await ConnectAsync(session, ct).ConfigureAwait(false);
             connected = true;
@@ -355,7 +355,7 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
     }
 
     /// <summary>A session that is not connected, with its certificates; the caller closes both.</summary>
-    private async Task<(IRecipientSession Session, IReadOnlyList<X509Certificate2> Loaded)> CreateAsync(RecipientType type, JsonObject values, CancellationToken ct)
+    private async Task<(IRecipientSession Session, IReadOnlyList<X509Certificate2> Loaded)> CreateAsync(RecipientType type, JsonObject values, Guid? id, CancellationToken ct)
     {
         var settings = ActionSettings.Defaults(type.Fields);
         foreach (var (key, value) in values)
@@ -366,16 +366,16 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
         var chains = new Dictionary<string, IReadOnlyList<X509Certificate2>>(StringComparer.Ordinal);
         foreach (var field in type.Fields.Where(f => f.Type is ActionFieldType.ClientCertificate or ActionFieldType.TrustedCertificate))
         {
-            if (ActionSettings.IsVisible(field, settings, statefulRule: true) && ActionSettings.Text(settings, field.Key) is { Length: > 0 } id)
+            if (ActionSettings.IsVisible(field, settings, statefulRule: true) && ActionSettings.Text(settings, field.Key) is { Length: > 0 } certificate)
             {
                 var source = _certificates() ?? throw new InvalidOperationException(RecipientSessionTexts.CertificateGone);
-                chains[field.Key] = await source.LoadAsync(id, ct).ConfigureAwait(false)
+                chains[field.Key] = await source.LoadAsync(certificate, ct).ConfigureAwait(false)
                     ?? throw new InvalidOperationException(RecipientSessionTexts.CertificateGone);
             }
         }
 
         using var document = JsonDocument.Parse(settings.ToJsonString());
-        var request = new RecipientSessionRequest(document.RootElement.Clone(), chains, _loggers.CreateLogger("Oadm.Recipients." + type.Id));
+        var request = new RecipientSessionRequest(document.RootElement.Clone(), chains, _loggers.CreateLogger("Oadm.Recipients." + type.Id)) { RecipientId = id };
         return (type.Sessions!.Create(request), [.. chains.Values.SelectMany(c => c)]);
     }
 

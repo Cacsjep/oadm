@@ -17,7 +17,11 @@ public static class MqttRecipient
     public const string Version500 = "5.0";
 
     /// <summary>The client ID of a recipient without one.</summary>
-    public static string DefaultClientId => "oadm-" + Environment.MachineName;
+    /// <summary>
+    /// One per recipient, so two recipients on one broker never take each other's place, and a Test (no id) never takes the open
+    /// session's. 23 characters at most: the longest id every broker must accept.
+    /// </summary>
+    public static string DefaultClientId(Guid? recipientId) => "oadm-" + (recipientId ?? Guid.NewGuid()).ToString("N")[..18];
 
     public static RecipientType Type { get; } = new(
         TypeId,
@@ -33,7 +37,7 @@ public static class MqttRecipient
             ActionField.ClientCertificate("clientCertificate", "Client certificate") with { VisibleWhenKey = "tls", VisibleWhenValue = "true", Hint = "Optional" },
             ActionField.Text("user", "User name") with { Hint = "Optional" },
             ActionField.Password("password", "Password"),
-            ActionField.Text("clientId", "Client ID") with { Hint = "Optional. One per recipient on a broker." },
+            ActionField.Text("clientId", "Client ID") with { Hint = "Optional" },
         ],
         PublishMqttAction.ActionId)
     {

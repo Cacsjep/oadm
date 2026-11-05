@@ -46,6 +46,9 @@ public sealed record RecipientSessionRequest(
     IReadOnlyDictionary<string, IReadOnlyList<X509Certificate2>> Certificates,
     ILogger Logger)
 {
+    /// <summary>The recipient; null for a recipient's Test, which runs on the values of its form beside the open session.</summary>
+    public Guid? RecipientId { get; init; }
+
     /// <summary>A setting as text (null when missing or null).</summary>
     public string? Get(string key) =>
         Settings.ValueKind == JsonValueKind.Object && Settings.TryGetProperty(key, out var value)

@@ -1,8 +1,7 @@
 # Recipient sessions: MQTT, Modbus and OPC UA
 
-Spec, not built, **parked on 2026-11-05 until the maintainer asks**: Recipients only stays ready for it. Agreed with the maintainer on 2026-11-05: MQTT, Modbus TCP
-and OPC UA on one architecture. Libraries decided the same day: MQTTnet, the OPC Foundation's .NET stack, Modbus our own. **Client
-and output only**: OADM connects out and writes, it never runs a broker or server and never reads values.
+Built on 2026-11-05 (SDK 0.12.0): MQTT, Modbus TCP and OPC UA on one architecture. Libraries: MQTTnet, the OPC Foundation's .NET stack, Modbus
+our own. **Client and output only**: OADM connects out and writes, it never runs a broker or server and never reads values.
 
 ## The rule
 
@@ -12,10 +11,12 @@ connections, and an action never owns a connection.
 
 ## SDK
 
-- `RecipientType.Kind`: `OneShot` (default) or `Persistent`.
-- A persistent type gives `IRecipientSessionFactory.Create(settings, ILogger)`, which returns an `IRecipientSession`
-  (`IAsyncDisposable`): `ConnectAsync(ct)`, and `Dropped`, raised when the connection ended. What it can send is the plugin's own
-  interface: the action asks for it with `ctx.Session<T>(fieldKey)`, and the host never knows MQTT, Modbus or OPC UA.
+- `RecipientType.Sessions`: null for a one shot type, an `IRecipientSessionFactory` for a persistent one.
+- `IRecipientSessionFactory.Create(RecipientSessionRequest)` returns an `IRecipientSession` (`IAsyncDisposable`): `ConnectAsync(ct)`, and
+  `Dropped`, raised when the connection ended. The request holds the settings, the certificates and `RecipientId` (null for a Test). What a
+  session can send is the plugin's own interface: the action asks for it with `ctx.SessionAsync<T>(fieldKey, ct)`, and the host never knows the
+  protocol.
+- `ActionField.ClientCertificate` and `ActionField.TrustedCertificate`; `AlsoVisibleWhenKey` for a field that shows on either of two conditions.
 - Default interface members, a new SDK version. A plugin of an older SDK sees nothing new.
 
 ## Host
@@ -83,9 +84,9 @@ works with the fewest fields, and security is there when it is needed.
 - **The certificates come from PKI** (always on, free): the recipient dialog offers a **Client certificate** select (certificates of the
   Certificates list with a key OADM holds) and a **Trusted CA** select (the CAs of the list, and imported certificates for the self-signed
   servers common with OPC UA). Default trust is the server's operating system root store. Allow untrusted certificates stays an option.
-- **Open points of the SDK:** a new field type for the two selects, and a new SDK interface PKI offers through `IPluginServices`
-  (`IServerCertificateSource` is PKI's own, and plugins share only SDK types). The host resolves the certificate when it opens a session and hands
-  it to `IRecipientSessionFactory`, so a plugin never searches PKI. The key stays in memory inside the session.
+- **In the SDK:** two field types and `IRecipientCertificates`, which PKI offers through `IPluginServices`. The host loads the certificate when it
+  opens a session and hands it to the factory, so a plugin never searches PKI. The key stays inside the session. Windows TLS refuses a key held only
+  in memory (decision 2026-11-05: accepted), so on Windows it goes through the key store of the service account until the session closes.
 - **Rules in PKI:** a certificate a recipient uses cannot be deleted and shows the recipient under Used by; the Expiry warning covers it
   as any certificate of the list ("Expires in 12 days" in its row, the expiry events stay about devices).
 - **In the dialog:** both selects are read once when it opens (`ListRecipientCertificates`, ring and "Reading certificates" while a shown
@@ -100,7 +101,7 @@ works with the fewest fields, and security is there when it is needed.
 - **Passwords with OPC UA:** the stack itself refuses a user name and password when neither a sign and encrypt channel nor the server's login
   policy encrypts it (Bad security checks failed). OADM adds no rule of its own and shows that refusal in plain words.
 
-## Before the build
+## Notes
 
 - MQTTnet: the fix of its TLS check (#2254) is not in 5.2.0, the newest release. OADM sets its own certificate check, so both versions behave
   the same. The fix is marked a breaking change: read it when updating.

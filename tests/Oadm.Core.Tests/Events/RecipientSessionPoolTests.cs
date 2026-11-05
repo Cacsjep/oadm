@@ -65,7 +65,9 @@ public sealed class RecipientSessionPoolTests
 
         public bool SupportsTurnOff => false;
 
-        public IReadOnlyList<RecipientType> RecipientTypes => [new(TypeId, "Persistent", null, Fields, ActionId) { Sessions = factory, Target = "{host}" }];
+        public ConcurrentQueue<FakeSession> Used { get; } = new();
+
+        public IReadOnlyList<RecipientType> RecipientTypes => [new(TypeId, "Persistent", null, RecipientSessionPoolTests.Fields, ActionId) { Sessions = factory, Target = "{host}" }];
 
         public IReadOnlyList<ActionField> Fields => [ActionField.Recipient("recipient", "Recipient", [TypeId])];
 
@@ -75,11 +77,14 @@ public sealed class RecipientSessionPoolTests
 
         public bool RunsOn(ActionEdge edge, JsonElement settings) => true;
 
-        public Task ExecuteAsync(IActionContext ctx, ActionInvocation invocation, CancellationToken ct) => Task.CompletedTask;
+        public async Task ExecuteAsync(IActionContext ctx, ActionInvocation invocation, CancellationToken ct) =>
+            Used.Enqueue(await ctx.SessionAsync<FakeSession>("recipient", ct));
     }
 
-    private sealed class Stage(EventRulesRig rig, RecipientSessionPool pool, FakeFactory factory, WatchedTime timers) : IAsyncDisposable
+    private sealed class Stage(EventRulesRig rig, RecipientSessionPool pool, FakeFactory factory, WatchedTime timers, Action action) : IAsyncDisposable
     {
+        public Action Action { get; } = action;
+
         public EventRulesRig Rig { get; } = rig;
 
         public RecipientSessionPool Pool { get; } = pool;
@@ -109,9 +114,12 @@ public sealed class RecipientSessionPoolTests
     private static async Task<Stage> StageAsync()
     {
         var factory = new FakeFactory();
-        var rig = await EventRulesRig.StartAsync(beforeStart: r => r.Registry.RegisterActionPlugin(new Action(factory), r.ActionOrigin));
+        var action = new Action(factory);
+        var rig = await EventRulesRig.StartAsync(beforeStart: r => r.Registry.RegisterActionPlugin(action, r.ActionOrigin));
         var timers = new WatchedTime(rig.Time);
-        return new Stage(rig, new RecipientSessionPool(rig.Catalog, rig.Recipients, () => null, timers), factory, timers);
+        var pool = new RecipientSessionPool(rig.Catalog, rig.Recipients, () => null, timers);
+        rig.Runner.Sessions = pool;
+        return new Stage(rig, pool, factory, timers, action);
     }
 
     [Fact]
@@ -126,6 +134,32 @@ public sealed class RecipientSessionPoolTests
         var session = Assert.Single(stage.Factory.Sessions);
         Assert.Equal("s3cret", session.Request.Get("password"));
         Assert.Equal(RecipientConnectionState.Connected, stage.State(id));
+    }
+
+    [Fact]
+    public async Task AnActionGetsTheSessionOfItsRecipient()
+    {
+        await using var stage = await StageAsync();
+        var id = await stage.RecipientAsync();
+
+        var (ok, message) = await stage.Rig.Runner.TestAsync(ActionId, new JsonObject { ["recipient"] = id.ToString() }, "Rule", null, null, null, null, CancellationToken.None);
+
+        Assert.True(ok, message);
+        Assert.Same(Assert.Single(stage.Factory.Sessions), Assert.Single(stage.Action.Used));
+        Assert.Equal(id, stage.Action.Used.Single().Request.RecipientId);
+    }
+
+    [Fact]
+    public async Task TheTestOfAPersistentRecipientOnlyConnectsAndHasNoId()
+    {
+        await using var stage = await StageAsync();
+
+        var (ok, message) = await stage.Rig.Runner.TestRecipientAsync(TypeId, null, new JsonObject { ["host"] = "broker" }, CancellationToken.None);
+
+        Assert.True(ok, message);
+        Assert.Equal("Connected", message);
+        Assert.Empty(stage.Action.Used); // the action never ran: Test writes nothing to a real machine
+        Assert.Null(Assert.Single(stage.Factory.Sessions).Request.RecipientId);
     }
 
     [Fact]

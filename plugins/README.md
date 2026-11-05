@@ -776,7 +776,11 @@ public sealed class EmailAction : IActionPlugin
   `ActionField.Recipient("recipient", "Recipient", [typeId])` to `Fields`. Before a run the host merges the recipient's fields into the
   settings under their own keys, so `run.Get("host")` works and passwords arrive decrypted; `run.RecipientIds` has the id per field.
   Never fill placeholders in a target. `Validate` also checks a recipient's values, `Describe` sees them without passwords.
-  Sample: `plugins/Oadm.Plugins.Notifications/NotificationRecipients.cs`.
+  Sample: `plugins/Oadm.Plugins.Notifications/NotificationRecipients.cs`. A persistent type (SDK 0.12.0, one open connection its rules share) sets
+  `Sessions` to an `IRecipientSessionFactory`; the action reads the session with `ctx.SessionAsync<T>(fieldKey, ct)`, Test only connects
+  ([spec](../docs/spec/recipient-sessions.md), sample: `plugins/Oadm.Plugins.Modbus`).
+- **Self check** (SDK 0.12.0): `ICorePlugin.SelfCheck(pluginDirectory)` proves what a plugin ships really works, such as a native library or model;
+  the release runs it through `--self-check` on every platform. No device, no network, no change.
 - **Edges**: `ActionInvocation.Edge` is `Fired` (one-shot rule), `TurnedOn` or `TurnedOff`. Set `SupportsTurnOff` when
   the action has an off part and `RunsOn(edge, settings)` to skip edges (default: off edges only with `SupportsTurnOff`).
 - **Runs**: at most 16 at once for all rules, 30 s each (`ct` is cancelled; `MaxRunTime(settings)` asks for longer, e.g. a
