@@ -85,7 +85,7 @@ address 65535 is refused at a save and before the write. A Modbus write changes 
 of scope.
 
 **A pulse never leaves a relay on silently.** The off write runs whatever ends the wait (a cancel, a failed on write; a drop does not end it, the pulse runs its time), on its own 10 s
-limit and on a session asked for again, so a reconnect or a changed recipient does not matter; inside the 10 s a failed try is repeated
+limit and on a session asked for again, so a reconnect or a change that keeps host, port and unit does not matter; a recipient that now leads to another PLC gets no write and the action fails ("The recipient changed during the pulse. The coil may still be on."); inside the 10 s a failed try is repeated
 every second, because a dropped connection comes back in that time. If it still fails the action fails with a text ending "The coil
 may still be on." During the wait the action asks for the session at least every 60 s, so that a pulse longer than 5 minutes is not closed
 as unused. The run may take the pulse plus 45 s: connect, queue and off write.
