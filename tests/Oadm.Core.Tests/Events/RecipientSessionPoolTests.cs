@@ -416,7 +416,18 @@ public sealed class RecipientSessionPoolTests
     {
         await using var stage = await StageAsync();
         var id = await stage.RecipientAsync();
-        await stage.Pool.GetAsync(id, CancellationToken.None);
+
+        // During a connect: there a cancel continues inline, up to the session's close.
+        var connecting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        stage.Factory.Connect = _ =>
+        {
+            connecting.TrySetResult();
+            return Task.Delay(Timeout.Infinite, CancellationToken.None);
+        };
+        var waiting = stage.Pool.GetAsync(id, CancellationToken.None);
+        await connecting.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        stage.Factory.Connect = _ => Task.CompletedTask;
+
         var closing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var release = new ManualResetEventSlim();
         stage.Factory.Close = () =>
@@ -449,6 +460,8 @@ public sealed class RecipientSessionPoolTests
         }
 
         await change.WaitAsync(TimeSpan.FromSeconds(30));
+        stage.Factory.Close = () => ValueTask.CompletedTask;
+        await Record.ExceptionAsync(() => waiting.WaitAsync(TimeSpan.FromSeconds(30))); // the new session, or the stop
     }
 
     [Fact]
@@ -465,16 +478,22 @@ public sealed class RecipientSessionPoolTests
             return new ValueTask(release.Task);
         };
 
-        await stage.Timers.CreatedAsync(TimeSpan.FromMinutes(5));
-        stage.Time.Advance(TimeSpan.FromMinutes(5));
-        await closing.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        try
+        {
+            await stage.Timers.CreatedAsync(TimeSpan.FromMinutes(5));
+            stage.Time.Advance(TimeSpan.FromMinutes(5));
+            await closing.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-        stage.Factory.Close = () => ValueTask.CompletedTask;
-        var fresh = await stage.Pool.GetAsync(id, CancellationToken.None);
+            stage.Factory.Close = () => ValueTask.CompletedTask;
+            var fresh = await stage.Pool.GetAsync(id, CancellationToken.None);
 
-        Assert.NotSame(old, fresh);
-        Assert.Equal(RecipientConnectionState.Connected, stage.State(id));
-        release.SetResult();
+            Assert.NotSame(old, fresh);
+            Assert.Equal(RecipientConnectionState.Connected, stage.State(id));
+        }
+        finally
+        {
+            release.SetResult(); // a failed assert never leaves the stop waiting for this close
+        }
     }
 
     [Fact]
