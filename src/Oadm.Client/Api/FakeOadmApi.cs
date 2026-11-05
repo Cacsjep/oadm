@@ -2004,6 +2004,20 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
             return channel;
         }
 
+        /// <summary>Ends every open stream.</summary>
+        public void Complete()
+        {
+            lock (_gate)
+            {
+                foreach (var channel in _subscribers)
+                {
+                    channel.Writer.TryComplete();
+                }
+
+                _subscribers.Clear();
+            }
+        }
+
         public void Unsubscribe(Channel<T> channel)
         {
             lock (_gate)

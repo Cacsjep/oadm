@@ -328,7 +328,8 @@ public sealed class EventGrpcService(
         var (ok, message) = await actions.TestRecipientAsync(request.TypeId, id, values, ct).ConfigureAwait(false);
         var name = string.IsNullOrWhiteSpace(request.Name) ? rules.Catalog.FindRecipientType(request.TypeId)?.Type.DisplayName ?? request.TypeId : request.Name.Trim();
         var to = target.Length > 200 ? target[..200] : target;
-        var detail = (ok ? "Sent to " : "Failed to ") + to + (ok ? string.Empty : " · " + (message.Length > 200 ? message[..200] : message));
+        var done = rules.Catalog.FindRecipientType(request.TypeId)?.Type.Sessions is not null ? "Connected to " : "Sent to ";
+        var detail = (ok ? done : "Failed to ") + to + (ok ? string.Empty : " · " + (message.Length > 200 ? message[..200] : message));
         await audit.WriteAsync(AuditActions.RecipientTested, name, detail, ct).ConfigureAwait(false);
         return new Proto.TestActionReply { Ok = ok, Message = message };
     }

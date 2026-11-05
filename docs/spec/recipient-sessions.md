@@ -29,8 +29,12 @@ connections, and an action never owns a connection.
 - **A run never waits long:** an action on a session that is not connected fails at once with "Not connected: <reason>" (event log,
   server log), and the rule's normal limits apply. No queue of messages, no replay after a reconnect: an alarm from 10 minutes ago
   must not fire a relay now.
-- **Status** per recipient in memory (Connected, Connecting, Not connected with the reason, Not used), `RecipientEntry.status`, a live
-  chip in the Recipients card, through the same batched stream as the rest of the page. Never stored.
+- **Status** per recipient in memory (Connected, Connecting, Not connected with the reason, Not used), never stored, on its own stream
+  `WatchRecipientStatus` (the whole list first, then after each change, at most every 500 ms; a recipient missing there is not used).
+  The Recipients card shows a `ui:StatusChip` inside the Target cell after the text, no column of its own; one shot recipients and Not
+  used show nothing, the reason is its tooltip. While the word would leave the target less than 64 px (`RecipientTargetCell`, at
+  the card's default width and below) the chip shows only its icon and the tooltip says the word too, so the target keeps its room. The page
+  watches only while it is shown, one post per burst, again after a drop (1, 2, 4 ... 15 s); a stream that ended clears the chips.
 - Secrets stay as in Recipients: decrypted only to open a session, kept only inside it.
 - Stops with the server; a stuck close never holds up the stop (5 s).
 - Output only: nothing a session receives becomes an event. Sessions run on the server; recipients at sites are later.
@@ -82,7 +86,12 @@ works with the fewest fields, and security is there when it is needed.
 - **Open points of the SDK:** a new field type for the two selects, and a new SDK interface PKI offers through `IPluginServices`
   (`IServerCertificateSource` is PKI's own, and plugins share only SDK types). The host resolves the certificate when it opens a session and hands
   it to `IRecipientSessionFactory`, so a plugin never searches PKI. The key stays in memory inside the session.
-- **Rules in PKI:** a certificate a recipient uses cannot be deleted and shows the recipient under Used by; the Expiry warning covers it.
+- **Rules in PKI:** a certificate a recipient uses cannot be deleted and shows the recipient under Used by; the Expiry warning covers it
+  as any certificate of the list ("Expires in 12 days" in its row, the expiry events stay about devices).
+- **In the dialog:** both selects are read once when it opens (`ListRecipientCertificates`, ring and "Reading certificates" while a shown
+  type waits); an empty list says "Import or create one on the PKI page."; a value no longer in the list leaves the select empty with
+  "The chosen certificate no longer exists. Choose another one." below it, and Save stays off until the user chooses. In a hidden field the
+  value stays. For a persistent type Test says Connecting, then the server's Connected or reason; the audit says "Connected to".
 - **No new certificates in PKI:** Create stays as it is. An IEEE 802.1X certificate has client authentication, so it already works for MQTT.
   OPC UA's sign, sign and encrypt and certificate login take a certificate imported into PKI. Its application URI comes from the certificate's URI name.
 - **Passwords with OPC UA:** the stack itself refuses a user name and password when neither a sign and encrypt channel nor the server's login

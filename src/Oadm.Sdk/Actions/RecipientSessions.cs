@@ -78,6 +78,9 @@ public static class RecipientSessionTexts
     /// <summary>The result of a recipient's Test.</summary>
     public const string Connected = "Connected";
 
+    /// <summary>A session that is opening.</summary>
+    public const string Connecting = "Connecting";
+
     /// <summary>An action on a session that is not connected.</summary>
     public static string NotConnected(string? reason) => string.IsNullOrWhiteSpace(reason) ? "Not connected" : "Not connected: " + reason;
 }

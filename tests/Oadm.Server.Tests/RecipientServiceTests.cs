@@ -171,6 +171,61 @@ public sealed class RecipientServiceTests
         }
     }
 
+    private sealed class ConnectedSession : IRecipientSession
+    {
+        public event EventHandler<RecipientDroppedEventArgs>? Dropped
+        {
+            add { }
+            remove { }
+        }
+
+        public Task ConnectAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class ConnectedSessions : IRecipientSessionFactory
+    {
+        public IRecipientSession Create(RecipientSessionRequest request) => new ConnectedSession();
+    }
+
+    private sealed class SessionAction : IActionPlugin
+    {
+        public const string SessionType = "test.session";
+
+        public string Id => "test.session-action";
+
+        public string DisplayName => "Use session";
+
+        public string? IconKey => null;
+
+        public bool NeedsDevice => false;
+
+        public IReadOnlyList<RecipientType> RecipientTypes { get; } =
+            [new(SessionType, "Session", "send", [ActionField.Text("host", "Host", required: true)], "test.session-action") { Target = "{host}", Sessions = new ConnectedSessions() }];
+
+        public IReadOnlyList<ActionField> Fields { get; } = [ActionField.Recipient("recipient", "Recipient", [SessionType])];
+
+        public IReadOnlyDictionary<string, string> Validate(JsonElement settings, bool statefulRule) => new Dictionary<string, string>();
+
+        public Task ExecuteAsync(IActionContext ctx, ActionInvocation invocation, CancellationToken ct) => Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task TestOfAPersistentTypeConnectsAndIsAuditedSo()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        host.Get<PluginRegistry>().RegisterActionPlugin(new SessionAction(), new PluginOrigin("test.session", "1.0", null) { DisplayName = "Session" });
+        var events = new Proto.EventService.EventServiceClient(host.Invoker);
+
+        var reply = await events.TestRecipientAsync(new Proto.SaveRecipientRequest { Name = "Broker", TypeId = SessionAction.SessionType, SettingsJson = """{"host":"broker.example.com"}""" });
+
+        Assert.True(reply.Ok, reply.Message);
+        Assert.Equal(RecipientSessionTexts.Connected, reply.Message);
+        var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;
+        Assert.Contains(audit, e => e.Action == AuditActions.RecipientTested && e.Target == "Broker" && e.Detail == "Connected to broker.example.com");
+    }
+
     [Fact]
     public async Task TheRightsAreThoseOfTheEventRules()
     {

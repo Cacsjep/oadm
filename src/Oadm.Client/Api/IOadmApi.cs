@@ -371,6 +371,12 @@ public interface IOadmApi
     /// <summary>"Test" of the recipient dialog: sends once now with sample event values.</summary>
     Task<TestActionReply> TestRecipientAsync(SaveRecipientRequest request, CancellationToken ct);
 
+    /// <summary>The connection of every persistent recipient that has one: the whole list first, then after each change.</summary>
+    IAsyncEnumerable<RecipientStatusList> WatchRecipientStatusAsync(CancellationToken ct);
+
+    /// <summary>The certificates of PKI the recipient dialog offers.</summary>
+    Task<RecipientCertificateList> ListRecipientCertificatesAsync(CancellationToken ct);
+
     /// <summary>Live events of a core plugin (PluginService.Watch) until cancelled. Default: none (the page polls).</summary>
     IAsyncEnumerable<PluginEvent> WatchCorePluginAsync(string pluginId, CancellationToken ct) => AsyncEnumerable.Empty<PluginEvent>();
 

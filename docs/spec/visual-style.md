@@ -172,7 +172,8 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 - `PageHeader`: a plugin page's content for the host page header (`Subtitle`, `Trailing`; `IsHidden` leaves the header
   row out, Live View).
 - For dialogs: `DialogTitleBar`, `CardHeader`, `DialogFooter`.
-- `StatusChip`: every status (see "Status" above).
+- `StatusChip`: every status (see "Status" above). `WordWidth` is for a cell without room for the word (`RecipientTargetCell`: the
+  Recipients list, its icon only and the word in the tooltip).
 - `FileRow`: every file chooser. One wide button that shows "Choose file" until a file is chosen, then its name, the
   details and an error below it; never a "No file chosen" line; `IsSingleButton="False"` keeps the row with the button on
   the right.

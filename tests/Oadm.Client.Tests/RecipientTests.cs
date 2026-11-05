@@ -29,6 +29,9 @@ namespace Oadm.Client.Tests;
 /// </summary>
 public sealed class RecipientTests : IDisposable
 {
+    /// <summary>The recipients of fake mode.</summary>
+    private const int SampleRecipients = 7;
+
     private readonly UiThread _ui = new();
 
     public void Dispose() => _ui.Dispose();
@@ -74,7 +77,7 @@ public sealed class RecipientTests : IDisposable
         var (api, store) = await ApiAsync();
         using var page = new EventRulesViewModel(api, Substitute.For<IDialogService>(), store, _ui);
         page.Activate();
-        await Eventually.TrueAsync(() => page.Recipients.Count == 3 && page.Rules.Count == 3, "the lists loaded");
+        await Eventually.TrueAsync(() => page.Recipients.Count == SampleRecipients && page.Rules.Count == 3, "the lists loaded");
 
         var gate = page.Recipients.Single(r => r.Name == "Gate team");
         Assert.Equal("Email", gate.TypeText);
@@ -115,7 +118,7 @@ public sealed class RecipientTests : IDisposable
         });
         using var page = new EventRulesViewModel(api, dialogs, store, _ui);
         page.Activate();
-        await Eventually.TrueAsync(() => page.Recipients.Count == 3, "the list loaded");
+        await Eventually.TrueAsync(() => page.Recipients.Count == SampleRecipients, "the list loaded");
 
         await page.NewRuleCommand.ExecuteAsync(null);
 
@@ -130,12 +133,12 @@ public sealed class RecipientTests : IDisposable
         dialogs.ConfirmAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(true);
         using var page = new EventRulesViewModel(api, dialogs, store, _ui);
         page.Activate();
-        await Eventually.TrueAsync(() => page.Recipients.Count == 3, "the list loaded");
+        await Eventually.TrueAsync(() => page.Recipients.Count == SampleRecipients, "the list loaded");
 
         page.SelectedRecipient = page.Recipients.Single(r => r.Name == "Gate team");
         await page.DeleteRecipientCommand.ExecuteAsync(null);
         Assert.Equal("Used by Camera offline in Building A. Change those rules first.", page.RecipientsErrorText);
-        Assert.Equal(3, page.Recipients.Count);
+        Assert.Equal(SampleRecipients, page.Recipients.Count);
 
         page.SelectedRecipient = page.Recipients.Single(r => r.Name == "Alarm panel");
         await page.DeleteRecipientCommand.ExecuteAsync(null);
@@ -151,7 +154,7 @@ public sealed class RecipientTests : IDisposable
         session.SignIn(new UserInfo { UserName = "op", Role = UserRole.Operator, RoleId = FakeOadmApi.OperatorRoleId, Permissions = { "events.view" } }, "fake");
         using var page = new EventRulesViewModel(api, Substitute.For<IDialogService>(), store, _ui, session);
         page.Activate();
-        await Eventually.TrueAsync(() => page.Recipients.Count == 3, "the list loaded");
+        await Eventually.TrueAsync(() => page.Recipients.Count == SampleRecipients, "the list loaded");
         page.SelectedRecipient = page.Recipients[0];
 
         Assert.True(page.ShowRecipients);
@@ -168,7 +171,7 @@ public sealed class RecipientTests : IDisposable
         var editor = await EditorAsync(api, typeId: FakeOadmApi.FakeEmailRecipientType);
 
         Assert.Equal("New recipient", editor.Title);
-        Assert.Equal(["HTTP", "Email", "TCP"], editor.Types.Select(t => t.Text));
+        Assert.Equal(["HTTP", "Email", "TCP", "MQTT", "Modbus", "OPC UA"], editor.Types.Select(t => t.Text));
         Assert.False(editor.SaveCommand.CanExecute(null));
         Assert.All(editor.Fields, f => Assert.Null(f.Error));
         Assert.NotNull(editor.FormError);
@@ -371,7 +374,7 @@ public sealed class RecipientTests : IDisposable
             var window = new Window { Width = 1320, Height = 760, Content = new Border { Padding = new Thickness(24), Child = view } };
             Oadm.Client.App.ApplyCrispText(window);
             window.Show();
-            await PumpUntilAsync(() => page.Recipients.Count == 3 && page.Rules.Count == 4 && page.LogEntries.Count > 0);
+            await PumpUntilAsync(() => page.Recipients.Count == SampleRecipients && page.Rules.Count == 4 && page.LogEntries.Count > 0);
             Capture(window, outDir, "recipients-page.png");
             Assert.False(view.IsStacked);
             Assert.Contains(view.GetVisualDescendants().OfType<GridSplitter>(), s => s.Classes.Contains("vertical") && s.IsEffectivelyVisible);

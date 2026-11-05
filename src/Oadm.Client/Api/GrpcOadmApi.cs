@@ -343,6 +343,12 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<TestActionReply> TestRecipientAsync(SaveRecipientRequest request, CancellationToken ct) =>
         await C.Events.TestRecipientAsync(request, cancellationToken: ct);
 
+    public IAsyncEnumerable<RecipientStatusList> WatchRecipientStatusAsync(CancellationToken ct) =>
+        ReadAll(C.Events.WatchRecipientStatus(new Empty(), cancellationToken: ct), ct);
+
+    public async Task<RecipientCertificateList> ListRecipientCertificatesAsync(CancellationToken ct) =>
+        await C.Events.ListRecipientCertificatesAsync(new Empty(), cancellationToken: ct);
+
     public async Task RemoveDevicesAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct) =>
         await C.Devices.RemoveAsync(ToIds(deviceIds), cancellationToken: ct);
 

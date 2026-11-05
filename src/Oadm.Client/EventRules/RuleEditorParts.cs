@@ -413,6 +413,13 @@ public sealed partial class CheckViewModel : ValidatingViewModel
 /// </summary>
 public sealed partial class ActionFieldViewModel : ObservableObject
 {
+    /// <summary>The hint of a certificate select with nothing to choose.</summary>
+    public const string NoCertificatesHint = "Import or create one on the PKI page.";
+
+    private string? _missingChoice; // a stored certificate the list does not hold (yet): kept until the user chooses
+    private bool _hasCertificateList;
+    private bool _fillingCertificates;
+
     public ActionFieldViewModel(ActionFieldEntry entry)
     {
         Entry = entry;
@@ -422,7 +429,7 @@ public sealed partial class ActionFieldViewModel : ObservableObject
             Choices.Add(new ChoiceOption<string>(choice.Value, choice.Label));
         }
 
-        if (!entry.Required && entry.Kind is ActionFieldKind.ActionFieldChoice or ActionFieldKind.ActionFieldDynamicChoice or ActionFieldKind.ActionFieldRecipient)
+        if (!entry.Required && IsChoice)
         {
             Choices.Insert(0, new ChoiceOption<string>(string.Empty, "None"));
         }
@@ -439,7 +446,9 @@ public sealed partial class ActionFieldViewModel : ObservableObject
 
     public string Label => Entry.Label;
 
-    public string? Hint => PasswordStored ? "Stored. Leave empty to keep it." : Entry.Hint.Length == 0 ? null : Entry.Hint;
+    public string? Hint => PasswordStored ? "Stored. Leave empty to keep it."
+        : IsCertificate && _hasCertificateList && !Choices.Any(c => c.Value.Length > 0) ? NoCertificatesHint
+        : Entry.Hint.Length == 0 ? null : Entry.Hint;
 
     public bool IsText => Entry.Kind == ActionFieldKind.ActionFieldText;
 
@@ -449,13 +458,19 @@ public sealed partial class ActionFieldViewModel : ObservableObject
 
     public bool IsBool => Entry.Kind == ActionFieldKind.ActionFieldBool;
 
-    public bool IsChoice => Entry.Kind is ActionFieldKind.ActionFieldChoice or ActionFieldKind.ActionFieldDynamicChoice or ActionFieldKind.ActionFieldRecipient;
+    public bool IsChoice => IsCertificate || Entry.Kind is ActionFieldKind.ActionFieldChoice or ActionFieldKind.ActionFieldDynamicChoice or ActionFieldKind.ActionFieldRecipient;
+
+    /// <summary>A select of the certificates of PKI (<see cref="SetCertificates"/>).</summary>
+    public bool IsCertificate => Entry.Kind is ActionFieldKind.ActionFieldClientCertificate or ActionFieldKind.ActionFieldTrustedCertificate;
+
+    /// <summary>Which list of <see cref="RecipientCertificateList"/> fills it.</summary>
+    public bool IsClientCertificate => Entry.Kind == ActionFieldKind.ActionFieldClientCertificate;
 
     /// <summary>A select of the recipients of its types with New beside it (<see cref="NewRecipientCommand"/>).</summary>
     public bool IsRecipient => Entry.Kind == ActionFieldKind.ActionFieldRecipient;
 
     /// <summary>What an empty select says.</summary>
-    public string? ChoicePlaceholder => IsRecipient ? "Choose a recipient" : null;
+    public string? ChoicePlaceholder => IsRecipient ? "Choose a recipient" : IsCertificate ? "Choose a certificate" : null;
 
     public bool IsPassword => Entry.Kind == ActionFieldKind.ActionFieldPassword;
 
@@ -556,7 +571,7 @@ public sealed partial class ActionFieldViewModel : ObservableObject
     public partial bool PasswordStored { get; set; }
 
     /// <summary>The value as text for the settings JSON ("" = empty).</summary>
-    public string Value => IsBool ? (IsChecked ? "true" : "false") : IsChoice ? SelectedChoice?.Value ?? string.Empty
+    public string Value => IsBool ? (IsChecked ? "true" : "false") : IsChoice ? SelectedChoice?.Value ?? _missingChoice ?? string.Empty
         : IsKeyValues ? RowsJson().ToJsonString() : IsFile ? FileJson()?.ToJsonString() ?? string.Empty : Text;
 
     /// <summary>The rows as the settings store them: [{"name", "value"}], rows that are completely empty left out.</summary>
@@ -654,6 +669,13 @@ public sealed partial class ActionFieldViewModel : ObservableObject
     /// </summary>
     public void SelectChoice(string value)
     {
+        if (IsCertificate && value.Length > 0 && !Choices.Any(c => c.Value == value))
+        {
+            _missingChoice = value;
+            SelectedChoice = null;
+            return;
+        }
+
         if (value.Length > 0 && !IsRecipient && !Choices.Any(c => c.Value == value))
         {
             Choices.Add(new ChoiceOption<string>(value, value + " (not found)"));
@@ -665,7 +687,7 @@ public sealed partial class ActionFieldViewModel : ObservableObject
     /// <summary>Fills a list from the action (saved commands); the current choice stays selected.</summary>
     public void SetChoices(IEnumerable<ActionChoiceEntry> choices)
     {
-        var current = SelectedChoice?.Value ?? string.Empty;
+        var current = Value;
         Choices.Clear();
         if (!Entry.Required)
         {
@@ -680,11 +702,55 @@ public sealed partial class ActionFieldViewModel : ObservableObject
         SelectChoice(current);
     }
 
+    /// <summary>
+    /// Fills a certificate select from PKI, not as an edit; the current choice stays. A stored certificate the list no longer
+    /// holds leaves the select empty with <see cref="RecipientSessionTexts.CertificateGone"/> below it until the user chooses.
+    /// </summary>
+    public void SetCertificates(IEnumerable<RecipientCertificateChoice> choices)
+    {
+        ArgumentNullException.ThrowIfNull(choices);
+        var current = Value;
+        _fillingCertificates = true;
+        try
+        {
+            SetChoices(choices.Select(c => new ActionChoiceEntry { Value = c.Id, Label = c.Text }));
+        }
+        finally
+        {
+            _fillingCertificates = false;
+        }
+
+        _hasCertificateList = true;
+        OnPropertyChanged(nameof(Hint));
+        if (_missingChoice is not null && Choices.Any(c => c.Value == _missingChoice))
+        {
+            _missingChoice = null;
+        }
+        else if (_missingChoice is not null)
+        {
+            LoadError = RecipientSessionTexts.CertificateGone;
+            ShowError = true;
+        }
+    }
+
     partial void OnTextChanged(string value) => Edited();
 
     partial void OnIsCheckedChanged(bool value) => Edited();
 
-    partial void OnSelectedChoiceChanged(ChoiceOption<string>? value) => Edited();
+    partial void OnSelectedChoiceChanged(ChoiceOption<string>? value)
+    {
+        if (_fillingCertificates)
+        {
+            return;
+        }
+
+        if (value is not null)
+        {
+            _missingChoice = null;
+        }
+
+        Edited();
+    }
 
     private void Edited()
     {

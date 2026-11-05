@@ -18,13 +18,20 @@ public sealed record RecipientTypeOption(RecipientTypeEntry Entry)
 {
     public string Text => Entry.DisplayName;
 
+    /// <summary>One shared connection with a status: Test only connects.</summary>
+    public bool Persistent => Entry.Persistent;
+
+    /// <summary>A field of this type is a certificate of PKI.</summary>
+    public bool HasCertificates => Entry.Fields.Any(f => f.Kind is ActionFieldKind.ActionFieldClientCertificate or ActionFieldKind.ActionFieldTrustedCertificate);
+
     public override string ToString() => Text;
 }
 
 /// <summary>
 /// The recipient dialog (one form): Type (only for a new one), Name and the type's fields, drawn from their declaration.
 /// Errors stand below their field, a server refusal below the field it names. Test sends once now with the values of the
-/// form; the reason of a failure shows as text next to the button.
+/// form (a persistent type only connects); the reason of a failure shows as text next to the button. The certificate selects
+/// are filled from PKI when the dialog opens (<see cref="LoadCertificatesAsync"/>).
 /// </summary>
 public sealed partial class RecipientEditorViewModel : ValidatingViewModel
 {
@@ -33,6 +40,8 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
     private readonly IOadmApi _api;
     private readonly RecipientEntry? _existing;
     private readonly HashSet<string> _takenNames;
+    private RecipientCertificateList? _certificates;
+    private string? _certificatesError;
 
     /// <param name="api">The server.</param>
     /// <param name="types">The types a new recipient can have; every type for a recipient that exists.</param>
@@ -70,7 +79,10 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
 
     public IReadOnlyList<RecipientTypeOption> Types { get; }
 
-    [ObservableProperty] public partial RecipientTypeOption? SelectedType { get; set; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowCertificatesLoading), nameof(TestTip))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(TestCommand))]
+    public partial RecipientTypeOption? SelectedType { get; set; }
 
     [ObservableProperty] public partial string Name { get; set; } = string.Empty;
 
@@ -110,9 +122,21 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
 
     public bool HasTestResult => TestResult is not null;
 
-    private bool NotTesting() => !IsTesting;
+    /// <summary>The certificates of PKI are being read.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowCertificatesLoading))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(TestCommand))]
+    public partial bool IsLoadingCertificates { get; private set; }
 
-    private bool CanSave() => !IsBusy && IsFormValid;
+    /// <summary>The form of the chosen type waits for the certificates.</summary>
+    public bool ShowCertificatesLoading => IsLoadingCertificates && SelectedType?.HasCertificates == true;
+
+    /// <summary>What Test does for the chosen type.</summary>
+    public string TestTip => SelectedType?.Persistent == true ? "Connects once now" : "Sends it once now, with sample event values";
+
+    private bool NotTesting() => !IsTesting && !ShowCertificatesLoading;
+
+    private bool CanSave() => !IsBusy && !ShowCertificatesLoading && IsFormValid;
 
     private SaveRecipientRequest Request() => new()
     {
@@ -134,13 +158,16 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
             return;
         }
 
+        var persistent = SelectedType.Persistent;
         IsTesting = true;
-        TestResult = "Sending";
+        TestResult = persistent ? RecipientSessionTexts.Connecting : "Sending";
         try
         {
             var reply = await _api.TestRecipientAsync(Request(), CancellationToken.None).ConfigureAwait(true);
             TestOk = reply.Ok;
-            TestResult = reply.Message.Length > 0 ? reply.Message : reply.Ok ? "Sent" : "The test failed. The server log has the details.";
+            TestResult = reply.Message.Length > 0 ? reply.Message
+                : reply.Ok ? persistent ? RecipientSessionTexts.Connected : "Sent"
+                : "The test failed. The server log has the details.";
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -150,6 +177,63 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
         finally
         {
             IsTesting = false;
+        }
+    }
+
+    /// <summary>
+    /// Fills the certificate selects when the dialog opens; a list that cannot be read stands below them. Nothing is read when
+    /// no type has a certificate field.
+    /// </summary>
+    public async Task LoadCertificatesAsync(CancellationToken ct)
+    {
+        if (!Types.Any(t => t.HasCertificates))
+        {
+            return;
+        }
+
+        IsLoadingCertificates = true;
+        try
+        {
+            _certificates = await _api.ListRecipientCertificatesAsync(ct).ConfigureAwait(true);
+            _certificatesError = null;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled && ct.IsCancellationRequested)
+        {
+            return;
+        }
+#pragma warning disable CA1031 // Shown below the selects.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _certificatesError = "The list could not be read: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message);
+        }
+        finally
+        {
+            IsLoadingCertificates = false;
+        }
+
+        foreach (var field in Fields.Where(f => f.IsCertificate))
+        {
+            FillCertificates(field);
+        }
+
+        Refresh();
+    }
+
+    private void FillCertificates(ActionFieldViewModel field)
+    {
+        if (_certificates is { } list)
+        {
+            field.SetCertificates(field.IsClientCertificate ? list.Client : list.Trusted);
+        }
+        else if (_certificatesError is { } error)
+        {
+            field.LoadError = error;
+            field.ShowError = true;
         }
     }
 
@@ -229,6 +313,11 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
             field.SetValue(_existing is not null ? Stored(entry.Key) : entry.HasDefaultValue ? entry.DefaultValue : null);
             field.PasswordStored = _existing?.StoredSecretFields.Contains(entry.Key) == true;
             field.ShowError = false;
+            if (field.IsCertificate)
+            {
+                FillCertificates(field);
+            }
+
             field.Changed += OnFieldChanged;
             Fields.Add(field);
         }

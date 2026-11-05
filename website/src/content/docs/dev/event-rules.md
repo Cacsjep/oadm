@@ -65,6 +65,14 @@ the dialog and on the server.
   the recipient's fields into the settings under their own keys, so `invocation.Get("host")` works and passwords arrive decrypted;
   `invocation.RecipientIds` has the id per field. Never fill placeholders in a target. `Validate` also checks a recipient's values
   and `Describe` sees them without passwords. An action without its recipient does not run: "Choose a recipient.".
+- A persistent recipient (SDK 0.12.0, MQTT, Modbus, OPC UA) is one open connection many rules share. Set `RecipientType.Sessions` to
+  an `IRecipientSessionFactory`; the host opens the session at the first action that needs it, reconnects and closes it, and shows
+  its status live in the Recipients card (Connected, Connecting, Not connected with the reason). The action asks for it with
+  `ctx.SessionAsync<T>(key)`. Test of such a type only connects and answers `RecipientSessionTexts.Connected`.
+- `ActionField.ClientCertificate` and `ActionField.TrustedCertificate` (SDK 0.12.0) are selects of the certificates in PKI, optional by
+  default. A plugin never searches PKI: `RecipientSessionRequest.CertificatesOf(key)` gives the chosen certificate first, then its
+  issuers, a client certificate with its private key. Only for fields of a recipient type. A certificate a recipient uses cannot be
+  deleted on the PKI page.
 - An action without devices gets **Send test** in the rule dialog, with sample values (Log entry is the one exception).
 
 A core plugin can contribute actions through `IActionSource.ActionPlugins`; they share its state and settings and are

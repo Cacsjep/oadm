@@ -244,7 +244,10 @@ used again.
   `SetRuleEnabled`, `DuplicateRule`, `ListActionChoices`, `ListLog` (newest first, limit 0 = 10,000), `WatchLog`,
   `ClearLog`, `TestAction`, and the recipients (`docs/spec/recipients.md`): `ListRecipients` (like `ListRules`), `SaveRecipient` (INVALID_ARGUMENT
   with the trailer `oadm-field`, NOT_FOUND), `DeleteRecipient` (FAILED_PRECONDITION with the rule names, NOT_FOUND), `TestRecipient` (reply ok
-  + message), the last three like `SaveRule`, audited. `GetCatalog` also gives `recipient_types`.
+  + message; a persistent type only connects), the last three like `SaveRule`, audited. `WatchRecipientStatus` (like `ListRecipients`: the
+  connection of every persistent recipient that has one, the whole list first, then after each change, at most every 500 ms; missing means not
+  used, `docs/spec/recipient-sessions.md`), `ListRecipientCertificates` (like `SaveRule`: the certificates of PKI for the recipient dialog, both
+  lists empty while PKI is off; ids and texts only, never a key). `GetCatalog` also gives `recipient_types` (`persistent`: one shared connection).
 - **`ServerLogService`** (`logs.proto`, permission `logs.server`, users with all devices): `List` (the server's log
   files, a page newest first), see `docs/spec/main-window.md` "Logs page".
 - **`DeviceWebService`** (`deviceweb.proto`, the Web View relay, `plugins/Oadm.Plugins.WebView/README.md`):

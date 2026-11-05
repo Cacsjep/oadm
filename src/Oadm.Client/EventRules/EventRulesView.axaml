@@ -98,7 +98,11 @@
             <DataGridTemplateColumn Header="Target" Width="*" MinWidth="76" SortMemberPath="Target">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:RecipientRowViewModel">
-                  <TextBlock Text="{Binding Target}" ToolTip.Tip="{Binding Target}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="12,0" />
+                  <vm:RecipientTargetCell WideTip="{Binding StatusTip}" CompactTip="{Binding StatusWordTip}">
+                    <TextBlock Text="{Binding Target}" ToolTip.Tip="{Binding Target}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Margin="12,0" />
+                    <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsConnected}" IsAccent="{Binding IsConnecting}" IsError="{Binding IsNotConnected}"
+                                   IsVisible="{Binding HasStatus}" />
+                  </vm:RecipientTargetCell>
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>

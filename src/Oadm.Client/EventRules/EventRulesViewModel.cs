@@ -93,8 +93,8 @@ public sealed partial class RuleRowViewModel(EventRulesViewModel owner, RuleSumm
     internal void SetBusy(bool busy) => IsBusy = busy;
 }
 
-/// <summary>A recipient in the Recipients list.</summary>
-public sealed class RecipientRowViewModel(RecipientEntry entry, string typeText)
+/// <summary>A recipient in the Recipients list; a persistent one with a live connection status once a rule uses it.</summary>
+public sealed partial class RecipientRowViewModel(RecipientEntry entry, string typeText, bool persistent = false) : ObservableObject
 {
     public RecipientEntry Entry { get; } = entry;
 
@@ -105,6 +105,36 @@ public sealed class RecipientRowViewModel(RecipientEntry entry, string typeText)
     public string TypeText { get; } = typeText;
 
     public string Target => Entry.Target;
+
+    /// <summary>The server's status; null: not used.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStatus), nameof(StatusText), nameof(IsConnected), nameof(IsConnecting), nameof(IsNotConnected), nameof(StatusTip), nameof(StatusWordTip))]
+    public partial RecipientStatusEntry? Status { get; internal set; }
+
+    private RecipientConnection Connection => persistent ? Status?.Connection ?? RecipientConnection.RecipientNotUsed : RecipientConnection.RecipientNotUsed;
+
+    /// <summary>One shot recipients and recipients no rule uses show nothing.</summary>
+    public bool HasStatus => Connection != RecipientConnection.RecipientNotUsed;
+
+    public string? StatusText => Connection switch
+    {
+        RecipientConnection.RecipientConnected => Oadm.Sdk.Actions.RecipientSessionTexts.Connected,
+        RecipientConnection.RecipientConnecting => Oadm.Sdk.Actions.RecipientSessionTexts.Connecting,
+        RecipientConnection.RecipientNotConnected => Oadm.Sdk.Actions.RecipientSessionTexts.NotConnected(null),
+        _ => null,
+    };
+
+    public bool IsConnected => Connection == RecipientConnection.RecipientConnected;
+
+    public bool IsConnecting => Connection == RecipientConnection.RecipientConnecting;
+
+    public bool IsNotConnected => Connection == RecipientConnection.RecipientNotConnected;
+
+    /// <summary>Why it is not connected.</summary>
+    public string? StatusTip => IsNotConnected && Status is { Reason.Length: > 0 } status ? status.Reason : null;
+
+    /// <summary>The word and the reason, for a cell too narrow for the word.</summary>
+    public string? StatusWordTip => IsNotConnected ? Oadm.Sdk.Actions.RecipientSessionTexts.NotConnected(StatusTip) : StatusText;
 
     public bool Matches(string text) =>
         Name.Contains(text, StringComparison.OrdinalIgnoreCase) || TypeText.Contains(text, StringComparison.OrdinalIgnoreCase) || Target.Contains(text, StringComparison.OrdinalIgnoreCase);
@@ -193,6 +223,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
     private readonly IUiDispatcher _ui;
     private readonly Dictionary<string, RuleRowViewModel> _rulesById = [];
     private readonly List<EventLogRowViewModel> _log = [];
+    private readonly Dictionary<string, RecipientStatusEntry> _recipientStatus = new(StringComparer.Ordinal);
     private List<RecipientRowViewModel> _recipients = [];
     private string? _ruleLinks;
     private CancellationTokenSource? _active;
@@ -298,6 +329,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         _ = WatchRulesAsync(token);
         _ = WatchLogAsync(token);
         _ = LoadRecipientsAsync(token);
+        _ = WatchRecipientStatusAsync(token);
     }
 
     public void Dispose() => Deactivate();
@@ -309,6 +341,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
             _active = null;
             active.Cancel();
             active.Dispose();
+            ApplyRecipientStatus([]); // a status of a page that does not watch would be a guess
         }
     }
 
@@ -598,7 +631,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         try
         {
             var catalog = await _api.GetEventCatalogAsync(ct).ConfigureAwait(true);
-            var types = catalog.RecipientTypes.ToDictionary(t => t.Id, t => t.DisplayName, StringComparer.Ordinal);
+            var types = catalog.RecipientTypes.ToDictionary(t => t.Id, StringComparer.Ordinal);
             var rows = await _api.ListRecipientsAsync(ct).ConfigureAwait(true);
             ct.ThrowIfCancellationRequested();
             ApplyRecipients(rows, types);
@@ -618,10 +651,51 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void ApplyRecipients(IReadOnlyList<RecipientEntry> rows, IReadOnlyDictionary<string, string> types)
+    private void ApplyRecipients(IReadOnlyList<RecipientEntry> rows, IReadOnlyDictionary<string, RecipientTypeEntry> types)
     {
-        _recipients = [.. rows.Select(r => new RecipientRowViewModel(r, types.GetValueOrDefault(r.TypeId) ?? r.TypeId))];
+        _recipients = [.. rows.Select(r =>
+        {
+            var type = types.GetValueOrDefault(r.TypeId);
+            return new RecipientRowViewModel(r, type?.DisplayName ?? r.TypeId, type?.Persistent == true) { Status = _recipientStatus.GetValueOrDefault(r.Id) };
+        })];
         FilterRecipients();
+    }
+
+    /// <summary>The whole list of statuses, on the UI thread: the rows follow in place, no reset of the list.</summary>
+    private void ApplyRecipientStatus(IEnumerable<RecipientStatusEntry> statuses)
+    {
+        _recipientStatus.Clear();
+        foreach (var status in statuses)
+        {
+            _recipientStatus[status.Id] = status;
+        }
+
+        foreach (var row in _recipients)
+        {
+            row.Status = _recipientStatus.GetValueOrDefault(row.Id);
+        }
+    }
+
+    /// <summary>
+    /// The live status of the recipients while the page is shown, one post per burst; each message is the whole list, so the
+    /// newest of a burst is enough. A stream that ended clears the chips: a status nobody watches is a guess. Users limited to
+    /// a device group read no recipients.
+    /// </summary>
+    private Task WatchRecipientStatusAsync(CancellationToken ct)
+    {
+        if (!ShowRecipients || _session?.HasAllDevices == false)
+        {
+            return Task.CompletedTask;
+        }
+
+        var batcher = new ChangeBatcher<RecipientStatusList>(_ui, batch =>
+        {
+            if (!ct.IsCancellationRequested)
+            {
+                ApplyRecipientStatus(batch[^1].Recipients);
+            }
+        });
+        return WatchAsync(_api.WatchRecipientStatusAsync, batcher.Add, () => batcher.Add(new RecipientStatusList()), ct);
     }
 
     private void FilterRecipients()
@@ -700,17 +774,23 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
             : string.Create(CultureInfo.CurrentCulture, $"{LogEntries.Count:N0} match · newest {_log.Count:N0} entries");
     }
 
-    private async Task WatchRulesAsync(CancellationToken ct)
+    private Task WatchRulesAsync(CancellationToken ct) => WatchAsync(_api.WatchRulesAsync, list =>
+    {
+        var rules = list.Rules.ToList();
+        _ui.Post(() => ApplyRules(rules));
+    }, null, ct);
+
+    /// <summary>Follows a server stream until <paramref name="ct"/> ends; after a failure or an end it watches again (1, 2, 4 ... 15 s).</summary>
+    private static async Task WatchAsync<T>(Func<CancellationToken, IAsyncEnumerable<T>> watch, Action<T> received, Action? ended, CancellationToken ct)
     {
         var delay = TimeSpan.FromSeconds(1);
         while (!ct.IsCancellationRequested)
         {
             try
             {
-                await foreach (var list in _api.WatchRulesAsync(ct).ConfigureAwait(false))
+                await foreach (var item in watch(ct).ConfigureAwait(false))
                 {
-                    var rules = list.Rules.ToList();
-                    _ui.Post(() => ApplyRules(rules));
+                    received(item);
                     delay = TimeSpan.FromSeconds(1);
                 }
             }
@@ -728,6 +808,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
             {
             }
 
+            ended?.Invoke();
             try
             {
                 await Task.Delay(delay, ct).ConfigureAwait(false);

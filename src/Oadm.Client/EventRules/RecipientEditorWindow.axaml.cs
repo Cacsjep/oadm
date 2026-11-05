@@ -16,6 +16,16 @@ public partial class RecipientEditorWindow : Window
         ArgumentNullException.ThrowIfNull(viewModel);
         DataContext = viewModel;
         viewModel.CloseRequested += (_, ok) => Close(ok);
-        Opened += (_, _) => Dispatcher.UIThread.Post(() => NameBox.Focus());
+        var open = new CancellationTokenSource();
+        Opened += (_, _) =>
+        {
+            Dispatcher.UIThread.Post(() => NameBox.Focus());
+            _ = viewModel.LoadCertificatesAsync(open.Token);
+        };
+        Closed += (_, _) =>
+        {
+            open.Cancel();
+            open.Dispose();
+        };
     }
 }

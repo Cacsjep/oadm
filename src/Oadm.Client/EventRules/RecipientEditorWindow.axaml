@@ -27,10 +27,11 @@
         </StackPanel>
       </Border>
     </ScrollViewer>
+    <ui:LoadingOverlay Grid.Row="1" Text="Reading certificates" IsVisible="{Binding ShowCertificatesLoading}" />
     <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
       <ui:StatusChip Text="{Binding TestResult}" IsOk="{Binding TestOk}" IsError="{Binding TestFailed}" IsAccent="{Binding IsTesting}"
                      MaxLines="2" MaxWidth="340" ToolTip.Tip="{Binding TestResult}" IsVisible="{Binding HasTestResult}" VerticalAlignment="Center" />
-      <Button Classes="secondary" Command="{Binding TestCommand}" ToolTip.Tip="Sends it once now, with sample event values">
+      <Button Classes="secondary" Command="{Binding TestCommand}" ToolTip.Tip="{Binding TestTip}">
         <ui:IconLabel Icon="{StaticResource Icon.send}" Text="Test" />
       </Button>
       <Button Classes="primary" IsDefault="True" Content="Save" Command="{Binding SaveCommand}"
