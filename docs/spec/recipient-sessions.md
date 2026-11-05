@@ -92,7 +92,7 @@ as unused. The run may take the pulse plus 45 s: connect, queue and off write.
 
 **A write without an answer never fires later.** A write that gets no answer in 5 s (counted from its turn, not from the queue), or that is
 cancelled after sending, resets the connection (linger 0) and drops the session: a graceful close would still deliver what the kernel
-holds. TCP keep alive shows an idle connection that was cut after about a minute. A reply counts only with the session's unit id and exactly
+holds. A closed session resets too (a changed or deleted recipient, a stop), since every write waits for its reply. TCP keep alive shows an idle connection that was cut after about a minute. A reply counts only with the session's unit id and exactly
 the echo of the request.
 
 **Placeholders in a Publish MQTT message:** the topic is filled per placeholder, and a value with `/`, `+`, `#` or NUL, a leading `$` or no text
