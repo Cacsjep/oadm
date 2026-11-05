@@ -289,6 +289,9 @@ public interface IOadmApi
     /// <summary>Admin: removes an add-on (off now, its files go at the next server start). Returns the whole list.</summary>
     Task<AddOnList> RemoveAddOnAsync(string id, CancellationToken ct) => throw NoAddOns();
 
+    /// <summary>Admin: restarts the server so a waiting optional plugin update starts.</summary>
+    Task RestartForAddOnsAsync(CancellationToken ct) => throw NoAddOns();
+
     /// <summary>The client part of an installed add-on, every file with its SHA-256.</summary>
     Task<AddOnClientPart> GetAddOnClientPartAsync(string id, CancellationToken ct) => throw NoAddOns();
 

@@ -40,6 +40,9 @@ service PluginService {
   // Admin: turns the add-on off at once; its folder goes at the next server start. NOT_FOUND unknown add-on,
   // FAILED_PRECONDITION not installed or a self update running. Reply: the whole list.
   rpc RemoveAddOn (AddOnIdRequest) returns (AddOnList);
+  // Admin: restarts the server so a waiting add-on update starts (update_waits). FAILED_PRECONDITION nothing waits or a task
+  // runs. The server goes away a moment after the reply.
+  rpc RestartForAddOns (RestartForAddOnsRequest) returns (AddOnList);
   // Any logged-in user: the client part of an installed add-on, every file with its SHA-256 (the client checks each).
   // NOT_FOUND unknown or not installed add-on, FAILED_PRECONDITION while the same session waits for one already.
   rpc GetAddOnClientPart (AddOnIdRequest) returns (AddOnClientPart);
@@ -136,8 +139,10 @@ message AddOnInfo {
   string client_digest = 10;
   string download_url = 11;
   bool update_available = 12;  // an older OADM version's add-on keeps running; Install takes the ZIP of this version
+  bool update_waits = 13;      // the ZIP of this version is in place and starts at the next restart of the server
 }
 message AddOnList { repeated AddOnInfo add_ons = 1; }
+message RestartForAddOnsRequest {}
 message AddOnIdRequest { string id = 1; }
 enum AddOnStep {
   ADD_ON_STEP_UPLOAD = 0;

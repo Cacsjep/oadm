@@ -204,8 +204,12 @@ computer. A client loads the client part its server hands it: the user must trus
     (`GitHubReleaseFeed.DownloadPrefix`), whatever a server sends.
   - **Install** (not installed, not loaded, Update available, removed): asks for a ZIP on this computer and sends it, with its
     progress and **Cancel** during the upload in the row. A removed add-on comes back without a file. An older add-on that runs
-    is never swapped (rule 5): the new one waits in `addons/.update-<id>`, the row says "Installed. The new version starts at
-    the next restart of the server.", and the next start puts it in place when it names this exact version.
+    is never swapped (rule 5): the new one waits in `addons/.update-<id>`, the row shows **Restart needed**, "The new version
+    starts at the next restart of the server." and **Restart server**, and the next start puts it in place when it names this
+    exact version.
+  - **Restart server** (a waiting update, Administrators; also the dialog right after such an Install, "Restart the server?" with
+    **Restart server** and **Later**): `RestartForAddOns`, `ServerRestart` as for a restore. Refused without a waiting update and
+    while a task runs (the row says so), audited "Restarted the server for optional plugin <names>". The client reconnects by itself.
   - **Remove** (installed, not loaded; red, with the confirmation "Remove <name>? It turns off now. Its settings are kept.").
 
   Below the rows, while a row has the link: "Click Download ZIP, then Install and choose the file. Clients get the plugin

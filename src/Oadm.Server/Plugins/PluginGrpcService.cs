@@ -23,7 +23,7 @@ namespace Oadm.Server.Plugins;
 /// built for the call context, never the methods a plugin keeps for users with all devices, and receives only the events
 /// whose audience covers the user. The add-on methods (docs/spec/add-ons.md) are in src/Oadm.Server/AddOns.
 /// </summary>
-public sealed partial class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation, RoleStore roles, PluginLicenses licenses, DeviceViewFactory views, AddOns.IAddOnInstaller addOns) : Proto.PluginService.PluginServiceBase
+public sealed partial class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation, RoleStore roles, PluginLicenses licenses, DeviceViewFactory views, AddOns.IAddOnInstaller addOns, Backup.IServerRestart restart, Core.Tasks.TaskEngine tasks) : Proto.PluginService.PluginServiceBase
 {
     /// <summary>The add-on installer (the add-on methods: src/Oadm.Server/AddOns/PluginGrpcService.AddOns.cs).</summary>
     private readonly AddOns.IAddOnInstaller _addOns = addOns;

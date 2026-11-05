@@ -3,7 +3,8 @@ using Oadm.Server.Hosting;
 namespace Oadm.Server.Backup;
 
 /// <summary>
-/// Restarts the server after a staged restore, so the next start applies it before the database is opened. As the installed
+/// Restarts the server: after a staged restore, so the next start applies it before the database is opened, and for a waiting
+/// optional plugin update. As the installed
 /// service the process ends with exit code <see cref="ExitCode"/> a moment after the reply went out: the Windows service
 /// manager (restart on failure), systemd (<c>Restart=on-failure</c>) and launchd (<c>KeepAlive</c>, <c>SuccessfulExit</c>
 /// false) start it again. On a console the host stops and <c>Program</c> builds a new one in the same process
@@ -45,6 +46,6 @@ public sealed partial class ServerRestart(IHostApplicationLifetime lifetime, Ser
         });
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The server restarts to apply a restore: {How}")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The server restarts: {How}")]
     private partial void LogRestart(string how);
 }

@@ -46,6 +46,7 @@ public static class AuditActions
     public const string PluginLicenseRemoved = "Removed plugin license";
     public const string AddOnInstalled = "Installed optional plugin";
     public const string AddOnRemoved = "Removed optional plugin";
+    public const string AddOnRestart = "Restarted the server for optional plugin";
     public const string AddOnInstallFailed = "Could not install optional plugin";
     public const string ProLicenseImported = "Imported license";
     public const string ProLicenseRemoved = "Removed license";

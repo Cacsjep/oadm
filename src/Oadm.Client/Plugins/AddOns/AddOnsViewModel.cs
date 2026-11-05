@@ -100,10 +100,17 @@ public sealed partial class AddOnRowViewModel : ObservableObject
 
     public bool IsInstalled => State == AddOnState.AddOnInstalled;
 
-    /// <summary>The green chip; an older version shows Update available instead.</summary>
-    public bool ShowInstalledChip => IsInstalled && !UpdateAvailable;
+    /// <summary>The new version waits for the next restart of the server: the orange chip and, for Administrators, Restart server.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowInstalledChip), nameof(ShowRestart))]
+    public partial bool UpdateWaits { get; private set; }
 
-    /// <summary>"Up to date"; "Installed" while the server's note says a new version waits for its restart.</summary>
+    /// <summary>The green chip; an older version shows Update available or Restart needed instead.</summary>
+    public bool ShowInstalledChip => IsInstalled && !UpdateAvailable && !UpdateWaits;
+
+    public bool ShowRestart => _owner.IsAdmin && UpdateWaits && !IsInstalling;
+
+    /// <summary>"Up to date"; "Installed" with a note of the server, such as no check in this build.</summary>
     public string InstalledText => HasMessage ? OptionalPluginTexts.Installed : OptionalPluginTexts.UpToDate;
 
     public bool IsRemoved => State == AddOnState.AddOnRemoved;
@@ -152,6 +159,7 @@ public sealed partial class AddOnRowViewModel : ObservableObject
         Message = info.Message;
         ServerCanInstall = info.CanInstall;
         UpdateAvailable = info.UpdateAvailable;
+        UpdateWaits = info.UpdateWaits;
 
         // A server opens only OADM's own release (the client trusts no other link it is handed).
         DownloadUrl = info.DownloadUrl.StartsWith(GitHubReleaseFeed.DownloadPrefix, StringComparison.Ordinal) ? info.DownloadUrl : string.Empty;
@@ -179,6 +187,7 @@ public sealed partial class AddOnRowViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowDownload));
         OnPropertyChanged(nameof(ShowRemove));
         OnPropertyChanged(nameof(ShowNotInstalled));
+        OnPropertyChanged(nameof(ShowRestart));
     }
 }
 
@@ -400,6 +409,43 @@ public sealed partial class AddOnsViewModel : ObservableObject
         if (error is null)
         {
             await _store.LoadAsync(CancellationToken.None).ConfigureAwait(true);
+            if (row.UpdateWaits)
+            {
+                await RestartAsync(row).ConfigureAwait(true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Restart server: asks first, then the server restarts; the client reconnects by itself and the row shows the new version.
+    /// A refusal (a task runs) stands in the row.
+    /// </summary>
+    [RelayCommand]
+    private async Task RestartAsync(AddOnRowViewModel? row)
+    {
+        if (row is null || !IsAdmin || _dialogs is null)
+        {
+            return;
+        }
+
+        if (!await _dialogs.ConfirmAsync(OptionalPluginTexts.RestartTitle, OptionalPluginTexts.RestartQuestion(row.Name), OptionalPluginTexts.RestartServer, OptionalPluginTexts.Later).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        row.Error = null;
+        row.IsBusy = true;
+        try
+        {
+            await _api.RestartForAddOnsAsync(CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            row.Error = Message(ex);
+        }
+        finally
+        {
+            row.IsBusy = false;
         }
     }
 

@@ -951,6 +951,7 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                     {
                         CanInstall = canInstall && !slot.UpdateWaits,
                         UpdateAvailable = !slot.UpdateWaits,
+                        UpdateWaits = slot.UpdateWaits,
                         Message = slot.UpdateWaits ? AddOnTexts.UpdateWaits : hash ? null : AddOnTexts.NoHash,
                         DownloadUrl = slot.UpdateWaits ? null : url,
                     }

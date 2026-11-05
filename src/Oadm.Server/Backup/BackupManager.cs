@@ -56,7 +56,7 @@ public sealed record BackupInspection(bool WrongPassword, string? Problem, Backu
 /// <summary>A restore request that cannot be done; the message is for the user. Nothing was changed.</summary>
 public sealed class BackupRefusedException(string message) : Exception(message);
 
-/// <summary>Restarts the server after a staged restore (tests replace it).</summary>
+/// <summary>Restarts the server (tests replace it).</summary>
 public interface IServerRestart
 {
     void Request();

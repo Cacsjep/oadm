@@ -120,7 +120,7 @@ public sealed class AddOnInstallerTests
 
         var status = await rig.InstallAsync();
 
-        Assert.Equal((AddOnState.Installed, false, AddOnTexts.UpdateWaits), (status.State, status.UpdateAvailable, status.Message));
+        Assert.Equal((AddOnState.Installed, false, true, AddOnTexts.UpdateWaits), (status.State, status.UpdateAvailable, status.UpdateWaits, status.Message));
         Assert.Equal("4.10.0", AddOnFolders.ReadVersion(rig.Folder)); // never swapped while it runs
         await Assert.ThrowsAsync<InvalidOperationException>(() => rig.InstallAsync());
 

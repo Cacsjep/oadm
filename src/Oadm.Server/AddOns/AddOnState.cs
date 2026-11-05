@@ -43,6 +43,9 @@ public sealed record AddOnStatus(AddOnEntry Entry, AddOnState State, string Vers
     /// <summary>The add-on of an older OADM version runs; Install takes the ZIP of this version, which starts at the next restart.</summary>
     public bool UpdateAvailable { get; init; }
 
+    /// <summary>The ZIP of this version waits for the next restart of the server.</summary>
+    public bool UpdateWaits { get; init; }
+
     /// <summary>The version an install just put in place when <see cref="Version"/> still is the running one (for the audit).</summary>
     public string? InstalledVersion { get; init; }
 }
@@ -106,7 +109,10 @@ public static class AddOnTexts
     public const string InstallAgain = "Not loaded. Install it again for this OADM version.";
 
     /// <summary>The ZIP of this version is in place while the older add-on still runs (a running plugin is never swapped).</summary>
-    public const string UpdateWaits = "Installed. The new version starts at the next restart of the server.";
+    public const string UpdateWaits = "The new version starts at the next restart of the server.";
+
+    /// <summary>Restart server with no update waiting (another Administrator restarted it meanwhile).</summary>
+    public const string NothingWaits = "No optional plugin waits for a restart.";
 
     /// <summary>Install or remove while a self update runs.</summary>
     public const string Updating = "The server is updating.";

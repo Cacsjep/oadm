@@ -198,7 +198,7 @@ used again.
     (Admin; reply: the whole list). See `docs/spec/plugins.md` "Plugins on and off" and "Plugin licenses".
   - Add-ons (`docs/spec/add-ons.md`): `ListAddOns(ListAddOnsRequest)` (any user; field 1 reserved, `check_reach` before
     4.10.0; `AddOnList` of `AddOnInfo` {id, display_name, description, state, percent, message, version, can_install,
-    client_digest = 10, download_url = 11, update_available = 12; field 4 reserved}, every add-on of the server's version from `AddOnCatalog`;
+    client_digest = 10, download_url = 11, update_available = 12, update_waits = 13; field 4 reserved}, every add-on of the server's version from `AddOnCatalog`;
     `client_digest` while installed; `download_url` the ZIP of this version and system, empty in a build without the
     hash), `UploadAddOn(stream AddOnUploadChunk)` (Admin; bidirectional; first message `AddOnUploadHeader` {id, file_name, size},
     then data chunks of 256 KB; answers a stream of `AddOnProgress` {step Upload, Check or Install, percent, done, error},
@@ -209,6 +209,8 @@ used again.
     has gone after its upload (failed writes are dropped); a refused or failed install is audited "Could not install optional
     plugin" with the reason; done only after the server followed the package), `InstallAddOn(id)` (Admin; takes back an
     add-on that was removed and is still loaded, no file; the same stream; FAILED_PRECONDITION in any other state),
+    `RestartForAddOns` (Admin; FAILED_PRECONDITION no update waits or a task runs; audited; reply: the whole list, the server goes
+    away a moment later),
     `RemoveAddOn(id)`
     (Admin; NOT_FOUND, FAILED_PRECONDITION not installed or a self update running; audit "Removed optional plugin <name>
     V<version>"; reply: the whole list), `GetAddOnClientPart(id)` (any user; `AddOnClientPart` {id, version, files with

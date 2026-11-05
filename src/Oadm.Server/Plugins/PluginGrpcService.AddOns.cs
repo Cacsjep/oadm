@@ -5,6 +5,7 @@ using Google.Protobuf;
 using Grpc.Core;
 
 using Oadm.Contracts;
+using Oadm.Contracts.Updates;
 using Oadm.Core.Auth;
 using Oadm.Server.AddOns;
 using Oadm.Server.Common;
@@ -164,6 +165,26 @@ public sealed partial class PluginGrpcService
         return await ToProtoAsync(list, CancellationToken.None).ConfigureAwait(false);
     }
 
+    /// <summary>Restart server of the Plugins page: never without a waiting update, never during a task (like a self update).</summary>
+    public override async Task<Proto.AddOnList> RestartForAddOns(Proto.RestartForAddOnsRequest request, ServerCallContext context)
+    {
+        var list = await AddOnCallAsync(() => _addOns.ListAsync(context.CancellationToken)).ConfigureAwait(false);
+        var waiting = list.Where(s => s.UpdateWaits).ToList();
+        if (waiting.Count == 0)
+        {
+            throw GrpcGuard.FailedPrecondition(AddOnTexts.NothingWaits);
+        }
+
+        if (tasks.ActiveCount is var active and > 0)
+        {
+            throw GrpcGuard.FailedPrecondition(UpdateTexts.TasksRunning(active) + ".");
+        }
+
+        await audit.WriteAsync(AuditActions.AddOnRestart, string.Join(", ", waiting.Select(s => s.Entry.DisplayName)), null, CancellationToken.None).ConfigureAwait(false);
+        restart.Request();
+        return await ToProtoAsync(list, CancellationToken.None).ConfigureAwait(false);
+    }
+
     public override async Task<Proto.AddOnClientPart> GetAddOnClientPart(Proto.AddOnIdRequest request, ServerCallContext context)
     {
         var entry = AddOnOf(request.Id);
@@ -233,6 +254,7 @@ public sealed partial class PluginGrpcService
                 CanInstall = s.CanInstall,
                 DownloadUrl = s.DownloadUrl ?? string.Empty,
                 UpdateAvailable = s.UpdateAvailable,
+                UpdateWaits = s.UpdateWaits,
             };
             if (s.State == AddOnState.Installed)
             {

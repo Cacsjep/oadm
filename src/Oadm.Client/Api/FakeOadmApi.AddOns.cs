@@ -46,6 +46,29 @@ public sealed partial class FakeOadmApi
     /// <summary>Tests: the add-on of an older OADM version runs and an update is offered.</summary>
     public bool AddOnUpdateAvailable { get; set; }
 
+    /// <summary>Tests: the new version waits for the next restart of the server.</summary>
+    public bool AddOnUpdateWaits { get; set; }
+
+    /// <summary>Tests: how often the server was asked to restart.</summary>
+    public int AddOnRestarts { get; private set; }
+
+    /// <summary>Tests: what Restart server answers.</summary>
+    public string? AddOnRestartError { get; set; }
+
+    public Task RestartForAddOnsAsync(CancellationToken ct)
+    {
+        lock (_gate)
+        {
+            if (AddOnRestartError is { } error)
+            {
+                throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.FailedPrecondition, error));
+            }
+
+            AddOnRestarts++;
+            return Task.CompletedTask;
+        }
+    }
+
     /// <summary>Tests: how often the client part was asked for.</summary>
     public int AddOnClientPartCalls { get; private set; }
 
@@ -206,6 +229,7 @@ public sealed partial class FakeOadmApi
             State = _textRecognitionState,
             Version = AddOnVersion,
             UpdateAvailable = AddOnUpdateAvailable,
+            UpdateWaits = AddOnUpdateWaits,
             CanInstall = _textRecognitionState == AddOnState.AddOnRemoved || (!AddOnsWithoutHash && _textRecognitionState != AddOnState.AddOnInstalling),
             Message = _textRecognitionState switch
             {

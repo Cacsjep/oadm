@@ -189,6 +189,7 @@ public static class AccessPolicy
         ["/oadm.v1.PluginService/InstallAddOn"] = AccessRule.Admin,
         ["/oadm.v1.PluginService/UploadAddOn"] = AccessRule.Admin,
         ["/oadm.v1.PluginService/RemoveAddOn"] = AccessRule.Admin,
+        ["/oadm.v1.PluginService/RestartForAddOns"] = AccessRule.Admin,
         ["/oadm.v1.PluginService/GetAddOnClientPart"] = AccessRule.SignedIn,
 
         // Server settings and the credential list are Administrator only; every role reads the settings (About, read-only page).

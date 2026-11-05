@@ -30,6 +30,18 @@ public static class OptionalPluginTexts
     /// <summary>The chip of an optional plugin of an older OADM version that keeps running.</summary>
     public const string UpdateAvailable = "Update available";
 
+    /// <summary>The chip while a new version waits for the next restart of the server.</summary>
+    public const string RestartNeeded = "Restart needed";
+
+    /// <summary>The row's button and the confirm button of the dialog after Install.</summary>
+    public const string RestartServer = "Restart server";
+
+    public const string RestartTitle = "Restart the server?";
+
+    /// <summary>The dialog after an install that waits for the restart.</summary>
+    public static string RestartQuestion(string name) =>
+        $"{name} is installed. The new version starts when the server restarts. Until it is back, rules do not run and every client reconnects.";
+
     /// <summary>The dialog after a connect, for Administrators.</summary>
     public const string NoticeTitle = "Update optional plugins";
 

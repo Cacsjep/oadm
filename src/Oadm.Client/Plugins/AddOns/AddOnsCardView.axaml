@@ -41,6 +41,11 @@
                 <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding !IsInstalling}">
                   <ui:StatusChip Text="{Binding InstalledText}" IsOk="True" VerticalAlignment="Center" IsVisible="{Binding ShowInstalledChip}" />
                   <ui:StatusChip Text="{x:Static addons:OptionalPluginTexts.UpdateAvailable}" IsWarning="True" VerticalAlignment="Center" IsVisible="{Binding UpdateAvailable}" />
+                  <ui:StatusChip Text="{x:Static addons:OptionalPluginTexts.RestartNeeded}" IsWarning="True" VerticalAlignment="Center" IsVisible="{Binding UpdateWaits}" />
+                  <ui:ToolbarButton Text="{x:Static addons:OptionalPluginTexts.RestartServer}" IconKey="refresh" IsVisible="{Binding ShowRestart}"
+                                    IsEnabled="{Binding !IsBusy}"
+                                    Command="{Binding $parent[UserControl].((addons:AddOnsViewModel)DataContext).RestartCommand}"
+                                    CommandParameter="{Binding}" />
                   <ui:StatusChip Text="{x:Static addons:OptionalPluginTexts.RemovedState}" IsWarning="True" VerticalAlignment="Center" IsVisible="{Binding IsRemoved}" />
                   <ui:StatusChip Text="{x:Static addons:OptionalPluginTexts.NotInstalled}" VerticalAlignment="Center" IsVisible="{Binding ShowNotInstalled}" />
                   <Button Classes="link" Content="{x:Static addons:OptionalPluginTexts.Download}" VerticalAlignment="Center" IsVisible="{Binding ShowDownload}"

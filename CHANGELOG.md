@@ -11,6 +11,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 - Event rules: the action Log entry writes a message to the server log, good for testing a rule.
 - Optional plugins keep running after an OADM update; the Plugins page says Up to date or Update available, and Administrators get a dialog when one needs an update.
+- Optional plugins: after installing an update, Restart server starts the new version from the Plugins page.
 - Text recognition: a lightning icon on On action readers reads now and fires the event, to test a rule.
 - Text recognition: the event No text read tells a rule when text left an area or Read text found nothing.
 
@@ -21,6 +22,9 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ### Fixed
 
+- Event rules: Send email works in installed versions; its mail library was missing, so tests failed and rules with it could not be saved.
+- Event rules: a failed Send test always says why, and the reason is in the server log and the audit log.
+- Text recognition: the Linux ZIP holds the picture library it needs.
 - Tooltips on status icons open on the whole icon, and the tooltip of the Clock column anywhere in its cell.
 - Applications: a package that states its AXIS OS range now installs on every version in that range, also older ones such as 11.11.
 
