@@ -217,7 +217,13 @@ jobs:
             unpacked="$RUNNER_TEMP/addon-$id"
             unzip -q "artifacts/packages/oadm-addon-$id-${{ steps.version.outputs.version }}-${{ matrix.rid }}.zip" -d "$unpacked"
             "artifacts/publish/server/${{ matrix.rid }}/Oadm.Server" --self-check --add-on "$unpacked"
-            "artifacts/publish/client/${{ matrix.rid }}/Oadm.Client" --self-check --add-on "$unpacked"
+            # A client gets only this from the server (docs/spec/add-ons.md rule 6), never the whole ZIP.
+            part="$RUNNER_TEMP/addon-client-$id"
+            mkdir -p "$part"
+            cp "$unpacked/plugin.json" "$part/"
+            cp "$unpacked"/*.Client.* "$unpacked"/*.Server.* "$part/" 2>/dev/null || true
+            if [ -d "$unpacked/client" ]; then cp -R "$unpacked/client" "$part/"; fi
+            "artifacts/publish/client/${{ matrix.rid }}/Oadm.Client" --self-check --add-on "$part"
           done
 
       - name: License texts next to the published exes

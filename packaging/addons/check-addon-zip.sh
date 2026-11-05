@@ -65,6 +65,11 @@ if [ "$os" = win ] && grep -Eqi '(^|/)DirectML\.dll$' <<< "$names"; then
   grep -q 'MICROSOFT SOFTWARE LICENSE TERMS' <<< "$notices" && grep -q 'DIRECTML' <<< "$notices" \
     || fail "DirectML.dll without its license in THIRD-PARTY-NOTICES.txt (OadmNoticePackage Microsoft.AI.DirectML)"
 fi
+case "$rid" in
+  win-*) ;;
+  *) stray="$(printf '%s\n' "$names" | grep -Ei '(^|/)onnxruntime[^/]*\.dll$' || true)"
+     [ -z "$stray" ] || fail "Windows libraries on another platform: $(echo $stray)" ;;
+esac
 leftover="$(printf '%s\n' "$names" | grep -Ei '(^|/)(DirectML\.Debug\.dll|DirectML\.Debug\.pdb|DirectML\.pdb|onnxruntime\.lib)$' || true)"
 [ -z "$leftover" ] || fail "build leftovers: $(echo $leftover)"
 keep=(-e "$rid" -e "$os")

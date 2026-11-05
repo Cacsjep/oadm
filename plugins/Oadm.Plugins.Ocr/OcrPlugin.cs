@@ -30,7 +30,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
     private readonly ConcurrentDictionary<Guid, (DateTimeOffset At, CameraOptions Options)> _cameraOptions = new();
     private volatile bool _useGpu = true;
 
-    /// <summary>Starts ONNX Runtime on a model of the package, on the processor: what a reader needs before its first picture.</summary>
+    /// <summary>Starts ONNX Runtime on a model of the package, on the processor, and the picture library: what a reader needs before its first picture.</summary>
     public string? SelfCheck(string pluginDirectory)
     {
         var model = Path.Combine(Recognition.ModelFiles.Folder(pluginDirectory), Recognition.ModelFiles.DetectionMobile);
@@ -40,6 +40,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
         }
 
         using var session = Recognition.SessionFactory.Create(model, Recognition.ExecutionTarget.Cpu, threads: 1);
+        using var picture = new SkiaSharp.SKBitmap(1, 1);
         return null;
     }
 

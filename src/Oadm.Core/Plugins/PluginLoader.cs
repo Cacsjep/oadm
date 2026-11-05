@@ -183,9 +183,12 @@ public sealed partial class PluginLoader
             }
 
             var package = new LoadedPluginPackage(manifest, directory, assemblies, context) { Registered = registered };
-            lock (_sync)
+            if (registered > 0)
             {
-                _packages.Add(package);
+                lock (_sync)
+                {
+                    _packages.Add(package); // one that registered nothing keeps no place: the old folder restored after it can load
+                }
             }
 
             LogPackageLoaded(manifest.Id, manifest.Version, directory, registered);

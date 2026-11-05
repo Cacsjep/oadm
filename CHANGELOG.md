@@ -22,6 +22,11 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - The client's first start after an install or update takes under a second instead of about 5.
 - The client removes the folders older versions left in the temp folder.
 
+### Fixed
+
+- Text recognition: runs on Intel Macs again, the 4.11.0 package had no recognition library for them.
+- Plugins page: Restart server waits while an update or another plugin's install runs.
+
 ## [4.11.0] - 2026-11-05
 
 ### Added

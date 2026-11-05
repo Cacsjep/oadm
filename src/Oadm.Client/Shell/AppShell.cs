@@ -91,8 +91,15 @@ public sealed partial class AppShell(
 
     private static long SinceProcessStart()
     {
-        using var process = System.Diagnostics.Process.GetCurrentProcess();
-        return (long)(DateTime.Now - process.StartTime).TotalMilliseconds;
+        try
+        {
+            using var process = System.Diagnostics.Process.GetCurrentProcess();
+            return (long)(DateTime.Now - process.StartTime).TotalMilliseconds;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException or System.ComponentModel.Win32Exception)
+        {
+            return -1; // only a log line: the start goes on
+        }
     }
 
     /// <summary>

@@ -31,9 +31,21 @@ internal static class ClientSelfCheck
             using var buffer = new HarfBuzzSharp.Buffer();
         });
 
+        // Every library beside the exe really started: a missing dependency of one only shows here.
+        foreach (var library in Directory.GetFiles(appFolder ?? AppContext.BaseDirectory).Where(Contracts.Updates.HelperCopy.IsNativeLibrary).Order(StringComparer.Ordinal))
+        {
+            if (!System.Runtime.InteropServices.NativeLibrary.TryLoad(library, out _))
+            {
+                problems.Add(Path.GetFileName(library) + " cannot be loaded.");
+            }
+        }
+
         var checkedParts = 0;
-        var root = Path.Combine(appFolder ?? AppContext.BaseDirectory, "plugins");
-        var bundled = (Directory.Exists(root) ? Directory.GetDirectories(root) : []).Order(StringComparer.Ordinal).Select(f => (Folder: f, AddOn: false));
+        var bundled = ClientPluginLoader.DefaultRoots(null, appFolder)
+            .Where(Directory.Exists)
+            .SelectMany(Directory.GetDirectories)
+            .Order(StringComparer.Ordinal)
+            .Select(f => (Folder: f, AddOn: false));
         foreach (var (folder, addOn) in bundled.Concat((addOns ?? []).Select(f => (Folder: f, AddOn: true))))
         {
             foreach (var dll in Directory.GetFiles(folder, "*.Client.dll").Order(StringComparer.Ordinal))

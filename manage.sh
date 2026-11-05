@@ -689,6 +689,8 @@ package_addons() {
       limit_runtime_folders "$stage" "$rid"
       # Build leftovers of the native packages: never needed at run time.
       find "$stage" -type f \( -name 'DirectML.Debug.dll' -o -name 'DirectML.Debug.pdb' -o -name 'DirectML.pdb' -o -name 'onnxruntime.lib' \) -delete
+      # The ONNX Runtime packages copy their Windows libraries everywhere.
+      case "$rid" in win-*) ;; *) find "$stage" -type f -iname 'onnxruntime*.dll' -delete ;; esac
       # The release it belongs to: the server records a folder put in by hand with this version.
       printf '%s\n' "$(app_version)" > "$stage/oadm-version.txt"
       # What it was built from: a later OADM with the same fingerprint has nothing new for it.

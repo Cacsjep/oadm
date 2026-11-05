@@ -727,6 +727,8 @@ function Invoke-PackageAddOns {
             Limit-RuntimeFolders $stage $rid
             # Build leftovers of the native packages: never needed at run time.
             Get-ChildItem -LiteralPath $stage -Recurse -File | Where-Object { $_.Name -in 'DirectML.Debug.dll', 'DirectML.Debug.pdb', 'DirectML.pdb', 'onnxruntime.lib' } | Remove-Item -Force
+            # The ONNX Runtime packages copy their Windows libraries everywhere.
+            if ($rid -notlike 'win-*') { Get-ChildItem -LiteralPath $stage -Recurse -File -Filter 'onnxruntime*.dll' | Remove-Item -Force }
             # The release it belongs to: the server records a folder put in by hand with this version.
             [IO.File]::WriteAllText((Join-Path $stage 'oadm-version.txt'), "$version`n")
             # What it was built from: a later OADM with the same fingerprint has nothing new for it.
