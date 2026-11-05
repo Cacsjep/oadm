@@ -546,7 +546,8 @@ public sealed class RecipientTests : IDisposable
 
     private static async Task PumpUntilAsync(Func<bool> condition)
     {
-        for (var i = 0; i < 3000; i++)
+        var until = DateTime.UtcNow + Eventually.DefaultTimeout;
+        for (var i = 0; DateTime.UtcNow < until; i++)
         {
             Dispatcher.UIThread.RunJobs();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();

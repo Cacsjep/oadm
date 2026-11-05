@@ -7,6 +7,8 @@ using Avalonia.VisualTree;
 
 using Grpc.Core;
 
+using Microsoft.Extensions.Time.Testing;
+
 using NSubstitute;
 
 using Oadm.Client.Api;
@@ -488,13 +490,101 @@ public sealed class RecipientSessionTests : IDisposable
     public Task A_stream_that_ends_clears_the_chips_and_the_page_watches_again() => _ui.RunAsync(async () =>
     {
         var (api, store) = await ApiAsync();
-        using var page = await PageAsync(api, store, _ui);
+        var time = new FakeTimeProvider();
+        var second = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var watching = Substitute.For<IOadmApi>();
+        watching.GetEventCatalogAsync(default).ReturnsForAnyArgs(_ => api.GetEventCatalogAsync(CancellationToken.None));
+        watching.ListRecipientsAsync(default).ReturnsForAnyArgs(_ => api.ListRecipientsAsync(CancellationToken.None));
+        watching.WatchRulesAsync(default).ReturnsForAnyArgs(AsyncEnumerable.Empty<RuleList>());
+        watching.WatchEventLogAsync(default).ReturnsForAnyArgs(AsyncEnumerable.Empty<EventLogPage>());
+        watching.ListEventLogAsync(default, default, default).ReturnsForAnyArgs(new EventLogPage());
+        watching.WatchRecipientStatusAsync(default).ReturnsForAnyArgs(call =>
+            Interlocked.Increment(ref calls) == 1 ? api.WatchRecipientStatusAsync(call.Arg<CancellationToken>()) : Held(call.Arg<CancellationToken>()));
+        using var page = new EventRulesViewModel(watching, Substitute.For<IDialogService>(), store, _ui, time: time);
+        page.Activate();
+        await Eventually.TrueAsync(() => page.Recipients.Count(r => r.HasStatus) == 3, "the statuses arrived");
 
         api.EndRecipientStatusStreams();
         await Eventually.TrueAsync(() => !page.Recipients.Any(r => r.HasStatus), "the chips went with the stream");
 
-        await Eventually.TrueAsync(() => page.Recipients.Count(r => r.HasStatus) == 3, "the page watched again");
+        await Eventually.TrueAsync(() => // the wait may start after the chips went: the clock moves until it ended
+        {
+            time.Advance(TimeSpan.FromSeconds(1));
+            return Volatile.Read(ref calls) >= 2;
+        }, "the page watched again");
+        Assert.DoesNotContain(page.Recipients, r => r.HasStatus); // the state stays until the new stream answers
+
+        second.SetResult();
+        await Eventually.TrueAsync(() => page.Recipients.Count(r => r.HasStatus) == 3, "the statuses of the second watch");
+
+        async IAsyncEnumerable<RecipientStatusList> Held([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await second.Task.WaitAsync(ct);
+            await foreach (var list in api.WatchRecipientStatusAsync(ct))
+            {
+                yield return list;
+            }
+        }
     });
+
+    [Fact]
+    public Task The_page_waits_on_its_clock_and_longer_each_time() => _ui.RunAsync(async () =>
+    {
+        var (api, store) = await ApiAsync();
+        var time = new FakeTimeProvider();
+        var waits = new WaitLog(time);
+        var calls = 0;
+        var watching = Substitute.For<IOadmApi>();
+        watching.GetEventCatalogAsync(default).ReturnsForAnyArgs(_ => api.GetEventCatalogAsync(CancellationToken.None));
+        watching.ListRecipientsAsync(default).ReturnsForAnyArgs(_ => api.ListRecipientsAsync(CancellationToken.None));
+        watching.WatchRulesAsync(default).ReturnsForAnyArgs(call => Forever<RuleList>(call.Arg<CancellationToken>()));
+        watching.WatchEventLogAsync(default).ReturnsForAnyArgs(call => Forever<EventLogPage>(call.Arg<CancellationToken>()));
+        watching.ListEventLogAsync(default, default, default).ReturnsForAnyArgs(new EventLogPage());
+        watching.WatchRecipientStatusAsync(default).ReturnsForAnyArgs(_ =>
+        {
+            Interlocked.Increment(ref calls);
+            return AsyncEnumerable.Empty<RecipientStatusList>();
+        });
+        using var page = new EventRulesViewModel(watching, Substitute.For<IDialogService>(), store, _ui, time: waits);
+
+        page.Activate();
+
+        await Eventually.TrueAsync(() => waits.Count == 1, "the first wait");
+        Assert.Equal(1, Volatile.Read(ref calls)); // the clock stands: no second watch
+        time.Advance(TimeSpan.FromSeconds(1));
+        await Eventually.TrueAsync(() => waits.Count == 2, "the second wait");
+        Assert.Equal(2, Volatile.Read(ref calls));
+        time.Advance(TimeSpan.FromSeconds(2));
+        await Eventually.TrueAsync(() => waits.Count == 3, "the third wait");
+
+        Assert.Equal([TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(4)], waits.Waits);
+
+        static async IAsyncEnumerable<T> Forever<T>([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            yield break;
+        }
+    });
+
+    /// <summary>Hands the timers to the fake clock and keeps how long each one waits.</summary>
+    private sealed class WaitLog(FakeTimeProvider inner) : TimeProvider
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<TimeSpan> _waits = new();
+
+        public int Count => _waits.Count;
+
+        public IReadOnlyList<TimeSpan> Waits => [.. _waits];
+
+        public override DateTimeOffset GetUtcNow() => inner.GetUtcNow();
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            var timer = inner.CreateTimer(callback, state, dueTime, period);
+            _waits.Enqueue(dueTime);
+            return timer;
+        }
+    }
 
     [Fact]
     public Task A_stream_that_fails_is_watched_again() => _ui.RunAsync(async () =>
@@ -689,7 +779,8 @@ public sealed class RecipientSessionTests : IDisposable
 
     private static async Task PumpUntilAsync(Func<bool> condition)
     {
-        for (var i = 0; i < 3000; i++)
+        var until = DateTime.UtcNow + Eventually.DefaultTimeout;
+        for (var i = 0; DateTime.UtcNow < until; i++)
         {
             Dispatcher.UIThread.RunJobs();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();

@@ -221,6 +221,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
     private readonly DeviceStore _devices;
     private readonly UserSession? _session;
     private readonly IUiDispatcher _ui;
+    private readonly TimeProvider _time;
     private readonly Dictionary<string, RuleRowViewModel> _rulesById = [];
     private readonly List<EventLogRowViewModel> _log = [];
     private readonly Dictionary<string, RecipientStatusEntry> _recipientStatus = new(StringComparer.Ordinal);
@@ -228,13 +229,14 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
     private string? _ruleLinks;
     private CancellationTokenSource? _active;
 
-    public EventRulesViewModel(IOadmApi api, IDialogService dialogs, DeviceStore devices, IUiDispatcher ui, UserSession? session = null)
+    public EventRulesViewModel(IOadmApi api, IDialogService dialogs, DeviceStore devices, IUiDispatcher ui, UserSession? session = null, TimeProvider? time = null)
     {
         _api = api ?? throw new ArgumentNullException(nameof(api));
         _dialogs = dialogs ?? throw new ArgumentNullException(nameof(dialogs));
         _devices = devices ?? throw new ArgumentNullException(nameof(devices));
         _ui = ui ?? throw new ArgumentNullException(nameof(ui));
         _session = session;
+        _time = time ?? TimeProvider.System;
         if (session is not null)
         {
             session.PropertyChanged += OnSessionChanged;
@@ -781,7 +783,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
     }, null, ct);
 
     /// <summary>Follows a server stream until <paramref name="ct"/> ends; after a failure or an end it watches again (1, 2, 4 ... 15 s).</summary>
-    private static async Task WatchAsync<T>(Func<CancellationToken, IAsyncEnumerable<T>> watch, Action<T> received, Action? ended, CancellationToken ct)
+    private async Task WatchAsync<T>(Func<CancellationToken, IAsyncEnumerable<T>> watch, Action<T> received, Action? ended, CancellationToken ct)
     {
         var delay = TimeSpan.FromSeconds(1);
         while (!ct.IsCancellationRequested)
@@ -811,7 +813,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
             ended?.Invoke();
             try
             {
-                await Task.Delay(delay, ct).ConfigureAwait(false);
+                await Task.Delay(delay, _time, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -884,7 +886,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
 
             try
             {
-                await Task.Delay(delay, ct).ConfigureAwait(true);
+                await Task.Delay(delay, _time, ct).ConfigureAwait(true);
             }
             catch (OperationCanceledException)
             {
