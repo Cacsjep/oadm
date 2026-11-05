@@ -36,7 +36,8 @@ and its tests; `dotnet new oadm-action -n MyAction` creates a working copy (in a
 | Member | Purpose |
 |---|---|
 | `NeedsDevice` | True: the rule picks target devices; `ExecuteAsync` runs once per device with `ctx.Vapix` logged in to it |
-| `Fields` | The settings form: `Text`, `Multiline`, `Number`, `Bool`, `Choice`, `DynamicChoice`, `Password`, `Code`, `KeyValues` |
+| `Fields` | The settings form: `Text`, `Multiline`, `Number`, `Bool`, `Choice`, `DynamicChoice`, `Password`, `Code`, `KeyValues`, `Recipient` |
+| `RecipientTypes` | The kinds of recipient the plugin declares (SDK 0.11.0, default none) |
 | `Validate(settings, statefulRule)` | Your own checks beyond required fields, numbers and lengths; errors per field key |
 | `Describe(settings)` | The short text of the rules list ("Virtual input 64") |
 | `SupportsTurnOff`, `RunsOn(edge, settings)` | Whether the action also runs when a rule turns off |
@@ -44,7 +45,7 @@ and its tests; `dotnet new oadm-action -n MyAction` creates a working copy (in a
 | `MaxRunTime(settings)` | More than the 30 s a run gets, e.g. a pulse the device answers only after it ended |
 | `ListChoicesAsync` | The choices of a `DynamicChoice` field, read while the rule is edited |
 
-A field can carry `Required`, `Hint`, `Default`, `Min` / `Max`, `MaxLength`, `VisibleWhenKey` / `VisibleWhenValue` (show
+A field can carry `Required`, `EmptyText` (the error when a required field is empty, for a label such as "To"), `Hint`, `Default`, `Min` / `Max`, `MaxLength`, `VisibleWhenKey` / `VisibleWhenValue` (show
 it only for one choice of another field) and `OffEdge` (a setting of "When the rule turns off"). The same checks run in
 the dialog and on the server.
 
@@ -59,6 +60,11 @@ the dialog and on the server.
   event by its name (`{port}`). `ctx.Text(text,
   PlaceholderEscape.Json)` (or `Xml`, `Url`) escapes each value for a body or a URL.
 - `Password` fields are stored encrypted and never sent back to a client. `ctx.Settings` are the plugin's settings.
+- A recipient (SDK 0.11.0) is a shared target several rules choose. Declare a `RecipientType(id, name, icon, fields, testActionId)`
+  in `RecipientTypes` and add `ActionField.Recipient("recipient", "Recipient", [typeId])` to `Fields`. Before a run the host merges
+  the recipient's fields into the settings under their own keys, so `invocation.Get("host")` works and passwords arrive decrypted;
+  `invocation.RecipientIds` has the id per field. Never fill placeholders in a target. `Validate` also checks a recipient's values
+  and `Describe` sees them without passwords. An action without its recipient does not run: "Choose a recipient.".
 - An action without devices gets **Send test** in the rule dialog, with sample values (Log entry is the one exception).
 
 A core plugin can contribute actions through `IActionSource.ActionPlugins`; they share its state and settings and are

@@ -10,7 +10,7 @@ public sealed class SendEmailActionTests
         ["port"] = port,
         ["security"] = "none",
         ["from"] = "oadm@example.com",
-        ["to"] = "security@example.com, {hostName}@example.com",
+        ["to"] = "security@example.com, gate@example.com",
         ["subject"] = "{rule}: {event} on {device}",
         ["format"] = "text",
         ["body"] = "Hello {serial}, object {objectId} at {time}.",
@@ -26,11 +26,11 @@ public sealed class SendEmailActionTests
 
         var mail = Assert.Single(smtp.Mails);
         Assert.Equal("oadm@example.com", mail.From);
-        Assert.Equal(["security@example.com", "cam-gate@example.com"], mail.To);
+        Assert.Equal(["security@example.com", "gate@example.com"], mail.To);
         Assert.Contains("Subject: Gate rule: Person in the yard on 10.0.0.48 (AXIS P3265-V)", mail.Data, StringComparison.Ordinal);
         Assert.Contains("Hello B8A44F631339, object 42 at 2026-10-11", mail.Data, StringComparison.Ordinal);
         Assert.Null(mail.Auth);
-        Assert.Equal(["Sent to security@example.com, cam-gate@example.com"], context.Lines);
+        Assert.Equal(["Sent to security@example.com, gate@example.com"], context.Lines);
     }
 
     [Fact]

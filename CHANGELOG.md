@@ -5,6 +5,18 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 version and date, and the release workflow copies it into the GitHub release (the client's new version notice shows it).
 Each entry is one short line in plain words (what the user gets, not how); no nested lists, no bold, no code.
 
+## [Unreleased]
+
+### Added
+
+- Event rules: Recipients, shared targets for Send email, Send HTTP request and Send TCP message; change a recipient and all its rules follow.
+- Event rules: a recipient has a Test button that says why a send failed.
+
+### Changed
+
+- Event rules: the mail server, URL or host of an action moves to a recipient; rules from older versions show Choose a recipient until you pick one.
+- Event rules: the target of a recipient is fixed, placeholders work in the message only.
+
 ## [4.11.0] - 2026-11-05
 
 ### Added

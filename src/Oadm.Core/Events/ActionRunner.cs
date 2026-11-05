@@ -43,12 +43,15 @@ public sealed class ActionRunnerOptions
 /// delays another). Within an edge the actions run in the listed order, each on its targets in parallel (at most
 /// <see cref="ActionRunnerOptions.MaxParallel"/> runs at once, all rules together). A failed action is logged and the next
 /// one still runs (no retry). Every run is a line in the event log. Nothing runs before <see cref="PluginsStarted"/>:
-/// edges of the start-up evaluation wait for the core plugins whose actions they use.
+/// edges of the start-up evaluation wait for the core plugins whose actions they use. The fields of a chosen recipient are
+/// merged into the settings of a run and of a test; an action without its recipient fails with
+/// <see cref="ActionSettings.ChooseRecipient"/>.
 /// </summary>
 public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
 {
     private readonly EventCatalog _catalog;
     private readonly RuleStore _store;
+    private readonly RecipientStore _recipients;
     private readonly EventLog _log;
     private readonly IDeviceRepository _devices;
     private readonly IVapixClientFactory _vapix;
@@ -66,6 +69,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     public ActionRunner(
         EventCatalog catalog,
         RuleStore store,
+        RecipientStore recipients,
         EventLog log,
         IDeviceRepository devices,
         IVapixClientFactory vapix,
@@ -75,6 +79,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _store = store ?? throw new ArgumentNullException(nameof(store));
+        _recipients = recipients ?? throw new ArgumentNullException(nameof(recipients));
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _devices = devices ?? throw new ArgumentNullException(nameof(devices));
         _vapix = vapix ?? throw new ArgumentNullException(nameof(vapix));
@@ -262,6 +267,8 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
 
         var plugin = catalogAction.Plugin;
         var settingsObject = _store.DecryptSettings(job.Rule.Id, action);
+        var recipientIds = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        var recipientProblem = await MergeRecipientsAsync(plugin, settingsObject, recipientIds, ct).ConfigureAwait(false);
         using var settingsDocument = JsonDocument.Parse(settingsObject.ToJsonString());
         var settings = settingsDocument.RootElement.Clone();
         bool runs;
@@ -281,10 +288,16 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             return;
         }
 
+        if (recipientProblem is not null)
+        {
+            Write(job, null, plugin.DisplayName, EventLogResult.Failed, recipientProblem);
+            return;
+        }
+
         if (!plugin.NeedsDevice)
         {
             // Actions without devices run with every edge (an email per camera), like actions on the event's device.
-            await RunOneAsync(job, catalogAction, settings, null, null, ct).ConfigureAwait(false);
+            await RunOneAsync(job, catalogAction, settings, recipientIds, null, null, ct).ConfigureAwait(false);
             return;
         }
 
@@ -314,7 +327,56 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             return;
         }
 
-        await Task.WhenAll(targets.Select(target => RunOneAsync(job, catalogAction, settings, target.Id, target.Device, ct))).ConfigureAwait(false);
+        await Task.WhenAll(targets.Select(target => RunOneAsync(job, catalogAction, settings, recipientIds, target.Id, target.Device, ct))).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Merges the chosen recipient of every recipient field into <paramref name="settings"/> under the recipient's own keys:
+    /// its values, passwords decrypted, win over old values of the same keys. Returns
+    /// <see cref="ActionSettings.ChooseRecipient"/> when a field has no recipient of its types (none chosen, or it is gone).
+    /// <paramref name="ids"/> gets the recipient of each field for <see cref="ActionInvocation.RecipientIds"/>.
+    /// </summary>
+    private async Task<string?> MergeRecipientsAsync(IActionPlugin plugin, JsonObject settings, Dictionary<string, Guid> ids, CancellationToken ct)
+    {
+        IReadOnlyList<ActionField> fields;
+        try
+        {
+            fields = plugin.Fields;
+        }
+#pragma warning disable CA1031 // Plugin code is untrusted: its run reports the problem.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return null;
+        }
+
+        foreach (var field in fields.Where(f => f.Type == ActionFieldType.Recipient))
+        {
+            var recipient = Guid.TryParse(ActionSettings.Text(settings, field.Key), out var id) ? await _recipients.GetAsync(id, ct).ConfigureAwait(false) : null;
+            if (recipient is null || !field.RecipientTypes.Contains(recipient.TypeId, StringComparer.OrdinalIgnoreCase))
+            {
+                return ActionSettings.ChooseRecipient;
+            }
+
+            Merge(settings, _recipients.DecryptSettings(recipient), _catalog.FindRecipientType(recipient.TypeId)?.Type.Fields ?? []);
+            ids[field.Key] = recipient.Id;
+        }
+
+        return null;
+    }
+
+    /// <summary>The recipient's fields replace what the settings hold under the same keys, also a value the recipient leaves empty.</summary>
+    private static void Merge(JsonObject settings, JsonObject values, IReadOnlyList<ActionField> fields)
+    {
+        foreach (var field in fields)
+        {
+            settings.Remove(field.Key);
+        }
+
+        foreach (var (key, value) in values)
+        {
+            settings[key] = value?.DeepClone();
+        }
     }
 
     /// <summary>
@@ -370,7 +432,8 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         return targets;
     }
 
-    private async Task RunOneAsync(RuleEdgeJob job, CatalogAction action, JsonElement settings, Guid? deviceId, IDeviceInfo? known, CancellationToken ct)
+    private async Task RunOneAsync(
+        RuleEdgeJob job, CatalogAction action, JsonElement settings, IReadOnlyDictionary<string, Guid> recipientIds, Guid? deviceId, IDeviceInfo? known, CancellationToken ct)
     {
         var plugin = action.Plugin;
         IDeviceInfo? device = null;
@@ -436,7 +499,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
                 job,
                 textDevice,
                 Licenses?.LicenseOf(action.Registered.Origin.PackageId));
-            var invocation = new ActionInvocation(job.Rule.Id, job.Rule.Name, job.Edge, settings, device, job.Trigger);
+            var invocation = new ActionInvocation(job.Rule.Id, job.Rule.Name, job.Edge, settings, device, job.Trigger) { RecipientIds = recipientIds };
             await plugin.ExecuteAsync(context, invocation, timeout.Token).ConfigureAwait(false);
             Write(job, deviceId, plugin.DisplayName, EventLogResult.Ok, Joined(lines, EdgeText(job.Edge)), device);
         }
@@ -495,12 +558,57 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             }
         }
 
+        var recipientIds = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        if (await MergeRecipientsAsync(action.Plugin, settings, recipientIds, ct).ConfigureAwait(false) is { } recipientProblem)
+        {
+            return (false, recipientProblem);
+        }
+
         var type = _catalog.FindEventType(eventTypeId);
         var device = deviceId is { } id ? await _devices.FindAsync(id, ct).ConfigureAwait(false) : null;
         var data = (type?.Info.DataFields ?? []).ToDictionary(f => f.Name, f => f.Values is { Count: > 0 } values ? values[0] : "sample", StringComparer.Ordinal);
         var trigger = new ActionTrigger(
             type?.Id ?? string.Empty, type?.Info.DisplayName ?? "Test", device?.Id, device?.Address, device?.Model, true, DateTimeOffset.UtcNow, data);
         var definition = new RuleDefinition { Id = ruleId ?? Guid.Empty, Name = string.IsNullOrWhiteSpace(ruleName) ? "Test" : ruleName };
+        return await RunTestAsync(action, settings, definition, trigger, device, recipientIds, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// "Test" of the recipient dialog: runs the type's test action once now with that action's default values, the values
+    /// of the form and sample event values. A password left empty takes the stored one of <paramref name="id"/>.
+    /// </summary>
+    public async Task<(bool Ok, string Message)> TestRecipientAsync(string typeId, Guid? id, JsonObject values, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        if (_catalog.FindRecipientType(typeId) is not { Available: true, TestAction: { } action } type)
+        {
+            return (false, "Not available: this type of recipient is turned off");
+        }
+
+        var stored = id is { } known && await _recipients.GetAsync(known, ct).ConfigureAwait(false) is { } recipient ? _recipients.DecryptSettings(recipient) : new JsonObject();
+        foreach (var field in type.Type.Fields.Where(f => f.Type == ActionFieldType.Password))
+        {
+            if (ActionSettings.Text(values, field.Key) is not { Length: > 0 } && stored[field.Key] is { } kept)
+            {
+                values[field.Key] = kept.DeepClone();
+            }
+        }
+
+        if (RecipientChecks.Errors(type, values, []).FirstOrDefault() is { Value: not null } error)
+        {
+            var label = type.Type.Fields.FirstOrDefault(f => f.Key == error.Key)?.Label;
+            return (false, label is null ? error.Value : $"{label}: {error.Value}");
+        }
+
+        var settings = RecipientChecks.WithDefaults(action.Plugin, values);
+        var sample = ActionPlaceholders.Fixed.ToDictionary(p => p.Name, _ => "sample", StringComparer.Ordinal);
+        var trigger = new ActionTrigger(string.Empty, "Test event", null, null, null, true, DateTimeOffset.UtcNow, sample);
+        return await RunTestAsync(action, settings, new RuleDefinition { Name = "OADM test" }, trigger, null, new Dictionary<string, Guid>(), ct).ConfigureAwait(false);
+    }
+
+    private async Task<(bool Ok, string Message)> RunTestAsync(
+        CatalogAction action, JsonObject settings, RuleDefinition definition, ActionTrigger trigger, IDeviceInfo? device, IReadOnlyDictionary<string, Guid> recipientIds, CancellationToken ct)
+    {
         var job = new RuleEdgeJob(definition, true, ActionEdge.TurnedOn, device?.Id, false, trigger);
         using var document = JsonDocument.Parse(settings.ToJsonString());
         var lines = new List<string>();
@@ -531,7 +639,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
                 job,
                 device,
                 Licenses?.LicenseOf(action.Registered.Origin.PackageId));
-            var invocation = new ActionInvocation(definition.Id, definition.Name, ActionEdge.TurnedOn, document.RootElement.Clone(), null, trigger);
+            var invocation = new ActionInvocation(definition.Id, definition.Name, ActionEdge.TurnedOn, document.RootElement.Clone(), null, trigger) { RecipientIds = recipientIds };
             await action.Plugin.ExecuteAsync(context, invocation, timeout.Token).ConfigureAwait(false);
             return (true, Joined(lines, "Sent"));
         }

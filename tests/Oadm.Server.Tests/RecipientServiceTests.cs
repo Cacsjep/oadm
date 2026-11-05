@@ -1,0 +1,195 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+using Grpc.Core;
+
+using Oadm.Core.Auth;
+using Oadm.Core.Events;
+using Oadm.Core.Plugins;
+using Oadm.Sdk.Actions;
+using Oadm.Sdk.Devices;
+using Oadm.Sdk.Events;
+using Oadm.Sdk.Plugins;
+using Oadm.Server.Auth;
+using Oadm.Server.Tests.Support;
+
+using Proto = Oadm.Contracts.V1;
+
+namespace Oadm.Server.Tests;
+
+/// <summary>Recipients through gRPC EventService: catalog, list, save, delete, test, roles and the audit.</summary>
+public sealed class RecipientServiceTests
+{
+    private const string TypeId = "test.hook";
+
+    private sealed class HookAction : IActionPlugin
+    {
+        public string? FailWith { get; set; }
+
+        public string Id => "test.hook-action";
+
+        public string DisplayName => "Call hook";
+
+        public string? IconKey => null;
+
+        public bool NeedsDevice => false;
+
+        public IReadOnlyList<RecipientType> RecipientTypes { get; } =
+        [
+            new(TypeId, "Hook", "send", [ActionField.Text("url", "URL", required: true), ActionField.Password("token", "Token")], "test.hook-action") { Target = "{url}" },
+        ];
+
+        public IReadOnlyList<ActionField> Fields { get; } = [ActionField.Recipient("recipient", "Recipient", [TypeId])];
+
+        public IReadOnlyDictionary<string, string> Validate(JsonElement settings, bool statefulRule) =>
+            settings.TryGetProperty("url", out var url) && url.GetString() == "bad" ? new Dictionary<string, string> { ["url"] = "Enter a URL." } : new Dictionary<string, string>();
+
+        public Task ExecuteAsync(IActionContext ctx, ActionInvocation invocation, CancellationToken ct) =>
+            FailWith is { } reason ? throw new InvalidOperationException(reason) : Task.CompletedTask;
+    }
+
+    private static async Task<(TestServerHost Host, Proto.EventService.EventServiceClient Events, HookAction Action)> StartAsync()
+    {
+        var host = await TestServerHost.StartAsync();
+        var action = new HookAction();
+        host.Get<PluginRegistry>().RegisterActionPlugin(action, new PluginOrigin("test.hook", "1.0", null) { DisplayName = "Hook" });
+        return (host, new Proto.EventService.EventServiceClient(host.Invoker), action);
+    }
+
+    private static Proto.SaveRecipientRequest Request(string name, string url = "https://hooks.example.com", string? token = "t0ken", string id = "") => new()
+    {
+        Id = id,
+        Name = name,
+        TypeId = TypeId,
+        SettingsJson = (token is null ? new JsonObject { ["url"] = url } : new JsonObject { ["url"] = url, ["token"] = token }).ToJsonString(),
+    };
+
+    private static async Task<string> SaveRuleAsync(Proto.EventService.EventServiceClient events, string name, string recipientId)
+    {
+        var rule = new RuleDefinition
+        {
+            Name = name,
+            Conditions = [new RuleCondition { Kind = RuleConditionKind.Event, EventTypeId = BuiltInEvents.Unreachable, Devices = new DeviceSelector { Mode = DeviceSelectorMode.All } }],
+            Actions = [new RuleAction { ActionId = "test.hook-action", Settings = new JsonObject { ["recipient"] = recipientId } }],
+        };
+        return (await events.SaveRuleAsync(new Proto.SaveRuleRequest { DefinitionJson = rule.ToJson() })).Summary.Id;
+    }
+
+    [Fact]
+    public async Task TheCatalogDeclaresTypesAndARecipientNeverComesBackWithItsPassword()
+    {
+        var (host, events, _) = await StartAsync();
+        await using (host)
+        {
+            var catalog = await events.GetCatalogAsync(new Proto.Empty());
+            var type = Assert.Single(catalog.RecipientTypes, t => t.Id == TypeId);
+            Assert.Equal("Hook", type.DisplayName);
+            Assert.True(type.Available);
+            Assert.Equal(Proto.ActionFieldKind.ActionFieldPassword, type.Fields.Single(f => f.Key == "token").Kind);
+            var field = Assert.Single(catalog.Actions.Single(a => a.Id == "test.hook-action").Fields);
+            Assert.Equal(Proto.ActionFieldKind.ActionFieldRecipient, field.Kind);
+            Assert.Equal([TypeId], field.RecipientTypes);
+
+            var saved = await events.SaveRecipientAsync(Request("Teams"));
+            Assert.Equal("https://hooks.example.com", saved.Target);
+            Assert.DoesNotContain("t0ken", saved.ToString(), StringComparison.Ordinal);
+            Assert.Equal(["token"], saved.StoredSecretFields);
+
+            var listed = Assert.Single((await events.ListRecipientsAsync(new Proto.Empty())).Recipients);
+            Assert.DoesNotContain("t0ken", listed.ToString(), StringComparison.Ordinal);
+
+            var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;
+            Assert.Contains(audit, e => e.Action == AuditActions.RecipientCreated && e.Target == "Teams");
+            Assert.DoesNotContain(audit, e => e.Detail.Contains("t0ken", StringComparison.Ordinal));
+
+            await events.SaveRecipientAsync(Request("Teams", token: null, id: saved.Id));
+            Assert.Contains((await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries, e => e.Action == AuditActions.RecipientChanged && e.Target == "Teams");
+        }
+    }
+
+    [Fact]
+    public async Task ARefusalNamesItsField()
+    {
+        var (host, events, _) = await StartAsync();
+        await using (host)
+        {
+            var bad = await Assert.ThrowsAsync<RpcException>(async () => await events.SaveRecipientAsync(Request("Teams", "bad")));
+            Assert.Equal(StatusCode.InvalidArgument, bad.StatusCode);
+            Assert.Equal("Enter a URL.", bad.Status.Detail);
+            Assert.Equal("url", bad.Trailers.GetValue(Proto.RecipientErrors.FieldTrailer));
+
+            await events.SaveRecipientAsync(Request("Teams"));
+            var taken = await Assert.ThrowsAsync<RpcException>(async () => await events.SaveRecipientAsync(Request("teams")));
+            Assert.Equal("name", taken.Trailers.GetValue(Proto.RecipientErrors.FieldTrailer));
+
+            var gone = await Assert.ThrowsAsync<RpcException>(async () => await events.SaveRecipientAsync(Request("Other", id: Guid.NewGuid().ToString())));
+            Assert.Equal(StatusCode.NotFound, gone.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task DeleteIsRefusedWithTheRuleNamesWhileARuleUsesIt()
+    {
+        var (host, events, _) = await StartAsync();
+        await using (host)
+        {
+            var saved = await events.SaveRecipientAsync(Request("Teams"));
+            var rule = await SaveRuleAsync(events, "Gate alarm", saved.Id);
+            Assert.Equal(["Gate alarm"], Assert.Single((await events.ListRecipientsAsync(new Proto.Empty())).Recipients).UsedBy);
+
+            var refused = await Assert.ThrowsAsync<RpcException>(async () => await events.DeleteRecipientAsync(new Proto.RecipientId { Id = saved.Id }));
+            Assert.Equal(StatusCode.FailedPrecondition, refused.StatusCode);
+            Assert.Equal("Used by Gate alarm. Change those rules first.", refused.Status.Detail);
+
+            await events.DeleteRuleAsync(new Proto.RuleId { Id = rule });
+            await events.DeleteRecipientAsync(new Proto.RecipientId { Id = saved.Id });
+            Assert.Empty((await events.ListRecipientsAsync(new Proto.Empty())).Recipients);
+            Assert.Contains((await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries, e => e.Action == AuditActions.RecipientDeleted && e.Target == "Teams");
+
+            var gone = await Assert.ThrowsAsync<RpcException>(async () => await events.DeleteRecipientAsync(new Proto.RecipientId { Id = saved.Id }));
+            Assert.Equal(StatusCode.NotFound, gone.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task TestAnswersWithTheReasonAndIsAudited()
+    {
+        var (host, events, action) = await StartAsync();
+        await using (host)
+        {
+            var sent = await events.TestRecipientAsync(Request("Teams"));
+            Assert.True(sent.Ok, sent.Message);
+
+            action.FailWith = "The hook said no";
+            var failed = await events.TestRecipientAsync(Request("Teams"));
+            Assert.False(failed.Ok);
+            Assert.Equal("The hook said no", failed.Message);
+
+            var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;
+            Assert.Contains(audit, e => e.Action == AuditActions.RecipientTested && e.Target == "Teams" && e.Detail.Contains("The hook said no", StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public async Task TheRightsAreThoseOfTheEventRules()
+    {
+        Assert.Equal(AccessPolicy.For("/oadm.v1.EventService/ListRules"), AccessPolicy.For("/oadm.v1.EventService/ListRecipients"));
+        foreach (var method in new[] { "SaveRecipient", "DeleteRecipient", "TestRecipient" })
+        {
+            Assert.Equal(AccessPolicy.For("/oadm.v1.EventService/SaveRule"), AccessPolicy.For("/oadm.v1.EventService/" + method));
+        }
+
+        var (host, events, _) = await StartAsync();
+        await using (host)
+        {
+            await events.SaveRecipientAsync(Request("Teams"));
+            var op = new Proto.EventService.EventServiceClient(await host.InvokerForUserAsync("tech1", UserRole.Operator));
+
+            Assert.Single((await op.ListRecipientsAsync(new Proto.Empty())).Recipients);
+            var refused = await Assert.ThrowsAsync<RpcException>(async () => await op.SaveRecipientAsync(Request("Other")));
+            Assert.Equal(StatusCode.PermissionDenied, refused.StatusCode);
+            refused = await Assert.ThrowsAsync<RpcException>(async () => await op.TestRecipientAsync(Request("Other")));
+            Assert.Equal(StatusCode.PermissionDenied, refused.StatusCode);
+        }
+    }
+}

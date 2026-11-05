@@ -8,18 +8,18 @@ that SDK is compatible with. This page says what OADM checks, what it promises t
 
 ## The SDK version
 
-The SDK has its own version, `SdkInfo.Version` in `src/Oadm.Sdk/Plugins/Plugins.cs` (today `0.10.0`), separate from the
+The SDK has its own version, `SdkInfo.Version` in `src/Oadm.Sdk/Plugins/Plugins.cs` (today `0.11.0`), separate from the
 OADM version. Your `plugin.json` names the SDK it needs (the project SDK writes the version you build with):
 
 ```json
-"minSdkVersion": "0.10.0"
+"minSdkVersion": "0.11.0"
 ```
 
 When the server starts, it compares the two. A plugin that needs a newer SDK than the server has is not loaded; the
 server log says why:
 
 ```text
-Plugin problem in plugins/acme.hello: Plugin acme.hello requires SDK 0.11.0, host has 0.10.0.
+Plugin problem in plugins/acme.hello: Plugin acme.hello requires SDK 0.12.0, host has 0.11.0.
 ```
 
 `minSdkVersion` also decides who may use the plugin. Users limited to a device group get only plugins with 0.4.0 or
@@ -78,6 +78,7 @@ in a context of its own, so two plugins can use different versions of the same l
 
 | SDK | OADM | What changed |
 |---|---|---|
+| 0.11.0 | 4.12 | Recipients, shared targets of event rule actions: `ActionField.Recipient`, `ActionFieldType.Recipient`, `RecipientType`, `IActionPlugin.RecipientTypes`, `ActionInvocation.RecipientIds`. The host merges the chosen recipient's fields into the settings before a run. |
 | 0.10.0 | 4.10 | The event tree of the rule dialog: `EventTypeInfo.Path` and `Folders` (where an event sits, e.g. `["Certificates", "EST server"]`; at most 4 folders, none blank). An event of one device, sent per part: `EventTypeInfo.FixedDeviceId` and `SplitField` (Dashboards asks for no device and keeps a value per choice). The name of the device firmware: `AxisOsTexts` (`Name`, `UpgradeTask`, `DowngradeTask`, `Version`, `SearchAlias`, `Contains`; "AXIS OS 12.11.77", searches that find it by "firmware"). Whether an enabled rule uses an event: `IEventPublisher.IsUsedByRule` (`IsWatched` also counts subscriptions). The audit text of a plugin call: `ICorePlugin.AuditDetail`. The rail group of vision plugins: `CorePluginGroup.Vision` (an older client shows it under Extensions) and the place of every group in the rail: `CorePluginGroups.RailOrder`. A live stream through a site without a large transfer slot: `VapixRequestOptions.LiveStream` (an MJPEG stream the plugin reads for hours; the plugin limits its streams per site). Client: `FormField.InfoPicture` and `InfoIcon.PictureTemplate` (a drawing below the info text). Testing: `FakeEventPublisher`, `FakeCoreContext.EventPublisher`, `FakeDeviceScopes.Rename`. |
 | 0.9.0 | 4.9 | Files from axis.com with the MyAxis sign-in of the user who started a task: `ITaskExecutionContext.AxisDownloads` (`IAxisDownloads`, `AxisDownloadedFile`, `AxisDownloadException`; the host downloads, checks size and SHA-256 and caches; the plugin never gets the session). Client: `ITaskDialogContext.MyAxis` (`IMyAxisSignIn`). Testing: `FakeAxisDownloads`, `FakeTaskContext.AxisDownloads`. Field checks of event rules: `RuleCondition.Checks` (`RuleCheck`, `RuleCheckOperator`), `RuleChecks` (operators by `EventValueKind`, the shared rules of a check, `Describe`, `Label`, `TooMany`, `NoSuchValueText`), `RuleCondition.AllChecks` (older equals filters as `RuleCheck.IsLegacy` checks). A plugin event field with `Filter` true can be checked in a rule; `EventField.Kind` comes from `Type` when not declared (Number = number). |
 | 0.8.0 | 4.8 | Devices with a live video stream: `IDeviceInfo.HasLiveVideo` and `DeviceCategories.HasLiveVideo` (the devices with `HasVideo` and security radars, their radar picture; for live video only). |
@@ -89,7 +90,7 @@ in a context of its own, so two plugins can use different versions of the same l
 | 0.2.0 | 4.0 | Devices at a site: `DeviceStatus.SiteOffline`, `IDeviceInfo.SiteId` / `SiteName`, `IDeviceNetwork` (`ITaskExecutionContext.Network`, `ITaskQueryContext.Network`), `ICorePluginContext.Network` and `Sites` (relays), `siteSupport` / `sitePorts` in `plugin.json` (the project SDK writes `full` by default), `ITaskPlugin.SiteSupport`, `IComplianceCheckType.SiteSupport`, `IRelay.ReleaseAsync`, `{site}` placeholder, `DeviceMessages.Refusal(IDeviceInfo)` / `TaskSupportReasons.ForStatus(IDeviceInfo)` (they say "Site offline: <site>") and `TaskSupportReasons.ForSiteSupport`, `HostPages.Sites`, `HostPermissionKeys.SitesView`. Client: `ICorePluginClientContext.OpenDeviceRequested`, `CheckChoice` / `ICheckChoice` / `CheckChoiceList` (`ComboBox Classes="multiSelect"`), `PageTab.Count` and fixed tabs (no `CloseCommand`), `DeviceTexts.OpenNotAllowed`. Testing: `FakeDevice.SiteId` / `SiteName`, `FakeDeviceNetwork`, `FakeSites`, `FakePluginNetwork`, `InMemoryUdpRelay` / `InMemoryTcpRelay`. The project SDK adds the banned-API analyzer (warning RS0030 for own sockets). See [Sites](../sites/) |
 | 0.1.0 | 3.x | The first SDK on NuGet |
 
-A plugin needs at least the OADM release of its SDK in the table: built with the 4.10 packages (SDK 0.10.0), it needs
+A plugin needs at least the OADM release of its SDK in the table: built with the 4.12 packages (SDK 0.11.0), it needs
 OADM 4.10 or later. A plugin built with SDK 0.1.0 still loads, but its `plugin.json` has no `siteSupport`: OADM keeps
 it away from devices at a site until you rebuild it with a newer project SDK (or add `"siteSupport": "full"` to your
 own `plugin.json`).

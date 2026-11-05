@@ -682,6 +682,37 @@ namespace Oadm.Core.Persistence.Migrations
                     b.ToTable("EventRuleStates", (string)null);
                 });
 
+            modelBuilder.Entity("Oadm.Core.Events.RecipientEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SettingsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TypeId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Recipients", (string)null);
+                });
+
             modelBuilder.Entity("Oadm.Core.MyAxis.MyAxisSessionEntity", b =>
                 {
                     b.Property<Guid>("UserId")

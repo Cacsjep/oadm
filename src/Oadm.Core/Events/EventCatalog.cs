@@ -120,6 +120,15 @@ public sealed record CatalogAction(RegisteredActionPlugin Registered, bool Avail
     public string UnavailableText => $"Not available: {SourceName} is turned off";
 }
 
+/// <summary>A recipient type with the action that sends its test.</summary>
+public sealed record CatalogRecipientType(RecipientType Type, CatalogAction? TestAction)
+{
+    public string Id => Type.Id;
+
+    /// <summary>The plugin of its test action is on.</summary>
+    public bool Available => TestAction?.Available == true;
+}
+
 /// <summary>
 /// Built-in events plus the event types and actions of the registered plugins. Lookups by id are O(1) on a snapshot that
 /// is rebuilt when packages are turned on or off or a source's event types change (registry events), when a list is read
@@ -154,6 +163,9 @@ public sealed class EventCatalog
     /// <summary>Every action, read fresh from the registry.</summary>
     public IReadOnlyList<CatalogAction> Actions => Rebuild().Actions;
 
+    /// <summary>Every recipient type the action plugins declare, read fresh from the registry.</summary>
+    public IReadOnlyList<CatalogRecipientType> RecipientTypes => Rebuild().RecipientTypes;
+
     /// <summary>How often the snapshot was built (tests).</summary>
     public int Builds => Volatile.Read(ref _builds);
 
@@ -186,6 +198,21 @@ public sealed class EventCatalog
         }
 
         return Rebuild().ActionsById.GetValueOrDefault(id);
+    }
+
+    public CatalogRecipientType? FindRecipientType(string? id)
+    {
+        if (id is null)
+        {
+            return null;
+        }
+
+        if (Current().RecipientTypesById.TryGetValue(id, out var type))
+        {
+            return type;
+        }
+
+        return Rebuild().RecipientTypesById.GetValueOrDefault(id);
     }
 
     /// <summary>Drops the snapshot; the next lookup reads the registry again.</summary>
@@ -247,7 +274,18 @@ public sealed class EventCatalog
             actionsById.TryAdd(action.Id, action);
         }
 
-        var snapshot = new Snapshot(types, typesById, actions, actionsById);
+        var recipientTypes = new List<CatalogRecipientType>();
+        var recipientTypesById = new Dictionary<string, CatalogRecipientType>(StringComparer.OrdinalIgnoreCase);
+        foreach (var type in actions.SelectMany(a => DeclaredRecipientTypes(a.Plugin)))
+        {
+            var entry = new CatalogRecipientType(type, actionsById.GetValueOrDefault(type.TestActionId));
+            if (recipientTypesById.TryAdd(entry.Id, entry))
+            {
+                recipientTypes.Add(entry);
+            }
+        }
+
+        var snapshot = new Snapshot(types, typesById, actions, actionsById, recipientTypes, recipientTypesById);
         lock (_sync)
         {
             if (version == _version)
@@ -260,9 +298,25 @@ public sealed class EventCatalog
         return snapshot;
     }
 
+    private static IReadOnlyList<RecipientType> DeclaredRecipientTypes(IActionPlugin plugin)
+    {
+        try
+        {
+            return plugin.RecipientTypes;
+        }
+#pragma warning disable CA1031 // Plugin code is untrusted.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return [];
+        }
+    }
+
     private sealed record Snapshot(
         IReadOnlyList<CatalogEventType> Types,
         Dictionary<string, CatalogEventType> TypesById,
         IReadOnlyList<CatalogAction> Actions,
-        Dictionary<string, CatalogAction> ActionsById);
+        Dictionary<string, CatalogAction> ActionsById,
+        IReadOnlyList<CatalogRecipientType> RecipientTypes,
+        Dictionary<string, CatalogRecipientType> RecipientTypesById);
 }

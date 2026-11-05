@@ -93,6 +93,28 @@ public sealed partial class RuleRowViewModel(EventRulesViewModel owner, RuleSumm
     internal void SetBusy(bool busy) => IsBusy = busy;
 }
 
+/// <summary>A recipient in the Recipients list.</summary>
+public sealed class RecipientRowViewModel(RecipientEntry entry, string typeText)
+{
+    public RecipientEntry Entry { get; } = entry;
+
+    public string Id => Entry.Id;
+
+    public string Name => Entry.Name;
+
+    public string TypeText { get; } = typeText;
+
+    public string Target => Entry.Target;
+
+    public int UsedByCount => Entry.UsedBy.Count;
+
+    /// <summary>The names of the rules that use it; null when none does.</summary>
+    public string? UsedByText => Entry.UsedBy.Count == 0 ? null : string.Join(", ", Entry.UsedBy);
+
+    public bool Matches(string text) =>
+        Name.Contains(text, StringComparison.OrdinalIgnoreCase) || TypeText.Contains(text, StringComparison.OrdinalIgnoreCase) || Target.Contains(text, StringComparison.OrdinalIgnoreCase);
+}
+
 /// <summary>One line of the event log tab.</summary>
 public sealed class EventLogRowViewModel
 {
@@ -161,9 +183,9 @@ public sealed class EventLogRowViewModel
 }
 
 /// <summary>
-/// Rail page "Event rules" (Automation): tab Rules (every rule with its live state; administrators create, change,
-/// copy, turn on / off and delete) and tab Event log (newest first, live, searchable). Streams run while the page is
-/// shown (<see cref="Activate"/> / <see cref="Deactivate"/>).
+/// Rail page "Event rules" (Automation): Rules (every rule with its live state; administrators create, change, copy, turn
+/// on / off and delete), Recipients (the shared targets of the rules' actions) and the Event log (newest first, live,
+/// searchable). Streams run while the page is shown (<see cref="Activate"/> / <see cref="Deactivate"/>).
 /// </summary>
 public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
 {
@@ -176,6 +198,8 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
     private readonly IUiDispatcher _ui;
     private readonly Dictionary<string, RuleRowViewModel> _rulesById = [];
     private readonly List<EventLogRowViewModel> _log = [];
+    private List<RecipientRowViewModel> _recipients = [];
+    private string? _ruleLinks;
     private CancellationTokenSource? _active;
 
     public EventRulesViewModel(IOadmApi api, IDialogService dialogs, DeviceStore devices, IUiDispatcher ui, UserSession? session = null)
@@ -196,6 +220,8 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
 
     public RangeObservableCollection<EventLogRowViewModel> LogEntries { get; } = [];
 
+    public RangeObservableCollection<RecipientRowViewModel> Recipients { get; } = [];
+
     /// <summary>The role may change event rules ("events.manage"; without a session, in tests: yes).</summary>
     public bool MayChange => _session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.EventsManage) ?? true;
 
@@ -205,6 +231,28 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(EditCommand), nameof(DuplicateCommand), nameof(DeleteCommand))]
     public partial RuleRowViewModel? SelectedRule { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(EditRecipientCommand), nameof(DeleteRecipientCommand))]
+    public partial RecipientRowViewModel? SelectedRecipient { get; set; }
+
+    [ObservableProperty] public partial string RecipientSearchText { get; set; } = string.Empty;
+
+    /// <summary>A refused recipient action or a list that could not be read, directly below the recipients list.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRecipientsError))]
+    public partial string? RecipientsErrorText { get; private set; }
+
+    public bool HasRecipientsError => !string.IsNullOrEmpty(RecipientsErrorText);
+
+    /// <summary>The role may see event rules ("events.view"), so also their recipients.</summary>
+    public bool ShowRecipients => _session?.Has(Oadm.Sdk.Plugins.HostPermissionKeys.EventsView) ?? true;
+
+    public bool ShowRecipientsEmpty => Recipients.Count == 0;
+
+    public string RecipientsEmptyText => _recipients.Count == 0
+        ? MayChange ? "Create a recipient, then choose it in a rule." : "No recipients yet."
+        : "No recipient matches the search.";
 
     [ObservableProperty] public partial string SearchText { get; set; } = string.Empty;
 
@@ -240,6 +288,8 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
 
     partial void OnLogSearchTextChanged(string value) => FilterLog();
 
+    partial void OnRecipientSearchTextChanged(string value) => FilterRecipients();
+
     /// <summary>The page is shown: load and watch the rules and the log.</summary>
     public void Activate()
     {
@@ -252,6 +302,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         var token = _active.Token;
         _ = WatchRulesAsync(token);
         _ = WatchLogAsync(token);
+        _ = LoadRecipientsAsync(token);
     }
 
     public void Dispose() => Deactivate();
@@ -270,6 +321,8 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
 
     private bool CanChangeSelected => MayChange && SelectedRule is not null;
 
+    private bool CanChangeSelectedRecipient => MayChange && SelectedRecipient is not null;
+
     [RelayCommand(CanExecute = nameof(CanChange))]
     private async Task NewRuleAsync()
     {
@@ -277,6 +330,57 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         if (editor is not null && await _dialogs.ShowRuleEditorAsync(editor).ConfigureAwait(true))
         {
             ApplySummary(editor.Saved!.Summary);
+            await LoadRecipientsAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanChange))]
+    private Task NewRecipientAsync() => EditRecipientAsync(null, null);
+
+    [RelayCommand(CanExecute = nameof(CanChangeSelectedRecipient))]
+    private Task EditRecipientAsync(RecipientRowViewModel? row) => EditRecipientAsync(row ?? SelectedRecipient, row ?? SelectedRecipient);
+
+    /// <summary>The recipient dialog for a new recipient or for <paramref name="row"/>; the list follows a save.</summary>
+    private async Task EditRecipientAsync(RecipientRowViewModel? row, RecipientRowViewModel? keepSelected)
+    {
+        RecipientEditorViewModel editor;
+        try
+        {
+            var catalog = await _api.GetEventCatalogAsync(CancellationToken.None).ConfigureAwait(true);
+            editor = new RecipientEditorViewModel(_api, catalog.RecipientTypes, row?.Entry, [.. _recipients.Where(r => r != row).Select(r => r.Name)]);
+            RecipientsErrorText = null;
+        }
+        catch (RpcException ex)
+        {
+            RecipientsErrorText = "The recipient could not be opened: " + ex.Status.Detail;
+            return;
+        }
+
+        if (await _dialogs.ShowRecipientEditorAsync(editor).ConfigureAwait(true))
+        {
+            await LoadRecipientsAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
+            SelectedRecipient = _recipients.Find(r => r.Id == (editor.Saved?.Id ?? keepSelected?.Id));
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanChangeSelectedRecipient))]
+    private async Task DeleteRecipientAsync(RecipientRowViewModel? row)
+    {
+        row ??= SelectedRecipient;
+        if (row is null || !await _dialogs.ConfirmAsync("Delete recipient", $"Delete the recipient \"{row.Name}\"?", "Delete").ConfigureAwait(true))
+        {
+            return;
+        }
+
+        try
+        {
+            await _api.DeleteRecipientAsync(row.Id, CancellationToken.None).ConfigureAwait(true);
+            RecipientsErrorText = null;
+            await LoadRecipientsAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (RpcException ex)
+        {
+            RecipientsErrorText = ex.Status.Detail;
         }
     }
 
@@ -293,6 +397,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         if (editor is not null && await _dialogs.ShowRuleEditorAsync(editor).ConfigureAwait(true))
         {
             ApplySummary(editor.Saved!.Summary);
+            await LoadRecipientsAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
         }
     }
 
@@ -428,8 +533,9 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         {
             var catalog = await _api.GetEventCatalogAsync(CancellationToken.None).ConfigureAwait(true);
             RuleDetail? detail = ruleId is null ? null : await _api.GetRuleAsync(ruleId, CancellationToken.None).ConfigureAwait(true);
+            var recipients = await _api.ListRecipientsAsync(CancellationToken.None).ConfigureAwait(true);
             RulesErrorText = null;
-            return new RuleEditorViewModel(_api, catalog, detail, _devices);
+            return new RuleEditorViewModel(_api, catalog, detail, _devices, recipients);
         }
         catch (RpcException ex)
         {
@@ -462,6 +568,70 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         }
 
         FilterRules();
+        FollowRuleLinks(rules);
+    }
+
+    /// <summary>
+    /// A change of what the rules run (a rule of another client, a recipient changed there) reads the recipients again; a
+    /// change of the live state does not.
+    /// </summary>
+    private void FollowRuleLinks(IReadOnlyList<RuleSummary> rules)
+    {
+        var links = string.Join('\n', rules.Select(r => r.Id + r.Name + r.ActionsText));
+        var changed = _ruleLinks is not null && links != _ruleLinks;
+        _ruleLinks = links;
+        if (changed && _active is { } active)
+        {
+            _ = LoadRecipientsAsync(active.Token);
+        }
+    }
+
+    /// <summary>Reads the recipients and their type names; a failure shows below the list (fire and forget: nothing escapes).</summary>
+    private async Task LoadRecipientsAsync(CancellationToken ct)
+    {
+        if (!ShowRecipients)
+        {
+            return;
+        }
+
+        try
+        {
+            var catalog = await _api.GetEventCatalogAsync(ct).ConfigureAwait(true);
+            var types = catalog.RecipientTypes.ToDictionary(t => t.Id, t => t.DisplayName, StringComparer.Ordinal);
+            var rows = await _api.ListRecipientsAsync(ct).ConfigureAwait(true);
+            ct.ThrowIfCancellationRequested();
+            ApplyRecipients(rows, types);
+            RecipientsErrorText = null;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled && ct.IsCancellationRequested)
+        {
+        }
+#pragma warning disable CA1031 // Shown below the list.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            RecipientsErrorText = "The recipients could not be read: " + (ex is RpcException rpc ? rpc.Status.Detail : ex.Message);
+        }
+    }
+
+    private void ApplyRecipients(IReadOnlyList<RecipientEntry> rows, IReadOnlyDictionary<string, string> types)
+    {
+        _recipients = [.. rows.Select(r => new RecipientRowViewModel(r, types.GetValueOrDefault(r.TypeId) ?? r.TypeId))];
+        FilterRecipients();
+    }
+
+    private void FilterRecipients()
+    {
+        var text = RecipientSearchText.Trim();
+        var selected = SelectedRecipient?.Id;
+        var rows = text.Length == 0 ? _recipients : [.. _recipients.Where(r => r.Matches(text))];
+        Recipients.ReplaceAll(rows);
+        SelectedRecipient = rows.Find(r => r.Id == selected);
+        OnPropertyChanged(nameof(ShowRecipientsEmpty));
+        OnPropertyChanged(nameof(RecipientsEmptyText));
     }
 
     private void ApplySummary(RuleSummary summary)
@@ -663,6 +833,11 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
         EditCommand.NotifyCanExecuteChanged();
         DuplicateCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(ShowRecipients));
+        OnPropertyChanged(nameof(RecipientsEmptyText));
+        NewRecipientCommand.NotifyCanExecuteChanged();
+        EditRecipientCommand.NotifyCanExecuteChanged();
+        DeleteRecipientCommand.NotifyCanExecuteChanged();
         foreach (var row in _rulesById.Values)
         {
             row.NotifyRole();

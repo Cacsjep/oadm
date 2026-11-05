@@ -85,7 +85,7 @@ plugins/                (layout and SDK guide: plugins/README.md)
   Oadm.Plugins.LoadTest(.Client)/ core plugin: Load test, a load test of the chosen cameras and the network (off by default)
   Oadm.Plugins.DeviceConfig(.Client)/     Maintenance: Export / Import configuration, Configure devices, Create configuration file
   Oadm.Plugins.Outputs/                   event rule action "Set output" (relays, outputs)
-  Oadm.Plugins.Notifications/             event rule actions "Send email", "Send HTTP request", "Send TCP message" and "Log entry"
+  Oadm.Plugins.Notifications/             event rule actions "Send email", "Send HTTP request", "Send TCP message" (each to a recipient) and "Log entry"
   Oadm.Plugins.IoMonitor(.Client)/        core plugin: live inputs and outputs of one device (off by default)
   Oadm.Plugins.DeviceTriggers(.Client)/   core plugin: events of the devices for the event rules (WebSocket, off by default)
   Oadm.Plugins.WebView(.Client)/          core plugin: the web interface of the devices in tabs, logged in through the server
@@ -257,6 +257,10 @@ must never break.
   areas, on a usable graphics card (DirectML on Windows, CUDA on Linux x64) unless a model is clearly slower there, else on the CPU, which always works (ONNX Runtime, PaddleOCR models, never
   in git: downloaded and checked at build), on the action Read text or watching the MJPEG stream at 1 to 15 fps, frames overlapping only with room, results in order (watching
   readers by the CPU cores, 4 per site); events Text read, No text read and Reader problem for the rules; read only, pictures never stored.
+- **[Recipients](docs/spec/recipients.md)** ([recipient sessions](docs/spec/recipient-sessions.md): spec, parked): shared
+  targets of event rule actions (HTTP, Email, TCP, declared by plugins, at most 200); a rule keeps a link, the host merges the
+  recipient's fields into the action's settings before a run; no placeholders in a target, old rules are never converted ("Choose a
+  recipient."), delete refused while a rule uses one, passwords encrypted and never sent back; output only.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.

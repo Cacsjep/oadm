@@ -27,6 +27,9 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   group get PERMISSION_DENIED "Only users with all devices can do this." and the client hides the Event rules page for
   them. Rules have no owner and run on all devices (migration `EventRulesWithoutOwner` drops the owner columns the migration
   `DeviceGroups` added); a deleted group changes no rule. Send HTTP request and Send TCP message send to any address.
+- **Recipients** ([recipients.md](recipients.md)): shared targets of Send email, Send HTTP request and Send TCP message. An action keeps
+  the message and a link to its recipient (`ActionFieldType.Recipient`, `ActionField.Recipient`); `ActionRunner` merges the recipient's
+  fields into the settings of a run and of a test. An action without its recipient fails with "Choose a recipient.".
 - **SDK**: `IEventSource` (a core plugin declares `EventTypeInfo`: id, name, group, kind, scope, data fields, the folders
   of the event tree `Path`) and
   `ICorePluginContext.EventPublisher` (`IEventPublisher`: `SetState`, `Fire`, `ReplaceStates`, `IsWatched`, `IsUsedByRule` (SDK 0.10.0: enabled rules only,
@@ -51,8 +54,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   "connection lost" are values only.
   `IActionPlugin` (standalone class with a parameterless constructor in a `*.Server.dll`, or contributed through
   `IActionSource.ActionPlugins` of a core plugin): `NeedsDevice`, `SupportsTurnOff`, declarative `Fields` (`ActionField`:
-  Text, Multiline, Number, Bool, Choice, DynamicChoice through `ListChoicesAsync`, Password stored encrypted and never sent
-  back, Code = a body in the code editor colored by `Language` or by the value of the field `LanguageKey` (json, xml, html,
+  Text, Multiline, Number, Bool, Choice, DynamicChoice through `ListChoicesAsync`, Recipient (SDK 0.11.0, [recipients.md](recipients.md)),
+  Password stored encrypted and never sent back, Code = a body in the code editor colored by `Language` or by the value of the field `LanguageKey` (json, xml, html,
   text, form), KeyValues = name / value rows stored as `[{"name","value"}]` (at most 50, one line each,
   `ActionInvocation.GetPairs`); `VisibleWhenValue` may list several values "basic|digest"), `UsesPlaceholders` (the rule
   dialog shows the Placeholders list), `Validate`, `Describe`,
@@ -84,17 +87,18 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 - **gRPC** `EventService`: `GetCatalog`, `ListRules`, `WatchRules` (list on subscribe and after every change, at most every
   500 ms), `GetRule`, `SaveRule`, `DeleteRule`, `SetRuleEnabled`, `DuplicateRule` ("<name> (copy)", off, passwords kept),
   `ListActionChoices` (the last five need "Change event rules"), `ListLog` (newest first, limit 0 = 10,000, optional rule filter), `WatchLog`,
+  `ListRecipients`, `SaveRecipient`, `DeleteRecipient`, `TestRecipient` ([recipients.md](recipients.md)),
   `TestAction` (audited "Tested event rule action": runs an action without devices once now, outside rule states and
   limits, with "sample" (or the first listed value) for every value of the trigger and the trigger's first chosen device as
   the device of the event; empty passwords take the stored ones of the rule's action; nothing in the event log; a failure goes to the server log as a Warning and into the audit detail, its reason never empty; reply ok +
   message).
 - **Notifications** (bundled always-on package `oadm.notifications`,
-  `plugins/Oadm.Plugins.Notifications`, server only, plugin `README.md`): **Send HTTP request** (method, URL, query and
-  header rows, login None / Basic / Digest / Bearer token, body type None / JSON / XML / Text / Form in the code editor,
-  "Allow untrusted certificates", timeout, success = 2xx) and **Send email** (MailKit; mail server, port, STARTTLS / TLS /
-  none, optional login, "Allow untrusted certificates", From, To, Subject, Format Text / HTML; the server settings live in
-  each action, no shared setting) and **Send TCP message** (host, port, Text / JSON / XML / Hex bytes, line end, optional TLS
-  with "Allow untrusted certificates", "Wait for an answer" + "Answer must contain", timeout) and **Log entry** (a message, written to the server log, nothing else). All four run without devices,
+  `plugins/Oadm.Plugins.Notifications`, server only, plugin `README.md`): **Send HTTP request** (HTTP recipient: URL, login None /
+  Basic / Digest / Bearer token, "Allow untrusted certificates"; action: method, query and
+  header rows, body type None / JSON / XML / Text / Form in the code editor, timeout, success = 2xx) and **Send email** (MailKit;
+  Email recipient: mail server, port, STARTTLS / TLS / none, optional login, "Allow untrusted certificates", From, To; action:
+  Subject, Format Text / HTML, body) and **Send TCP message** (TCP recipient: host, port, optional TLS
+  with "Allow untrusted certificates"; action: Text / JSON / XML / Hex bytes, line end, "Wait for an answer" + "Answer must contain", timeout) and **Log entry** (a message, written to the server log, nothing else). All four run without devices,
   once each time the rule turns on or fires, optionally also when the rule turns off.
 - **First actions**: **Set output** (bundled always-on package `oadm.outputs`, `plugins/Oadm.Plugins.Outputs`, server only):
   output number 1..64, modes Follow the rule (stateful rules only; inactive on the off edge), Pulse N s (1..3600), Set
@@ -111,8 +115,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   descriptions list their values one per line ("Values:" then "• {name}"), shown in the info icon of the rule dialog.
 - **Client**: rail page **Event rules** (only with "See event rules" and all devices: `MainWindowViewModel.SyncEventRulesItem`
   hides it, with the event log, for users with a device group; key `HostPages.EventRules`, icon `zap`, group Automation before the plugin pages of
-  that group; `EventRulesViewModel` + `EventRulesView`): rules on top, the **Event log** card below with a splitter, like the Devices
-  page and its tasks (no tabs). **Rules** (toolbar New rule first, Edit, Duplicate,
+  that group; `EventRulesViewModel` + `EventRulesView`): **Rules** and **Recipients** ([recipients.md](recipients.md)) side by side with a splitter on top,
+  the **Event log** card below with a splitter, like the Devices page and its tasks (no tabs). **Rules** (toolbar New rule first, Edit, Duplicate,
   Delete (red, confirmed); search on the right; grid On check box (with "Change event rules"), Name, When, Then, State chip (On ok, waiting accent, problem
   warning), Last run; double click edits; status "3 rules · 2 turned on · 1 active now"; live through
   `WatchRules`) and **Event log** (title, Refresh, **Delete all** (with "Delete the event log", red, confirmed; gRPC `ClearLog`, audited

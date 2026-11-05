@@ -23,7 +23,7 @@ public sealed class SendHttpActionTests
     public async Task Json_body_query_and_headers_get_the_event_values_escaped_for_their_place()
     {
         await using var server = new MiniHttpServer();
-        var settings = Settings(server.BaseUrl + "/hook/{serial}");
+        var settings = Settings(server.BaseUrl + "/hook"); // a recipient's URL is fixed, the query takes the values
         settings["query"] = Run.Pairs(("object", "{objectId}"), ("site", "{tags}"));
         settings["headers"] = Run.Pairs(("X-Camera", "{mac}"));
         settings["body"] = "{\"objectID\": \"{objectId}\", \"count\": {total}, \"camera\": \"{device}\"}";
@@ -33,7 +33,7 @@ public sealed class SendHttpActionTests
 
         var request = Assert.Single(server.Requests);
         Assert.Equal("POST", request.Method);
-        Assert.Equal("/hook/B8A44F631339?object=a%20%22quoted%22%20%26%20%3Codd%3E&site=Building%20A%3B%20Gate", request.Target);
+        Assert.Equal("/hook?object=a%20%22quoted%22%20%26%20%3Codd%3E&site=Building%20A%3B%20Gate", request.Target);
         Assert.Equal("B8:A4:4F:63:13:39", request.Headers["X-Camera"]);
         Assert.StartsWith("application/json", request.Headers["Content-Type"], StringComparison.Ordinal);
         using var json = JsonDocument.Parse(request.Body); // still valid JSON with the quotes in the value
@@ -150,7 +150,7 @@ public sealed class SendHttpActionTests
     {
         var fields = new SendHttpAction().Fields;
         var settings = ActionSettings.Defaults(fields);
-        settings["url"] = "https://x";
+        settings["recipient"] = Guid.NewGuid().ToString();
         settings["headers"] = new JsonArray(new JsonObject { ["name"] = "", ["value"] = "1" });
         Assert.Equal("Every row with a value needs a name.", ActionSettings.Check(fields, settings, statefulRule: false)["headers"]);
         settings["headers"] = Run.Pairs(("X-A", "line1\nline2"));
@@ -158,9 +158,10 @@ public sealed class SendHttpActionTests
         settings["headers"] = Run.Pairs(("X-A", "1"));
         Assert.Empty(ActionSettings.Check(fields, settings, statefulRule: false));
 
-        // Login fields show for their choices only.
-        settings["auth"] = "digest";
-        Assert.True(ActionSettings.IsVisible(fields.Single(f => f.Key == "user"), settings, false));
-        Assert.False(ActionSettings.IsVisible(fields.Single(f => f.Key == "token"), settings, false));
+        // Login fields of the recipient show for their choices only.
+        var login = new JsonObject { ["auth"] = "digest" };
+        var recipient = NotificationRecipients.Http.Fields;
+        Assert.True(ActionSettings.IsVisible(recipient.Single(f => f.Key == "user"), login, false));
+        Assert.False(ActionSettings.IsVisible(recipient.Single(f => f.Key == "token"), login, false));
     }
 }

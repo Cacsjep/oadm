@@ -14,10 +14,9 @@ using Oadm.Sdk.Actions;
 namespace Oadm.Plugins.Notifications;
 
 /// <summary>
-/// Event rule action "Send email": the mail server is part of each action (no shared
-/// setting, so an action stands on its own and is copied with its rule), STARTTLS / TLS / none, optional login (password
-/// stored encrypted), "Allow untrusted certificates", To / Subject / Body with placeholders, body as text or HTML (HTML
-/// escapes the values and gets a plain-text part too). Runs once per rule edge, no device. Sent with MailKit.
+/// Event rule action "Send email": an Email recipient holds the mail server, the login, From and To (no placeholders in a
+/// recipient); the action keeps Subject and Body with placeholders, body as text or HTML (HTML escapes the values and gets
+/// a plain-text part too). Runs once per rule edge, no device. Sent with MailKit.
 /// </summary>
 public sealed partial class SendEmailAction : IActionPlugin
 {
@@ -39,16 +38,11 @@ public sealed partial class SendEmailAction : IActionPlugin
 
     public bool UsesPlaceholders => true;
 
+    public IReadOnlyList<RecipientType> RecipientTypes { get; } = [NotificationRecipients.Email];
+
     public IReadOnlyList<ActionField> Fields { get; } =
     [
-        ActionField.Text("host", "Mail server", required: true),
-        ActionField.Number("port", "Port", 1, 65535, 587),
-        ActionField.Choice("security", "Encryption", [new("starttls", "STARTTLS (usually port 587)"), new("tls", "TLS (usually port 465)"), new("none", "None")], "starttls"),
-        ActionField.Bool("allowUntrusted", "Allow untrusted certificates"),
-        ActionField.Text("user", "User name") with { Hint = "Optional" },
-        ActionField.Password("password", "Password"),
-        ActionField.Text("from", "From", required: true),
-        ActionField.Text("to", "To", required: true) with { Hint = "Several addresses separated by commas" },
+        NotificationRecipients.Field(NotificationRecipients.EmailType),
         ActionField.Text("subject", "Subject", required: true, defaultValue: "{rule}: {event} on {device}"),
         ActionField.Choice("format", "Format", [new("text", "Text"), new("html", "HTML")], "text"),
         ActionField.Code("body", "Body", languageKey: "format", required: true) with
@@ -65,12 +59,12 @@ public sealed partial class SendEmailAction : IActionPlugin
     {
         var invocation = Settings(settings);
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (invocation.Get("from") is { Length: > 0 } from && !from.Contains('{', StringComparison.Ordinal) && !MailboxAddress.TryParse(from, out _))
+        if (invocation.Get("from") is { Length: > 0 } from && !MailboxAddress.TryParse(from, out _))
         {
             errors["from"] = "Enter an email address.";
         }
 
-        if (invocation.Get("to") is { Length: > 0 } to && !to.Contains('{', StringComparison.Ordinal) && Addresses(to) is null)
+        if (invocation.Get("to") is { Length: > 0 } to && Addresses(to) is null)
         {
             errors["to"] = "Enter email addresses separated by commas.";
         }
@@ -94,12 +88,12 @@ public sealed partial class SendEmailAction : IActionPlugin
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(invocation);
-        if (!MailboxAddress.TryParse(ctx.Text(invocation.Get("from")), out var from))
+        if (!MailboxAddress.TryParse(invocation.Get("from") ?? string.Empty, out var from))
         {
             throw new InvalidOperationException("The From address is not valid. Nothing was sent.");
         }
 
-        var to = Addresses(ctx.Text(invocation.Get("to")))
+        var to = Addresses(invocation.Get("to"))
             ?? throw new InvalidOperationException("The To addresses are not valid. Nothing was sent.");
         var message = new MimeMessage { Subject = OneLine(ctx.Text(invocation.Get("subject"))) };
         message.From.Add(from);
@@ -129,7 +123,7 @@ public sealed partial class SendEmailAction : IActionPlugin
         using var client = new SmtpClient { Timeout = 30_000 };
         if (invocation.GetBool("allowUntrusted"))
         {
-#pragma warning disable CA5359 // The administrator turned on "Allow untrusted certificates" for this action.
+#pragma warning disable CA5359 // The administrator turned on "Allow untrusted certificates" for this recipient.
             client.ServerCertificateValidationCallback = (_, _, _, _) => true;
 #pragma warning restore CA5359
         }

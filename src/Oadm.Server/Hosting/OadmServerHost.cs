@@ -547,6 +547,10 @@ public static partial class OadmServerHost
             sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
             new Core.Security.PluginSecretProtector(sp.GetRequiredService<Core.Security.CredentialProtector>()),
             sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton(sp => new RecipientStore(
+            sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
+            new Core.Security.PluginSecretProtector(sp.GetRequiredService<Core.Security.CredentialProtector>()),
+            sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton(sp => new EventLog(
             sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
             sp.GetRequiredService<TimeProvider>(),
@@ -554,6 +558,7 @@ public static partial class OadmServerHost
         services.AddSingleton(sp => new ActionRunner(
             sp.GetRequiredService<EventCatalog>(),
             sp.GetRequiredService<RuleStore>(),
+            sp.GetRequiredService<RecipientStore>(),
             sp.GetRequiredService<EventLog>(),
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
             sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),

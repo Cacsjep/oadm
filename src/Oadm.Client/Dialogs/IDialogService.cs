@@ -56,6 +56,9 @@ public interface IDialogService
     /// <summary>The event rule dialog; true when the rule was saved (<see cref="Oadm.Client.EventRules.RuleEditorViewModel.Saved"/>).</summary>
     Task<bool> ShowRuleEditorAsync(Oadm.Client.EventRules.RuleEditorViewModel editor);
 
+    /// <summary>The recipient dialog; true after Save.</summary>
+    Task<bool> ShowRecipientEditorAsync(Oadm.Client.EventRules.RecipientEditorViewModel editor) => Task.FromResult(false);
+
     /// <summary>The compliance check dialog; true when saved.</summary>
     Task<bool> ShowComplianceCheckAsync(Oadm.Client.Compliance.ComplianceCheckEditorViewModel editor) => Task.FromResult(false);
 

@@ -67,6 +67,10 @@ public static class AuditActions
     public const string RuleDeleted = "Deleted event rule";
     public const string EventLogCleared = "Cleared event log";
     public const string EventActionTested = "Tested event rule action";
+    public const string RecipientCreated = "Created recipient";
+    public const string RecipientChanged = "Changed recipient";
+    public const string RecipientDeleted = "Deleted recipient";
+    public const string RecipientTested = "Tested recipient";
     public const string RuleTurnedOn = "Turned event rule on";
     public const string RuleTurnedOff = "Turned event rule off";
     public const string WebInterfaceOpened = "Opened web interface";

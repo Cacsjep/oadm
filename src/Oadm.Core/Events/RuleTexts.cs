@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
+using Oadm.Sdk.Actions;
 using Oadm.Sdk.Events;
 
 namespace Oadm.Core.Events;
@@ -46,14 +48,58 @@ public static class RuleTexts
     }
 
     /// <summary>"Set output: Pulse output 1 for 5 s on 10.0.0.70 · Run VAPIX command: Restart".</summary>
-    public static string Actions(RuleDefinition rule, EventCatalog catalog, Func<Guid, string?> deviceName)
+    public static string Actions(RuleDefinition rule, EventCatalog catalog, Func<Guid, string?> deviceName, IReadOnlyDictionary<Guid, StoredRecipient>? recipients = null)
     {
         ArgumentNullException.ThrowIfNull(rule);
         ArgumentNullException.ThrowIfNull(catalog);
-        return string.Join(" · ", rule.Actions.Select(a => Action(a, catalog, deviceName)));
+        return string.Join(" · ", rule.Actions.Select(a => Action(a, catalog, deviceName, recipients)));
     }
 
-    private static string Action(RuleAction action, EventCatalog catalog, Func<Guid, string?> deviceName)
+    /// <summary>
+    /// The settings an action describes itself with: a chosen recipient's fields without its passwords merged in; null
+    /// while a recipient is missing (the old values of the action stay unread).
+    /// </summary>
+    private static JsonObject? DescribedSettings(RuleAction action, IActionPlugin plugin, IReadOnlyDictionary<Guid, StoredRecipient>? recipients)
+    {
+        var fields = RecipientFields(plugin);
+        if (fields.Count == 0)
+        {
+            return action.Settings;
+        }
+
+        if (recipients is null || RuleValidator.MissesRecipient(action, fields, recipients))
+        {
+            return null;
+        }
+
+        var settings = (JsonObject)action.Settings.DeepClone();
+        foreach (var field in fields)
+        {
+            var (values, _) = RecipientStore.ForClient(recipients[Guid.Parse(ActionSettings.Text(action.Settings, field.Key)!.Trim())]);
+            foreach (var (key, value) in values)
+            {
+                settings[key] = value?.DeepClone();
+            }
+        }
+
+        return settings;
+    }
+
+    private static List<ActionField> RecipientFields(IActionPlugin plugin)
+    {
+        try
+        {
+            return [.. plugin.Fields.Where(f => f.Type == ActionFieldType.Recipient)];
+        }
+#pragma warning disable CA1031 // Plugin code is untrusted.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return [];
+        }
+    }
+
+    private static string Action(RuleAction action, EventCatalog catalog, Func<Guid, string?> deviceName, IReadOnlyDictionary<Guid, StoredRecipient>? recipients)
     {
         var catalogAction = catalog.FindAction(action.ActionId);
         if (catalogAction is null)
@@ -64,8 +110,15 @@ public static class RuleTexts
         string text;
         try
         {
-            using var settings = JsonDocument.Parse(action.Settings.ToJsonString());
-            text = catalogAction.Plugin.Describe(settings.RootElement);
+            if (DescribedSettings(action, catalogAction.Plugin, recipients) is { } described)
+            {
+                using var settings = JsonDocument.Parse(described.ToJsonString());
+                text = catalogAction.Plugin.Describe(settings.RootElement);
+            }
+            else
+            {
+                text = catalogAction.Plugin.DisplayName;
+            }
         }
 #pragma warning disable CA1031 // Plugin code is untrusted.
         catch (Exception)
@@ -164,8 +217,8 @@ public static class RuleTexts
         };
     }
 
-    /// <summary>Why a rule does not run as set up (an event or action of a plugin that is off), else null.</summary>
-    public static string? Problem(RuleDefinition rule, EventCatalog catalog)
+    /// <summary>Why a rule does not run as set up (an event or action of a plugin that is off, no recipient), else null.</summary>
+    public static string? Problem(RuleDefinition rule, EventCatalog catalog, IReadOnlyDictionary<Guid, StoredRecipient>? recipients = null)
     {
         ArgumentNullException.ThrowIfNull(rule);
         ArgumentNullException.ThrowIfNull(catalog);
@@ -194,6 +247,11 @@ public static class RuleTexts
             if (!catalogAction.Available)
             {
                 return catalogAction.UnavailableText;
+            }
+
+            if (RuleValidator.MissesRecipient(action, RecipientFields(catalogAction.Plugin), recipients))
+            {
+                return $"{catalogAction.Plugin.DisplayName}: {ActionSettings.ChooseRecipient}";
             }
         }
 

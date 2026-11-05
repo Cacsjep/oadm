@@ -29,6 +29,9 @@ public static class ActionSettings
         return (field.VisibleWhenValue ?? string.Empty).Split('|').Any(v => string.Equals(current, v, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>The error of a <see cref="ActionFieldType.Recipient"/> field that is empty or points to no recipient of its types.</summary>
+    public const string ChooseRecipient = "Choose a recipient.";
+
     /// <summary>Most rows of a <see cref="ActionFieldType.KeyValues"/> setting.</summary>
     public const int MaxPairs = 50;
 
@@ -94,9 +97,12 @@ public static class ActionSettings
                 var stored = field.Type == ActionFieldType.Password && storedSecrets?.Contains(field.Key) == true;
                 if (field.Required && !stored && field.Type != ActionFieldType.Bool)
                 {
-                    errors[field.Key] = field.Type is ActionFieldType.Choice or ActionFieldType.DynamicChoice or ActionFieldType.File
-                        ? $"Choose {field.Label.ToLowerInvariant()}."
-                        : $"Enter {field.Label.ToLowerInvariant()}.";
+                    errors[field.Key] = field.EmptyText ?? field.Type switch
+                    {
+                        ActionFieldType.Recipient => ChooseRecipient,
+                        ActionFieldType.Choice or ActionFieldType.DynamicChoice or ActionFieldType.File => $"Choose {field.Label.ToLowerInvariant()}.",
+                        _ => $"Enter {field.Label.ToLowerInvariant()}.",
+                    };
                 }
 
                 continue;

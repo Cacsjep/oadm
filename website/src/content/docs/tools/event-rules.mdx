@@ -90,12 +90,11 @@ falls back the rule turns off. An event that does not send the value never passe
 - **Run VAPIX command**: sends a saved command of the [VAPIX Commander](../vapix-commander/), with its values and
   passwords. Optionally a second command when the rule turns off, for example to hide an overlay again. Commands marked
   dangerous need **Allow dangerous commands**. Text fields of the command take [placeholders](#placeholders).
-- **Send HTTP request**: calls a web service, for example a webhook of Teams or Slack or a building system. Method,
-  URL, query parameters, headers, a **Login** (Basic, Digest or Bearer token) and a body as JSON, XML, text or form.
-  **Allow untrusted certificates** accepts a self-signed certificate on the receiving side.
-- **Send email**: sends a mail through your mail server, as text or HTML. The mail server is part of the action.
-- **Send TCP message**: sends a message to a host and port, for example to a building, alarm or video system that
-  listens on a TCP port. Text, JSON, XML or hex bytes (`02 41 42 03`), with an optional line end and TLS. **Wait for an
+- **Send HTTP request**: calls a web service, for example a webhook of Teams or Slack or a building system. Choose a
+  [recipient](#recipients), then the method, query parameters, headers and a body as JSON, XML, text or form.
+- **Send email**: sends a mail to a [recipient](#recipients), as text or HTML.
+- **Send TCP message**: sends a message to a [recipient](#recipients), for example a building, alarm or video system that
+  listens on a TCP port. Text, JSON, XML or hex bytes (`02 41 42 03`), with an optional line end. **Wait for an
   answer** with **Answer must contain** fails the action when the other side does not confirm.
 - **Log entry**: writes a message to the server log (**Logs** page, **Server**) and does nothing else. Good for testing
   a rule.
@@ -124,6 +123,32 @@ first device of the trigger.
 When several devices turn a rule on, an action on chosen devices (the lamp on the I/O box) switches on with the first
 one and off when the last one ends.
 
+## Recipients
+
+A recipient says where to send, the action says what to send. Like the recipients of an Axis device, except that a rule keeps a
+link: change a recipient and all its rules follow.
+
+The **Recipients** card sits next to the rules. **New** asks for the type, a name and the type's fields:
+
+| Type | Holds |
+|---|---|
+| HTTP | URL, **Login** (Basic, Digest or Bearer token), **Allow untrusted certificates** |
+| Email | Mail server, port, encryption, **Allow untrusted certificates**, user name, password, From, To |
+| TCP | Host, port, **Use TLS**, **Allow untrusted certificates** |
+
+**Test** sends once now and shows the reason when it fails. Leave a stored password empty to keep it. A target takes no
+[placeholders](#placeholders). For a second audience, create a second recipient.
+
+In a rule, choose the recipient in the action, or click **New** next to the select.
+
+**Delete** is refused while a rule uses the recipient: the message names the rules to change first.
+
+:::note[Rules from older versions]
+OADM does not move these rules for you. A Send email, Send HTTP request or Send TCP message of an older rule shows **Choose a
+recipient.**, does not run, and the event log says so. Create the recipient, open the rule and choose it. The old server settings
+go when you save the rule.
+:::
+
 ## Manage rules
 
 - Turn a rule on or off with its check box. Turning off a rule that is on runs its "turn off" actions, so a lamp does
@@ -135,7 +160,7 @@ one and off when the last one ends.
 
 ## Event log
 
-The **Event log** below the rules lists what happened: the events your rules use, when a rule turned on, off or ran, and every
+The **Event log** below the rules and recipients lists what happened: the events your rules use, when a rule turned on, off or ran, and every
 action with its result. The newest entries come first and new ones appear live. OADM keeps the log for 30 days or
 100,000 entries. Administrators can empty it with **Delete all**.
 

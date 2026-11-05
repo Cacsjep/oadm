@@ -359,6 +359,18 @@ public interface IOadmApi
     /// <summary>Admin: "Send test" of an action without devices (EventService.TestAction).</summary>
     Task<TestActionReply> TestEventActionAsync(TestActionRequest request, CancellationToken ct);
 
+    /// <summary>Every recipient of the event rules, sorted by name.</summary>
+    Task<IReadOnlyList<RecipientEntry>> ListRecipientsAsync(CancellationToken ct);
+
+    /// <summary>Creates (empty id) or changes a recipient.</summary>
+    Task<RecipientEntry> SaveRecipientAsync(SaveRecipientRequest request, CancellationToken ct);
+
+    /// <summary>FAILED_PRECONDITION with the rule names while a rule uses it.</summary>
+    Task DeleteRecipientAsync(string id, CancellationToken ct);
+
+    /// <summary>"Test" of the recipient dialog: sends once now with sample event values.</summary>
+    Task<TestActionReply> TestRecipientAsync(SaveRecipientRequest request, CancellationToken ct);
+
     /// <summary>Live events of a core plugin (PluginService.Watch) until cancelled. Default: none (the page polls).</summary>
     IAsyncEnumerable<PluginEvent> WatchCorePluginAsync(string pluginId, CancellationToken ct) => AsyncEnumerable.Empty<PluginEvent>();
 

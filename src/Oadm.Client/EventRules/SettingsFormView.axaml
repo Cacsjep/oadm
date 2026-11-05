@@ -24,13 +24,14 @@
               <TextBox Text="{Binding Text}" IsVisible="{Binding IsText}" />
               <TextBox Text="{Binding Text}" IsVisible="{Binding IsNumber}" Width="120" HorizontalAlignment="Left" />
               <TextBox Text="{Binding Text}" IsVisible="{Binding IsMultiline}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
-              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding IsChoice}">
-                <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}" HorizontalAlignment="Stretch" />
-                <Button Grid.Column="1" Classes="secondary" Command="{Binding ReadFromDeviceCommand}" IsVisible="{Binding ReadsFromDevice}"
+              <DockPanel HorizontalSpacing="8" IsVisible="{Binding IsChoice}">
+                <ui:ToolbarButton DockPanel.Dock="Right" Text="New" IconKey="add" Command="{Binding NewRecipientCommand}" IsVisible="{Binding IsRecipient}" />
+                <Button DockPanel.Dock="Right" Classes="secondary" Command="{Binding ReadFromDeviceCommand}" IsVisible="{Binding ReadsFromDevice}"
                         ToolTip.Tip="{Binding ReadFromText}">
                   <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="Read from device" />
                 </Button>
-              </Grid>
+                <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}" PlaceholderText="{Binding ChoicePlaceholder}" HorizontalAlignment="Stretch" />
+              </DockPanel>
               <ui:PasswordBox Text="{Binding Text}" IsVisible="{Binding IsPassword}" />
               <ui:CodeEditor Text="{Binding Text}" Language="{Binding Language}" Height="180" IsVisible="{Binding IsCode}" />
               <ui:FileRow FileName="{Binding FileName}" ButtonText="Choose file" IsSingleButton="True"

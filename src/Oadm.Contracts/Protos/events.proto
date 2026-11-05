@@ -36,6 +36,45 @@ service EventService {
   rpc ClearLog (Empty) returns (ClearEventLogReply);
   // Admin: runs an action without devices once now with sample event values ("Send test" of the rule dialog).
   rpc TestAction (TestActionRequest) returns (TestActionReply);
+  // Every recipient with its one-line target and the rules that use it (at most 200 rows, so no page).
+  rpc ListRecipients (Empty) returns (RecipientList);
+  // Creates (empty id) or changes a recipient (audited). INVALID_ARGUMENT with the first problem; the trailer
+  // "oadm-field" names its field (a key of the type's fields or "name"). NOT_FOUND.
+  rpc SaveRecipient (SaveRecipientRequest) returns (RecipientEntry);
+  // Audited. FAILED_PRECONDITION with the rule names while a rule uses it. NOT_FOUND.
+  rpc DeleteRecipient (RecipientId) returns (Empty);
+  // Sends the type's test action once now with the action's default values and sample event values (audited).
+  rpc TestRecipient (SaveRecipientRequest) returns (TestActionReply);
+}
+
+message RecipientId { string id = 1; }
+
+// A shared target of event rule actions. Password values are never included.
+message RecipientEntry {
+  string id = 1;
+  string name = 2;
+  string type_id = 3;
+  string values_json = 4;                   // the values of the type's fields, without passwords
+  repeated string stored_secret_fields = 5; // the password fields with a value on the server
+  string target = 6;                        // "smtp.office365.com:587", "https://hooks.example.com"
+  repeated string used_by = 7;              // the names of the rules that use it
+}
+
+message RecipientList { repeated RecipientEntry recipients = 1; }
+
+message SaveRecipientRequest {
+  string id = 1;              // empty: a new recipient
+  string name = 2;
+  string type_id = 3;
+  string settings_json = 4;   // the type's fields; an empty password keeps the stored one
+}
+
+message RecipientTypeEntry {
+  string id = 1;
+  string display_name = 2;
+  string icon_key = 3;
+  repeated ActionFieldEntry fields = 4;
+  bool available = 5;         // false: the plugin of its test action is off
 }
 
 message TestActionRequest {
@@ -101,6 +140,7 @@ enum ActionFieldKind {
   ACTION_FIELD_CODE = 7;       // a body drawn as a code editor (language or language_key)
   ACTION_FIELD_KEY_VALUES = 8; // rows of name and value, a JSON array of {"name", "value"}
   ACTION_FIELD_FILE = 9;       // a file, {"name", "data" (base64)}; compliance checks only
+  ACTION_FIELD_RECIPIENT = 10; // the id of a recipient of recipient_types
 }
 
 message ActionFieldEntry {
@@ -121,6 +161,8 @@ message ActionFieldEntry {
   string language_key = 15;         // code field: the field whose value is the language
   bool choices_from_device = 16;    // dynamic choice read from one device the user picks (compliance checks)
   repeated string accept = 17;      // file field: the file name endings it takes (".cfg")
+  repeated string recipient_types = 18; // recipient field: the ids of the types it takes
+  string empty_text = 19;           // the error of a required field left empty; empty = "Enter" and the label
 }
 
 message ActionEntry {
@@ -140,6 +182,7 @@ message ActionEntry {
 message EventCatalog {
   repeated EventTypeEntry event_types = 1;
   repeated ActionEntry actions = 2;
+  repeated RecipientTypeEntry recipient_types = 3;
 }
 
 message RuleId { string id = 1; }

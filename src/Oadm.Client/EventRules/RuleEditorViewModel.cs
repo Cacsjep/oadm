@@ -339,6 +339,11 @@ public sealed partial class RuleActionViewModel : ObservableObject
 
     public bool HasFieldErrors => Fields.Any(f => f.IsVisible && f.Problem is not null);
 
+    /// <summary>"Send email: Subject: Enter subject.", "Send email: Choose a recipient."; null without an error.</summary>
+    internal string? FieldProblem => Fields.FirstOrDefault(f => f.IsVisible && f.Problem is not null) is { } first
+        ? first.IsRecipient ? $"{SelectedAction?.Entry.DisplayName}: {first.Problem}" : $"{SelectedAction?.Entry.DisplayName}: {first.Label}: {first.Problem}"
+        : null;
+
     /// <summary>The action "Log entry": a test of it would only write to the server log.</summary>
     internal const string LogEntryActionId = "oadm.notifications.log";
 
@@ -433,9 +438,15 @@ public sealed partial class RuleActionViewModel : ObservableObject
             var value = initial is not null
                 ? ActionSettings.Text(initial.Settings, entry.Key)
                 : entry.HasDefaultValue ? entry.DefaultValue : null;
+            if (field.IsRecipient)
+            {
+                field.SetChoices(_owner.RecipientChoices(entry));
+                field.RecipientCreator = _owner.NewRecipientAsync;
+            }
+
             field.SetValue(value);
             field.PasswordStored = initial?.StoredSecretFields.Contains(entry.Key) == true;
-            field.ShowError = false;
+            field.ShowError = field.IsRecipient && initial is not null; // an old action says at once that it needs a recipient
             field.Changed += (_, _) => _owner.Revalidate();
             Fields.Add(field);
             if (entry.Kind == ActionFieldKind.ActionFieldDynamicChoice)
@@ -505,13 +516,17 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
 {
     private readonly IOadmApi _api;
     private readonly RuleDefinition _original;
+    private readonly List<RecipientEntry> _recipients;
+    private readonly IReadOnlyList<RecipientTypeEntry> _recipientTypes;
     private bool _revalidating;
 
-    public RuleEditorViewModel(IOadmApi api, EventCatalog catalog, RuleDetail? detail, DeviceStore devices)
+    public RuleEditorViewModel(IOadmApi api, EventCatalog catalog, RuleDetail? detail, DeviceStore devices, IReadOnlyList<RecipientEntry>? recipients = null)
     {
         _api = api ?? throw new ArgumentNullException(nameof(api));
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(devices);
+        _recipients = [.. recipients ?? []];
+        _recipientTypes = catalog.RecipientTypes;
         AllEventTypes = [.. catalog.EventTypes.OrderBy(t => t.Group == "Device status" ? 0 : 1).ThenBy(t => t.Group).ThenBy(t => t.DisplayName).Select(t => new EventTypeOption(t))];
         Actions = [.. catalog.Actions.OrderBy(a => a.DisplayName, StringComparer.CurrentCultureIgnoreCase).Select(a => new ActionOption(a))];
         DeviceList = [.. devices.Devices];
@@ -640,7 +655,7 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
     {
         RuleStep => FormError,
         WhenStep => Conditions.Select(c => c.Problem).FirstOrDefault(p => p is not null),
-        ThenStep => RuleActions.Select(a => a.Problem ?? (a.HasFieldErrors ? $"{a.SelectedAction?.Entry.DisplayName}: {a.Fields.First(f => f.IsVisible && f.Problem is not null).Label}: {a.Fields.First(f => f.IsVisible && f.Problem is not null).Problem}" : null)).FirstOrDefault(p => p is not null),
+        ThenStep => RuleActions.Select(a => a.Problem ?? a.FieldProblem).FirstOrDefault(p => p is not null),
         _ => null,
     };
 
@@ -889,6 +904,40 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
         }
 
         PlaceholderGroups = groups;
+    }
+
+    /// <summary>Shows the recipient dialog (set by the window); true = saved.</summary>
+    public Func<RecipientEditorViewModel, Task<bool>>? ShowRecipientEditor { get; set; }
+
+    /// <summary>The recipients of a field's types, sorted by name.</summary>
+    internal IEnumerable<ActionChoiceEntry> RecipientChoices(ActionFieldEntry entry) => _recipients
+        .Where(r => entry.RecipientTypes.Contains(r.TypeId))
+        .OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)
+        .Select(r => new ActionChoiceEntry { Value = r.Id, Label = r.Name });
+
+    /// <summary>New beside a recipient select: the recipient dialog for the field's types; the new one is selected.</summary>
+    internal async Task NewRecipientAsync(ActionFieldViewModel field)
+    {
+        if (ShowRecipientEditor is not { } show)
+        {
+            return;
+        }
+
+        var types = _recipientTypes.Where(t => field.Entry.RecipientTypes.Contains(t.Id)).ToList();
+        var editor = new RecipientEditorViewModel(_api, types, null, [.. _recipients.Select(r => r.Name)]);
+        if (!await show(editor).ConfigureAwait(true) || editor.Saved is not { } saved)
+        {
+            return;
+        }
+
+        _recipients.Add(saved);
+        foreach (var other in RuleActions.SelectMany(a => a.Fields).Where(f => f.IsRecipient))
+        {
+            other.SetChoices(RecipientChoices(other.Entry));
+        }
+
+        field.SelectChoice(saved.Id);
+        Revalidate();
     }
 
     /// <summary>

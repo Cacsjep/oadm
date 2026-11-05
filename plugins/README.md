@@ -765,12 +765,18 @@ public sealed class EmailAction : IActionPlugin
 - **Fields**: `Text`, `Multiline`, `Number` (min / max), `Bool`, `Choice` (fixed list), `DynamicChoice` (the list comes
   from `ListChoicesAsync` while the rule is edited, e.g. saved VAPIX commands), `Password`, `Code` (a body in the code
   editor; `Language` or `LanguageKey` = the field whose value is json / xml / html / text / form), `KeyValues` (name / value
-  rows, read with `run.GetPairs(key)`). `Required`, `Hint`, `Default`,
+  rows, read with `run.GetPairs(key)`), `Recipient` (SDK 0.11.0, see below). `Required`, `EmptyText` (SDK 0.11.0: the error of an empty required field, default "Enter" and the label), `Hint`, `Default`,
   `VisibleWhenKey` / `VisibleWhenValue` (show a field only for one choice, e.g. "Seconds" for "Pulse"; several as
   "basic|digest") and `OffEdge` (a
   setting of "When the rule turns off", shown only for rules that turn on and off). The host checks required values,
   numbers, choices and lengths (`ActionSettings`, the same code in the dialog and on the server); `Validate` adds the
   action's own rules (errors per field key).
+- **Recipients** (SDK 0.11.0, [spec](../docs/spec/recipients.md)): a shared target several rules choose. Declare the kind in
+  `RecipientTypes` (`RecipientType(id, name, icon, fields, testActionId)`, optional `Target` such as "{host}:{port}") and add
+  `ActionField.Recipient("recipient", "Recipient", [typeId])` to `Fields`. Before a run the host merges the recipient's fields into the
+  settings under their own keys, so `run.Get("host")` works and passwords arrive decrypted; `run.RecipientIds` has the id per field.
+  Never fill placeholders in a target. `Validate` also checks a recipient's values, `Describe` sees them without passwords.
+  Sample: `plugins/Oadm.Plugins.Notifications/NotificationRecipients.cs`.
 - **Edges**: `ActionInvocation.Edge` is `Fired` (one-shot rule), `TurnedOn` or `TurnedOff`. Set `SupportsTurnOff` when
   the action has an off part and `RunsOn(edge, settings)` to skip edges (default: off edges only with `SupportsTurnOff`).
 - **Runs**: at most 16 at once for all rules, 30 s each (`ct` is cancelled; `MaxRunTime(settings)` asks for longer, e.g. a

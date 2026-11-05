@@ -422,7 +422,7 @@ public sealed partial class ActionFieldViewModel : ObservableObject
             Choices.Add(new ChoiceOption<string>(choice.Value, choice.Label));
         }
 
-        if (!entry.Required && entry.Kind is ActionFieldKind.ActionFieldChoice or ActionFieldKind.ActionFieldDynamicChoice)
+        if (!entry.Required && entry.Kind is ActionFieldKind.ActionFieldChoice or ActionFieldKind.ActionFieldDynamicChoice or ActionFieldKind.ActionFieldRecipient)
         {
             Choices.Insert(0, new ChoiceOption<string>(string.Empty, "None"));
         }
@@ -449,7 +449,13 @@ public sealed partial class ActionFieldViewModel : ObservableObject
 
     public bool IsBool => Entry.Kind == ActionFieldKind.ActionFieldBool;
 
-    public bool IsChoice => Entry.Kind is ActionFieldKind.ActionFieldChoice or ActionFieldKind.ActionFieldDynamicChoice;
+    public bool IsChoice => Entry.Kind is ActionFieldKind.ActionFieldChoice or ActionFieldKind.ActionFieldDynamicChoice or ActionFieldKind.ActionFieldRecipient;
+
+    /// <summary>A select of the recipients of its types with New beside it (<see cref="NewRecipientCommand"/>).</summary>
+    public bool IsRecipient => Entry.Kind == ActionFieldKind.ActionFieldRecipient;
+
+    /// <summary>What an empty select says.</summary>
+    public string? ChoicePlaceholder => IsRecipient ? "Choose a recipient" : null;
 
     public bool IsPassword => Entry.Kind == ActionFieldKind.ActionFieldPassword;
 
@@ -467,6 +473,9 @@ public sealed partial class ActionFieldViewModel : ObservableObject
 
     /// <summary>Opens the file picker for a <see cref="IsFile"/> field; set by the dialog.</summary>
     public Func<ActionFieldViewModel, Task>? FilePicker { get; set; }
+
+    /// <summary>Opens the recipient dialog and selects the new recipient; set by the dialog.</summary>
+    public Func<ActionFieldViewModel, Task>? RecipientCreator { get; set; }
 
     /// <summary>Picks a device and reads the choices from it; set by the dialog.</summary>
     public Func<ActionFieldViewModel, Task>? DeviceReader { get; set; }
@@ -502,6 +511,9 @@ public sealed partial class ActionFieldViewModel : ObservableObject
 
     [RelayCommand]
     private Task ChooseFileAsync() => FilePicker is { } pick ? pick(this) : Task.CompletedTask;
+
+    [RelayCommand]
+    private Task NewRecipientAsync() => RecipientCreator is { } create ? create(this) : Task.CompletedTask;
 
     [RelayCommand]
     private Task ReadFromDeviceAsync() => DeviceReader is { } read ? read(this) : Task.CompletedTask;
@@ -636,10 +648,13 @@ public sealed partial class ActionFieldViewModel : ObservableObject
         }
     }
 
-    /// <summary>Selects a choice; a value that is not (yet) in the list is kept as "(not found)".</summary>
+    /// <summary>
+    /// Selects a choice; a value that is not (yet) in the list is kept as "(not found)", except a recipient that is gone:
+    /// the select stays empty with its error.
+    /// </summary>
     public void SelectChoice(string value)
     {
-        if (value.Length > 0 && !Choices.Any(c => c.Value == value))
+        if (value.Length > 0 && !IsRecipient && !Choices.Any(c => c.Value == value))
         {
             Choices.Add(new ChoiceOption<string>(value, value + " (not found)"));
         }
@@ -680,6 +695,7 @@ public sealed partial class ActionFieldViewModel : ObservableObject
     private static ActionField ToSdk(ActionFieldEntry entry) => new(entry.Key, entry.Label, (ActionFieldType)(int)entry.Kind)
     {
         Required = entry.Required,
+        EmptyText = entry.EmptyText.Length == 0 ? null : entry.EmptyText,
         Default = entry.HasDefaultValue ? entry.DefaultValue : null,
         Min = entry.Min,
         Max = entry.Max == 0 ? int.MaxValue : entry.Max,
@@ -692,6 +708,7 @@ public sealed partial class ActionFieldViewModel : ObservableObject
         Choices = [.. entry.Choices.Select(c => new ActionChoice(c.Value, c.Label))],
         ChoicesFromDevice = entry.ChoicesFromDevice,
         Accept = [.. entry.Accept],
+        RecipientTypes = [.. entry.RecipientTypes],
     };
 
     /// <summary>The settings JSON of a form (an empty password keeps the stored value: left out).</summary>

@@ -641,6 +641,8 @@ Server only, always on, no page. Spec: `docs/spec/event-rules.md`.
   a device (follow the rule, pulse, set active / inactive, toggle). Rule that must hold: over the I/O port management API the
   port must exist and be an output before anything is written.
 - **Notifications** (`plugins/Oadm.Plugins.Notifications`, id `oadm.notifications`): the actions **Send email**, **Send
-  HTTP request**, **Send TCP message** and **Log entry**, without devices. Rules that must hold: placeholder values are escaped for where
+  HTTP request**, **Send TCP message** and **Log entry**, without devices, and the recipient types HTTP, Email and TCP
+  ([recipients.md](recipients.md)). Rules that must hold: a recipient holds the target and its login, the action the message; no
+  placeholders in a target; placeholder values are escaped for where
   they go, never the text around them; passwords and tokens are stored encrypted; untrusted certificates only with
   "Allow untrusted certificates" (off by default).

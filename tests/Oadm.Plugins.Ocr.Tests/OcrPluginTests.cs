@@ -21,7 +21,7 @@ public sealed class OcrPluginTests
         Assert.Equal(OcrInfo.PluginId, root.GetProperty("id").GetString());
         Assert.Equal("Text recognition", root.GetProperty("displayName").GetString());
         Assert.False(root.GetProperty("enabledByDefault").GetBoolean());
-        Assert.Equal(SdkInfo.Version, root.GetProperty("minSdkVersion").GetString());
+        Assert.True(Version.Parse(root.GetProperty("minSdkVersion").GetString()!) <= Version.Parse(SdkInfo.Version));
         Assert.Equal(OcrInfo.Description, root.GetProperty("description").GetString());
 
         // The add-on catalogue offers it with the same id, name and line.

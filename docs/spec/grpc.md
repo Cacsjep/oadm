@@ -242,7 +242,9 @@ used again.
 - **`EventService`** (`events.proto`, `docs/spec/event-rules.md`; every method `AccessRule.AllDevices`, rules have no
   owner): `GetCatalog`, `ListRules`, `WatchRules`, `GetRule` (password values never included), `SaveRule`, `DeleteRule`,
   `SetRuleEnabled`, `DuplicateRule`, `ListActionChoices`, `ListLog` (newest first, limit 0 = 10,000), `WatchLog`,
-  `ClearLog`, `TestAction`.
+  `ClearLog`, `TestAction`, and the recipients (`docs/spec/recipients.md`): `ListRecipients` (like `ListRules`), `SaveRecipient` (INVALID_ARGUMENT
+  with the trailer `oadm-field`, NOT_FOUND), `DeleteRecipient` (FAILED_PRECONDITION with the rule names, NOT_FOUND), `TestRecipient` (reply ok
+  + message), the last three like `SaveRule`, audited. `GetCatalog` also gives `recipient_types`.
 - **`ServerLogService`** (`logs.proto`, permission `logs.server`, users with all devices): `List` (the server's log
   files, a page newest first), see `docs/spec/main-window.md` "Logs page".
 - **`DeviceWebService`** (`deviceweb.proto`, the Web View relay, `plugins/Oadm.Plugins.WebView/README.md`):
