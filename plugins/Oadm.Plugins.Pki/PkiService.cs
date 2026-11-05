@@ -301,7 +301,8 @@ public sealed partial class PkiService : IAsyncDisposable
             DevicesWithPreviousCa = counts.WithPreviousCa,
             ExpiringSoon = counts.ExpiringSoon,
             RadiusCa = RadiusSummary(config.Dot1x.RadiusCaPem),
-            Authorities = AuthorityRows(withPolicies: view is null), // the policies are server-wide: a group's users get no names of them
+            // The policies and recipients are server-wide: a group's users get no names of them.
+            Authorities = AuthorityRows(withPolicies: view is null, view is null ? await RecipientUsesAsync(ct).ConfigureAwait(false) : null),
             RootTrust = roots,
         };
     }

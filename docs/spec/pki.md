@@ -126,8 +126,8 @@ There is no special OADM CA: every CA is an ordinary **root CA** (self-signed) o
   previous CAs, each Axis device ID root and intermediate (stays deleted after an update: setting `deletedAxisCas`, their
   SHA-256) and a row that cannot be read. Refused with the reason in a message while a policy names it ("Used by the
   policy <name>. Change or delete the policy first."; issuing, 802.1X trusted CA, EST sign-in CA, RADIUS server CA;
-  `PolicyStore.NamingCa`), while a service uses it ("Used by the 802.1X server. Remove it there first.") and while it signed
-  a CA that is still listed ("It signed <name>. Delete <name> first."). Its certificates stay in the list; nothing else is
+  `PolicyStore.NamingCa`), while a service uses it ("Used by the 802.1X server. Remove it there first."), while a recipient
+  uses it ("Used by the recipient Plant broker. Pick another certificate first.") and while it signed a CA that is still listed ("It signed <name>. Delete <name> first."). Its certificates stay in the list; nothing else is
   deleted or blocked. The 802.1X and EST servers stop trusting it at once (`CaChanged`).
 - **A row that cannot be read** (the stored first-start CA is damaged, or a created or imported CA whose certificate cannot
   be read; `PkiService.UnreadableRows`, `IssuedCertificateInfo.Unreadable`): name "Unknown CA", no badges, Issuer and Valid
@@ -395,7 +395,8 @@ certificates and the certificates created, signed or imported here. Two cards of
   attention: "Expires in 12 days" (amber, the Expiry warning policy's days), "Expired" (red), "Cannot be read" (red, a CA
   row that cannot be read); the CA card's **Used in**; one narrow fixed column with a ⋯ button. No State or Used by column:
   what uses a certificate ("802.1X: OADM Root CA SERVER01 (only devices OADM manages)", "Issuing: HTTPS, IEEE 802.1X", a server
-  certificate "802.1X server", a device certificate its device) is the section "Used by" of View.
+  certificate "802.1X server", a recipient "Recipient: Plant broker", a device certificate its device) is the section
+  "Used by" of View.
 - **Group by** (a select in the Certificates card's toolbar, kept on this computer:
   `SetLocalSetting("certificates.groupBy")`): **Type** (default): Certificate authorities, Server certificates, Created,
   signed and imported, Device certificates; **Issuer**: one group per CA in the order of the CA list, then Other CA; **None**.
@@ -446,7 +447,8 @@ certificates and the certificates created, signed or imported here. Two cards of
 - **Delete** (`deleteCertificates`; confirmation "It leaves the list. This cannot be undone." / "They leave the list. ...",
   red Delete; all or none, the first refusal says why): every device certificate, created and signed ones no server policy
   shows, imported ones nothing uses or that ended, ended server certificates. Refused for a certificate a server policy
-  shows ("Used by the policy 802.1X server. Pick another certificate first.") and for a CA ("Delete CAs in Certificate
+  shows ("Used by the policy 802.1X server. Pick another certificate first."), for one a recipient uses ("Used by the
+  recipient Plant broker. Pick another certificate first.", also when it ended) and for a CA ("Delete CAs in Certificate
   authorities."). A still valid one OADM issued (a device certificate, a created or signed one) goes on PKI's list of
   certificates **no longer accepted** (see "Current and pending"), so a copy left on a camera or elsewhere is refused by the
   802.1X and EST servers ("Certificate deleted in OADM") until it ends; the server log says "PKI: N still valid certificates
@@ -456,6 +458,17 @@ certificates and the certificates created, signed or imported here. Two cards of
 - **Who:** every action needs "Manage the certificate authority" and all devices, audited by the host; a user limited to a
   device group sees only the device certificates of the group's devices and no actions.
 - An event `certificates` (at most one per second) makes every open tab read its page again.
+- **Recipients** (`IRecipientCertificates`, offered through `ctx.Services` while PKI runs, `PkiRecipientCertificates`; only the
+  host reads it, docs/spec/recipient-sessions.md "Security"): the value of a choice is the row's id (`local:<id>`, `ca:<SHA-256>`).
+  Client certificates: the rows with a key OADM holds that have not ended and are still accepted, no CA, no certificate of a
+  running server (those keys stay in the servers). Trusted: the CAs of the list and the imported certificates. Text like the
+  policy choices ("EST server (OADM Root CA SERVER01), until 2035-10-25", a self-signed one names itself once). `LoadAsync`:
+  the certificate with its key when OADM holds one (`LocalCertificates.WithKey`, decrypted with the same purpose, through
+  PKCS#12 like the EST server's, in no certificate store), then the issuers PKI lists; null when the row left the list, is no
+  longer accepted or its key cannot be read. An ended certificate still loads: the peer's refusal says more than "no longer
+  exists". PKI reads what recipients use from `ctx.Services.Find<IRecipientCertificateUse>()` (the host's; null: no uses),
+  once per request (`RecipientUsesAsync`): the rows' Used by, the CA card's Used by, the refusals of Delete and of Delete CA.
+  Users limited to a device group get no recipient names.
 
 ## Current and pending
 
@@ -739,6 +752,7 @@ The detail lives in `plugins/Oadm.Plugins.Pki/README.md`; the map:
   `Certificates/LocalCertificates`, `Ca/IssuedRegistry`, `Ca/NotAcceptedTexts`, `Ca/ExistingCertificateImport`.
 - **Server certificates:** `PkiService.ServerCertificates.cs`, `Radius/Server/ServerIdentityKeeper`,
   `Est/Serving/ServerCertificates`.
+- **Recipients:** `PkiService.RecipientCertificates.cs`; tests `RecipientCertificateTests`.
 - **SDK** (`src/Oadm.Sdk/Certificates`, default members of `IDeviceCertificateAuthority`, the offer of PKI): `IsRevoked`,
   `FindRevocation`, `Revocations`, event `RevocationChanged` (subscribe again when `Find` returns another instance),
   `ListIssuedAsync(IssuedCertificateQuery)` (filters, search, `DeviceIds`, paging, `GroupBy`; rows `IssuedCertificateInfo`),

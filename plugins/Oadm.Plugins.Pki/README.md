@@ -59,6 +59,8 @@ revocation").
   a previous CA ends). `CaChanged` (the service's `Changed`) after Create CA, Import and Delete.
 - **`SetUsedBy(serviceId, serviceName, ids)`:** in memory per service (each service tells it again after a start), an empty
   list clears it; a change publishes the state (no `Changed`). Shown in "Used by" of View.
+- **Recipients:** `PkiService.RecipientCertificates.cs`, the offer `IRecipientCertificates` and the uses read from
+  `IRecipientCertificateUse` (`docs/spec/pki.md` "Certificates").
 - **Issuing:** `PkiService.IssuingCa(caId)` (the first-start CA for null or `oadm`, else a created or imported CA with its
   key; null: it cannot issue), `IssuingCas()`; `PolicyStore.IssuingCaChoices()` (Issued by). Every signing path takes the
   CA of its policy: the tasks (`CertificateDeployment.RequireCa(service, policy)`), the CA service

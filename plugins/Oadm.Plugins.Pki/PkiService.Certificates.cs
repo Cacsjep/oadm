@@ -108,7 +108,7 @@ public sealed partial class PkiService
 
     /// <summary>In-process callers: one page over every device.</summary>
     internal async Task<CertificatesReply> GetCertificatesForEveryDeviceAsync(CertificatesRequest request, CancellationToken ct) =>
-        GetCertificates(request, await SystemDevicesAsync(ct).ConfigureAwait(false), onlyListed: false);
+        GetCertificates(request, await SystemDevicesAsync(ct).ConfigureAwait(false), onlyListed: false, await RecipientUsesAsync(ct).ConfigureAwait(false));
 
     /// <summary>The CA service's query (every device; <see cref="IssuedCertificateQuery.DeviceIds"/> narrows it).</summary>
     internal async Task<IssuedCertificatePage> QueryIssuedAsync(IssuedCertificateQuery query, CancellationToken ct)

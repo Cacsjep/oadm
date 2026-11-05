@@ -232,6 +232,12 @@ public static class CertificateRules
     /// <summary>A certificate a server policy shows (decision 2026-10-25).</summary>
     public static string UsedByPolicy(string policy) => $"Used by the policy {policy}. Pick another certificate first.";
 
+    /// <summary>A certificate or CA a recipient of the event rules uses.</summary>
+    public static string UsedByRecipient(string recipient) => $"Used by the recipient {recipient}. Pick another certificate first.";
+
+    /// <summary>The recipients in the Used by of a row: "Recipient: Plant broker, Line 2".</summary>
+    public static string RecipientsUsing(IEnumerable<string> names) => "Recipient: " + string.Join(", ", names);
+
     public const string RemoveCaThere = "Delete CAs in Certificate authorities.";
 
     public const string NothingDeleted = " Nothing was deleted.";
