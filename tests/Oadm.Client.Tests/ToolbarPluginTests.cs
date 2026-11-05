@@ -64,6 +64,27 @@ public sealed class ToolbarPluginTests
     }
 
     [Fact]
+    public void A_library_with_a_client_part_name_next_to_a_server_part_is_left_alone()
+    {
+        // Opc.Ua.Client.dll of the OPC UA plugin: only a dll on the client SDK is a client part.
+        string root = Path.Combine(Path.GetTempPath(), "oadm-library-client-" + Guid.NewGuid().ToString("N"));
+        string folder = Directory.CreateDirectory(Path.Combine(root, "oadm.opcua")).FullName;
+        try
+        {
+            File.Copy(typeof(Microsoft.Extensions.Logging.ILogger).Assembly.Location, Path.Combine(folder, "Vendor.Library.Client.dll"));
+            File.WriteAllText(Path.Combine(folder, "plugin.json"), """{"id":"oadm.opcua","version":"0.1.0","minSdkVersion":"0.4.0"}""");
+
+            var loader = new ClientPluginLoader([root], NullLogger<ClientPluginLoader>.Instance);
+
+            Assert.False(loader.HasPackage("oadm.opcua"));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Sample_toolbar_plugin_loads_from_a_client_dll()
     {
         var loader = new ClientPluginLoader([TestPluginRoot], NullLogger<ClientPluginLoader>.Instance);
