@@ -94,6 +94,9 @@ works with the fewest fields, and security is there when it is needed.
   value stays. For a persistent type Test says Connecting, then the server's Connected or reason; the audit says "Connected to".
 - **No new certificates in PKI:** Create stays as it is. An IEEE 802.1X certificate has client authentication, so it already works for MQTT.
   OPC UA's sign, sign and encrypt and certificate login take a certificate imported into PKI. Its application URI comes from the certificate's URI name.
+- **Trust of an OPC UA server:** Allow untrusted accepts; a Trusted CA checks against it and its issuers (a self-signed server: the imported
+  certificate itself); otherwise the operating system's roots. A certificate accepted through a CA or the roots must name the host of the endpoint
+  (built 2026-11-05). With security None nothing identifies the server, so nothing checks it, also for a password the login policy encrypts.
 - **Passwords with OPC UA:** the stack itself refuses a user name and password when neither a sign and encrypt channel nor the server's login
   policy encrypts it (Bad security checks failed). OADM adds no rule of its own and shows that refusal in plain words.
 
@@ -101,8 +104,10 @@ works with the fewest fields, and security is there when it is needed.
 
 - MQTTnet: the fix of its TLS check (#2254) is not in 5.2.0, the newest release. OADM sets its own certificate check, so both versions behave
   the same. The fix is marked a breaking change: read it when updating.
-- `Oadm.Notices` knows SPDX expressions; the OPC UA packages carry a license file with requireLicenseAcceptance.
-- Their Microsoft.Extensions packages must fit `Oadm.Plugin.Versions.props`.
+- `Oadm.Notices` lists a license file that names itself by that name (the OPC UA packages: OPC Foundation MIT License 1.00).
+- Their Microsoft.Extensions packages must fit the host: the plugin's 10.0.12 are older than the host's 10.0.13, which the plugin load context
+  uses; what the host does not have (Http.Resilience, Polly) comes from the plugin folder.
+- Opc.Ua.Client.dll is named like a client part. The client loader takes only a `*.Client.dll` that references the client SDK.
 
 ## Tests
 

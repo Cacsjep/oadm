@@ -652,3 +652,9 @@ Server only, always on, no page. Spec: `docs/spec/event-rules.md`.
   `#` or NUL sends nothing; QoS 1 and 2 wait for the broker's acknowledge and a refusal fails the action; the plugin never
   reconnects, the pool does; TLS is off by default and always runs the plugin's own certificate check (a Trusted CA replaces the
   operating system's roots, the host name must still match).
+- **OPC UA** (`plugins/Oadm.Plugins.OpcUa`, id `oadm.opcua`, spec [recipient-sessions.md](recipient-sessions.md)): the action
+  **Write OPC UA value** and the persistent recipient type OPC UA, library OPCFoundation.NetStandard.Opc.Ua.Client (OPC Foundation
+  MIT License 1.00). Rules that must hold: output only, one write of the Value attribute per action, no browse, no read, no
+  subscription; the value is checked before anything is sent; a new recipient works with only the address; nothing goes to disk
+  and no certificate is created (Sign and Sign and encrypt need a chosen client certificate, whose URI name is the application URI);
+  the stack's refusal of an unprotected password is shown in plain words, OADM adds no rule; no reconnect in the plugin.
