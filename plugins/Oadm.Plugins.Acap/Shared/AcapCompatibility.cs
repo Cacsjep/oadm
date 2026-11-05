@@ -64,7 +64,7 @@ public sealed record AcapInstallPreview(
 /// </summary>
 public static class AcapCompatibility
 {
-    /// <summary>Manifest schema version -> minimum AXIS OS (developer.axis.com, manifest schemas).</summary>
+    /// <summary>Manifest schema version -> minimum AXIS OS (developer.axis.com, manifest schemas), for packages that state no AXIS OS range.</summary>
     public static readonly IReadOnlyList<(string Schema, string MinOs)> SchemaMinimumOs =
     [
         ("1.0", "10.7"), ("1.1", "10.7"), ("1.2", "10.7"), ("1.3", "10.9"), ("1.3.1", "11.0"),
@@ -357,7 +357,9 @@ public static class AcapCompatibility
             problems.Add($"AXIS OS {fw} is not supported by the package (needs {string.Join(" or ", package.CompatibleOsVersions)}).");
         }
 
-        if (minFromSchema is not null && CompareTruncated(NumericPrefix(fw), NumericPrefix(minFromSchema)) < 0)
+        // The package's own range wins: the schema table only says which release a schema came with, and packages with
+        // schema 2.1.0 that state 11.11 install and run there. The device still has the last word on the upload.
+        if (package.CompatibleOsVersions.Count == 0 && minFromSchema is not null && CompareTruncated(NumericPrefix(fw), NumericPrefix(minFromSchema)) < 0)
         {
             problems.Add($"The package needs AXIS OS {minFromSchema} or later (manifest schema {package.SchemaVersion}), the device has {fw}.");
         }

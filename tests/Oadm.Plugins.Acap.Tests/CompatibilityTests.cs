@@ -81,6 +81,21 @@ public sealed class CompatibilityTests
         }
     }
 
+    [Theory]
+    [InlineData("11.11.238", true)]
+    [InlineData("12.11.77", true)]
+    [InlineData("11.10.5", false)]
+    [InlineData("13.0.88", false)]
+    public void The_packages_own_range_wins_over_the_schema_table(string firmware, bool ok)
+    {
+        var r = AcapCompatibility.Check(Package(schema: "2.1.0", os: [new OsVersionRange("11.11.0", "12")]), P3265 with { FirmwareVersion = firmware }, null, false);
+        Assert.Equal(ok, r.IsCompatible);
+        if (!ok)
+        {
+            Assert.Equal($"AXIS OS {firmware} is not supported by the package (needs 11.11.0 - 12).", Assert.Single(r.Problems));
+        }
+    }
+
     [Fact]
     public void Newer_unknown_schema_warns_but_uses_highest_known_minimum()
     {

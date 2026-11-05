@@ -21,7 +21,7 @@ always-on `oadm.acap` stays as it is). The context menu dialog **Applications (A
 2. **The same checks before the task, from the same code.** The install preview uses the Applications plugin's own
    `.eap` reader and compatibility rules (`plugins/Oadm.Plugins.Acap/Shared`: `EapPackage`, `AcapCompatibility`,
    `LicenseKeys`), linked as source, never a copy or a second implementation: architecture (processor), AXIS OS range
-   and the manifest schema's minimum, root apps (refused on AXIS OS 12+), signed-only devices (`AllowUnsigned` false,
+   (without one, the manifest schema's minimum), root apps (refused on AXIS OS 12+), signed-only devices (`AllowUnsigned` false,
    and AXIS OS 13+ where the setting is gone and only signed apps install), another app with the same name, vendor change,
    install kind and downgrade, license keys by MAC address, application id and expiry. A rule added there applies to the
    dialog, the page and the task at once.
