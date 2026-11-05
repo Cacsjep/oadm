@@ -1,7 +1,19 @@
 using System.Buffers.Binary;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using System.Text.Json;
+
+using Microsoft.Extensions.Logging.Abstractions;
+
+using MQTTnet;
 
 using Oadm.Plugins.Modbus;
+using Oadm.Plugins.Mqtt;
+using Oadm.Plugins.OpcUa;
+using Oadm.Sdk.Actions;
+
+using Opc.Ua;
 
 namespace Oadm.RecipientStack.Tests;
 
@@ -15,6 +27,8 @@ public sealed class RecipientStackTests
 {
     private const string Host = "127.0.0.1";
     private const int ModbusPort = 15020;
+    private const int MqttPort = 18830;
+    private const string OpcEndpoint = "opc.tcp://127.0.0.1:48400";
 
     /// <summary>A server in a container takes a moment after its port opens.</summary>
     private static async Task<T> RetryAsync<T>(Func<CancellationToken, Task<T>> open)
@@ -30,6 +44,62 @@ public sealed class RecipientStackTests
             {
                 await Task.Delay(TimeSpan.FromSeconds(1), limit.Token);
             }
+        }
+    }
+
+    private static RecipientSessionRequest Request(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return new RecipientSessionRequest(document.RootElement.Clone(), new Dictionary<string, IReadOnlyList<X509Certificate2>>(), NullLogger.Instance);
+    }
+
+    [Fact]
+    public async Task MqttConnectsAndPublishes()
+    {
+        var client = new MqttClientFactory().CreateMqttClient();
+        var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.ApplicationMessageReceivedAsync += e =>
+        {
+            received.TrySetResult(Encoding.UTF8.GetString(e.ApplicationMessage.Payload));
+            return Task.CompletedTask;
+        };
+        await RetryAsync(async ct =>
+        {
+            try
+            {
+                await client.ConnectAsync(new MqttClientOptionsBuilder().WithTcpServer(Host, MqttPort).WithClientId("oadm-stack-check").Build(), ct);
+                return await client.SubscribeAsync("oadm/stack", cancellationToken: ct); // Docker takes the port before the broker listens
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                throw new InvalidOperationException(ex.Message, ex);
+            }
+        });
+
+        var session = new MqttSessionFactory().Create(Request($$"""{"host":"{{Host}}","port":{{MqttPort}},"protocolVersion":"5.0"}"""));
+        await using (session)
+        {
+            await session.ConnectAsync(CancellationToken.None);
+            await ((IMqttPublisher)session).PublishAsync(new MqttMessage("oadm/stack", "hello", 1, false), CancellationToken.None);
+        }
+
+        Assert.Equal("hello", await received.Task.WaitAsync(TimeSpan.FromSeconds(30)));
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
+    public async Task OpcUaConnectsAndWrites()
+    {
+        // The defaults of a new recipient: no security, anonymous.
+        var session = await RetryAsync(async ct =>
+        {
+            var opened = new OpcUaSessionFactory().Create(Request($$"""{"endpoint":"{{OpcEndpoint}}"}"""));
+            await opened.ConnectAsync(ct);
+            return opened;
+        });
+        await using (session)
+        {
+            await ((IOpcUaWriter)session).WriteAsync(NodeId.Parse("ns=3;s=StepUp"), new Variant((uint)7), CancellationToken.None);
         }
     }
 

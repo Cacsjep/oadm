@@ -5,9 +5,7 @@ services:
     image: eclipse-mosquitto:2.0.20
     ports: ["127.0.0.1:18830:1883"]
     # Plain MQTT without a login, the default of a new recipient. No file to mount: Docker needs no shared folder.
-    command: ["sh", "-c", "printf 'listener 1883
-allow_anonymous true
-' > /tmp/mosquitto.conf && exec mosquitto -c /tmp/mosquitto.conf"]
+    command: ["sh", "-c", "echo listener 1883 0.0.0.0 > /tmp/m.conf && echo allow_anonymous true >> /tmp/m.conf && exec mosquitto -c /tmp/m.conf"]
   modbus:
     image: oitc/modbus-server:1.4.1
     ports: ["127.0.0.1:15020:5020"]

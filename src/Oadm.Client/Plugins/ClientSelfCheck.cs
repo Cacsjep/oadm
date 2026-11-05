@@ -38,12 +38,16 @@ internal static class ClientSelfCheck
         {
             foreach (var dll in Directory.GetFiles(folder, "*.Client.dll").Order(StringComparer.Ordinal))
             {
-                checkedParts++;
                 var name = Path.GetFileName(folder.TrimEnd('/', '\\'));
                 var context = new PluginLoadContext(Path.GetFullPath(dll), addOn);
                 try
                 {
-                    problems.AddRange(PluginAssemblyCheck.Problems(context.LoadWithoutLock(Path.GetFullPath(dll)), context, IsServerPart).Select(p => $"{name}: {p}"));
+                    var part = context.LoadWithoutLock(Path.GetFullPath(dll));
+                    if (ClientPluginLoader.IsClientPart(part))
+                    {
+                        checkedParts++;
+                        problems.AddRange(PluginAssemblyCheck.Problems(part, context, IsServerPart).Select(p => $"{name}: {p}"));
+                    }
                 }
 #pragma warning disable CA1031 // Every failure of the check is a line of its report.
                 catch (Exception ex)

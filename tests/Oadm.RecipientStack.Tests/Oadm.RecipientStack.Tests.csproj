@@ -22,5 +22,7 @@
     <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj" />
     <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Modbus\Oadm.Plugins.Modbus.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Mqtt\Oadm.Plugins.Mqtt.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.OpcUa\Oadm.Plugins.OpcUa.csproj" />
   </ItemGroup>
 </Project>
