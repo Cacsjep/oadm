@@ -25,7 +25,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ### Fixed
 
-- Text recognition: runs on Intel Macs again, the 4.11.0 package had no recognition library for them.
+- Text recognition: the package for Intel Macs has its recognition library, it was missing in 4.11.0.
 - Plugins page: Restart server waits while an update or another plugin's install runs.
 
 ## [4.11.0] - 2026-11-05

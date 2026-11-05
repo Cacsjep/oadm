@@ -234,7 +234,7 @@ public sealed class RecipientCertificateTests
 
         var choice = Assert.Single(await Offer(pki).ClientCertificatesAsync(CancellationToken.None));
         Assert.Equal(free, choice.Value);
-        Assert.Null(await Offer(pki).LoadAsync(id, CancellationToken.None));
+        Assert.Null(await Offer(pki).LoadAsync(id, withKey: true, CancellationToken.None));
         Assert.Null(pki.Service.LoadRecipientCertificate(id, withKey: true));
     }
 
@@ -295,7 +295,7 @@ public sealed class RecipientCertificateTests
         await pki.Records.SetManyAsync(LocalCertificates.Collection, [new(row.Id, PkiJson.Serialize(damaged))], CancellationToken.None);
         await pki.Service.Local.LoadAsync(CancellationToken.None);
 
-        Assert.Null(await Offer(pki).LoadAsync(id, CancellationToken.None));
+        Assert.Null(await Offer(pki).LoadAsync(id, withKey: true, CancellationToken.None));
     }
 
     [Fact]
