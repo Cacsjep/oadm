@@ -74,7 +74,8 @@ public static class OpcUaRecipient
 
 /// <summary>
 /// Event rule action "Write OPC UA value": one write of the Value attribute of a node, with an optional value when the rule turns
-/// off. A write changes a real machine: the value is checked before anything is sent, and nothing is read or retried.
+/// off. A write changes a real machine: the value is checked before anything is sent, and nothing is read or retried. A write the
+/// server is not certain of fails.
 /// </summary>
 public sealed class WriteOpcUaAction : IActionPlugin
 {
@@ -85,6 +86,7 @@ public sealed class WriteOpcUaAction : IActionPlugin
     private const string ValueKey = "value";
     private const string OffValueKey = "offValue";
     private const string EnterNode = "Enter a node ID such as ns=2;s=Valve1.";
+    private const string NothingWritten = "Nothing was written.";
 
     public string Id => ActionId;
 
@@ -165,7 +167,7 @@ public sealed class WriteOpcUaAction : IActionPlugin
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(invocation);
         var settings = invocation.Settings;
-        var text = ctx.Text(Text(settings, invocation.Edge == ActionEdge.TurnedOff ? OffValueKey : ValueKey));
+        var text = Filled(ctx, Text(settings, invocation.Edge == ActionEdge.TurnedOff ? OffValueKey : ValueKey));
         Variant value;
         try
         {
@@ -173,18 +175,30 @@ public sealed class WriteOpcUaAction : IActionPlugin
         }
         catch (FormatException ex)
         {
-            throw new InvalidOperationException($"{ex.Message} Nothing was written.", ex);
+            throw new InvalidOperationException($"{ex.Message} {NothingWritten}", ex);
         }
 
         var nodeText = Text(settings, NodeKey).Trim();
         if (!NodeId.TryParse(nodeText, out var node))
         {
-            throw new InvalidOperationException($"{EnterNode} Nothing was written.");
+            throw new InvalidOperationException($"{EnterNode} {NothingWritten}");
         }
 
         var session = await ctx.SessionAsync<IOpcUaWriter>(RecipientKey, ct).ConfigureAwait(false);
         await session.WriteAsync(node, value, ct).ConfigureAwait(false);
         ctx.Log($"Node {nodeText}: written");
+    }
+
+    /// <summary>The text with its placeholders filled; refuses a name nobody fills and a value that came out empty.</summary>
+    private static string Filled(IActionContext ctx, string text)
+    {
+        if (ActionPlaceholders.FirstUnknown(text, ctx) is { } unknown)
+        {
+            throw new InvalidOperationException($"The placeholder {unknown} is unknown. {NothingWritten}");
+        }
+
+        var filled = ctx.Text(text);
+        return filled.Length > 0 || text.Length == 0 ? filled : throw new InvalidOperationException($"The value is empty. {NothingWritten}");
     }
 
     private static Variant Encode(JsonElement settings, string value) =>

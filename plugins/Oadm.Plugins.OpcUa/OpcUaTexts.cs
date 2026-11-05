@@ -19,6 +19,10 @@ public static class OpcUaTexts
     public const string ServerStopped = "The server stopped";
     public const string SessionClosed = "The session closed";
     public const string NoAnswer = "The server did not answer. The write may have happened.";
+    public const string WriteUncertain = "The server is not certain the value was written.";
+    public const string UnknownSecurity = "The recipient holds a security setting OADM does not know. Choose it again.";
+    public const string SecurityChecksFailed = "The server refused the connection in its security checks. Its log says why.";
+    public const string ClientCertificateRefused = "The server does not trust the client certificate. Trust it on the server.";
 
     /// <summary>
     /// How the stack's own refusal of an unprotected password begins to differ from a server's: both have the status
@@ -31,7 +35,8 @@ public static class OpcUaTexts
     /// <param name="message">The text of the exception.</param>
     /// <param name="endpoint">The address of the server.</param>
     /// <param name="login">The recipient's login.</param>
-    public static string ConnectFailed(StatusCode status, string? message, string endpoint, string login)
+    /// <param name="sentCertificate">Whether the client certificate went out: the only certificate a server can refuse.</param>
+    public static string ConnectFailed(StatusCode status, string? message, string endpoint, string login, bool sentCertificate)
     {
         if (status == StatusCodes.BadUserAccessDenied || status == StatusCodes.BadIdentityTokenRejected)
         {
@@ -47,7 +52,7 @@ public static class OpcUaTexts
         {
             return message?.Contains(PasswordRefusal, StringComparison.Ordinal) == true
                 ? "This password would go out unprotected, and the server's login does not encrypt it. Choose Sign and encrypt."
-                : "The server does not trust the client certificate. Trust it on the server.";
+                : sentCertificate ? ClientCertificateRefused : SecurityChecksFailed;
         }
 
         if (status == StatusCodes.BadCertificateUntrusted || status == StatusCodes.BadCertificateChainIncomplete)
@@ -77,6 +82,10 @@ public static class OpcUaTexts
 
         return IsUnreachable(status) ? $"{endpoint} cannot be reached." : $"The connection to {endpoint} failed ({Name(status)}).";
     }
+
+    /// <summary>What is wrong with the status of a write; null for a good one. A machine write that is not certain is not done.</summary>
+    public static string? WriteProblem(StatusCode status) =>
+        StatusCode.IsGood(status) ? null : StatusCode.IsBad(status) ? WriteFailed(status) : WriteUncertain;
 
     /// <summary>Why a write failed.</summary>
     public static string WriteFailed(StatusCode status)

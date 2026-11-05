@@ -51,6 +51,22 @@ public sealed class OpcUaValueTests
         Assert.Equal(state, OpcUaValue.Encode(OpcUaValue.OnOff, value, string.Empty).AsBoxedObject());
     }
 
+    [Theory]
+    [InlineData("1e-50", OpcUaValue.Decimal32)]
+    [InlineData("-1E-400", OpcUaValue.Decimal64)]
+    public void ANumberTooSmallForItsFormatIsNotWrittenAsZero(string value, string format)
+    {
+        Assert.Throws<FormatException>(() => Number(value, format));
+    }
+
+    [Fact]
+    public void ZeroAndALargeWholeNumberStayFloats()
+    {
+        Assert.Equal(0f, Number("0.0e5", OpcUaValue.Decimal32));
+        Assert.Equal(0d, Number("0", OpcUaValue.Decimal64));
+        Assert.Equal(16777216f, Number("16777217", OpcUaValue.Decimal32));
+    }
+
     [Fact]
     public void OnOrOffRefusesAnythingElse()
     {
@@ -73,30 +89,42 @@ public sealed class OpcUaTextsTests
     {
         var endpoint = "opc.tcp://plc:4840";
 
-        Assert.Equal("The server refused the login. Check the user name and password.", OpcUaTexts.ConnectFailed(StatusCodes.BadUserAccessDenied, null, endpoint, OpcUaRecipient.LoginUser));
-        Assert.Equal("The server refused the login. Check the user name and password.", OpcUaTexts.ConnectFailed(StatusCodes.BadIdentityTokenRejected, null, endpoint, OpcUaRecipient.LoginUser));
-        Assert.Equal("The server refused the login.", OpcUaTexts.ConnectFailed(StatusCodes.BadIdentityTokenRejected, null, endpoint, OpcUaRecipient.LoginCertificate));
-        Assert.Equal("The server does not offer this login. Choose another one.", OpcUaTexts.ConnectFailed(StatusCodes.BadIdentityTokenInvalid, null, endpoint, OpcUaRecipient.LoginUser));
+        Assert.Equal("The server refused the login. Check the user name and password.", OpcUaTexts.ConnectFailed(StatusCodes.BadUserAccessDenied, null, endpoint, OpcUaRecipient.LoginUser, false));
+        Assert.Equal("The server refused the login. Check the user name and password.", OpcUaTexts.ConnectFailed(StatusCodes.BadIdentityTokenRejected, null, endpoint, OpcUaRecipient.LoginUser, false));
+        Assert.Equal("The server refused the login.", OpcUaTexts.ConnectFailed(StatusCodes.BadIdentityTokenRejected, null, endpoint, OpcUaRecipient.LoginCertificate, false));
+        Assert.Equal("The server does not offer this login. Choose another one.", OpcUaTexts.ConnectFailed(StatusCodes.BadIdentityTokenInvalid, null, endpoint, OpcUaRecipient.LoginUser, false));
     }
 
     [Fact]
-    public void SecurityChecksHaveTwoMeanings()
+    public void SecurityChecksHaveThreeMeanings()
     {
         var endpoint = "opc.tcp://plc:4840";
 
         Assert.Equal(
-            "The server does not trust the client certificate. Trust it on the server.",
-            OpcUaTexts.ConnectFailed(StatusCodes.BadSecurityChecksFailed, "Error received from remote host", endpoint, OpcUaRecipient.LoginAnonymous));
+            OpcUaTexts.ClientCertificateRefused,
+            OpcUaTexts.ConnectFailed(StatusCodes.BadSecurityChecksFailed, "Error received from remote host", endpoint, OpcUaRecipient.LoginAnonymous, sentCertificate: true));
+        Assert.Equal(
+            OpcUaTexts.SecurityChecksFailed,
+            OpcUaTexts.ConnectFailed(StatusCodes.BadSecurityChecksFailed, "Error received from remote host", endpoint, OpcUaRecipient.LoginAnonymous, sentCertificate: false));
         Assert.Contains(
             "unprotected",
-            OpcUaTexts.ConnectFailed(StatusCodes.BadSecurityChecksFailed, "A UserName identity token without token encryption requires a SignAndEncrypt channel.", endpoint, OpcUaRecipient.LoginUser),
+            OpcUaTexts.ConnectFailed(StatusCodes.BadSecurityChecksFailed, "A UserName identity token without token encryption requires a SignAndEncrypt channel.", endpoint, OpcUaRecipient.LoginUser, sentCertificate: false),
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void OnlyAGoodWriteIsDone()
+    {
+        Assert.Null(OpcUaTexts.WriteProblem(StatusCodes.Good));
+        Assert.Null(OpcUaTexts.WriteProblem(StatusCodes.GoodClamped));
+        Assert.Equal(OpcUaTexts.WriteUncertain, OpcUaTexts.WriteProblem(StatusCodes.UncertainNoCommunicationLastUsableValue));
+        Assert.Equal("The node cannot be written.", OpcUaTexts.WriteProblem(StatusCodes.BadNotWritable));
     }
 
     [Fact]
     public void AnUnknownStatusKeepsItsName()
     {
-        Assert.Equal("The connection to opc.tcp://plc failed (BadLicenseExpired).", OpcUaTexts.ConnectFailed(StatusCodes.BadLicenseExpired, null, "opc.tcp://plc", OpcUaRecipient.LoginAnonymous));
+        Assert.Equal("The connection to opc.tcp://plc failed (BadLicenseExpired).", OpcUaTexts.ConnectFailed(StatusCodes.BadLicenseExpired, null, "opc.tcp://plc", OpcUaRecipient.LoginAnonymous, false));
         Assert.Equal("The server refused the write (BadLicenseExpired).", OpcUaTexts.WriteFailed(StatusCodes.BadLicenseExpired));
     }
 
@@ -335,6 +363,31 @@ public sealed class WriteOpcUaActionTests
             context, Run("""{"node":"ns=2;s=Valve1","valueType":"number","numberFormat":"uint16","value":"{number}"}"""), CancellationToken.None));
 
         Assert.Equal("Enter a whole number from 0 to 65535. Nothing was written.", refused.Message);
+        Assert.Empty(writer.Writes);
+    }
+
+    [Fact]
+    public async Task AnUnknownPlaceholderWritesNothing()
+    {
+        var (context, writer) = Context();
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => new WriteOpcUaAction().ExecuteAsync(
+            context, Run("""{"node":"ns=2;s=Valve1","valueType":"text","value":"Door {gone}"}"""), CancellationToken.None));
+
+        Assert.Equal("The placeholder {gone} is unknown. Nothing was written.", refused.Message);
+        Assert.Empty(writer.Writes);
+    }
+
+    [Fact]
+    public async Task AnEmptyTextFromAPlaceholderWritesNothing()
+    {
+        var (context, writer) = Context();
+        context.Placeholders["site"] = string.Empty;
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => new WriteOpcUaAction().ExecuteAsync(
+            context, Run("""{"node":"ns=2;s=Valve1","valueType":"text","value":"{site}"}"""), CancellationToken.None));
+
+        Assert.Equal("The value is empty. Nothing was written.", refused.Message);
         Assert.Empty(writer.Writes);
     }
 

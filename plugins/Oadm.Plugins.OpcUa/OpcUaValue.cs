@@ -19,6 +19,8 @@ public static class OpcUaValue
     public const string Decimal32 = "float";
     public const string Decimal64 = "double";
 
+    private const string TooSmall = "This number is too small for its format.";
+
     /// <summary>The value to write; throws <see cref="FormatException"/> with a plain reason.</summary>
     public static Variant Encode(string valueType, string value, string numberFormat)
     {
@@ -30,6 +32,13 @@ public static class OpcUaValue
             Text => new Variant(value),
             _ => throw new FormatException("Choose a value type."),
         };
+    }
+
+    /// <summary>A number that is not zero and became zero: writing 0 is not what the rule asks for.</summary>
+    private static bool IsLost(double number, string value)
+    {
+        var exponent = value.AsSpan().IndexOfAny('e', 'E');
+        return number == 0 && (exponent < 0 ? value.AsSpan() : value.AsSpan(0, exponent)).IndexOfAnyInRange('1', '9') >= 0;
     }
 
     private static bool OnOffValue(string value) => value.Trim().ToLowerInvariant() switch
@@ -56,9 +65,9 @@ public static class OpcUaValue
             case Signed64 when long.TryParse(value, Whole, culture, out var number):
                 return new Variant(number);
             case Decimal32 when float.TryParse(value, NumberStyles.Float, culture, out var number) && float.IsFinite(number):
-                return new Variant(number);
+                return !IsLost(number, value) ? new Variant(number) : throw new FormatException(TooSmall);
             case Decimal64 when double.TryParse(value, NumberStyles.Float, culture, out var number) && double.IsFinite(number):
-                return new Variant(number);
+                return !IsLost(number, value) ? new Variant(number) : throw new FormatException(TooSmall);
             case Signed16: throw new FormatException("Enter a whole number from -32768 to 32767.");
             case Unsigned16: throw new FormatException("Enter a whole number from 0 to 65535.");
             case Signed32: throw new FormatException("Enter a whole number from -2147483648 to 2147483647.");

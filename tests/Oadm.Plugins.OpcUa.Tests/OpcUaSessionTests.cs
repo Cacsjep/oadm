@@ -1,4 +1,8 @@
+using System.Net;
+using System.Net.Sockets;
+
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 using Oadm.Sdk.Testing;
 using Oadm.Sdk.Actions;
@@ -10,7 +14,15 @@ namespace Oadm.Plugins.OpcUa.Tests;
 /// <summary>The session against the stack's own server on the loopback. Nothing here reaches another machine.</summary>
 public sealed class OpcUaSessionTests
 {
-    private static OpcUaSession Session(OpcUaOptions options) => new(options, NullLogger.Instance, 200);
+    /// <summary>The stack gives up on a read after two keep alive intervals, so a short interval makes a stall of the machine a drop.</summary>
+    private static readonly OpcUaTimes Generous = new()
+    {
+        KeepAliveMs = 3_600_000,
+        Write = TimeSpan.FromSeconds(30),
+        OperationMs = 30_000,
+    };
+
+    private static OpcUaSession Session(OpcUaOptions options) => new(options, NullLogger.Instance, Generous);
 
     private static OpcUaOptions Secured(OpcUaTestServer server, string security = OpcUaRecipient.SecuritySignAndEncrypt, bool allowUntrusted = true) => new()
     {
@@ -150,7 +162,7 @@ public sealed class OpcUaSessionTests
         await using var server = await OpcUaTestServer.StartAsync(acceptClients: false);
         await using var session = Session(Secured(server));
 
-        Assert.Equal("The server does not trust the client certificate. Trust it on the server.", await RefusedAsync(session));
+        Assert.Equal(OpcUaTexts.ClientCertificateRefused, await RefusedAsync(session));
     }
 
     [Fact]
@@ -279,7 +291,7 @@ public sealed class OpcUaSessionTests
         await RefusedAsync(session);
 
         // The server has no revocation list of the CA. It got as far as asking for one because the CA arrived with the certificate.
-        Assert.Contains(server.Warnings.Lines, l => l.Contains("BadCertificateRevocationUnknown", StringComparison.Ordinal));
+        await Eventually.TrueAsync(() => server.Warnings.Lines.Any(l => l.Contains("BadCertificateRevocationUnknown", StringComparison.Ordinal)), "the server's warning");
         Assert.DoesNotContain(server.Warnings.Lines, l => l.Contains("BadCertificateChainIncomplete", StringComparison.Ordinal));
     }
 
@@ -317,7 +329,10 @@ public sealed class OpcUaSessionTests
     [Fact]
     public async Task NoServerMeansAPlainReason()
     {
-        var port = OpcUaTestServer.FreePort();
+        // Bound but not listening: the port refuses the connection and no other test can take it.
+        using var taken = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        taken.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        var port = ((IPEndPoint)taken.LocalEndPoint!).Port;
         await using var session = Session(new OpcUaOptions { Endpoint = $"opc.tcp://127.0.0.1:{port}" });
 
         Assert.Equal($"opc.tcp://127.0.0.1:{port} cannot be reached.", await RefusedAsync(session));
@@ -329,7 +344,8 @@ public sealed class OpcUaSessionTests
         var server = await OpcUaTestServer.StartAsync();
         await using (server)
         {
-            await using var session = Session(new OpcUaOptions { Endpoint = server.Endpoint });
+            // The one test that needs the keep alive. A stall can only bring the same drop earlier, with one of the same reasons.
+            await using var session = new OpcUaSession(new OpcUaOptions { Endpoint = server.Endpoint }, NullLogger.Instance, Generous with { KeepAliveMs = 200 });
             var dropped = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             session.Dropped += (_, e) => dropped.TrySetResult(e.Reason);
             await session.ConnectAsync(CancellationToken.None);
@@ -353,6 +369,75 @@ public sealed class OpcUaSessionTests
         await session.DisposeAsync();
 
         Assert.Equal(0, Volatile.Read(ref drops));
+    }
+
+    [Fact]
+    public async Task ASecondCloseIsNothing()
+    {
+        await using var server = await OpcUaTestServer.StartAsync();
+        var session = Session(new OpcUaOptions { Endpoint = server.Endpoint });
+        await session.ConnectAsync(CancellationToken.None);
+
+        await session.DisposeAsync();
+        await session.DisposeAsync();
+
+        await Eventually.TrueAsync(() => server.OpenSessions == 0, "the server closed the session");
+    }
+
+    [Fact]
+    public async Task AConnectThatEndsAfterTheCloseLeavesNoSession()
+    {
+        await using var server = await OpcUaTestServer.StartAsync();
+        var session = Session(new OpcUaOptions { Endpoint = server.Endpoint });
+        await session.DisposeAsync(); // the pool gave up first
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => session.ConnectAsync(CancellationToken.None));
+
+        Assert.Equal(RecipientSessionTexts.NotConnected(null), refused.Message);
+        await Eventually.TrueAsync(() => server.OpenSessions == 0, "the server closed the session");
+    }
+
+    [Theory]
+    [InlineData("unknown", OpcUaRecipient.PolicyBest)]
+    [InlineData(OpcUaRecipient.SecuritySign, "unknown")]
+    public async Task AnUnknownSecurityValueIsNeverNoneOrBest(string security, string policy)
+    {
+        await using var session = Session(new OpcUaOptions { Endpoint = "opc.tcp://127.0.0.1:1", Security = security, Policy = policy });
+
+        Assert.Equal(OpcUaTexts.UnknownSecurity, await RefusedAsync(session));
+    }
+
+    [Fact]
+    public async Task AWriteWithoutAnAnswerStopsAtItsTime()
+    {
+        var time = new FakeTimeProvider();
+        using var release = new ManualResetEventSlim();
+        await using var server = await OpcUaTestServer.StartAsync();
+        var started = server.HoldWrites("number", release);
+        await using var session = new OpcUaSession(new OpcUaOptions { Endpoint = server.Endpoint }, NullLogger.Instance, Generous with { Write = TimeSpan.FromSeconds(5), Time = time });
+        await session.ConnectAsync(CancellationToken.None);
+
+        var write = session.WriteAsync(server.Node("number"), new Variant(1), CancellationToken.None);
+        await started.WaitAsync(TimeSpan.FromSeconds(30));
+        time.Advance(TimeSpan.FromSeconds(5));
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => write);
+        Assert.Equal(OpcUaTexts.NoAnswer, refused.Message);
+        release.Set();
+    }
+
+    [Fact]
+    public async Task ATakenPortAtTheStartIsTriedAgainOnAnother()
+    {
+        using var taken = new TcpListener(IPAddress.Loopback, 0);
+        taken.Start();
+        var port = ((IPEndPoint)taken.LocalEndpoint).Port;
+
+        await using var server = await OpcUaTestServer.StartAsync(firstPort: port);
+
+        Assert.NotEqual(port, server.Port);
+        await using var session = Session(new OpcUaOptions { Endpoint = server.Endpoint });
+        await session.ConnectAsync(CancellationToken.None);
     }
 
     [Fact]

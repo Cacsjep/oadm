@@ -56,7 +56,8 @@ public sealed class OpcUaOptions
     {
         OpcUaRecipient.SecuritySign => MessageSecurityMode.Sign,
         OpcUaRecipient.SecuritySignAndEncrypt => MessageSecurityMode.SignAndEncrypt,
-        _ => MessageSecurityMode.None,
+        OpcUaRecipient.SecurityNone => MessageSecurityMode.None,
+        _ => throw new InvalidOperationException(OpcUaTexts.UnknownSecurity),
     };
 
     /// <summary>The chosen policy; null for the best the server offers.</summary>
@@ -65,7 +66,8 @@ public sealed class OpcUaOptions
         OpcUaRecipient.PolicyBasic256Sha256 => SecurityPolicies.Basic256Sha256,
         OpcUaRecipient.PolicyAes128 => SecurityPolicies.Aes128_Sha256_RsaOaep,
         OpcUaRecipient.PolicyAes256 => SecurityPolicies.Aes256_Sha256_RsaPss,
-        _ => null,
+        OpcUaRecipient.PolicyBest => null,
+        _ => throw new InvalidOperationException(OpcUaTexts.UnknownSecurity),
     };
 
     public static OpcUaOptions From(RecipientSessionRequest request)
@@ -86,6 +88,25 @@ public sealed class OpcUaOptions
     }
 }
 
+/// <summary>The times of a session; tests give generous ones.</summary>
+internal sealed record OpcUaTimes
+{
+    /// <summary>
+    /// How often the stack asks whether the server lives. It gives up on one question after two of these, or when nothing came back for one
+    /// of these plus a second, and then the session counts as dropped.
+    /// </summary>
+    public int KeepAliveMs { get; init; } = 5000;
+
+    /// <summary>One write. A machine must not stand behind a slow server for long.</summary>
+    public TimeSpan Write { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>The stack's own limit of a request.</summary>
+    public int OperationMs { get; init; } = 10_000;
+
+    /// <summary>The clock of the write and the close.</summary>
+    public TimeProvider Time { get; init; } = TimeProvider.System;
+}
+
 /// <summary>
 /// One OPC UA session, built in memory: no configuration file, no certificate store, nothing on disk. The stack's channel and session
 /// get the chosen certificate directly, and <see cref="OpcUaCertificates"/> decides about the server's. It only writes; its one
@@ -93,11 +114,7 @@ public sealed class OpcUaOptions
 /// </summary>
 public sealed class OpcUaSession : IRecipientSession, IOpcUaWriter
 {
-    /// <summary>One write. A machine must not stand behind a slow server for long.</summary>
-    internal static readonly TimeSpan WriteTimeout = TimeSpan.FromSeconds(5);
-
     private const uint SessionTimeoutMs = 60_000;
-    private const int OperationTimeoutMs = 10_000;
 
     /// <summary>Used only where no chosen certificate names the client: security None.</summary>
     private const string PlainApplicationUri = "urn:oadm:client";
@@ -106,53 +123,70 @@ public sealed class OpcUaSession : IRecipientSession, IOpcUaWriter
 
     private readonly OpcUaOptions _options;
     private readonly ILogger _logger;
-    private readonly int _keepAliveMs;
+    private readonly OpcUaTimes _times;
     private OpcUaCertificates? _certificates;
     private ISession? _session;
     private int _ended;
+    private int _disposed;
 
     public OpcUaSession(OpcUaOptions options, ILogger logger)
-        : this(options, logger, 5000)
+        : this(options, logger, new OpcUaTimes())
     {
     }
 
-    internal OpcUaSession(OpcUaOptions options, ILogger logger, int keepAliveMs)
+    internal OpcUaSession(OpcUaOptions options, ILogger logger, OpcUaTimes times)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _keepAliveMs = keepAliveMs;
+        _times = times ?? throw new ArgumentNullException(nameof(times));
     }
 
     public event EventHandler<RecipientDroppedEventArgs>? Dropped;
 
     public async Task ConnectAsync(CancellationToken ct)
     {
+        _ = _options.PolicyUri; // an unknown policy says so before anything goes to the network
         CheckCertificates();
         try
         {
-            _session = await OpenAsync(ct).ConfigureAwait(false);
+            Interlocked.Exchange(ref _session, await OpenAsync(ct).ConfigureAwait(false));
         }
         catch (ServiceResultException ex)
         {
             ct.ThrowIfCancellationRequested(); // the pool's timeout, which the stack reports as a status
-            throw new InvalidOperationException(OpcUaTexts.ConnectFailed(ex.StatusCode, ex.Message, _options.Endpoint, _options.Login), ex);
+            var sentCertificate = _options.Mode != MessageSecurityMode.None || _options.Login == OpcUaRecipient.LoginCertificate;
+            throw new InvalidOperationException(OpcUaTexts.ConnectFailed(ex.StatusCode, ex.Message, _options.Endpoint, _options.Login, sentCertificate), ex);
         }
         catch (Exception ex) when (ex is SocketException or IOException)
         {
             throw new InvalidOperationException($"{_options.Endpoint} cannot be reached.", ex);
         }
+        finally
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                ReleaseCertificates();
+            }
+        }
+
+        // The pool gave up on a connect that took too long and closed this session before there was anything to close.
+        if (Volatile.Read(ref _disposed) != 0 && Interlocked.Exchange(ref _session, null) is { } late)
+        {
+            await CloseAsync(late).ConfigureAwait(false);
+            throw new InvalidOperationException(RecipientSessionTexts.NotConnected(null));
+        }
     }
 
     public async Task WriteAsync(NodeId node, Variant value, CancellationToken ct)
     {
-        var session = _session ?? throw new InvalidOperationException(RecipientSessionTexts.NotConnected(null));
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(WriteTimeout);
+        var session = Volatile.Read(ref _session) ?? throw new InvalidOperationException(RecipientSessionTexts.NotConnected(null));
+        using var timeout = new CancellationTokenSource(_times.Write, _times.Time);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
         var write = new WriteValue { NodeId = node, AttributeId = Attributes.Value, Value = new DataValue(value) };
         WriteResponse response;
         try
         {
-            response = await session.WriteAsync(null, new[] { write }.ToArrayOf(), timeout.Token).ConfigureAwait(false);
+            response = await session.WriteAsync(null, new[] { write }.ToArrayOf(), linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -160,7 +194,7 @@ public sealed class OpcUaSession : IRecipientSession, IOpcUaWriter
         }
         catch (ServiceResultException ex)
         {
-            throw new InvalidOperationException(OpcUaTexts.WriteFailed(ex.StatusCode), ex);
+            throw new InvalidOperationException(timeout.IsCancellationRequested ? OpcUaTexts.NoAnswer : OpcUaTexts.WriteFailed(ex.StatusCode), ex);
         }
 
         var results = response.Results;
@@ -169,34 +203,53 @@ public sealed class OpcUaSession : IRecipientSession, IOpcUaWriter
             throw new InvalidOperationException(OpcUaTexts.NoAnswer);
         }
 
-        if (StatusCode.IsBad(results[0]))
+        if (OpcUaTexts.WriteProblem(results[0]) is { } problem)
         {
-            throw new InvalidOperationException(OpcUaTexts.WriteFailed(results[0]));
+            throw new InvalidOperationException(problem);
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        Interlocked.Exchange(ref _ended, 1);
-        if (_session is { } session)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
-            session.KeepAlive -= OnKeepAlive;
-            session.SessionClosing -= OnClosing;
-            using var timeout = new CancellationTokenSource(CloseTimeout);
-            try
-            {
-                await session.CloseAsync(timeout.Token).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is ServiceResultException or OperationCanceledException or IOException)
-            {
-                // The server went first, or a close that hangs is given up on.
-            }
-
-            session.Dispose();
+            return;
         }
 
-        _certificates?.Dispose();
+        Interlocked.Exchange(ref _ended, 1);
+        try
+        {
+            if (Interlocked.Exchange(ref _session, null) is { } session)
+            {
+                await CloseAsync(session).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            ReleaseCertificates();
+        }
     }
+
+    private async Task CloseAsync(ISession session)
+    {
+        session.KeepAlive -= OnKeepAlive;
+        session.SessionClosing -= OnClosing;
+        using var timeout = new CancellationTokenSource(CloseTimeout, _times.Time);
+        try
+        {
+            await session.CloseAsync(timeout.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is ServiceResultException or OperationCanceledException or IOException)
+        {
+            // The server went first, or a close that hangs is given up on.
+        }
+        finally
+        {
+            session.Dispose();
+        }
+    }
+
+    private void ReleaseCertificates() => Interlocked.Exchange(ref _certificates, null)?.Dispose();
 
     /// <summary>Connects to the server, picks its endpoint and opens the session. Throws what the stack throws.</summary>
     private async Task<ISession> OpenAsync(CancellationToken ct)
@@ -236,7 +289,7 @@ public sealed class OpcUaSession : IRecipientSession, IOpcUaWriter
             offered);
         try
         {
-            session.KeepAliveInterval = _keepAliveMs;
+            session.KeepAliveInterval = _times.KeepAliveMs;
             session.KeepAlive += OnKeepAlive;
             session.SessionClosing += OnClosing;
             var identity = await IdentityAsync(own, ct).ConfigureAwait(false);
@@ -263,7 +316,7 @@ public sealed class OpcUaSession : IRecipientSession, IOpcUaWriter
             ProductUri = "urn:oadm",
             ApplicationType = ApplicationType.Client,
             SecurityConfiguration = new SecurityConfiguration { SendCertificateChain = _options.ClientCertificate.Count > 1 },
-            TransportQuotas = new TransportQuotas { OperationTimeout = OperationTimeoutMs },
+            TransportQuotas = new TransportQuotas { OperationTimeout = _times.OperationMs },
             ClientConfiguration = new ClientConfiguration { DefaultSessionTimeout = (int)SessionTimeoutMs },
             CertificateManager = certificates,
         };

@@ -28,9 +28,11 @@ internal sealed class OpcUaTestServer : IAsyncDisposable
     private readonly IHost _host;
     private readonly string _folder;
     private readonly Dictionary<string, BaseVariableState> _nodes = new(StringComparer.Ordinal);
+    private readonly IServerInternal _internals;
 
-    private OpcUaTestServer(IHost host, string folder, int port, Dictionary<string, BaseVariableState> nodes, ServerWarnings warnings)
+    private OpcUaTestServer(IHost host, string folder, int port, Dictionary<string, BaseVariableState> nodes, ServerWarnings warnings, IServerInternal internals)
     {
+        _internals = internals;
         _host = host;
         _folder = folder;
         Port = port;
@@ -45,6 +47,9 @@ internal sealed class OpcUaTestServer : IAsyncDisposable
 
     public string Endpoint => $"opc.tcp://127.0.0.1:{Port}/Test";
 
+    /// <summary>The sessions the server holds.</summary>
+    public int OpenSessions => _internals.SessionManager.GetSessions().Count;
+
     public static int FreePort()
     {
         using var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -56,12 +61,29 @@ internal sealed class OpcUaTestServer : IAsyncDisposable
     /// <param name="acceptClients">False: only certificates in its trust list pass.</param>
     /// <param name="anonymous">Whether anonymous login is allowed.</param>
     /// <param name="encryptPassword">False: the login policy does not encrypt a password.</param>
-    public static async Task<OpcUaTestServer> StartAsync(bool acceptClients = true, bool anonymous = true, bool encryptPassword = true)
+    /// <param name="firstPort">The port of the first try; default a free one.</param>
+    public static async Task<OpcUaTestServer> StartAsync(bool acceptClients = true, bool anonymous = true, bool encryptPassword = true, int? firstPort = null)
+    {
+        // Another test can take a free port before the server binds it.
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                return await TryStartAsync(acceptClients, anonymous, encryptPassword, attempt == 1 && firstPort is { } port ? port : FreePort());
+            }
+            catch (ServerNotStartedException) when (attempt < 10)
+            {
+                // The next round takes another port.
+            }
+        }
+    }
+
+    private static async Task<OpcUaTestServer> TryStartAsync(bool acceptClients, bool anonymous, bool encryptPassword, int port)
     {
         var folder = Path.Combine(Path.GetTempPath(), "oadm-opcua-test-" + Guid.NewGuid().ToString("N"));
-        var port = FreePort();
         var nodes = new Dictionary<string, BaseVariableState>(StringComparer.Ordinal);
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        IServerInternal? internals = null;
         var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings { DisableDefaults = true, ContentRootPath = Path.GetTempPath() });
         builder.Logging.ClearProviders();
         var warnings = new ServerWarnings();
@@ -116,16 +138,28 @@ internal sealed class OpcUaTestServer : IAsyncDisposable
                 nodes["text"] = manager.AddVariable<string>("Text").Writable().Node;
                 nodes["locked"] = manager.AddVariable<int>("Locked").Node;
             })
-            .AddStartupTask((_, _, _) =>
+            .AddStartupTask((_, context, _) =>
             {
+                internals = (IServerInternal)context;
                 ready.TrySetResult();
                 return default;
             });
 
         var host = builder.Build();
-        await host.StartAsync().WaitAsync(TimeSpan.FromSeconds(60));
-        await ready.Task.WaitAsync(TimeSpan.FromSeconds(60)); // the hosted service starts the server in the background
-        return new OpcUaTestServer(host, folder, port, nodes, warnings);
+        try
+        {
+            // The hosted service starts the server in the background; when that fails, the host stops.
+            using var failed = host.Services.GetRequiredService<IHostApplicationLifetime>().ApplicationStopping
+                .Register(() => ready.TrySetException(new ServerNotStartedException()));
+            await host.StartAsync().WaitAsync(TimeSpan.FromSeconds(60));
+            await ready.Task.WaitAsync(TimeSpan.FromSeconds(60));
+            return new OpcUaTestServer(host, folder, port, nodes, warnings, internals!);
+        }
+        catch (ServerNotStartedException)
+        {
+            await new OpcUaTestServer(host, folder, port, nodes, warnings, internals!).DisposeAsync();
+            throw;
+        }
     }
 
     /// <summary>The node id of a variable, as a user enters it.</summary>
@@ -134,6 +168,19 @@ internal sealed class OpcUaTestServer : IAsyncDisposable
     public string NodeText(string name) => Node(name).ToString();
 
     public object? ValueOf(string name) => _nodes[name].Value.AsBoxedObject();
+
+    /// <summary>Every write of the node hangs until <paramref name="release"/> is set; the result ends when the first one arrived.</summary>
+    public Task HoldWrites(string name, ManualResetEventSlim release)
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _nodes[name].OnSimpleWriteValue = (ISystemContext _, NodeState _, ref Variant _) =>
+        {
+            started.TrySetResult();
+            release.Wait(TimeSpan.FromSeconds(60));
+            return ServiceResult.Good;
+        };
+        return started.Task;
+    }
 
     /// <summary>The server's certificates, as an administrator exports them: one per kind of key.</summary>
     public X509Certificate2[] Certificates() =>
@@ -163,6 +210,11 @@ internal sealed class OpcUaTestServer : IAsyncDisposable
             // A file the stack still holds; it is in the temp folder.
         }
     }
+}
+
+/// <summary>A server that could not start, on a port another test took in between.</summary>
+internal sealed class ServerNotStartedException : Exception
+{
 }
 
 /// <summary>The server's log, warnings and worse.</summary>

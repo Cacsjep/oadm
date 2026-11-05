@@ -89,6 +89,11 @@ the echo of the request.
 is refused ("Nothing was sent."): a value must never change the topic level or reach a system topic. An unknown {name} is never sent literally, in
 the topic or the payload, and a payload that came out empty is not sent: an empty retained message would clear the topic.
 
+**Write OPC UA value** refuses an unknown {name} and a Text value that came out empty ("Nothing was written."), and a number too small for its
+format: it never becomes 0, and a whole number above 2^24 stays the nearest float. An uncertain write status fails the action: a machine write that is
+not certain is not done. An unknown Security or Policy value fails the connection and never means None or Best. A connect that ends after the
+pool gave up closes its session itself.
+
 Nothing is read: no MQTT subscribe, no Modbus read function, no OPC UA read or subscription (rule confirmed by the maintainer on
 2026-11-05). What a protocol needs for a write stays: the broker's acknowledge, the echo or exception of a Modbus write, the status of
 an OPC UA write. The user chooses the OPC UA value type, so OADM never reads a node's data type; a wrong type is the server's refusal.
@@ -127,7 +132,8 @@ works with the fewest fields, and security is there when it is needed.
   OPC UA's sign, sign and encrypt and certificate login take a certificate imported into PKI. Its application URI comes from the certificate's URI name.
 - **Trust of an OPC UA server:** Allow untrusted accepts; a Trusted CA checks against it and its issuers (a self-signed server: the imported
   certificate itself); otherwise the operating system's roots. A certificate accepted through a CA or the roots must name the host of the endpoint
-  (built 2026-11-05). With security None nothing identifies the server, so nothing checks it, also for a password the login policy encrypts.
+  (built 2026-11-05). With security None OADM checks no trust: nothing identifies the server, also for a password the login policy encrypts. The
+  stack's own check that the server's application URI is in the certificate the server sends still runs, also with Allow untrusted, and OADM cannot turn it off.
 - **Passwords with OPC UA:** the stack itself refuses a user name and password when neither a sign and encrypt channel nor the server's login
   policy encrypts it (Bad security checks failed). OADM adds no rule of its own and shows that refusal in plain words.
 
