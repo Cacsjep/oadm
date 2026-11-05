@@ -207,6 +207,8 @@ message ActionFieldEntry {
   repeated string recipient_types = 18; // recipient field: the ids of the types it takes
   string empty_text = 19;           // the error of a required field left empty; empty = "Enter" and the label
   ActionTextFormat format = 20;     // what a text field must hold
+  string also_visible_when_key = 21;   // a second condition: either one shows the field
+  string also_visible_when_value = 22;
 }
 
 message ActionEntry {

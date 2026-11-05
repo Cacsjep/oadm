@@ -770,6 +770,8 @@ public sealed partial class ActionFieldViewModel : ObservableObject
         OffEdge = entry.OffEdge,
         VisibleWhenKey = entry.VisibleWhenKey.Length == 0 ? null : entry.VisibleWhenKey,
         VisibleWhenValue = entry.VisibleWhenValue.Length == 0 ? null : entry.VisibleWhenValue,
+        AlsoVisibleWhenKey = entry.AlsoVisibleWhenKey.Length == 0 ? null : entry.AlsoVisibleWhenKey,
+        AlsoVisibleWhenValue = entry.AlsoVisibleWhenValue.Length == 0 ? null : entry.AlsoVisibleWhenValue,
         Language = entry.Language.Length == 0 ? null : entry.Language,
         LanguageKey = entry.LanguageKey.Length == 0 ? null : entry.LanguageKey,
         Choices = [.. entry.Choices.Select(c => new ActionChoice(c.Value, c.Label))],

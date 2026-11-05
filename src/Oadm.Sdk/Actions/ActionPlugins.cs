@@ -152,6 +152,12 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
     /// <summary>One value, or several separated by "|" ("basic|digest").</summary>
     public string? VisibleWhenValue { get; init; }
 
+    /// <summary>Also shown while this field has <see cref="AlsoVisibleWhenValue"/> (SDK 0.12.0): either condition shows it.</summary>
+    public string? AlsoVisibleWhenKey { get; init; }
+
+    /// <summary>One value, or several separated by "|".</summary>
+    public string? AlsoVisibleWhenValue { get; init; }
+
     /// <summary>Fixed language of a <see cref="ActionFieldType.Code"/> field: "json", "xml", "html", "text".</summary>
     public string? Language { get; init; }
 

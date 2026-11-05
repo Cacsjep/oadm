@@ -25,8 +25,14 @@ public static class ActionSettings
             return true;
         }
 
+        return Matches(settings, key, field.VisibleWhenValue)
+            || (field.AlsoVisibleWhenKey is { Length: > 0 } other && Matches(settings, other, field.AlsoVisibleWhenValue));
+    }
+
+    private static bool Matches(JsonObject settings, string key, string? values)
+    {
         var current = Text(settings, key) ?? string.Empty;
-        return (field.VisibleWhenValue ?? string.Empty).Split('|').Any(v => string.Equals(current, v, StringComparison.OrdinalIgnoreCase));
+        return (values ?? string.Empty).Split('|').Any(v => string.Equals(current, v, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>The error of a <see cref="ActionFieldType.Recipient"/> field that is empty or points to no recipient of its types.</summary>

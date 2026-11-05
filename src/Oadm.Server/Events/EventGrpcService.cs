@@ -430,6 +430,8 @@ public sealed class EventGrpcService(
             OffEdge = field.OffEdge,
             VisibleWhenKey = field.VisibleWhenKey ?? string.Empty,
             VisibleWhenValue = field.VisibleWhenValue ?? string.Empty,
+            AlsoVisibleWhenKey = field.AlsoVisibleWhenKey ?? string.Empty,
+            AlsoVisibleWhenValue = field.AlsoVisibleWhenValue ?? string.Empty,
             Language = field.Language ?? string.Empty,
             LanguageKey = field.LanguageKey ?? string.Empty,
             ChoicesFromDevice = field.ChoicesFromDevice,

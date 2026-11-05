@@ -767,7 +767,7 @@ public sealed class EmailAction : IActionPlugin
   editor; `Language` or `LanguageKey` = the field whose value is json / xml / html / text / form), `KeyValues` (name / value
   rows, read with `run.GetPairs(key)`), `Recipient` (SDK 0.11.0, see below). `Required`, `EmptyText` (SDK 0.11.0: the error of an empty required field, default "Enter" and the label), `Format` (SDK 0.11.0: Url, Host, Email or EmailList, checked while the user types and on the server), `Hint`, `Default`,
   `VisibleWhenKey` / `VisibleWhenValue` (show a field only for one choice, e.g. "Seconds" for "Pulse"; several as
-  "basic|digest") and `OffEdge` (a
+  "basic|digest"; `AlsoVisibleWhenKey` / `AlsoVisibleWhenValue`, SDK 0.12.0: a second condition, either one shows the field) and `OffEdge` (a
   setting of "When the rule turns off", shown only for rules that turn on and off). The host checks required values,
   numbers, choices and lengths (`ActionSettings`, the same code in the dialog and on the server); `Validate` adds the
   action's own rules (errors per field key).

@@ -57,7 +57,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   Text, Multiline, Number, Bool, Choice, DynamicChoice through `ListChoicesAsync`, Recipient (SDK 0.11.0, [recipients.md](recipients.md)),
   Password stored encrypted and never sent back, Code = a body in the code editor colored by `Language` or by the value of the field `LanguageKey` (json, xml, html,
   text, form), KeyValues = name / value rows stored as `[{"name","value"}]` (at most 50, one line each,
-  `ActionInvocation.GetPairs`); `VisibleWhenValue` may list several values "basic|digest"), `UsesPlaceholders` (the rule
+  `ActionInvocation.GetPairs`); `VisibleWhenValue` may list several values "basic|digest", `AlsoVisibleWhenKey` / `AlsoVisibleWhenValue` are a second condition, either one shows the field), `UsesPlaceholders` (the rule
   dialog shows the Placeholders list), `Validate`, `Describe`,
   `RunsOn(edge)`, `ExecuteAsync(IActionContext, ActionInvocation)`; `IActionContext` gives a pre-authenticated `Vapix` for
   the target, the plugin's settings, `Log` and `Text(text)` / `Text(text, PlaceholderEscape)` (None, Json, Xml, Url: each
