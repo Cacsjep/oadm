@@ -620,6 +620,18 @@ public sealed partial class FakeOadmApi
     /// <summary>The next answer of a recipient's Test (tests); null: sent.</summary>
     internal TestActionReply? NextRecipientTest { get; set; }
 
+    /// <summary>What the server answers to the next Test or Save of a recipient (tests); null: no refusal.</summary>
+    internal RpcException? NextRecipientRefusal { get; set; }
+
+    private void ThrowRecipientRefusal()
+    {
+        if (NextRecipientRefusal is { } refusal)
+        {
+            NextRecipientRefusal = null;
+            throw refusal;
+        }
+    }
+
     public Task<IReadOnlyList<RecipientEntry>> ListRecipientsAsync(CancellationToken ct)
     {
         lock (_gate)
@@ -635,6 +647,7 @@ public sealed partial class FakeOadmApi
         lock (_gate)
         {
             ThrowIfOffline();
+            ThrowRecipientRefusal();
             var name = request.Name.Trim();
             if (_recipients.Exists(r => r.Id != request.Id && string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase)))
             {
@@ -685,6 +698,7 @@ public sealed partial class FakeOadmApi
         lock (_gate)
         {
             ThrowIfOffline();
+            ThrowRecipientRefusal();
             var persistent = FakeCatalog.RecipientTypes.FirstOrDefault(t => t.Id == request.TypeId)?.Persistent == true;
             return Task.FromResult(NextRecipientTest ?? new TestActionReply
             {

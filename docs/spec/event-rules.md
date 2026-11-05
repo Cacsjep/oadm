@@ -128,7 +128,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   one row, Limits), **2 When** (Conditions: "When" / "And" rows with Add check (see "Field checks"), Add event, Add schedule, day toggles), **3 Then** (Actions:
   "Then" rows: action, On (targets), the settings form (code fields in `ui:CodeEditor`, name / value rows with Add and
   remove icons, every setting `FormField.wide`), move up / down, remove; actions without devices (except Log entry) have **Send test** with
-  the result chip next to it (`TestAction`); Add action up to five; right of the actions the **Placeholders** card, only while an action of the rule writes texts
+  the result chip next to it (`TestAction`; off with "Test the recipient instead." for a persistent recipient, a change of the action during a test drops its reply); Add action up to five; right of the actions the **Placeholders** card, only while an action of the rule writes texts
   (`IActionPlugin.UsesPlaceholders`, `ActionEntry.uses_placeholders = 11`: Send email, Send HTTP request, Send TCP message, Log entry; a list with copy buttons): "Event: <trigger>" with the trigger's values, then Rule and Device from
   `ActionPlaceholders.Fixed`, each "{name}" + a short description + a copy icon; window 1160 wide), **4 Overview** (one
   short line per part: Name, State, When, And, Then, Limits; Save). Footer Back / Next (disabled with the step's first

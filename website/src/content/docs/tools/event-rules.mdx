@@ -117,7 +117,7 @@ In a JSON, XML or HTML body and in a JSON or XML TCP message OADM escapes each v
 stays valid whatever the event sends. Text sends the values as they are.
 
 **Send test** sends the email, the request or the message once right away, with sample values for the event and the
-first device of the trigger.
+first device of the trigger. For MQTT, Modbus and OPC UA it is off: use **Test** on the recipient, which only connects.
 
 <Image src={httpAction} alt="Send HTTP request with a JSON body, headers and the placeholders" class="screen" />
 

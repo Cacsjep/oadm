@@ -179,15 +179,28 @@ public sealed class RecipientSessionTests : IDisposable
         await editor.LoadCertificatesAsync(CancellationToken.None);
 
         var client = Field(editor, "clientCertificate");
-        Assert.Equal(RecipientSessionTexts.CertificateGone, client.Error);
+        Assert.Equal(ActionFieldViewModel.CertificateUnusableText, client.Error);
         Assert.Null(client.SelectedChoice);
         Assert.Equal(FakeOadmApi.FakeTrustedCa, Field(editor, "trustedCa").SelectedChoice?.Value);
         Assert.False(editor.SaveCommand.CanExecute(null));
-        Assert.Contains(RecipientSessionTexts.CertificateGone, editor.FormError, StringComparison.Ordinal);
+        Assert.Contains(ActionFieldViewModel.CertificateUnusableText, editor.FormError, StringComparison.Ordinal);
 
         client.SelectedChoice = client.Choices.Single(c => c.Text == "None"); // the user chooses: the error goes
         Assert.Null(client.Error);
         Assert.True(editor.SaveCommand.CanExecute(null));
+    });
+
+    [Fact]
+    public Task With_PKI_stopped_a_chosen_certificate_gets_the_same_neutral_text() => _ui.RunAsync(async () =>
+    {
+        var (api, _) = await ApiAsync();
+        api.FakeRecipientCertificates = new RecipientCertificateList(); // what the server answers while PKI is stopped
+        var editor = await EditorAsync(api, await ByNameAsync(api, "Plant broker"));
+
+        await editor.LoadCertificatesAsync(CancellationToken.None);
+
+        Assert.Equal("This certificate cannot be used now. Choose another one.", Field(editor, "clientCertificate").Error);
+        Assert.DoesNotContain("no longer exists", Field(editor, "clientCertificate").Error, StringComparison.Ordinal);
     });
 
     [Fact]
@@ -267,6 +280,141 @@ public sealed class RecipientSessionTests : IDisposable
         gate.SetResult(new TestActionReply { Ok = true });
         await test;
         Assert.Equal("Sent", held.TestResult);
+    });
+
+    /// <summary>A dialog whose Test is running and waits for the reply the test sets.</summary>
+    private static async Task<(RecipientEditorViewModel Editor, TaskCompletionSource<TestActionReply> Reply, Task Test)> HeldTestAsync(FakeOadmApi api, string recipient)
+    {
+        var reply = new TaskCompletionSource<TestActionReply>();
+        var slow = Substitute.For<IOadmApi>();
+        slow.TestRecipientAsync(default!, default).ReturnsForAnyArgs(reply.Task);
+        var catalog = await api.GetEventCatalogAsync(CancellationToken.None);
+        var editor = new RecipientEditorViewModel(slow, catalog.RecipientTypes, await ByNameAsync(api, recipient), []);
+        var test = editor.TestCommand.ExecuteAsync(null);
+        Assert.True(editor.IsTesting);
+        return (editor, reply, test);
+    }
+
+    [Fact]
+    public Task An_edit_during_a_Test_drops_its_reply() => _ui.RunAsync(async () =>
+    {
+        var (api, _) = await ApiAsync();
+        var (editor, reply, test) = await HeldTestAsync(api, "Line 2 PLC");
+
+        Field(editor, "host").Text = "10.0.0.71";
+        Assert.Null(editor.TestResult);
+
+        reply.SetResult(new TestActionReply { Ok = true, Message = "Connected" });
+        await test;
+
+        Assert.Null(editor.TestResult);
+        Assert.False(editor.HasTestResult);
+        Assert.False(editor.IsTesting);
+        Assert.True(editor.TestCommand.CanExecute(null));
+    });
+
+    [Fact]
+    public Task A_new_name_during_a_Test_drops_its_reply() => _ui.RunAsync(async () =>
+    {
+        var (api, _) = await ApiAsync();
+        var (editor, reply, test) = await HeldTestAsync(api, "Line 2 PLC");
+
+        editor.Name = "Line 3 PLC";
+        reply.SetResult(new TestActionReply { Ok = false, Message = "No answer" });
+        await test;
+
+        Assert.Null(editor.TestResult);
+    });
+
+    [Fact]
+    public Task A_type_change_during_a_Test_drops_its_failure() => _ui.RunAsync(async () =>
+    {
+        var (api, _) = await ApiAsync();
+        var (editor, reply, test) = await HeldTestAsync(api, "Line 2 PLC");
+
+        editor.SelectedType = editor.Types.Single(t => t.Entry.Id == FakeOadmApi.FakeHttpRecipientType);
+        reply.SetException(new RpcException(new Status(StatusCode.Unavailable, "Gone")));
+        await test;
+
+        Assert.Null(editor.TestResult);
+        Assert.False(editor.IsTesting);
+    });
+
+    [Fact]
+    public Task A_Test_after_a_dropped_one_shows_its_own_result() => _ui.RunAsync(async () =>
+    {
+        var (api, _) = await ApiAsync();
+        var replies = new Queue<TaskCompletionSource<TestActionReply>>([new(), new()]);
+        var slow = Substitute.For<IOadmApi>();
+        var first = replies.Peek();
+        slow.TestRecipientAsync(default!, default).ReturnsForAnyArgs(_ => replies.Dequeue().Task);
+        var second = replies.ElementAt(1);
+        var catalog = await api.GetEventCatalogAsync(CancellationToken.None);
+        var editor = new RecipientEditorViewModel(slow, catalog.RecipientTypes, await ByNameAsync(api, "Line 2 PLC"), []);
+
+        var dropped = editor.TestCommand.ExecuteAsync(null);
+        Field(editor, "host").Text = "10.0.0.71";
+        first.SetResult(new TestActionReply { Ok = false, Message = "The old form" });
+        await dropped;
+
+        var test = editor.TestCommand.ExecuteAsync(null);
+        Assert.Equal("Connecting", editor.TestResult);
+        second.SetResult(new TestActionReply { Ok = true });
+        await test;
+
+        Assert.Equal("Connected", editor.TestResult);
+        Assert.True(editor.TestOk);
+    });
+
+    [Fact]
+    public Task A_refused_Test_shows_below_Password_with_the_trailer() => _ui.RunAsync(async () =>
+    {
+        const string Refusal = "Enter the password again. The target changed.";
+        var (api, _) = await ApiAsync();
+        var editor = await EditorAsync(api, await ByNameAsync(api, "Plant broker"));
+        await editor.LoadCertificatesAsync(CancellationToken.None);
+        Field(editor, "host").Text = "other.plant.local";
+        api.NextRecipientRefusal = new RpcException(new Status(StatusCode.InvalidArgument, Refusal), new Metadata { { RecipientErrors.FieldTrailer, "password" } });
+
+        await editor.TestCommand.ExecuteAsync(null);
+
+        Assert.Equal(Refusal, Field(editor, "password").Error);
+        Assert.Null(editor.TestResult);
+        Assert.False(editor.SaveCommand.CanExecute(null));
+
+        Field(editor, "password").Text = "new secret"; // the refusal goes with the edit
+        Assert.Null(Field(editor, "password").Error);
+        Assert.True(editor.SaveCommand.CanExecute(null));
+    });
+
+    [Fact]
+    public Task A_refused_Save_shows_below_Password_with_the_trailer() => _ui.RunAsync(async () =>
+    {
+        const string Refusal = "Enter the password again. The target changed.";
+        var (api, _) = await ApiAsync();
+        var editor = await EditorAsync(api, await ByNameAsync(api, "Plant broker"));
+        await editor.LoadCertificatesAsync(CancellationToken.None);
+        Field(editor, "host").Text = "other.plant.local";
+        api.NextRecipientRefusal = new RpcException(new Status(StatusCode.InvalidArgument, Refusal), new Metadata { { RecipientErrors.FieldTrailer, "password" } });
+
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(Refusal, Field(editor, "password").Error);
+        Assert.Null(editor.ServerError);
+        Assert.Null(editor.Saved);
+    });
+
+    [Fact]
+    public Task A_refused_Test_without_a_field_stays_next_to_the_button() => _ui.RunAsync(async () =>
+    {
+        var (api, _) = await ApiAsync();
+        var editor = await EditorAsync(api, await ByNameAsync(api, "Line 2 PLC"));
+        api.NextRecipientRefusal = new RpcException(new Status(StatusCode.PermissionDenied, "Not allowed."));
+
+        await editor.TestCommand.ExecuteAsync(null);
+
+        Assert.Equal("Not allowed.", editor.TestResult);
+        Assert.False(editor.TestOk);
     });
 
     [Fact]

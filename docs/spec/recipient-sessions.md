@@ -91,8 +91,14 @@ works with the fewest fields, and security is there when it is needed.
   as any certificate of the list ("Expires in 12 days" in its row, the expiry events stay about devices).
 - **In the dialog:** both selects are read once when it opens (`ListRecipientCertificates`, ring and "Reading certificates" while a shown
   type waits); an empty list says "Import or create one on the PKI page."; a value no longer in the list leaves the select empty with
-  "The chosen certificate no longer exists. Choose another one." below it, and Save stays off until the user chooses. In a hidden field the
+  "This certificate cannot be used now. Choose another one." below it, and Save stays off until the user chooses: the list cannot say whether
+  it ended, a server shows it, PKI is stopped or it is gone, so the text claims none of them (a session that cannot load its
+  certificate keeps "The chosen certificate no longer exists. Choose another one." from the server). In a hidden field the
   value stays. For a persistent type Test says Connecting, then the server's Connected or reason; the audit says "Connected to".
+  A change of the form during a Test (a field, the name, the type) drops that Test's reply. A refusal with the field trailer stands
+  below that field for Test as for Save ("Enter the password again. The target changed." below Password).
+- **Send test in the rule dialog:** off for an action whose recipient is persistent, the tooltip says "Test the recipient instead.": it would
+  write to a real machine, the recipient's Test only connects. The server refuses it too.
 - **No new certificates in PKI:** Create stays as it is. An IEEE 802.1X certificate has client authentication, so it already works for MQTT.
   OPC UA's sign, sign and encrypt and certificate login take a certificate imported into PKI. Its application URI comes from the certificate's URI name.
 - **Trust of an OPC UA server:** Allow untrusted accepts; a Trusted CA checks against it and its issuers (a self-signed server: the imported

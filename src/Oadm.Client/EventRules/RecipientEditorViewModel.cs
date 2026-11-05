@@ -30,8 +30,9 @@ public sealed record RecipientTypeOption(RecipientTypeEntry Entry)
 /// <summary>
 /// The recipient dialog (one form): Type (only for a new one), Name and the type's fields, drawn from their declaration.
 /// Errors stand below their field, a server refusal below the field it names. Test sends once now with the values of the
-/// form (a persistent type only connects); the reason of a failure shows as text next to the button. The certificate selects
-/// are filled from PKI when the dialog opens (<see cref="LoadCertificatesAsync"/>).
+/// form (a persistent type only connects); the reason of a failure shows as text next to the button, a refusal that names a
+/// field below that field, and a reply to a form the user has changed since is dropped. The certificate selects are filled
+/// from PKI when the dialog opens (<see cref="LoadCertificatesAsync"/>).
 /// </summary>
 public sealed partial class RecipientEditorViewModel : ValidatingViewModel
 {
@@ -42,6 +43,7 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
     private readonly HashSet<string> _takenNames;
     private RecipientCertificateList? _certificates;
     private string? _certificatesError;
+    private int _testGeneration; // every change of the form counts: a Test's reply is about the form it started from
 
     /// <param name="api">The server.</param>
     /// <param name="types">The types a new recipient can have; every type for a recipient that exists.</param>
@@ -159,20 +161,33 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
         }
 
         var persistent = SelectedType.Persistent;
+        var generation = _testGeneration;
         IsTesting = true;
         TestResult = persistent ? RecipientSessionTexts.Connecting : "Sending";
         try
         {
             var reply = await _api.TestRecipientAsync(Request(), CancellationToken.None).ConfigureAwait(true);
-            TestOk = reply.Ok;
-            TestResult = reply.Message.Length > 0 ? reply.Message
-                : reply.Ok ? persistent ? RecipientSessionTexts.Connected : "Sent"
-                : "The test failed. The server log has the details.";
+            if (generation == _testGeneration)
+            {
+                TestOk = reply.Ok;
+                TestResult = reply.Message.Length > 0 ? reply.Message
+                    : reply.Ok ? persistent ? RecipientSessionTexts.Connected : "Sent"
+                    : "The test failed. The server log has the details.";
+            }
+        }
+        catch (RpcException ex) when (generation == _testGeneration && NamesField(ex))
+        {
+            TestOk = false;
+            TestResult = null;
+            ShowRefusal(ex);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            TestOk = false;
-            TestResult = ex is RpcException rpc ? rpc.Status.Detail : ex.Message;
+            if (generation == _testGeneration)
+            {
+                TestOk = false;
+                TestResult = ex is RpcException rpc ? rpc.Status.Detail : ex.Message;
+            }
         }
         finally
         {
@@ -266,6 +281,9 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(this, false);
 
+    private bool NamesField(RpcException refusal) =>
+        refusal.Trailers.GetValue(RecipientErrors.FieldTrailer) is { } key && (key == "name" || Fields.Any(f => f.Key == key));
+
     /// <summary>A refusal stands below the field it names, else below the form.</summary>
     private void ShowRefusal(RpcException refusal)
     {
@@ -295,6 +313,15 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
         }
     }
 
+    /// <summary>The form changed: a shown result, and the reply of a Test still running, are about the old form.</summary>
+    private void FormChanged()
+    {
+        _testGeneration++;
+        TestResult = null;
+    }
+
+    partial void OnNameChanged(string value) => FormChanged();
+
     partial void OnSelectedTypeChanged(RecipientTypeOption? value)
     {
         if (Validation.Fields.Count > 0)
@@ -306,7 +333,7 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
     private void BuildFields()
     {
         Fields.Clear();
-        TestResult = null;
+        FormChanged();
         foreach (var entry in SelectedType?.Entry.Fields ?? [])
         {
             var field = new ActionFieldViewModel(entry);
@@ -344,7 +371,7 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
             field.LoadError = null; // a server refusal goes when the field changes
         }
 
-        TestResult = null;
+        FormChanged();
         Refresh();
     }
 

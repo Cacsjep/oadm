@@ -207,8 +207,8 @@
                         </StackPanel>
                         <vm:SettingsFormView Fields="{Binding Fields}" />
                         <TextBlock Classes="error small" Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" />
-                        <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding CanTest}">
-                          <Button Classes="secondary" Command="{Binding TestCommand}" ToolTip.Tip="Sends it once now, with sample event values">
+                        <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding ShowTest}">
+                          <Button Classes="secondary" Command="{Binding TestCommand}" ToolTip.Tip="{Binding TestTip}" ToolTip.ShowOnDisabled="True">
                             <ui:IconLabel Icon="{StaticResource Icon.send}" Text="Send test" />
                           </Button>
                           <ui:StatusChip Text="{Binding TestResult}" IsOk="{Binding TestOk}" IsError="{Binding TestFailed}" IsAccent="{Binding IsTesting}"

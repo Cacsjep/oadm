@@ -416,6 +416,12 @@ public sealed partial class ActionFieldViewModel : ObservableObject
     /// <summary>The hint of a certificate select with nothing to choose.</summary>
     public const string NoCertificatesHint = "Import or create one on the PKI page.";
 
+    /// <summary>
+    /// A stored certificate the list does not hold. The list cannot say why (it ended, a server shows it, PKI is stopped or it is
+    /// gone), so the text claims none of them; a session's own failure stays <see cref="RecipientSessionTexts.CertificateGone"/>.
+    /// </summary>
+    public const string CertificateUnusableText = "This certificate cannot be used now. Choose another one.";
+
     private string? _missingChoice; // a stored certificate the list does not hold (yet): kept until the user chooses
     private bool _hasCertificateList;
     private bool _fillingCertificates;
@@ -704,7 +710,7 @@ public sealed partial class ActionFieldViewModel : ObservableObject
 
     /// <summary>
     /// Fills a certificate select from PKI, not as an edit; the current choice stays. A stored certificate the list no longer
-    /// holds leaves the select empty with <see cref="RecipientSessionTexts.CertificateGone"/> below it until the user chooses.
+    /// holds leaves the select empty with <see cref="CertificateUnusableText"/> below it until the user chooses.
     /// </summary>
     public void SetCertificates(IEnumerable<RecipientCertificateChoice> choices)
     {
@@ -728,7 +734,7 @@ public sealed partial class ActionFieldViewModel : ObservableObject
         }
         else if (_missingChoice is not null)
         {
-            LoadError = RecipientSessionTexts.CertificateGone;
+            LoadError = CertificateUnusableText;
             ShowError = true;
         }
     }

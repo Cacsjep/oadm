@@ -453,6 +453,97 @@ public sealed class RecipientTests : IDisposable
         Assert.True(done);
     });
 
+    /// <summary>The rule dialog with an action on a recipient of the type.</summary>
+    private static async Task<(RuleEditorViewModel Editor, RuleActionViewModel Action)> RuleWithAsync(FakeOadmApi api, DeviceStore store, string typeId)
+    {
+        var catalog = (await api.GetEventCatalogAsync(CancellationToken.None)).Clone();
+        var write = new ActionEntry { Id = "test.write", DisplayName = "Write value", Available = true };
+        write.Fields.Add(new ActionFieldEntry { Key = "recipient", Label = "Recipient", Kind = ActionFieldKind.ActionFieldRecipient, Required = true, RecipientTypes = { typeId } });
+        catalog.Actions.Add(write);
+        var editor = new RuleEditorViewModel(api, catalog, null, store, await api.ListRecipientsAsync(CancellationToken.None));
+        var action = editor.RuleActions[0];
+        action.SelectedAction = action.Actions.Single(a => a.Id == write.Id);
+        return (editor, action);
+    }
+
+    [Fact]
+    public Task An_action_on_a_persistent_recipient_has_no_Send_test() => _ui.RunAsync(async () =>
+    {
+        var (api, store) = await ApiAsync();
+        var (_, action) = await RuleWithAsync(api, store, FakeOadmApi.FakeModbusRecipientType);
+
+        Assert.True(action.ShowTest); // the button stays and says why
+        Assert.False(action.CanTest);
+        Assert.False(action.TestCommand.CanExecute(null));
+        Assert.Equal("Test the recipient instead.", action.TestTip);
+
+        var field = action.Fields.Single(f => f.IsRecipient);
+        field.SelectChoice(field.Choices.Single(c => c.Text == "Line 2 PLC").Value);
+        Assert.False(action.CanTest);
+    });
+
+    [Fact]
+    public Task An_action_on_a_one_shot_recipient_keeps_Send_test() => _ui.RunAsync(async () =>
+    {
+        var (api, store) = await ApiAsync();
+        var (_, action) = await RuleWithAsync(api, store, FakeOadmApi.FakeHttpRecipientType);
+
+        Assert.True(action.CanTest);
+        Assert.True(action.TestCommand.CanExecute(null));
+        Assert.Equal("Sends it once now, with sample event values", action.TestTip);
+    });
+
+    [Fact]
+    public Task A_recipient_chosen_later_turns_Send_test_off() => _ui.RunAsync(async () =>
+    {
+        var (api, store) = await ApiAsync();
+        var catalog = (await api.GetEventCatalogAsync(CancellationToken.None)).Clone();
+        var write = new ActionEntry { Id = "test.either", DisplayName = "Either", Available = true };
+        var entry = new ActionFieldEntry { Key = "recipient", Label = "Recipient", Kind = ActionFieldKind.ActionFieldRecipient, Required = true };
+        entry.RecipientTypes.AddRange([FakeOadmApi.FakeHttpRecipientType, FakeOadmApi.FakeModbusRecipientType]);
+        write.Fields.Add(entry);
+        catalog.Actions.Add(write);
+        var editor = new RuleEditorViewModel(api, catalog, null, store, await api.ListRecipientsAsync(CancellationToken.None));
+        var action = editor.RuleActions[0];
+        action.SelectedAction = action.Actions.Single(a => a.Id == write.Id);
+        var field = action.Fields.Single();
+        Assert.False(action.CanTest); // none chosen: one of its types is persistent
+
+        field.SelectedChoice = field.Choices.Single(c => c.Text == "Teams webhook");
+        Assert.True(action.CanTest);
+        Assert.True(action.TestCommand.CanExecute(null));
+
+        field.SelectedChoice = field.Choices.Single(c => c.Text == "Line 2 PLC");
+        Assert.False(action.CanTest);
+        Assert.False(action.TestCommand.CanExecute(null));
+    });
+
+    [Fact]
+    public Task A_change_during_Send_test_drops_its_reply() => _ui.RunAsync(async () =>
+    {
+        var (api, store) = await ApiAsync();
+        var reply = new TaskCompletionSource<TestActionReply>();
+        var slow = Substitute.For<IOadmApi>();
+        slow.TestEventActionAsync(default!, default).ReturnsForAnyArgs(reply.Task);
+        var catalog = await api.GetEventCatalogAsync(CancellationToken.None);
+        var editor = new RuleEditorViewModel(slow, catalog, null, store, await api.ListRecipientsAsync(CancellationToken.None));
+        var action = editor.RuleActions[0];
+        action.SelectedAction = action.Actions.Single(a => a.Id == "oadm.notifications.http");
+        var field = action.Fields.Single(f => f.IsRecipient);
+        field.SelectedChoice = field.Choices.Single(c => c.Text == "Teams webhook");
+
+        var test = action.TestCommand.ExecuteAsync(null);
+        Assert.Equal("Sending", action.TestResult);
+
+        action.SelectedAction = action.Actions.Single(a => a.Id == "oadm.notifications.tcp");
+        Assert.Null(action.TestResult);
+        reply.SetResult(new TestActionReply { Ok = true, Message = "Sent" });
+        await test;
+
+        Assert.Null(action.TestResult);
+        Assert.False(action.IsTesting);
+    });
+
     private static async Task PumpUntilAsync(Func<bool> condition)
     {
         for (var i = 0; i < 3000; i++)

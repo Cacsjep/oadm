@@ -87,7 +87,7 @@ how to reach something, the action says what to send. Agreed with the maintainer
   result chip next to it (the reason as text, never only an icon), Cancel, Save.
 - **Rule dialog:** a `Recipient` field is a select of the recipients of its types, sorted by name, with a **New** command button
   beside it that opens the recipient dialog and selects the result. An old action shows the field empty with its error.
-- `Send test` of an action stays: the host merges the chosen recipient first.
+- `Send test` of an action stays: the host merges the chosen recipient first. Off for a persistent recipient (recipient-sessions.md "Security").
 
 ## Tests
 

@@ -276,6 +276,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
     private readonly RuleEditorViewModel _owner;
     private readonly RuleAction? _initial;
     private bool _loading;
+    private int _testGeneration; // every change of the action counts: a test's reply is about the settings it started from
 
     internal RuleActionViewModel(RuleEditorViewModel owner, RuleAction? initial)
     {
@@ -300,7 +301,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
     public IReadOnlyList<ActionOption> Actions => _owner.Actions;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowTargets), nameof(Description), nameof(CanTest))]
+    [NotifyPropertyChangedFor(nameof(ShowTargets), nameof(Description), nameof(ShowTest), nameof(CanTest), nameof(TestTip))]
     public partial ActionOption? SelectedAction { get; set; }
 
     public DeviceSelectorViewModel Targets { get; }
@@ -347,8 +348,19 @@ public sealed partial class RuleActionViewModel : ObservableObject
     /// <summary>The action "Log entry": a test of it would only write to the server log.</summary>
     internal const string LogEntryActionId = "oadm.notifications.log";
 
-    /// <summary>"Send test": actions without devices, except Log entry; device actions would change devices.</summary>
-    public bool CanTest => SelectedAction?.Entry is { NeedsDevice: false, Available: true, Id: not LogEntryActionId };
+    /// <summary>Why Send test is off for an action on a persistent recipient.</summary>
+    internal const string TestRecipientInsteadTip = "Test the recipient instead.";
+
+    /// <summary>"Send test" shows: actions without devices, except Log entry; device actions would change devices.</summary>
+    public bool ShowTest => SelectedAction?.Entry is { NeedsDevice: false, Available: true, Id: not LogEntryActionId };
+
+    /// <summary>
+    /// Off for an action on a persistent recipient (MQTT, Modbus, OPC UA): a test would write to a real machine, the recipient's
+    /// own Test only connects.
+    /// </summary>
+    public bool CanTest => ShowTest && !Fields.Any(f => f.IsRecipient && _owner.IsPersistentRecipient(f));
+
+    public string TestTip => ShowTest && !CanTest ? TestRecipientInsteadTip : "Sends it once now, with sample event values";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasTestResult))]
@@ -380,18 +392,25 @@ public sealed partial class RuleActionViewModel : ObservableObject
             return;
         }
 
+        var generation = _testGeneration;
         IsTesting = true;
         TestResult = "Sending";
         try
         {
             var reply = await _owner.TestActionAsync(this).ConfigureAwait(true);
-            TestOk = reply.Ok;
-            TestResult = reply.Message.Length > 0 ? reply.Message : reply.Ok ? "Sent" : "The test failed. The server log has the details.";
+            if (generation == _testGeneration)
+            {
+                TestOk = reply.Ok;
+                TestResult = reply.Message.Length > 0 ? reply.Message : reply.Ok ? "Sent" : "The test failed. The server log has the details.";
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            TestOk = false;
-            TestResult = ex is Grpc.Core.RpcException rpc ? rpc.Status.Detail : ex.Message;
+            if (generation == _testGeneration)
+            {
+                TestOk = false;
+                TestResult = ex is Grpc.Core.RpcException rpc ? rpc.Status.Detail : ex.Message;
+            }
         }
         finally
         {
@@ -399,7 +418,14 @@ public sealed partial class RuleActionViewModel : ObservableObject
         }
     }
 
-    private bool NotTesting() => !IsTesting;
+    private bool NotTesting() => !IsTesting && CanTest;
+
+    /// <summary>The action changed: a shown result, and the reply of a test still running, are about the old settings.</summary>
+    private void FormChanged()
+    {
+        _testGeneration++;
+        TestResult = null;
+    }
 
     [RelayCommand]
     private void Remove() => _owner.RemoveAction(this);
@@ -418,7 +444,7 @@ public sealed partial class RuleActionViewModel : ObservableObject
         }
 
         ShowErrors = true;
-        TestResult = null;
+        FormChanged();
         BuildFields(null);
         _owner.Revalidate();
     }
@@ -447,7 +473,11 @@ public sealed partial class RuleActionViewModel : ObservableObject
             field.SetValue(value);
             field.PasswordStored = initial?.StoredSecretFields.Contains(entry.Key) == true;
             field.ShowError = field.IsRecipient && initial is not null; // an old action says at once that it needs a recipient
-            field.Changed += (_, _) => _owner.Revalidate();
+            field.Changed += (_, _) =>
+            {
+                FormChanged();
+                _owner.Revalidate();
+            };
             Fields.Add(field);
             if (entry.Kind == ActionFieldKind.ActionFieldDynamicChoice)
             {
@@ -461,6 +491,9 @@ public sealed partial class RuleActionViewModel : ObservableObject
     {
         ActionFieldViewModel.Refresh(Fields, statefulRule);
         OnPropertyChanged(nameof(Error));
+        OnPropertyChanged(nameof(CanTest));
+        OnPropertyChanged(nameof(TestTip));
+        TestCommand.NotifyCanExecuteChanged();
     }
 
     internal void ShowAllErrors()
@@ -914,6 +947,13 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
         .Where(r => entry.RecipientTypes.Contains(r.TypeId))
         .OrderBy(r => r.Name, StringComparer.CurrentCultureIgnoreCase)
         .Select(r => new ActionChoiceEntry { Value = r.Id, Label = r.Name });
+
+    /// <summary>The chosen recipient is persistent; with none chosen yet, one of the field's types is.</summary>
+    internal bool IsPersistentRecipient(ActionFieldViewModel field)
+    {
+        var types = _recipients.Find(r => r.Id == field.Value) is { } chosen ? [chosen.TypeId] : field.Entry.RecipientTypes;
+        return _recipientTypes.Any(t => t.Persistent && types.Contains(t.Id));
+    }
 
     /// <summary>New beside a recipient select: the recipient dialog for the field's types; the new one is selected.</summary>
     internal async Task NewRecipientAsync(ActionFieldViewModel field)
