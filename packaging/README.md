@@ -1,7 +1,7 @@
 # OADM installers
 
 `manage package <windows|linux|macos> [--rid RID] [--version V]` runs `manage publish all` for the RID and builds the
-installer into `artifacts/packages/`. The publish step writes self-contained single-file exes, every plugin project in
+installer into `artifacts/packages/`. The publish step writes self-contained single-file exes (the client's native libraries beside its exe), every plugin project in
 `plugins/<plugin id>/` next to each exe, and `TERMS.md`, `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and `LGPL-2.1.txt`
 next to each exe. The client also gets the offline docs of Help as `docs/` when `artifacts/docs-offline/` exists
 (`manage build docs-offline`, needs Node.js; in CI the job `docs`). Add-on plugins (`<OadmAddOn>true</OadmAddOn>`) are

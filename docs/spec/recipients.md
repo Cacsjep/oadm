@@ -12,7 +12,7 @@ how to reach something, the action says what to send. Agreed with the maintainer
 | Link | A rule keeps a link to its recipient. Axis copies the values into the rule and keeps no link; OADM does not: change a recipient and all its rules follow |
 | Direction | Output only. A recipient never feeds events into OADM |
 | Used by | No column in the list; a refused delete names the rules |
-| Types | HTTP (http and https in one type), Email, TCP. No FTP, SFTP or Network share: OADM sends no files. Later persistent types (MQTT, Modbus, OPC UA) add a shared session, so a type is declared by its plugin, never hard-coded in the host |
+| Types | HTTP (http and https in one type), Email, TCP. No FTP, SFTP or Network share: OADM sends no files. The persistent types MQTT, Modbus and OPC UA add a shared session ([recipient sessions](recipient-sessions.md)). A type is declared by its plugin, never hard-coded in the host |
 | What moves | The recipient holds the target and its login, the action keeps the message (table below). No placeholders in a recipient: a target is fixed |
 | Email | From and To belong to the recipient: an Email recipient is one mailbox or group ("Gate team"). A second audience is a second recipient |
 | Existing rules | The user moves them. No conversion. An old Send email, Send HTTP request or Send TCP message action has no recipient: its rule shows "Send email: Choose a recipient.", the action does not run (event log: Failed with that text) and the rule cannot be saved until one is chosen. The old values stay unread in the stored action and go at the next save, passwords included |
@@ -31,7 +31,7 @@ how to reach something, the action says what to send. Agreed with the maintainer
 
 - New field type `ActionFieldType.Recipient` with `ActionField.Recipient(key, label, typeIds)`: required, the value is the
   recipient's id. `ActionField.EmptyText`: the error of a required field left empty, for a label that does not read in a
-  sentence ("To", "URL"); default "Enter" and the label. `ActionField.Format` (`ActionFieldFormat`: Url, Host, Email, EmailList,
+  sentence ("To", "URL"); default "Enter" and the label. `ActionField.Format` (`ActionFieldFormat`: Url, Host, Email, EmailList, OpcEndpoint,
   `ActionFormats`): what a text field must hold, part of `ActionSettings.Check`, so the dialog shows the error while the user types
   and the server refuses the same. Url: http or https, no placeholders, no spaces, no login in it (the target shows in the list and
   the audit log). The checks of a plugin's `Validate` run on the server only, for what a format cannot say. One `Recipient` field per action: the merge is flat, a second one would
@@ -40,15 +40,15 @@ how to reach something, the action says what to send. Agreed with the maintainer
 - `RecipientType(Id, DisplayName, IconKey, Fields, TestActionId)`: the fields use the `ActionField` kinds and their checks.
   `IActionPlugin.RecipientTypes` (default none) declares them; the host collects them in the event catalog.
   `TestActionId` is the action that sends the test of the type.
-- `ActionInvocation.RecipientIds`: field key to recipient id of a run, empty in a recipient's own Test. Nothing reads it yet: it
-  and `RecipientStore.Changed` keep the way open for [recipient sessions](recipient-sessions.md) (spec, parked).
+- `ActionInvocation.RecipientIds`: field key to recipient id of a run, empty in a recipient's own Test. `SessionAsync` finds the recipient through it,
+  and `RecipientStore.Changed` closes the session of a changed recipient ([recipient sessions](recipient-sessions.md)).
 - `RecipientType.Target`: the one-line target of the list with {key} for a field's value ("{host}:{port}"), default the first field.
 - `IActionPlugin.Validate` also checks a recipient: on save and on Test the host calls the type's test action with its default values
   and the recipient's, and keeps the errors of the type's fields. `Describe` gets the recipient's fields without passwords; while a
   recipient is missing the rules list shows the display name.
 - `IActionPlugin.Validate` and `ExecuteAsync` stay as they are: **the host merges the recipient's fields into the action's
   settings before a run**, under their own keys, so `invocation.Get("host")` keeps working and a plugin reads one flat
-  list. A recipient's value wins over an old value of the same key in the stored action.
+  list. A recipient's value wins over an old value of the same key in the stored action. The password fields of a persistent type stay out of the settings: they reach only the session.
 
 ## Server
 
@@ -62,7 +62,7 @@ how to reach something, the action says what to send. Agreed with the maintainer
   cannot be read" (event log, server log). Backups hold the table like every other one.
 - gRPC on `EventService`: `ListRecipients`, `SaveRecipient` (create or change, field errors like a rule, the trailer `oadm-field`
   names the field so the dialog shows the error below it), `DeleteRecipient` (FAILED_PRECONDITION with the rule names, at most five,
-  then "and 12 more": a status text must stay small), `TestRecipient` (runs the type's `TestActionId` with that action's default
+  then "and 12 more": a status text must stay small), `TestRecipient` (a persistent type only connects, a one shot type runs its `TestActionId` with that action's default
   values and sample event values; reply ok + message, a failure goes to the server log like Send test; what the checks refuse is
   INVALID_ARGUMENT with the trailer `oadm-field`, like a save, so the dialog shows it below the field). `EventCatalog` gains
   `recipient_types`. A `RecipientEntry` has id, name, type id, the values without passwords, which password fields are stored,
@@ -82,7 +82,7 @@ how to reach something, the action says what to send. Agreed with the maintainer
   `ui:ToolbarOverflowPanel`, the grids scroll sideways at their minimum.
 - **Recipients card:** header row New, Edit, Delete (red, apart) and below it a search box (`SearchBox.stretch`: the card is too narrow
   for one row); a virtualized `DataGrid`: Name, Type, Target (the full text as tooltip). The list
-  is read when the page opens, after a change here and when the rules list shows a change of what the rules run. Empty list: "Create a recipient, then choose it in a rule." Hidden without the right to
+  is read when the page opens, after a change here and when the rules list shows a change of what the rules run. Empty list: "Create a recipient, then choose it in a rule.", without "Change event rules" "No recipients yet." Hidden without the right to
   see event rules. Without "Change event rules" New, Edit and Delete are off with the read-only hint.
 - **Recipient dialog** (one form, `Border.dialogBody`, like `ui:MessageWindow`'s padding): Type (only for a new one), Name, then
   the type's fields drawn by `SettingsFormView`; validation below each field (`ValidatingViewModel`). Footer: **Test** with the

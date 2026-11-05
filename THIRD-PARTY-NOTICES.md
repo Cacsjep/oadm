@@ -25,9 +25,7 @@ license and notice files the packages ship.
   (ref `fcd83b13adbbbdf616f3a48a565f1913dbdfa403`), which pins every bundled library.
 - The IJG notice required by FFmpeg's libjpeg-derived files: "This software is based in part on
   the work of the Independent JPEG Group."
-- How it is linked: dynamically. The libraries are embedded in the single-file client exe
-  (`IncludeNativeLibrariesForSelfExtract`) and extracted by the .NET host at startup to
-  `DOTNET_BUNDLE_EXTRACT_BASE_DIR` (default: the user's temp folder, `.net/Oadm.Client/<hash>`).
+- How it is linked: dynamically. The libraries are separate files beside the client exe.
   To use your own build of the libraries (LGPL section 6), set `OADM_FFMPEG_DIR` to a folder
   containing ABI-compatible `avcodec`, `avutil`, `swscale` and `swresample` (FFmpeg 9.x); the client
   loads them from there instead. `Oadm.Client --check-decoder` shows which libraries were loaded.

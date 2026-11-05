@@ -13,7 +13,8 @@ purpose. The tests use xUnit.
 | (none) | `manage test unit` | Fast tests with fakes. CI runs them on Windows, Linux and macOS for every release |
 | `Perf` | `manage test perf` | 100,000 devices, 50,000 tasks, with a time budget |
 | `Hardware` | `manage test hardware` | Read-only, against your cameras |
-| `HardwareWrite` | never from `manage` | Change a device. Only on purpose, only on a test device |
+| `RecipientStack` | `manage test recipients` | Real MQTT, Modbus and OPC UA servers in Docker, connect and write once to each. Also `HardwareWrite`, so no other run and no CI touches them |
+| `HardwareWrite` | never on a device from `manage` | Change a device. Only on purpose, only on a test device |
 
 Mark a test with `[Trait("Category", "Perf")]` and so on. A pull request runs the unit tests on Linux.
 

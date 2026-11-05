@@ -209,7 +209,7 @@ used again.
     has gone after its upload (failed writes are dropped); a refused or failed install is audited "Could not install optional
     plugin" with the reason; done only after the server followed the package), `InstallAddOn(id)` (Admin; takes back an
     add-on that was removed and is still loaded, no file; the same stream; FAILED_PRECONDITION in any other state),
-    `RestartForAddOns` (Admin; FAILED_PRECONDITION no update waits or a task runs; audited; reply: the whole list, the server goes
+    `RestartForAddOns` (Admin; FAILED_PRECONDITION no update waits, a task runs, a self update runs (`AddOnTexts.Updating`) or another add-on is being installed or removed (`AddOnTexts.Busy`); audited; reply: the whole list, the server goes
     away a moment later),
     `RemoveAddOn(id)`
     (Admin; NOT_FOUND, FAILED_PRECONDITION not installed or a self update running; audit "Removed optional plugin <name>
@@ -247,7 +247,7 @@ used again.
   + message; a persistent type only connects; refused checks like `SaveRecipient`: INVALID_ARGUMENT with the trailer), the last three like `SaveRule`, audited. `WatchRecipientStatus` (like `ListRecipients`: the
   connection of every persistent recipient that has one, the whole list first, then after each change, at most every 500 ms; missing means not
   used, `docs/spec/recipient-sessions.md`), `ListRecipientCertificates` (like `SaveRule`: the certificates of PKI for the recipient dialog, both
-  lists empty while PKI is off; ids and texts only, never a key). `GetCatalog` also gives `recipient_types` (`persistent`: one shared connection).
+  lists empty while PKI is not running; ids and texts only, never a key). `GetCatalog` also gives `recipient_types` (`persistent`: one shared connection).
 - **`ServerLogService`** (`logs.proto`, permission `logs.server`, users with all devices): `List` (the server's log
   files, a page newest first), see `docs/spec/main-window.md` "Logs page".
 - **`DeviceWebService`** (`deviceweb.proto`, the Web View relay, `plugins/Oadm.Plugins.WebView/README.md`):

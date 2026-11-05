@@ -184,7 +184,7 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
     `HostDeviceScopesTests`, `PluginEventAudienceTests`, `TaskQueryCallTests`, `PluginCanaryTests`,
     `tests/Oadm.Server.Tests/DeviceGroups/PluginServiceGroupTests`, `tests/Oadm.Plugins.EdgeStorage.Tests/DeviceSweepsTests`.
 - Event rules: `IEventSource`, `IDynamicEventSource`, `IEventPublisher`, `IActionPlugin`, `IActionSource`; recipients (SDK 0.11.0,
-  [recipients.md](recipients.md)): `ActionField.Recipient`, `RecipientType`, `IActionPlugin.RecipientTypes`, `ActionInvocation.RecipientIds`; an event's
+  [recipients.md](recipients.md)): `ActionField.Recipient`, `RecipientType`, `IActionPlugin.RecipientTypes`, `ActionInvocation.RecipientIds`; persistent recipients (SDK 0.12.0, [recipient-sessions.md](recipient-sessions.md)): `RecipientType.Sessions`, `IRecipientSessionFactory`, `IRecipientSession`, `IActionContext.SessionAsync<T>`, `ActionField.ClientCertificate`, `ActionField.TrustedCertificate`, `RecipientSessionRequest.CertificatesOf`; an event's
   folders (`EventTypeInfo.Path`, SDK 0.10.0) are at most 4 (`PluginRegistry.MaxEventFolders`), none blank, else the path
   is dropped with a load error and the group is the folder; no path and no group: "Other". Tests:
   `Oadm.Sdk.Testing.FakeEventPublisher` (`FakeCoreContext.EventPublisher`, `UseInRule` for `IsUsedByRule`)
@@ -326,16 +326,16 @@ for server reports.
 
 ## SDK versions
 
-`SdkInfo.Version` (0.10.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
+`SdkInfo.Version` (0.12.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
 Both are constants: a plugin that reads them gets the value of the SDK it was built against, not the host's. The table of
 what each version added is `website/src/content/docs/dev/compatibility.md`.
 
-- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.11.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.11.0
+- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.12.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.12.0
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
   packages keep their own hand-written `plugin.json`: 0.4.0, or the version of the newest member a package uses at run time
-  (0.10.0: Upgrade AXIS OS `AxisOsTexts.Version`, Text recognition the rail group `CorePluginGroup.Vision` and `EventTypeInfo.FixedDeviceId`, `SplitField`, Dashboards `EventTypeInfo.Path`, `FixedDeviceId`, `SplitField`,
-  `IEventPublisher.IsUsedByRule`, `ICorePlugin.AuditDetail`, Device triggers and PKI `EventTypeInfo.Path`; constants such as `AxisOsTexts.Name` are
+  (0.12.0: PKI `IRecipientCertificates` and `IRecipientCertificateUse`, Modbus, MQTT and OPC UA `RecipientType.Sessions`; 0.11.0: Notifications `ActionField.Recipient`; 0.10.0: Upgrade AXIS OS `AxisOsTexts.Version`, Text recognition the rail group `CorePluginGroup.Vision` and `EventTypeInfo.FixedDeviceId`, `SplitField`, Dashboards `EventTypeInfo.Path`, `FixedDeviceId`, `SplitField`,
+  `IEventPublisher.IsUsedByRule`, `ICorePlugin.AuditDetail`, Device triggers `EventTypeInfo.Path`; constants such as `AxisOsTexts.Name` are
   compiled in and need none). Earlier: 0.5.0 for Upgrade AXIS OS (`ShowForDevicesAsync`).
 - Defaults a plugin built for an older SDK notices: `ui:FileRow.IsSingleButton` is true (the button alone, without the
   "No file chosen" line; false for the older row); `ui:ToolbarButton.IsPrimary` adds the class `main` and never fills the
@@ -349,7 +349,7 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
 - Server scans `<app>/plugins/*/`, `<datafolder>/plugins/*/` and, in a repository checkout, `<repo>/artifacts/plugins/*/`
   (`PluginPaths.Development`) on startup, loads each `*.Server.dll` in its own collectible `AssemblyLoadContext`, resolves
   `ITaskPlugin` and `ICorePlugin` implementations via reflection, then registers the core plugins' `TaskPlugins` too.
-  Client does the same for `*.Client.dll` with `ITaskPluginDialog`, `ICorePluginPage` and `IToolbarPlugin` over the same
+  Client does the same for `*.Client.dll` (only one that references `Oadm.Sdk.Client`: `ClientPluginLoader.IsClientPart`) with `ITaskPluginDialog`, `ICorePluginPage` and `IToolbarPlugin` over the same
   three roots (`ClientPluginLoader.DefaultRoots`).
 - Plugin development without installing (developer guide `website/src/content/docs/dev/plugin-sdk.md`: NuGet packages,
   templates, the `oadm` tool): server `--Oadm:PluginDir=<folder>` (several separated by ";", `OadmServerHost.PluginDirKey`)
@@ -407,7 +407,7 @@ box back with the error below the list (`PluginsViewModel.SwitchAsync`).
   on; packages without a choice use their default), applied before the core plugins start
   (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade AXIS OS, Date and time, Applications
-  (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs and Notifications (core
+  (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs, Notifications, Modbus, MQTT and OPC UA (core
   functionality). Enabled whatever the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers
   FAILED_PRECONDITION "<name> is always on.". Every other bundled package is switchable (on by default:
   VAPIX Commander, NTP server, DHCP server, Web View). Third-party plugins are switchable unless their manifest says
@@ -450,7 +450,8 @@ box back with the error below the list (`PluginsViewModel.SwitchAsync`).
   certificates: the 802.1X server; PKI reads them once per change; they pass only with a policy of their own),
   `PurposeOf(serial)` (the use of a listed certificate, a lookup in memory); the request's `Purpose`
   (`DeviceCertificatePurposes`). `CertificateDescriber` (SDK) and the client SDK's `CertificateWindow` show a certificate
-  in plain names. Test fake: `FakePluginServices` (`FakeCoreContext.FakeServices`).
+  in plain names. Also `IRecipientCertificates` by PKI, which only the host reads, and `IRecipientCertificateUse` by the host for PKI
+  (`docs/spec/recipient-sessions.md` "Security"). Test fake: `FakePluginServices` (`FakeCoreContext.FakeServices`).
 - **Protected tags** (`ICorePluginContext.ProtectedTags`, `Oadm.Sdk.Devices.IProtectedTags.Protect(names, refusal)`;
   server `ProtectedTagRegistry`): a core plugin whose settings act on devices by tag names those tags; only users with all
   devices then add them to or remove them from devices (`docs/spec/tags.md` "Protected tags"). Each call replaces the

@@ -23,6 +23,7 @@ Every rule here and in `docs/spec/` is agreed with the maintainer; change one on
 | Device API | VAPIX only (HTTP/HTTPS, digest auth). No ONVIF |
 | Live video | RTSP (server, own client) relayed as encoded H.265/H.264 over gRPC, decoded in the client with FFmpeg (LGPL, bundled) |
 | Text recognition | ONNX Runtime with PaddleOCR models, in an optional plugin; DirectML (Windows x64), CUDA (Linux x64) or the CPU |
+| Event rule targets | MQTTnet (MQTT), the OPC Foundation .NET stack (OPC UA), our own Modbus TCP client, in plugins |
 | Embedded browser | `Avalonia.Controls.WebView` (MIT; WebView2, WKWebView, WPE WebKit / WebKitGTK of the OS), in the client host for the Web View plugin |
 
 Cross-platform is a day-one requirement: Windows, Linux, macOS. No Windows-only APIs
@@ -106,6 +107,8 @@ plugins/                (layout and SDK guide: plugins/README.md)
 tests/
   Oadm.<Project>.Tests/  one test project per project and per plugin (Oadm.Core.Tests, Oadm.Client.Tests,
                        Oadm.Plugins.Pki.Tests, ...); TestPlugins/ holds the plugins the loader tests load
+  Oadm.RecipientStack.Tests/ the real MQTT, Modbus and OPC UA servers (`manage test recipients`, never in CI)
+  RecipientStack/      their docker-compose.yml
   Shared/              RecordingFirewall, RecordingStreams, CallWatchers, CountingDeviceScopes, FakeAxisCom, FakeSiteTransport,
                        TestRepository (linked into tests; StepRun moved to src/Oadm.Sdk.Testing)
 tools/                 Oadm.DiscoveryProbe (manual discovery tests), Oadm.Notices (THIRD-PARTY-NOTICES.txt generator),
@@ -261,7 +264,7 @@ must never break.
   in git: downloaded and checked at build), on the action Read text or watching the MJPEG stream at 1 to 15 fps, frames overlapping only with room, results in order (watching
   readers by the CPU cores, 4 per site); events Text read, No text read and Reader problem for the rules; read only, pictures never stored.
 - **[Recipients](docs/spec/recipients.md)** ([recipient sessions](docs/spec/recipient-sessions.md): MQTT, Modbus, OPC UA, one shared connection per recipient, output only): shared
-  targets of event rule actions (HTTP, Email, TCP, declared by plugins, at most 200); a rule keeps a link, the host merges the
+  targets of event rule actions (HTTP, Email, TCP, MQTT, Modbus, OPC UA, declared by plugins, at most 200); a rule keeps a link, the host merges the
   recipient's fields into the action's settings before a run; no placeholders in a target, old rules are never converted ("Choose a
   recipient."), delete refused while a rule uses one, passwords encrypted and never sent back; output only.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only

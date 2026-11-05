@@ -7,12 +7,13 @@ The file layout of every installer and the user-facing install notes are in `pac
 ## Publish
 
 - Server and client publish as one self-contained single-file exe per platform (`PublishSingleFile`, `PublishReadyToRun`), see
-  `manage publish`. `Oadm.Server --self-check` and `Oadm.Client --self-check` load every plugin with the real load context, create its classes, follow all its
-  assembly references, try the host's native libraries and call the plugin's own `ICorePlugin.SelfCheck` (Text recognition starts ONNX Runtime on a
-  model of the ZIP, and Skia), the client also loads every native library beside its exe; `--add-on <folder>` adds an unpacked add-on. release.yml runs them on the published folders of every platform, on each add-on ZIP,
-  and in the smoke tests of the installed packages. A deps.json check would not do: a package publish leaves out is missing there too (Send email in 4.11.0). The server and the site node also embed their native libraries (`IncludeNativeLibrariesForSelfExtract`). The client keeps
+  `manage publish`. `Oadm.Server --self-check` tries SQLite and loads every plugin with the real loader, which creates its classes, then follows all its
+  assembly references and calls the plugin's own `ICorePlugin.SelfCheck` (Text recognition starts ONNX Runtime on a
+  model of the ZIP, and Skia). `Oadm.Client --self-check` tries the decoder, Skia and HarfBuzz, loads every native library beside its exe and each plugin's
+  client part and follows its assembly references; it creates no classes and calls no `SelfCheck`. `--add-on <folder>` adds an unpacked add-on to either. release.yml runs them on the published folders of every platform, on each add-on ZIP,
+  and in the smoke tests of the .deb and MSI packages (the .pkg is not installed there). A deps.json check would not do: a package publish leaves out is missing there too (Send email in 4.11.0). The server and the site node also embed their native libraries (`IncludeNativeLibrariesForSelfExtract`). The client keeps
   them beside the exe (decision 2026-11-05): unpacking made the first start of every build take 4.65 s instead of 0.79 s and left 73 MB per
-  build in the temp folder; `OldNativeFolders` removes those left-overs in the background at a start. Every plugin project is published
+  build in the temp folder; `OldNativeFolders` removes those left-overs in the background at a start (`.net/Oadm.Client` in the home folder, on Windows also in the temp folder; a symlink is skipped). Every plugin project is published
   once into `artifacts/publish/plugins/<plugin id>/` (`<OadmPluginId>`, server and client part together) and copied next
   to both exes in `plugins/<plugin id>/`, so a new plugin project is packaged without further changes. Add-on plugin
   projects (`<OadmAddOn>true</OadmAddOn>`, `docs/spec/add-ons.md`) are left out (`Test-AddOn` / `is_addon`), so no
@@ -49,8 +50,8 @@ The file layout of every installer and the user-facing install notes are in `pac
   version in it). The server unpacks it into
   `<datafolder>/addons/<id>/`. Before zipping the scripts check `plugin.json` (id), `*.Server.dll`, `*.Client.dll` (when
   the add-on has a client project), `THIRD-PARTY-NOTICES.txt`, `oadm-version.txt` and that no native library of another
-  platform is in it (no `.so` on Windows and macOS, no `.dylib` on Windows and Linux); after zipping they run
-  `check-addon-zip.sh` on the ZIP (`manage.ps1` with Git Bash when it finds it, else `release.yml` does).
+  platform is in it (no `.so` on Windows and macOS, no `.dylib` on Windows and Linux); outside Windows they delete a stray `onnxruntime*.dll`; after zipping they run
+  `check-addon-zip.sh` on the ZIP, which refuses such a file too (`manage.ps1` with Git Bash when it finds it, else `release.yml` does).
 - Limits of the server: the ZIP at most 1 GB (`AddOnFolders.MaxZipBytes`); the client part the server
   hands to clients is `plugin.json`, the top-level `*.Client.dll`, `*.Server.dll` (the client part references its server
   project) with their `.pdb`, and everything under `client/` (`AddOnFolders.ClientPartPatterns`), at most 24 MB unpacked
@@ -185,7 +186,7 @@ when the jobs it needs passed:
   `Category!=Hardware&Category!=Perf&Category!=HardwareWrite`, one run without a retry, `--blame-hang-timeout 5m
   --blame-crash`: a crashed test host leaves a dump and its test sequence, uploaded as the artifact `test-results-<os>`
   when the step fails.
-- `installers` (needs tests and docs, 60 min): MSI, the .deb packages for amd64 and arm64 (on `ubuntu-24.04-arm`), .pkg,
+- `installers` (needs docs, beside the tests, 60 min; `release` needs both): MSI, the .deb packages for amd64 and arm64 (on `ubuntu-24.04-arm`), .pkg,
   the OADM Site Node MSI and .deb packages, and the portable ZIPs `OADM-Server|Client-<version>-<rid>.zip` (their own
   artifact `portable-<version>-<rid>`). Takes the offline docs of the job `docs` into the client. Checks the license
   texts and the client's `docs/index.html` next to the published exes; installs, checks and removes the .deb packages as
@@ -195,7 +196,8 @@ when the jobs it needs passed:
   server built next holds their hashes; after the packages it checks each ZIP with `check-addon-zip.sh`, checks with
   `check-server-hash.sh` that the published server holds the hash of every ZIP (missing or different fails the build; it reads
   the exe without running it), and checks that no add-on folder is next to the published exes, in the portable ZIPs, the
-  MSI (Directory table), the .deb packages or the .pkg.
+  MSI (Directory table), the .deb packages or the .pkg. The step "Self check of the published apps" runs `--self-check` on the published server and
+  client, then on each add-on ZIP: the server with the unpacked ZIP, the client with only the part a client gets.
 - `docs` (15 min, next to the tests): `npm run build:offline` in `website/` once, uploaded as the artifact `docs-offline`.
 - `smoke-windows` (needs installers, 30 min): the MSI installed, checked and removed both ways by
   `packaging/windows/smoke.ps1`, which prints the time on every line and a heartbeat with free memory and the busiest

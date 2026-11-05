@@ -208,8 +208,8 @@ computer. A client loads the client part its server hands it: the user must trus
     starts at the next restart of the server." and **Restart server**, and the next start puts it in place when it names this
     exact version.
   - **Restart server** (a waiting update, Administrators; also the dialog right after such an Install, "Restart the server?" with
-    **Restart server** and **Later**): `RestartForAddOns`, `ServerRestart` as for a restore. Refused without a waiting update and
-    while a task runs (the row says so), audited "Restarted the server for optional plugin <names>". The client reconnects by itself.
+    **Restart server** and **Later**): `RestartForAddOns`, `ServerRestart` as for a restore. Refused without a waiting update, while a task runs, during a
+    self update and while another add-on is being installed or removed (the row says so), audited "Restarted the server for optional plugin <names>". The client reconnects by itself.
   - **Remove** (installed, not loaded; red, with the confirmation "Remove <name>? It turns off now. Its settings are kept.").
 
   Below the rows, while a row has the link: "Click Download ZIP, then Install and choose the file. Clients get the plugin

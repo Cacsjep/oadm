@@ -1,8 +1,8 @@
 # Text recognition (`oadm.ocr`)
 
 Core plugin with a rail page in group Vision (icon `text`), with `.Client`, off by default, an add-on (not in the
-installers; installed on the Plugins page). Readers take pictures of one camera and read the text in their areas; each
-reading publishes the event "Text read" for the event rules, and the rule action "Read text" reads one picture now. Read
+installers; installed on the Plugins page). Readers take pictures of one camera and read the text in their areas; a
+reading that found text publishes the event "Text read" for the event rules, and the rule action "Read text" reads one picture now. Read
 only for devices. Spec: [Text recognition](../../docs/spec/ocr.md), [Add-ons](../../docs/spec/add-ons.md).
 
 ## Decisions

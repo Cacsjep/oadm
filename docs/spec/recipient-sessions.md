@@ -36,8 +36,8 @@ connections, and an action never owns a connection.
   longer exists is not retried.
 - **No lock around a close:** the pool collects its slots under the lock and cancels outside it, without running what waits on them, so a close
   or `Changed` never runs under the lock (the event source takes its own lock and then the pool's).
-- **A run never waits long:** an action on a session that is not connected fails at once with "Not connected: <reason>" (event log,
-  server log), and the rule's normal limits apply. No queue of messages, no replay after a reconnect: an alarm from 10 minutes ago
+- **A run never waits long:** the first action of a new session waits for the first attempt, at most 15 s. After that an action on a session that
+  is not connected fails at once with "Not connected: <reason>" (event log, server log), and the rule's normal limits apply. No queue of messages, no replay after a reconnect: an alarm from 10 minutes ago
   must not fire a relay now.
 - **Status** per recipient in memory (Connected, Connecting, Not connected with the reason, Not used), never stored, on its own stream
   `WatchRecipientStatus` (the whole list first, then after each change, at most every 500 ms; a recipient missing there is not used).
@@ -45,7 +45,7 @@ connections, and an action never owns a connection.
   used show nothing, the reason is its tooltip. While the word would leave the target less than 64 px (`RecipientTargetCell`, at
   the card's default width and below) the chip shows only its icon and the tooltip says the word too, so the target keeps its room. The page
   watches only while it is shown, one post per burst, again after a drop (1, 2, 4 ... 15 s); a stream that ended clears the chips.
-- Secrets stay as in Recipients: decrypted only to open a session, kept only inside it.
+- Secrets: every run decrypts the recipient, as in Recipients, but for a persistent type the password fields stay out of the action's settings. Passwords reach only the session and stay inside it.
 - **Connecting** is only the first attempt. Until a session reaches Connected a retry stays Not connected with the last reason, so the event
   below never turns off between attempts.
 - Stops with the server, after `ActionRunner`: a running action keeps its session. The event source stops first, so a stop ends no event. A
@@ -84,7 +84,7 @@ address 65535 is refused at a save and before the write. A Modbus write changes 
 0, the value is validated before anything is sent, and one action is one write. A value on the off edge is optional. Modbus RTU is out
 of scope.
 
-**A pulse never leaves a relay on silently.** The off write runs whatever ends the wait (a cancel, a drop, a failed on write), on its own 10 s
+**A pulse never leaves a relay on silently.** The off write runs whatever ends the wait (a cancel, a failed on write; a drop does not end it, the pulse runs its time), on its own 10 s
 limit and on a session asked for again, so a reconnect or a changed recipient does not matter; inside the 10 s a failed try is repeated
 every second, because a dropped connection comes back in that time. If it still fails the action fails with a text ending "The coil
 may still be on." During the wait the action asks for the session at least every 60 s, so that a pulse longer than 5 minutes is not closed
@@ -97,7 +97,7 @@ the echo of the request.
 
 **Placeholders in a Publish MQTT message:** the topic is filled per placeholder, and a value with `/`, `+`, `#` or NUL, a leading `$` or no text
 is refused ("Nothing was sent."): a value must never change the topic level or reach a system topic. An unknown {name} is never sent literally, in
-the topic or the payload, and a payload that came out empty is not sent: an empty retained message would clear the topic.
+the topic or the payload, and a payload whose placeholders came out empty is not sent. An empty Payload field is allowed; with Retain it clears the topic.
 
 **Write OPC UA value** refuses an unknown {name} and a Text value that came out empty ("Nothing was written."), and a number too small for its
 format: it never becomes 0, and a whole number above 2^24 stays the nearest float. An uncertain write status fails the action: a machine write that is
@@ -106,7 +106,7 @@ pool gave up closes its session itself.
 
 Nothing is read: no MQTT subscribe, no Modbus read function, no OPC UA read or subscription (rule confirmed by the maintainer on
 2026-11-05). What a protocol needs for a write stays: the broker's acknowledge, the echo or exception of a Modbus write, the status of
-an OPC UA write. The user chooses the OPC UA value type, so OADM never reads a node's data type; a wrong type is the server's refusal.
+an OPC UA write, and the stack's keep alive, which reads. The user chooses the OPC UA value type, so OADM never reads a node's data type; a wrong type is the server's refusal.
 A failed action is not sent later (decision 2026-11-05).
 
 ## Security
@@ -116,7 +116,7 @@ works with the fewest fields, and security is there when it is needed.
 
 | | Default | Options |
 |---|---|---|
-| MQTT | TLS off, port 1883 | TLS (port 8883), client certificate (mutual TLS) optional |
+| MQTT | TLS off, port 1883 | TLS (usually port 8883; the port stays 1883 until the user changes it), client certificate (mutual TLS) optional |
 | OPC UA | Security none, anonymous login | Security none, sign, sign and encrypt; a chosen policy; login anonymous, user name and password, or a certificate |
 | Modbus | Plain TCP, port 502 | None: Modbus Security is left out |
 

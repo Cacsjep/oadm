@@ -62,6 +62,7 @@ and the event log.
 | Text read (group Text recognition, one per reader): Area, Text, Text read, All matches, Number, Confidence, Matches format | The readers of [Text recognition](../text-recognition/events/#event-text-read) |
 | Reader problem (one per reader), Any reader problem | On while a text reader cannot read, see [Text recognition](../text-recognition/events/#event-reader-problem) |
 | Optional plugin not loaded (group Optional plugins) | On while an optional plugin must be installed again; `{count}` and `{plugin}` |
+| Recipient not connected | On while an MQTT, Modbus or OPC UA recipient cannot be reached; `{count}` and `{recipient}` |
 
 Most events are on while something is true and off again when it ends. Then the rule is **on** while all conditions
 hold, and some actions can undo themselves when the rule turns **off**.
@@ -94,7 +95,7 @@ falls back the rule turns off. An event that does not send the value never passe
   [recipient](#recipients), then the method, query parameters, headers and a body as JSON, XML, text or form.
 - **Send email**: sends a mail to a [recipient](#recipients), as text or HTML.
 - **Publish MQTT message**: publishes a message to a topic on an MQTT broker, a [recipient](#recipients).
-- **Write Modbus value**: writes on or off, a number or text to a PLC or gateway, a [recipient](#recipients). Addresses count from 0.
+- **Write Modbus value**: writes on or off, a pulse, a number or text to a PLC or gateway, a [recipient](#recipients). Addresses count from 0.
 - **Write OPC UA value**: writes on or off, a number or text to a node of an OPC UA server, a [recipient](#recipients).
 - **Send TCP message**: sends a message to a [recipient](#recipients), for example a building, alarm or video system that
   listens on a TCP port. Text, JSON, XML or hex bytes (`02 41 42 03`), with an optional line end. **Wait for an
@@ -139,7 +140,7 @@ The **Recipients** card sits next to the rules. **New** asks for the type, a nam
 | Email | Mail server, port, encryption, **Allow untrusted certificates**, user name, password, From, To |
 | TCP | Host, port, **Use TLS**, **Allow untrusted certificates** |
 
-**Test** sends once now and shows the reason when it fails. Leave a stored password empty to keep it. A target takes no
+**Test** sends once now and shows the reason when it fails. Leave a stored password empty to keep it while the target stays. A target takes no
 [placeholders](#placeholders). For a second audience, create a second recipient.
 
 In a rule, choose the recipient in the action, or click **New** next to the select.
@@ -155,13 +156,13 @@ go when you save the rule.
 ### MQTT, Modbus and OPC UA
 
 An MQTT, Modbus or OPC UA recipient keeps one connection open, which all its rules share. It connects at the first action and closes after 5 minutes
-without one; a connection that failed keeps trying. The icon in the list shows the state, the tooltip the reason. **Test** only connects, it sends
+without one; a connection that failed keeps trying. The Target column shows the state, only an icon when the column is narrow, and the tooltip the reason. **Test** only connects, it sends
 nothing, and it replaces **Send test** for these actions.
 
 A new recipient needs only its address. TLS for MQTT, and security and login for OPC UA, are there when you need them. Certificates come from the
 [PKI](/tools/pki/) page: import or create one there, then choose it in the recipient. OPC UA with security needs a certificate imported into PKI.
 
-An action never waits for a connection that is down: it fails, and the event log says why. Nothing is sent later. Use the event
+The first action waits up to 15 seconds for the connection. After that an action does not wait for a connection that is down: it fails, and the event log says why. Nothing is sent later. Use the event
 **Recipient not connected** to act on it.
 
 ## Manage rules
