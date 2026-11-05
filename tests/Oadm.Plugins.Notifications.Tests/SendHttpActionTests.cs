@@ -129,9 +129,12 @@ public sealed class SendHttpActionTests
         Assert.Contains("Bad Header", errors["headers"], StringComparison.Ordinal);
         Assert.Equal("The body is not valid JSON.", errors["body"]);
 
-        var good = Settings("https://hooks.example.com/{serial}");
+        var good = Settings("https://hooks.example.com/in");
         good["body"] = "{\"count\": {total}, \"id\": \"{objectId}\"}"; // a placeholder may stand for a number
         Assert.Empty(action.Validate(Run.Element(good), statefulRule: true));
+
+        // A target is fixed: placeholders stay in the action's query, headers and body.
+        Assert.Equal("Enter a fixed URL, without placeholders.", action.Validate(Run.Element(Settings("https://hooks.example.com/{serial}")), statefulRule: true)["url"]);
     }
 
     [Fact]

@@ -204,6 +204,7 @@ public sealed record ActionField(string Key, string Label, ActionFieldType Type)
     /// <summary>
     /// A required select of the recipients of <paramref name="typeIds"/> (SDK 0.11.0). Before a run the host merges the
     /// chosen recipient's fields into the settings under their own keys, so <see cref="ActionInvocation.Get"/> reads them.
+    /// One per action: the keys of a second recipient would replace those of the first.
     /// </summary>
     public static ActionField Recipient(string key, string label, IReadOnlyList<string> typeIds) =>
         new(key, label, ActionFieldType.Recipient) { Required = true, RecipientTypes = typeIds };
@@ -222,6 +223,15 @@ public sealed record RecipientType(string Id, string DisplayName, string? IconKe
 {
     /// <summary>The one-line target of the Recipients list, with {key} for a field's value ("{host}:{port}"). Null: the first field.</summary>
     public string? Target { get; init; }
+
+    /// <summary>The longest name of a recipient.</summary>
+    public const int MaxNameLength = 64;
+
+    /// <summary>The refusal of a name another recipient has.</summary>
+    public const string NameTakenText = "A recipient with this name already exists.";
+
+    /// <summary>The refusal of an id that is gone.</summary>
+    public const string NotFoundText = "The recipient no longer exists.";
 }
 
 /// <summary>What happened, handed to an action run.</summary>

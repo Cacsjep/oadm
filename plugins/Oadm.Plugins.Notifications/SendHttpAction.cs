@@ -69,6 +69,10 @@ public sealed class SendHttpAction : IActionPlugin
         {
             errors["url"] = "Enter a URL that starts with http:// or https://.";
         }
+        else if (url.AsSpan().IndexOfAny('{', '}') >= 0)
+        {
+            errors["url"] = "Enter a fixed URL, without placeholders.";
+        }
 
         if (invocation.Get("auth") is "basic" or "digest" && string.IsNullOrWhiteSpace(invocation.Get("user")))
         {

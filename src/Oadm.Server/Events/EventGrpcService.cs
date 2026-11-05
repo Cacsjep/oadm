@@ -251,7 +251,7 @@ public sealed class EventGrpcService(
         var id = GrpcGuard.ParseId(request.Id, "recipient id");
         try
         {
-            var removed = await rules.DeleteRecipientAsync(id, context.CancellationToken).ConfigureAwait(false) ?? throw GrpcGuard.NotFound("The recipient no longer exists.");
+            var removed = await rules.DeleteRecipientAsync(id, context.CancellationToken).ConfigureAwait(false) ?? throw GrpcGuard.NotFound(RecipientType.NotFoundText);
             await audit.WriteAsync(AuditActions.RecipientDeleted, removed.Name, null, context.CancellationToken).ConfigureAwait(false);
             return new Proto.Empty();
         }
@@ -265,9 +265,13 @@ public sealed class EventGrpcService(
     {
         var ct = context.CancellationToken;
         Guid? id = string.IsNullOrEmpty(request.Id) ? null : GrpcGuard.ParseId(request.Id, "recipient id");
-        var (ok, message) = await actions.TestRecipientAsync(request.TypeId, id, ParseSettings(request.SettingsJson), ct).ConfigureAwait(false);
+        var values = ParseSettings(request.SettingsJson);
+        var target = rules.TargetOf(request.TypeId, values);
+        var (ok, message) = await actions.TestRecipientAsync(request.TypeId, id, values, ct).ConfigureAwait(false);
         var name = string.IsNullOrWhiteSpace(request.Name) ? rules.Catalog.FindRecipientType(request.TypeId)?.Type.DisplayName ?? request.TypeId : request.Name.Trim();
-        await audit.WriteAsync(AuditActions.RecipientTested, name, (ok ? "Sent" : "Failed") + (ok ? string.Empty : " · " + (message.Length > 200 ? message[..200] : message)), ct).ConfigureAwait(false);
+        var to = target.Length > 200 ? target[..200] : target;
+        var detail = (ok ? "Sent to " : "Failed to ") + to + (ok ? string.Empty : " · " + (message.Length > 200 ? message[..200] : message));
+        await audit.WriteAsync(AuditActions.RecipientTested, name, detail, ct).ConfigureAwait(false);
         return new Proto.TestActionReply { Ok = ok, Message = message };
     }
 

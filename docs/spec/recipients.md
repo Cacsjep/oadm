@@ -30,7 +30,8 @@ how to reach something, the action says what to send. Agreed with the maintainer
 
 - New field type `ActionFieldType.Recipient` with `ActionField.Recipient(key, label, typeIds)`: required, the value is the
   recipient's id. `ActionField.EmptyText`: the error of a required field left empty, for a label that does not read in a
-  sentence ("To", "URL"); default "Enter" and the label. New SDK members are default interface members; this is SDK 0.11.0 (the table in
+  sentence ("To", "URL"); default "Enter" and the label. One `Recipient` field per action: the merge is flat, a second one would
+  replace the keys of the first. New SDK members are default interface members; this is SDK 0.11.0 (the table in
   `website/src/content/docs/dev/compatibility.md`, `SdkInfo.Version`, `Oadm.Plugin.Versions.props`).
 - `RecipientType(Id, DisplayName, IconKey, Fields, TestActionId)`: the fields use the `ActionField` kinds and their checks.
   `IActionPlugin.RecipientTypes` (default none) declares them; the host collects them in the event catalog.
@@ -52,8 +53,9 @@ how to reach something, the action says what to send. Agreed with the maintainer
   at a time, keeps the rule `MaxRecipients`. Every create, change and delete goes through it and raises one `Changed` with the id,
   after the write.
 - `ActionSettings.Check` of `Recipient`: empty is "Choose a recipient."; `RuleValidator` also refuses an id that does not
-  exist or is of another type. The merge is in `ActionRunner` for a run and for `TestAsync`; a recipient that is gone fails
-  the run with "Choose a recipient.". Backups hold the table like every other one.
+  exist or is of another type. The merge is in `ActionRunner` for a run and for `TestAsync`, after `RunsOn`, so an edge that
+  does not run reads nothing; a recipient that is gone fails the run with "Choose a recipient.", a failed read with "The recipient
+  cannot be read" (event log, server log). Backups hold the table like every other one.
 - gRPC on `EventService`: `ListRecipients`, `SaveRecipient` (create or change, field errors like a rule, the trailer `oadm-field`
   names the field so the dialog shows the error below it), `DeleteRecipient` (FAILED_PRECONDITION with the rule names, at most five,
   then "and 12 more": a status text must stay small), `TestRecipient` (runs the type's `TestActionId` with that action's default
@@ -61,7 +63,8 @@ how to reach something, the action says what to send. Agreed with the maintainer
   `recipient_types`. A `RecipientEntry` has id, name, type id, the values without passwords, which password fields are stored,
   a one-line target ("smtp.office365.com:587", "https://hooks.example.com") and the names of the rules that use it (`used_by`).
   Every method in `AccessPolicy`: list like `ListRules`, the others like `SaveRule`, `AllDevices`; change, delete and test
-  are audited ("Created recipient", "Changed recipient", "Deleted recipient", "Tested recipient"). A list is at most 200
+  are audited ("Created recipient", "Changed recipient", "Deleted recipient", "Tested recipient" with the target). A test of a stored
+  recipient with another type id is refused, so a stored password never reaches a target of another type. A list is at most 200
   rows, so no page is needed.
 
 ## Client

@@ -14,6 +14,10 @@ public static class NotificationRecipients
 
     public const string TcpType = "oadm.notifications.recipient.tcp";
 
+    internal const string EnterHost = "Enter a host name or IP address.";
+
+    private const string EnterEmail = "Enter an email address.";
+
     /// <summary>http and https in one type: URL, login, "Allow untrusted certificates".</summary>
     public static RecipientType Http { get; } = new(
         HttpType,
@@ -38,14 +42,14 @@ public static class NotificationRecipients
         "Email",
         "send",
         [
-            ActionField.Text("host", "Mail server", required: true) with { EmptyText = "Enter a host name or IP address." },
+            ActionField.Text("host", "Mail server", required: true) with { EmptyText = EnterHost },
             ActionField.Number("port", "Port", 1, 65535, 587),
             ActionField.Choice("security", "Encryption", [new("starttls", "STARTTLS (usually port 587)"), new("tls", "TLS (usually port 465)"), new("none", "None")], "starttls"),
             ActionField.Bool("allowUntrusted", "Allow untrusted certificates"),
             ActionField.Text("user", "User name") with { Hint = "Optional" },
             ActionField.Password("password", "Password"),
-            ActionField.Text("from", "From", required: true) with { EmptyText = "Enter an email address." },
-            ActionField.Text("to", "To", required: true) with { Hint = "Several addresses separated by commas", EmptyText = "Enter an email address." },
+            ActionField.Text("from", "From", required: true) with { EmptyText = EnterEmail },
+            ActionField.Text("to", "To", required: true) with { Hint = "Several addresses separated by commas", EmptyText = EnterEmail },
         ],
         SendEmailAction.ActionId)
     {
@@ -58,7 +62,7 @@ public static class NotificationRecipients
         "TCP",
         "send",
         [
-            ActionField.Text("host", "Host", required: true) with { Hint = "Host name or IP address", EmptyText = "Enter a host name or IP address." },
+            ActionField.Text("host", "Host", required: true) with { Hint = "Host name or IP address", EmptyText = EnterHost },
             ActionField.Number("port", "Port", 1, 65535, 8000),
             ActionField.Bool("tls", "Use TLS"),
             ActionField.Bool("allowUntrusted", "Allow untrusted certificates") with { VisibleWhenKey = "tls", VisibleWhenValue = "true" },

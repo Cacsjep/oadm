@@ -594,7 +594,7 @@ public sealed partial class FakeOadmApi
         lock (_gate)
         {
             ThrowIfOffline();
-            var recipient = _recipients.Find(r => r.Id == id) ?? throw new RpcException(new Status(StatusCode.NotFound, "The recipient no longer exists."));
+            var recipient = _recipients.Find(r => r.Id == id) ?? throw new RpcException(new Status(StatusCode.NotFound, Oadm.Sdk.Actions.RecipientType.NotFoundText));
             if (WithUseLocked(recipient).UsedBy is { Count: > 0 } used)
             {
                 throw new RpcException(new Status(StatusCode.FailedPrecondition, $"Used by {string.Join(", ", used)}. Change those rules first."));

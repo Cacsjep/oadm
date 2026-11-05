@@ -267,14 +267,12 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
 
         var plugin = catalogAction.Plugin;
         var settingsObject = _store.DecryptSettings(job.Rule.Id, action);
-        var recipientIds = new Dictionary<string, Guid>(StringComparer.Ordinal);
-        var recipientProblem = await MergeRecipientsAsync(plugin, settingsObject, recipientIds, ct).ConfigureAwait(false);
-        using var settingsDocument = JsonDocument.Parse(settingsObject.ToJsonString());
-        var settings = settingsDocument.RootElement.Clone();
         bool runs;
         try
         {
-            runs = plugin.RunsOn(job.Edge, settings);
+            // Before the merge: an edge that does not run reads no recipient and decrypts nothing.
+            using var own = JsonDocument.Parse(settingsObject.ToJsonString());
+            runs = plugin.RunsOn(job.Edge, own.RootElement);
         }
 #pragma warning disable CA1031 // Plugin code is untrusted.
         catch (Exception)
@@ -288,11 +286,28 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             return;
         }
 
+        var recipientIds = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        string? recipientProblem;
+        try
+        {
+            recipientProblem = await MergeRecipientsAsync(plugin, settingsObject, recipientIds, ct).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // Every run is a line in the event log, also when the database fails.
+        catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            LogActionFailed(ex, job.Rule.Name, plugin.DisplayName, string.Empty, RecipientUnreadable);
+            recipientProblem = RecipientUnreadable;
+        }
+
         if (recipientProblem is not null)
         {
             Write(job, null, plugin.DisplayName, EventLogResult.Failed, recipientProblem);
             return;
         }
+
+        using var settingsDocument = JsonDocument.Parse(settingsObject.ToJsonString());
+        var settings = settingsDocument.RootElement.Clone();
 
         if (!plugin.NeedsDevice)
         {
@@ -585,7 +600,13 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             return (false, "Not available: this type of recipient is turned off");
         }
 
-        var stored = id is { } known && await _recipients.GetAsync(known, ct).ConfigureAwait(false) is { } recipient ? _recipients.DecryptSettings(recipient) : new JsonObject();
+        var recipient = id is { } known ? await _recipients.GetAsync(known, ct).ConfigureAwait(false) : null;
+        if (recipient is not null && !string.Equals(recipient.TypeId, type.Type.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return (false, "This recipient has another type."); // a stored password never goes to a target of another type
+        }
+
+        var stored = recipient is null ? [] : _recipients.DecryptSettings(recipient);
         foreach (var field in type.Type.Fields.Where(f => f.Type == ActionFieldType.Password))
         {
             if (ActionSettings.Text(values, field.Key) is not { Length: > 0 } && stored[field.Key] is { } kept)
@@ -691,6 +712,8 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             LogActionSkipped(job.Rule.Name, what, on, message);
         }
     }
+
+    private const string RecipientUnreadable = "The recipient cannot be read";
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Event rule {Rule}: action {Action}{On} failed: {Reason}")]
     private partial void LogActionFailed(Exception? ex, string rule, string action, string on, string reason);

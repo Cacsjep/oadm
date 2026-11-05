@@ -71,7 +71,7 @@ public sealed partial class SendEmailAction : IActionPlugin
 
         if (invocation.Get("host") is { Length: > 0 } host && Uri.CheckHostName(host.Trim()) == UriHostNameType.Unknown)
         {
-            errors["host"] = "Enter a host name or IP address.";
+            errors["host"] = NotificationRecipients.EnterHost;
         }
 
         return errors;

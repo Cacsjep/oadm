@@ -61,21 +61,21 @@ public static class RecipientChecks
 public static class RecipientUse
 {
     /// <summary>
-    /// The sorted rule names per recipient of <paramref name="recipientIds"/>. A setting links to a recipient when its text
-    /// is the recipient's id, so an action of a plugin that is not installed still counts.
+    /// The sorted rule names per recipient of <paramref name="recipientIds"/>. A setting links to a recipient when it parses
+    /// to the recipient's id, as in a run, so an action of a plugin that is not installed still counts.
     /// </summary>
     public static Dictionary<Guid, List<string>> ByRecipient(IEnumerable<StoredRule> rules, IEnumerable<Guid> recipientIds)
     {
         ArgumentNullException.ThrowIfNull(rules);
         ArgumentNullException.ThrowIfNull(recipientIds);
-        var byText = recipientIds.Distinct().ToDictionary(id => id.ToString(), id => id, StringComparer.OrdinalIgnoreCase);
+        var known = recipientIds.ToHashSet();
         var names = new Dictionary<Guid, List<string>>();
         foreach (var rule in rules)
         {
             var seen = new HashSet<Guid>();
             foreach (var value in rule.Definition.Actions.SelectMany(a => a.Settings.Select(p => p.Value)))
             {
-                if (value is JsonValue text && text.TryGetValue<string>(out var id) && byText.TryGetValue(id, out var recipient) && seen.Add(recipient))
+                if (value is JsonValue text && text.TryGetValue<string>(out var id) && Guid.TryParse(id, out var recipient) && known.Contains(recipient) && seen.Add(recipient))
                 {
                     if (!names.TryGetValue(recipient, out var list))
                     {

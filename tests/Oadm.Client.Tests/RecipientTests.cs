@@ -106,6 +106,26 @@ public sealed class RecipientTests : IDisposable
     });
 
     [Fact]
+    public Task A_recipient_made_in_a_cancelled_rule_dialog_shows_in_the_list() => _ui.RunAsync(async () =>
+    {
+        var (api, store) = await ApiAsync();
+        var dialogs = Substitute.For<IDialogService>();
+        dialogs.ShowRuleEditorAsync(default!).ReturnsForAnyArgs(async _ =>
+        {
+            var type = (await api.GetEventCatalogAsync(CancellationToken.None)).RecipientTypes[0];
+            await api.SaveRecipientAsync(new SaveRecipientRequest { Name = "Made in the dialog", TypeId = type.Id, SettingsJson = """{"url":"https://new.example.com"}""" }, CancellationToken.None);
+            return false;
+        });
+        using var page = new EventRulesViewModel(api, dialogs, store, _ui);
+        page.Activate();
+        await Eventually.TrueAsync(() => page.Recipients.Count == 3, "the list loaded");
+
+        await page.NewRuleCommand.ExecuteAsync(null);
+
+        Assert.Contains(page.Recipients, r => r.Name == "Made in the dialog");
+    });
+
+    [Fact]
     public Task Delete_of_a_recipient_in_use_says_which_rules_and_keeps_it() => _ui.RunAsync(async () =>
     {
         var (api, store) = await ApiAsync();

@@ -56,7 +56,7 @@ public sealed class RecipientStore(IDbContextFactory<OadmDbContext> dbFactory, I
     public const int MaxRecipients = 200;
 
     /// <summary>Longest name.</summary>
-    public const int MaxNameLength = 64;
+    public const int MaxNameLength = RecipientType.MaxNameLength;
 
     private readonly SemaphoreSlim _write = new(1, 1);
 
@@ -112,11 +112,11 @@ public sealed class RecipientStore(IDbContextFactory<OadmDbContext> dbFactory, I
             await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
             var rows = await db.Recipients.ToListAsync(ct).ConfigureAwait(false);
             var row = id is { } known
-                ? rows.Find(r => r.Id == known) ?? throw new KeyNotFoundException("The recipient no longer exists.")
+                ? rows.Find(r => r.Id == known) ?? throw new KeyNotFoundException(RecipientType.NotFoundText)
                 : null;
             if (rows.Exists(r => r.Id != row?.Id && string.Equals(r.Name, trimmed, StringComparison.OrdinalIgnoreCase)))
             {
-                throw new RecipientValidationException(RecipientValidationException.NameField, "A recipient with this name already exists.");
+                throw new RecipientValidationException(RecipientValidationException.NameField, RecipientType.NameTakenText);
             }
 
             if (row is null && rows.Count >= MaxRecipients)

@@ -70,7 +70,7 @@ public sealed class SendTcpAction : IActionPlugin
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
         if (invocation.Get("host") is { Length: > 0 } host && Uri.CheckHostName(host.Trim()) == UriHostNameType.Unknown)
         {
-            errors["host"] = "Enter a host name or IP address.";
+            errors["host"] = NotificationRecipients.EnterHost;
         }
 
         var message = invocation.Get("message") ?? string.Empty;

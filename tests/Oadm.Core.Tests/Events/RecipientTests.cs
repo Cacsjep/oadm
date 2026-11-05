@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
+using Microsoft.EntityFrameworkCore;
+
 using Oadm.Core.Events;
 using Oadm.Core.Plugins;
 using Oadm.Plugins.Notifications;
@@ -40,7 +42,7 @@ public sealed class RecipientTests
 
         public bool SupportsTurnOff => true;
 
-        public IReadOnlyList<RecipientType> RecipientTypes { get; } =
+        public IReadOnlyList<RecipientType> RecipientTypes { get; init; } =
         [
             new(TargetType, "Target", null, TargetFields, "test.send") { Target = "{url}" },
             new(OtherType, "Other", null, [ActionField.Text("url", "URL", required: true)], "test.send"),
@@ -271,6 +273,75 @@ public sealed class RecipientTests
         Assert.Equal("URL: Enter a good URL.", reason);
         var (unknown, _) = await rig.Runner.TestRecipientAsync("test.nothing", null, [], CancellationToken.None);
         Assert.False(unknown);
+    }
+
+    [Fact]
+    public async Task TheTestOfARecipientNeverTakesThePasswordOfAnotherType()
+    {
+        var action = new SendAction();
+        await using var rig = await RigAsync(action);
+        var recipient = await NewAsync(rig, "Mail", password: "s3cret");
+
+        var (ok, reason) = await rig.Runner.TestRecipientAsync(OtherType, recipient.Id, Values("https://other.example.com"), CancellationToken.None);
+
+        Assert.False(ok);
+        Assert.Equal("This recipient has another type.", reason);
+        Assert.Empty(action.Runs);
+    }
+
+    [Fact]
+    public async Task AFailedReadOfTheRecipientIsALineInTheEventLog()
+    {
+        var action = new SendAction();
+        await using var rig = await RigAsync(action);
+        var camera = await rig.AddDeviceAsync("10.0.0.1");
+        await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Pulse, Send(await NewAsync(rig, "Gate"))));
+        await using (var db = await rig.DbFactory.CreateDbContextAsync())
+        {
+            await db.Database.ExecuteSqlRawAsync("DROP TABLE Recipients");
+        }
+
+        rig.Publisher.Fire(EventRulesRig.Pulse, camera.Id);
+        await rig.SettleAsync();
+
+        Assert.Empty(action.Runs);
+        var line = Assert.Single(await ActionLinesAsync(rig));
+        Assert.Equal(EventLogResult.Failed, line.Result);
+        Assert.Equal("The recipient cannot be read", line.Message);
+    }
+
+    [Fact]
+    public async Task AnOldValueThatGoesAtThisSaveDoesNotRefuseIt()
+    {
+        await using var rig = await RigAsync(new SendAction());
+        var recipient = await NewAsync(rig, "Gate");
+
+        var saved = await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Pulse, Send(recipient, new JsonObject { ["url"] = "bad" })));
+
+        Assert.False((await rig.Store.GetAsync(saved.Id, CancellationToken.None))!.Definition.Actions[0].Settings.ContainsKey("url"));
+    }
+
+    [Fact]
+    public async Task ADeleteSeesARecipientInAnyTextFormOfItsId()
+    {
+        await using var rig = await RigAsync(new SendAction());
+        var recipient = await NewAsync(rig, "Gate");
+        var action = Send(null, new JsonObject { ["recipient"] = recipient.Id.ToString("N") });
+        await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Pulse, action));
+
+        var used = RecipientUse.ByRecipient(await rig.Store.ListAsync(CancellationToken.None), [recipient.Id]);
+
+        Assert.Single(used[recipient.Id]);
+    }
+
+    [Fact]
+    public async Task ATypeWithoutFieldsHasAnEmptyTarget()
+    {
+        const string empty = "test.empty";
+        await using var rig = await RigAsync(new SendAction { RecipientTypes = [new(empty, "Empty", null, [], "test.send")] });
+        await NewAsync(rig, "Gate", type: empty);
+
+        Assert.Equal(string.Empty, Assert.Single(await rig.Rules.ListRecipientsAsync(CancellationToken.None)).Target);
     }
 
     [Fact]
@@ -541,5 +612,8 @@ public sealed class RecipientTests
         var placeholder = new JsonObject { ["url"] = "{webUrl}", ["auth"] = "none" };
         var url = await Assert.ThrowsAsync<RecipientValidationException>(() => rig.Rules.SaveRecipientAsync(null, "Hook", NotificationRecipients.HttpType, placeholder, CancellationToken.None));
         Assert.Equal("url", url.Field);
+        var inside = new JsonObject { ["url"] = "http://nvr.example.com/alarm/{device}", ["auth"] = "none" };
+        var fixedUrl = await Assert.ThrowsAsync<RecipientValidationException>(() => rig.Rules.SaveRecipientAsync(null, "Hook", NotificationRecipients.HttpType, inside, CancellationToken.None));
+        Assert.Equal("Enter a fixed URL, without placeholders.", fixedUrl.Message);
     }
 }

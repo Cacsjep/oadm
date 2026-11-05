@@ -28,7 +28,7 @@ public sealed record RecipientTypeOption(RecipientTypeEntry Entry)
 /// </summary>
 public sealed partial class RecipientEditorViewModel : ValidatingViewModel
 {
-    private const int MaxNameLength = 64;
+    private const int MaxNameLength = RecipientType.MaxNameLength;
 
     private readonly IOadmApi _api;
     private readonly RecipientEntry? _existing;
@@ -53,7 +53,7 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
             var name = Name.Trim();
             return name.Length == 0 ? "Enter a name."
                 : name.Length > MaxNameLength ? string.Create(CultureInfo.InvariantCulture, $"At most {MaxNameLength} characters.")
-                : _takenNames.Contains(name) ? "A recipient with this name already exists."
+                : _takenNames.Contains(name) ? RecipientType.NameTakenText
                 : null;
         });
         Validation.Rule(nameof(SelectedType), () => SelectedType is null ? "Choose a type." : null);

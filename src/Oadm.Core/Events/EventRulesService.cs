@@ -87,8 +87,9 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rec
         await _links.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            RuleValidator.Validate(rule, Catalog, key => StoredSecretsOf(existing, rule, key), await RecipientsByIdAsync(ct).ConfigureAwait(false));
-            (saved, previous) = await store.SaveAsync(WithoutOldTargets(rule), action => RuleStore.PasswordFields(Catalog, action.ActionId), ct).ConfigureAwait(false);
+            var clean = WithoutOldTargets(rule); // first: a value that goes at this save must not refuse it
+            RuleValidator.Validate(clean, Catalog, key => StoredSecretsOf(existing, clean, key), await RecipientsByIdAsync(ct).ConfigureAwait(false));
+            (saved, previous) = await store.SaveAsync(clean, action => RuleStore.PasswordFields(Catalog, action.ActionId), ct).ConfigureAwait(false);
         }
         finally
         {
@@ -156,7 +157,7 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rec
         IReadOnlyList<string> stored = [];
         if (id is { } known)
         {
-            var current = await recipients.GetAsync(known, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException("The recipient no longer exists.");
+            var current = await recipients.GetAsync(known, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException(RecipientType.NotFoundText);
             stored = RecipientStore.ForClient(current).StoredSecretFields;
         }
 
@@ -203,11 +204,17 @@ public sealed class EventRulesService(EventCatalog catalog, RuleStore store, Rec
         }
     }
 
-    /// <summary>The one line of the Recipients list; empty when a value of its template is missing.</summary>
+    /// <summary>The one line of the Recipients list; a value of its template that is missing stays empty.</summary>
     internal string Target(StoredRecipient recipient)
     {
         var (values, _) = RecipientStore.ForClient(recipient);
-        if (Catalog.FindRecipientType(recipient.TypeId)?.Type is not { } type)
+        return TargetOf(recipient.TypeId, values);
+    }
+
+    /// <summary>The target of <paramref name="values"/> in one line; empty for a type that is gone or has no fields.</summary>
+    public string TargetOf(string typeId, JsonObject values)
+    {
+        if (Catalog.FindRecipientType(typeId)?.Type is not { } type || (type.Target is null && type.Fields.Count == 0))
         {
             return string.Empty;
         }

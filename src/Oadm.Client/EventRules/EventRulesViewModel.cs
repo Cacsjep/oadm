@@ -326,12 +326,23 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanChange))]
     private async Task NewRuleAsync()
     {
-        var editor = await CreateEditorAsync(null).ConfigureAwait(true);
-        if (editor is not null && await _dialogs.ShowRuleEditorAsync(editor).ConfigureAwait(true))
+        await EditRuleAsync(await CreateEditorAsync(null).ConfigureAwait(true)).ConfigureAwait(true);
+    }
+
+    /// <summary>The rule dialog; its New beside a recipient saves at once, so the list is read also after Cancel.</summary>
+    private async Task EditRuleAsync(RuleEditorViewModel? editor)
+    {
+        if (editor is null)
+        {
+            return;
+        }
+
+        if (await _dialogs.ShowRuleEditorAsync(editor).ConfigureAwait(true))
         {
             ApplySummary(editor.Saved!.Summary);
-            await LoadRecipientsAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
         }
+
+        await LoadRecipientsAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
     }
 
     [RelayCommand(CanExecute = nameof(CanChange))]
@@ -393,12 +404,7 @@ public sealed partial class EventRulesViewModel : ObservableObject, IDisposable
             return;
         }
 
-        var editor = await CreateEditorAsync(row.Id).ConfigureAwait(true);
-        if (editor is not null && await _dialogs.ShowRuleEditorAsync(editor).ConfigureAwait(true))
-        {
-            ApplySummary(editor.Saved!.Summary);
-            await LoadRecipientsAsync(_active?.Token ?? CancellationToken.None).ConfigureAwait(true);
-        }
+        await EditRuleAsync(await CreateEditorAsync(row.Id).ConfigureAwait(true)).ConfigureAwait(true);
     }
 
     [RelayCommand(CanExecute = nameof(CanChangeSelected))]
