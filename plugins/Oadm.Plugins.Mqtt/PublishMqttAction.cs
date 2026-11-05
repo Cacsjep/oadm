@@ -20,17 +20,19 @@ public static class MqttRecipient
     /// The client ID of a recipient without one: one per recipient, so two recipients on one broker never take each other's place, and a Test (no id) never takes the open
     /// session's. 23 characters at most: the longest id every broker must accept.
     /// </summary>
+    private const int LongestSafeClientId = 23;
+
     public static string DefaultClientId(Guid? recipientId) => "oadm-" + (recipientId ?? Guid.NewGuid()).ToString("N")[..18];
 
     /// <summary>
-    /// The client ID of a connection. A Test (no recipient id) gets a unique ending on a chosen ID too: with the same ID it would throw
-    /// the open session off the broker.
+    /// The client ID of a connection. A Test (no recipient id) gets a unique ending on a chosen ID too, within the 23 characters: with the
+    /// same ID it would throw the open session off the broker.
     /// </summary>
     public static string ClientId(string? chosen, Guid? recipientId)
     {
         var id = chosen?.Trim();
         return string.IsNullOrEmpty(id) ? DefaultClientId(recipientId)
-            : recipientId is null ? id + "-" + Guid.NewGuid().ToString("N")[..8]
+            : recipientId is null ? id[..Math.Min(id.Length, LongestSafeClientId - 9)] + "-" + Guid.NewGuid().ToString("N")[..8]
             : id;
     }
 

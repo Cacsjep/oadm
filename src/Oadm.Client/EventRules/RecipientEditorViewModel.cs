@@ -40,6 +40,7 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
 
     private readonly IOadmApi _api;
     private readonly RecipientEntry? _existing;
+    private ActionFieldViewModel? _refused;
     private readonly HashSet<string> _takenNames;
     private RecipientCertificateList? _certificates;
     private string? _certificatesError;
@@ -292,10 +293,11 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
         {
             Validation.SetServerError(nameof(Name), refusal.Status.Detail);
         }
-        else if (Fields.FirstOrDefault(f => f.Key == key) is { } field)
+        else if (Fields.FirstOrDefault(f => f.Key == key && f.IsVisible) is { } field)
         {
             field.LoadError = refusal.Status.Detail;
             field.ShowError = true;
+            _refused = field;
             Refresh();
         }
         else
@@ -369,6 +371,12 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
         if (sender is ActionFieldViewModel field)
         {
             field.LoadError = null; // a server refusal goes when the field changes
+        }
+
+        if (_refused is { } refused)
+        {
+            refused.LoadError = null; // or when another one does: a target changed back needs no password
+            _refused = null;
         }
 
         FormChanged();

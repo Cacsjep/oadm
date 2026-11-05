@@ -34,6 +34,9 @@ public sealed class ActionRunnerOptions
 
     /// <summary>One action run on one target.</summary>
     public TimeSpan ActionTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>The wait for running actions at a stop: longer than the 10 s a pulse has for its off write.</summary>
+    public TimeSpan StopWait { get; init; } = TimeSpan.FromSeconds(12);
 }
 
 /// <summary>
@@ -191,7 +194,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         _pluginsStarted.TrySetResult(); // edges still waiting see the stop and end
         try
         {
-            await WaitIdleAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await WaitIdleAsync(CancellationToken.None).WaitAsync(_options.StopWait).ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // Shutdown: runs that do not stop in time are abandoned.
         catch (Exception)
@@ -379,7 +382,18 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
                 return ActionSettings.ChooseRecipient;
             }
 
-            Merge(settings, _recipients.DecryptSettings(recipient), _catalog.FindRecipientType(recipient.TypeId)?.Type.Fields ?? []);
+            var type = _catalog.FindRecipientType(recipient.TypeId)?.Type;
+            var values = _recipients.DecryptSettings(recipient);
+            if (type?.Sessions is not null)
+            {
+                // The session holds the login; the action needs only the session.
+                foreach (var password in type.Fields.Where(f => f.Type == ActionFieldType.Password))
+                {
+                    values.Remove(password.Key);
+                }
+            }
+
+            Merge(settings, values, type?.Fields ?? []);
             ids[field.Key] = recipient.Id;
         }
 

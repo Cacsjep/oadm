@@ -423,6 +423,42 @@ public sealed class RecipientSessionTests : IDisposable
     });
 
     [Fact]
+    public Task A_target_changed_back_needs_no_password_after_a_refusal() => _ui.RunAsync(async () =>
+    {
+        const string Refusal = "Enter the password again. The target changed.";
+        var (api, _) = await ApiAsync();
+        var editor = await EditorAsync(api, await ByNameAsync(api, "Plant broker"));
+        await editor.LoadCertificatesAsync(CancellationToken.None);
+        var host = Field(editor, "host");
+        var old = host.Text;
+        host.Text = "other.plant.local";
+        api.NextRecipientRefusal = new RpcException(new Status(StatusCode.InvalidArgument, Refusal), new Metadata { { RecipientErrors.FieldTrailer, "password" } });
+        await editor.SaveCommand.ExecuteAsync(null);
+        Assert.Equal(Refusal, Field(editor, "password").Error);
+
+        host.Text = old;
+
+        Assert.Null(Field(editor, "password").Error);
+        Assert.True(editor.SaveCommand.CanExecute(null));
+    });
+
+    [Fact]
+    public Task A_refusal_of_a_hidden_field_stands_below_the_form() => _ui.RunAsync(async () =>
+    {
+        var (api, _) = await ApiAsync();
+        var editor = await EditorAsync(api, await ByNameAsync(api, "Plant broker"));
+        await editor.LoadCertificatesAsync(CancellationToken.None);
+        Field(editor, "tls").IsChecked = false;
+        Assert.False(Field(editor, "trustedCa").IsVisible);
+        api.NextRecipientRefusal = new RpcException(new Status(StatusCode.InvalidArgument, RecipientSessionTexts.CertificateGone), new Metadata { { RecipientErrors.FieldTrailer, "trustedCa" } });
+
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Null(editor.Saved);
+        Assert.Equal(RecipientSessionTexts.CertificateGone, editor.ServerError);
+    });
+
+    [Fact]
     public Task A_refused_Test_without_a_field_stays_next_to_the_button() => _ui.RunAsync(async () =>
     {
         var (api, _) = await ApiAsync();

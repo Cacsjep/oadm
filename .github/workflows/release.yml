@@ -221,7 +221,7 @@ jobs:
             part="$RUNNER_TEMP/addon-client-$id"
             mkdir -p "$part"
             cp "$unpacked/plugin.json" "$part/"
-            cp "$unpacked"/*.Client.* "$unpacked"/*.Server.* "$part/" 2>/dev/null || true
+            cp "$unpacked"/*.Client.dll "$unpacked"/*.Client.pdb "$unpacked"/*.Server.dll "$unpacked"/*.Server.pdb "$part/" 2>/dev/null || true
             if [ -d "$unpacked/client" ]; then cp -R "$unpacked/client" "$part/"; fi
             "artifacts/publish/client/${{ matrix.rid }}/Oadm.Client" --self-check --add-on "$part"
           done

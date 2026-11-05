@@ -108,6 +108,19 @@ public sealed class PublishMqttActionTests
     }
 
     [Fact]
+    public void ATestKeepsAChosenClientIdWithinTheSafeLengthAndUnique()
+    {
+        var chosen = new string('a', 40);
+
+        var (first, second) = (MqttRecipient.ClientId(chosen, null), MqttRecipient.ClientId(chosen, null));
+
+        Assert.Equal(23, first.Length);
+        Assert.StartsWith("aaaaaaaaaaaaaa-", first, StringComparison.Ordinal);
+        Assert.NotEqual(first, second);
+        Assert.Equal(chosen, MqttRecipient.ClientId(chosen, Guid.NewGuid()));
+    }
+
+    [Fact]
     public void AChosenClientIdStaysAndATestGetsItsOwn()
     {
         var recipient = Guid.NewGuid();

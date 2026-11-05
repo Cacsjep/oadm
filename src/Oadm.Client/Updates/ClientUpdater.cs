@@ -121,7 +121,7 @@ public sealed class ClientUpdater(IReleaseFeed feed, UpdateDownloader downloader
     public string Folder => updateFolder;
 
     /// <summary>Removes the helper copies of earlier updates (client start; a running helper keeps its own).</summary>
-    public void CleanUp() => HelperCopy.CleanUp(updateFolder);
+    public void CleanUp() => HelperCopy.CleanUp(updateFolder, TimeSpan.FromHours(1)); // a second client may be starting during Install now
 
     /// <summary>Update client is offered here (installed, no server on this computer; on Linux with pkexec).</summary>
     public bool CanUpdateClient => Installation.CanUpdateClient(facts);

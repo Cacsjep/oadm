@@ -180,9 +180,9 @@ public sealed partial class PluginGrpcService
             throw GrpcGuard.FailedPrecondition(UpdateTexts.TasksRunning(active) + ".");
         }
 
-        if (updateGate.UpdatingTo is not null || updateGate.AddOnWorkRuns)
+        if (AddOnTexts.RestartRefused(updateGate.UpdatingTo is not null, updateGate.AddOnWorkRuns) is { } refused)
         {
-            throw GrpcGuard.FailedPrecondition(AddOnTexts.Updating);
+            throw GrpcGuard.FailedPrecondition(refused);
         }
 
         await audit.WriteAsync(AuditActions.AddOnRestart, string.Join(", ", waiting.Select(s => s.Entry.DisplayName)), null, CancellationToken.None).ConfigureAwait(false);

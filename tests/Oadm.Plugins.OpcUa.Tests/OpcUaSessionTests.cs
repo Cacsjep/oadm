@@ -417,13 +417,19 @@ public sealed class OpcUaSessionTests
         await using var session = new OpcUaSession(new OpcUaOptions { Endpoint = server.Endpoint }, NullLogger.Instance, Generous with { Write = TimeSpan.FromSeconds(5), Time = time });
         await session.ConnectAsync(CancellationToken.None);
 
-        var write = session.WriteAsync(server.Node("number"), new Variant(1), CancellationToken.None);
-        await started.WaitAsync(TimeSpan.FromSeconds(30));
-        time.Advance(TimeSpan.FromSeconds(5));
+        try
+        {
+            var write = session.WriteAsync(server.Node("number"), new Variant(1), CancellationToken.None);
+            await started.WaitAsync(TimeSpan.FromSeconds(30));
+            time.Advance(TimeSpan.FromSeconds(5));
 
-        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => write);
-        Assert.Equal(OpcUaTexts.NoAnswer, refused.Message);
-        release.Set();
+            var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => write);
+            Assert.Equal(OpcUaTexts.NoAnswer, refused.Message);
+        }
+        finally
+        {
+            release.Set();
+        }
     }
 
     [Fact]

@@ -11,19 +11,24 @@ public static class OldNativeFolders
 
     private static readonly TimeSpan MinimumAge = TimeSpan.FromDays(1);
 
-    /// <summary>Where the .NET host unpacks: the temp folder on Windows, the home folder elsewhere.</summary>
-    public static IReadOnlyList<string> Places() =>
-    [
-        Path.Combine(Path.GetTempPath(), ".net", AppFolder),
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".net", AppFolder),
-    ];
+    /// <summary>
+    /// Where the .NET host unpacks: the temp folder on Windows, the home folder elsewhere. The temp folder of Linux and macOS is shared with
+    /// every other user, who could put a link there, so it is never searched.
+    /// </summary>
+    public static IReadOnlyList<string> Places() => Places(OperatingSystem.IsWindows());
+
+    public static IReadOnlyList<string> Places(bool windows)
+    {
+        var home = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".net", AppFolder);
+        return windows ? [Path.Combine(Path.GetTempPath(), ".net", AppFolder), home] : [home];
+    }
 
     /// <summary>Removes the old folders of <paramref name="places"/> and returns how many went. A folder in use stays.</summary>
     public static int Clean(IEnumerable<string> places, DateTime utcNow)
     {
         ArgumentNullException.ThrowIfNull(places);
         var removed = 0;
-        foreach (var place in places.Distinct(StringComparer.Ordinal).Where(Directory.Exists))
+        foreach (var place in places.Distinct(StringComparer.Ordinal).Where(IsRealFolder))
         {
             foreach (var folder in Directory.EnumerateDirectories(place).ToList())
             {
@@ -44,4 +49,7 @@ public static class OldNativeFolders
 
         return removed;
     }
+
+    /// <summary>A link leads to a folder that is not ours: nothing in it goes.</summary>
+    private static bool IsRealFolder(string place) => Directory.Exists(place) && new DirectoryInfo(place).LinkTarget is null;
 }

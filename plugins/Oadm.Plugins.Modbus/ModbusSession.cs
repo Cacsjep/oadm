@@ -9,6 +9,9 @@ namespace Oadm.Plugins.Modbus;
 /// <summary>What an action writes through a session; a session is never asked to read.</summary>
 public interface IModbusWriter
 {
+    /// <summary>Host, port and unit: a pulse must end on the PLC it started on.</summary>
+    string Plc { get; }
+
     /// <summary>Writes one coil (function 05).</summary>
     Task WriteCoilAsync(ushort address, bool state, CancellationToken ct);
 
@@ -68,6 +71,8 @@ public sealed class ModbusSession(string host, int port, byte unitId, TimeProvid
     /// <summary>Whether the operating system watches the connection while nothing is written.</summary>
     internal bool KeepsAlive => _client?.Client.GetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive) is int value && value != 0;
 
+    public string Plc => string.Create(CultureInfo.InvariantCulture, $"{Target}/{unitId}");
+
     private string Target => string.Create(CultureInfo.InvariantCulture, $"{host}:{port}");
 
     public async Task ConnectAsync(CancellationToken ct)
@@ -109,6 +114,7 @@ public sealed class ModbusSession(string host, int port, byte unitId, TimeProvid
 
         Interlocked.Exchange(ref _ended, 1);
         await _stop.CancelAsync().ConfigureAwait(false);
+        Reset(); // every write waits for its reply, so a close has nothing to deliver: a write still in the kernel must not fire later
         _client?.Dispose(); // ends the reader
         await _reader.ConfigureAwait(false);
         _stop.Dispose();
@@ -171,6 +177,15 @@ public sealed class ModbusSession(string host, int port, byte unitId, TimeProvid
     private void Abort(string reason)
     {
         var first = Interlocked.Exchange(ref _ended, 1) == 0;
+        Reset();
+        if (first)
+        {
+            Dropped?.Invoke(this, new RecipientDroppedEventArgs(reason));
+        }
+    }
+
+    private void Reset()
+    {
         try
         {
             if (_client?.Client is { } socket)
@@ -182,11 +197,6 @@ public sealed class ModbusSession(string host, int port, byte unitId, TimeProvid
         catch (Exception ex) when (ex is SocketException or ObjectDisposedException)
         {
             // Gone already.
-        }
-
-        if (first)
-        {
-            Dropped?.Invoke(this, new RecipientDroppedEventArgs(reason));
         }
     }
 

@@ -81,6 +81,8 @@ public sealed class RecipientSessionPoolTests
 
         public ConcurrentQueue<FakeSession> Used { get; } = new();
 
+        public ConcurrentQueue<string?> PasswordsSeen { get; } = new();
+
         public IReadOnlyList<RecipientType> RecipientTypes =>
         [
             new(TypeId, "Persistent", null, RecipientSessionPoolTests.Fields, ActionId) { Sessions = factory, Target = "{host}" },
@@ -95,8 +97,11 @@ public sealed class RecipientSessionPoolTests
 
         public bool RunsOn(ActionEdge edge, JsonElement settings) => true;
 
-        public async Task ExecuteAsync(IActionContext ctx, ActionInvocation invocation, CancellationToken ct) =>
+        public async Task ExecuteAsync(IActionContext ctx, ActionInvocation invocation, CancellationToken ct)
+        {
+            PasswordsSeen.Enqueue(invocation.Get("password"));
             Used.Enqueue(await ctx.SessionAsync<FakeSession>("recipient", ct));
+        }
     }
 
     private sealed class Stage(EventRulesRig rig, RecipientSessionPool pool, FakeFactory factory, WatchedTime timers, Action action) : IAsyncDisposable
@@ -195,6 +200,8 @@ public sealed class RecipientSessionPoolTests
 
         Assert.Same(Assert.Single(stage.Factory.Sessions), Assert.Single(stage.Action.Used));
         Assert.Equal(id, stage.Action.Used.Single().Request.RecipientId);
+        Assert.Equal("s3cret", stage.Action.Used.Single().Request.Get("password"));
+        Assert.True(string.IsNullOrEmpty(Assert.Single(stage.Action.PasswordsSeen))); // the session holds the login, the action never sees it
     }
 
     [Fact]

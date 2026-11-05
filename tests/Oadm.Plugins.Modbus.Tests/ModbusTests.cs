@@ -382,6 +382,20 @@ public sealed class ModbusSessionTests
     }
 
     [Fact]
+    public async Task AClosedSessionWithAWriteWaitingResetsTheConnection()
+    {
+        await using var plc = new FakePlc { Answer = FakePlc.Silent };
+        await using var session = await OpenAsync(plc);
+
+        var write = session.WriteCoilAsync(4, true, CancellationToken.None);
+        await Eventually.TrueAsync(() => !plc.Requests.IsEmpty, "the request");
+        await session.DisposeAsync();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => write);
+        await Eventually.TrueAsync(() => plc.WasReset, "the reset reaches the PLC");
+    }
+
+    [Fact]
     public async Task ACancelInTheQueueKeepsTheConnection()
     {
         using var turn = new ManualResetEventSlim();
@@ -551,6 +565,8 @@ public sealed class WriteModbusActionTests
     {
         private readonly ConcurrentQueue<string> _writes = new();
 
+        public string Plc { get; init; } = "plc:502/1";
+
         /// <summary>Why the on write fails; null: it works.</summary>
         public string? OnFails { get; init; }
 
@@ -693,6 +709,23 @@ public sealed class WriteModbusActionTests
 
         Assert.Equal("The PLC did not answer. The write may have happened.", refused.Message);
         Assert.Equal(["coil 7 False"], writer.Writes);
+    }
+
+    [Fact]
+    public async Task APulseThatLostItsPlcSaysSoAndWritesNothingToTheNewOne()
+    {
+        var time = new FakeTimeProvider();
+        var (first, second) = (new RecordingWriter(), new RecordingWriter { Plc = "other:502/1" });
+        var context = new PoolContext(first, time);
+        var run = new WriteModbusAction(time).ExecuteAsync(context, Run(Pulse30), CancellationToken.None);
+
+        context.Session = second;
+        await RunOutAsync(time, run, TimeSpan.FromSeconds(1));
+
+        var failed = await Assert.ThrowsAsync<InvalidOperationException>(() => run);
+        Assert.Contains("may still be on", failed.Message, StringComparison.Ordinal);
+        Assert.Equal(["coil 7 True"], first.Writes);
+        Assert.Empty(second.Writes);
     }
 
     [Fact]

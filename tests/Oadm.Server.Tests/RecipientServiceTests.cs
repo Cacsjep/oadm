@@ -16,6 +16,8 @@ using Oadm.Server.Tests.Support;
 
 using Proto = Oadm.Contracts.V1;
 
+using Microsoft.Extensions.DependencyInjection;
+
 namespace Oadm.Server.Tests;
 
 /// <summary>Recipients through gRPC EventService: catalog, list, save, delete, test, roles and the audit.</summary>
@@ -288,7 +290,7 @@ public sealed class RecipientServiceTests
     [Fact]
     public async Task ARunningActionKeepsItsSessionDuringAStop()
     {
-        var host = await TestServerHost.StartAsync();
+        var host = await TestServerHost.StartAsync(configureServices: s => s.AddSingleton(new ActionRunnerOptions { StopWait = TimeSpan.FromMinutes(5) }));
         var action = new StopAction();
         host.Get<PluginRegistry>().RegisterActionPlugin(new SessionAction(), new PluginOrigin("test.session", "1.0", null) { DisplayName = "Session" });
         host.Get<PluginRegistry>().RegisterActionPlugin(action, new PluginOrigin("test.stop", "1.0", null) { DisplayName = "Stop" });

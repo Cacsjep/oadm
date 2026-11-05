@@ -228,7 +228,7 @@ public sealed class WriteModbusAction(TimeProvider? time = null) : IActionPlugin
         }
         finally
         {
-            await TurnOffAsync(ctx, address).ConfigureAwait(false);
+            await TurnOffAsync(ctx, session.Plc, address).ConfigureAwait(false);
         }
     }
 
@@ -265,19 +265,25 @@ public sealed class WriteModbusAction(TimeProvider? time = null) : IActionPlugin
 
     /// <summary>
     /// The session is asked for again: the one of the on write may have dropped, or the recipient changed. A connection that just
-    /// dropped comes back within seconds, so a failed try is repeated while the time allows.
+    /// dropped comes back within seconds, so a failed try is repeated while the time allows. A recipient that now leads to another PLC
+    /// gets no write: the coil that is on is elsewhere, and a coil turned off there would hide that.
     /// </summary>
-    private async Task TurnOffAsync(IActionContext ctx, ushort address)
+    private async Task TurnOffAsync(IActionContext ctx, string plc, ushort address)
     {
         using var limit = new CancellationTokenSource(OffTimeout, _time);
         InvalidOperationException? failed = null;
         while (true)
         {
+            var moved = false;
             try
             {
                 var session = await ctx.SessionAsync<IModbusWriter>(RecipientKey, limit.Token).ConfigureAwait(false);
-                await session.WriteCoilAsync(address, false, limit.Token).ConfigureAwait(false);
-                return;
+                moved = !string.Equals(session.Plc, plc, StringComparison.Ordinal);
+                if (!moved)
+                {
+                    await session.WriteCoilAsync(address, false, limit.Token).ConfigureAwait(false);
+                    return;
+                }
             }
             catch (ObjectDisposedException ex)
             {
@@ -290,6 +296,11 @@ public sealed class WriteModbusAction(TimeProvider? time = null) : IActionPlugin
             catch (OperationCanceledException ex)
             {
                 throw NotOff(failed, ex);
+            }
+
+            if (moved)
+            {
+                throw new InvalidOperationException($"The recipient changed during the pulse. {StillOn}");
             }
 
             try

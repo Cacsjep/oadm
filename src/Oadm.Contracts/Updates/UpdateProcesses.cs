@@ -306,8 +306,11 @@ public static class HelperCopy
             || name.Contains(".so.", StringComparison.Ordinal);
     }
 
-    /// <summary>Removes the helper folders of earlier updates (best effort: a running helper keeps its own).</summary>
-    public static void CleanUp(string parent)
+    /// <summary>
+    /// Removes the helper folders of earlier updates (best effort: a running helper keeps its own). <paramref name="keepYoungerThan"/>
+    /// spares a folder another process may still be filling.
+    /// </summary>
+    public static void CleanUp(string parent, TimeSpan? keepYoungerThan = null)
     {
         if (!Directory.Exists(parent))
         {
@@ -318,7 +321,10 @@ public static class HelperCopy
         {
             try
             {
-                Directory.Delete(folder, recursive: true);
+                if (keepYoungerThan is not { } age || DateTime.UtcNow - Directory.GetLastWriteTimeUtc(folder) >= age)
+                {
+                    Directory.Delete(folder, recursive: true);
+                }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

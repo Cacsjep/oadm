@@ -42,6 +42,40 @@ public sealed class OldNativeFoldersTests
     }
 
     [Fact]
+    public void TheSharedTempFolderIsSearchedOnlyOnWindows()
+    {
+        Assert.Contains(OldNativeFolders.Places(windows: true), p => p.StartsWith(Path.GetTempPath(), StringComparison.Ordinal));
+        Assert.DoesNotContain(OldNativeFolders.Places(windows: false), p => p.StartsWith(Path.GetTempPath(), StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void APlaceThatIsALinkKeepsWhatItLeadsTo()
+    {
+        var root = Directory.CreateTempSubdirectory("oadm-native-").FullName;
+        try
+        {
+            var kept = Folder(root, "kept", TimeSpan.FromDays(3));
+            var link = Path.Combine(root, "link");
+            try
+            {
+                Directory.CreateSymbolicLink(link, root);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return; // Windows without the right to make links; Linux and macOS in CI run it
+            }
+
+            Assert.Equal(0, OldNativeFolders.Clean([link], Now));
+
+            Assert.True(Directory.Exists(kept));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void TheSearchStaysInsideTheClientsOwnFolders()
     {
         Assert.All(OldNativeFolders.Places(), place => Assert.EndsWith(Path.Combine(".net", "Oadm.Client"), place, StringComparison.Ordinal));

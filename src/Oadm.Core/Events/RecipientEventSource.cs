@@ -20,6 +20,8 @@ public sealed class RecipientEventSource : IHostEventSource
 
     public const string RecipientField = "recipient";
 
+    private const string UnknownName = "Unknown recipient";
+
     private readonly Func<RecipientSessionPool> _pool;
     private readonly Func<IEventPublisher> _publisher;
     private readonly Lock _gate = new();
@@ -91,7 +93,7 @@ public sealed class RecipientEventSource : IHostEventSource
 
             var names = _pool().Statuses()
                 .Where(s => s.State == RecipientConnectionState.NotConnected)
-                .Select(s => s.Name)
+                .Select(s => s.Name.Length > 0 ? s.Name : UnknownName) // its first read failed: an empty name must not read as "none"
                 .Order(StringComparer.CurrentCultureIgnoreCase)
                 .ToList();
             var text = string.Join(", ", names);
