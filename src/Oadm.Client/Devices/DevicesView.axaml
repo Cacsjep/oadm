@@ -177,9 +177,9 @@
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="dev:IDeviceGridItem">
                     <!-- Colour only while off: Ok is plain text, an off clock the warning icon alone (how far: the tooltip) -->
-                    <Panel>
-                      <TextBlock Text="{Binding Row.Clock.Text}" IsVisible="{Binding Row.Clock.IsOk}" ToolTip.Tip="{Binding Row.ClockTooltip}" />
-                      <ui:StatusChip Text="" IsVisible="{Binding Row.Clock.IsWarning}" ToolTip.Tip="{Binding Row.ClockTooltip}" IsWarning="True" />
+                    <Panel Background="Transparent" ToolTip.Tip="{Binding Row.ClockTooltip}">
+                      <TextBlock Text="{Binding Row.Clock.Text}" IsVisible="{Binding Row.Clock.IsOk}" />
+                      <ui:StatusChip Text="" IsVisible="{Binding Row.Clock.IsWarning}" IsWarning="True" />
                     </Panel>
                   </DataTemplate>
                 </DataGridTemplateColumn.CellTemplate>

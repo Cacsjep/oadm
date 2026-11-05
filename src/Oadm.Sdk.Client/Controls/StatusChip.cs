@@ -54,6 +54,9 @@ public sealed class StatusChip : Grid
         // Defaults, not local values: theme styles (e.g. right-aligned numeric grid cells) can change them.
         VerticalAlignmentProperty.OverrideDefaultValue<StatusChip>(VerticalAlignment.Center);
         HorizontalAlignmentProperty.OverrideDefaultValue<StatusChip>(HorizontalAlignment.Left);
+
+        // Invisible: the gap between icon and text takes the pointer too, so a tooltip does not flicker there.
+        BackgroundProperty.OverrideDefaultValue<StatusChip>(Brushes.Transparent);
     }
 
     public StatusChip()

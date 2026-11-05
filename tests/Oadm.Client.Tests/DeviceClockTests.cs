@@ -203,7 +203,7 @@ public sealed class DeviceClockTests
             Assert.Contains(grid.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == "OK" && t.IsEffectivelyVisible);
             // An off clock: the warning icon alone, how far in its tooltip.
             Assert.Contains(grid.GetVisualDescendants().OfType<StatusChip>(), c => c.IsWarning && c.IsEffectivelyVisible && string.IsNullOrEmpty(c.Text)
-                && ToolTip.GetTip(c) is string tip && (tip.Contains("NTP not synced", StringComparison.Ordinal) || tip.Contains(" ahead", StringComparison.Ordinal) || tip.Contains(" behind", StringComparison.Ordinal)));
+                && ToolTip.GetTip((Control)c.GetVisualParent()!) is string tip && (tip.Contains("NTP not synced", StringComparison.Ordinal) || tip.Contains(" ahead", StringComparison.Ordinal) || tip.Contains(" behind", StringComparison.Ordinal)));
             Capture(window, outDir, "client-clock-column");
 
             clock.Sort(ListSortDirection.Ascending);
