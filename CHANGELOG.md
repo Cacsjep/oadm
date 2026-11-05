@@ -5,6 +5,24 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 version and date, and the release workflow copies it into the GitHub release (the client's new version notice shows it).
 Each entry is one short line in plain words (what the user gets, not how); no nested lists, no bold, no code.
 
+## [Unreleased]
+
+### Added
+
+- Event rules: the action Log entry writes a message to the server log, good for testing a rule.
+- Text recognition: a lightning icon on On action readers reads now and fires the event, to test a rule.
+- Text recognition: the event No text read tells a rule when text left an area or Read text found nothing.
+
+### Changed
+
+- Text recognition: new readers start at 4 frames per second, so a text change shows after about a second.
+- Text recognition: Text read fires only when text was read, so an empty read no longer runs a rule or holds back the next read.
+
+### Fixed
+
+- Tooltips on status icons open on the whole icon, and the tooltip of the Clock column anywhere in its cell.
+- Applications: a package that states its AXIS OS range now installs on every version in that range, also older ones such as 11.11.
+
 ## [4.10.1] - 2026-11-04
 
 ### Added

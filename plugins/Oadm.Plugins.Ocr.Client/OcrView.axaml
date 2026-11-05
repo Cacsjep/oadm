@@ -185,13 +185,22 @@
 
             <!-- The form: Name, Mode, Stream settings (their dialog) with the summary or its error below. -->
             <StackPanel Grid.Row="0" Spacing="8" IsEnabled="{Binding MayChange}">
-              <Grid ColumnDefinitions="*,120" ColumnSpacing="8">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <ui:FormField Classes="wide" LabelAbove="True" Label="Name" VerticalAlignment="Top">
                   <TextBox Text="{Binding Name}" MaxLength="{x:Static vm:AreaViewModel.MaxNameLength}" />
                 </ui:FormField>
                 <ui:FormField Grid.Column="1" Classes="wide" LabelAbove="True" Label="Mode" Error="{Binding ModeError}" VerticalAlignment="Top">
-                  <ComboBox x:Name="ReaderModeBox" ItemsSource="{x:Static vm:ReaderEditorViewModel.ModeChoices}" SelectedItem="{Binding ModeChoice}"
-                            HorizontalAlignment="Stretch" />
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <ComboBox x:Name="ReaderModeBox" ItemsSource="{x:Static vm:ReaderEditorViewModel.ModeChoices}" SelectedItem="{Binding ModeChoice}" Width="120" />
+                    <Button x:Name="ReadNowButton" Classes="toolbar iconOnly" Focusable="False" VerticalAlignment="Center"
+                            Command="{Binding ReadNowCommand}" IsVisible="{Binding CanReadNow}" IsEnabled="{Binding !IsReadingNow}"
+                            ToolTip.Tip="{x:Static vm:OcrTexts.ReadNowTip}">
+                      <Panel>
+                        <ui:OadmIcon Data="{StaticResource Icon.zap}" IsVisible="{Binding !IsReadingNow}" />
+                        <ui:ProgressRing Width="16" Height="16" IsVisible="{Binding IsReadingNow}" />
+                      </Panel>
+                    </Button>
+                  </StackPanel>
                 </ui:FormField>
               </Grid>
               <ui:FormField x:Name="StreamField" Classes="wide" LabelAbove="True" Label="{x:Static vm:OcrTexts.Stream}" Error="{Binding StreamError}">

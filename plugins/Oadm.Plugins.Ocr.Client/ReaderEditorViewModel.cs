@@ -115,6 +115,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
         Validation.Validate();
         // A stored frame rate the server no longer offers shows as the offered one and the reader is Not saved: Save stores it.
         _savedJson = isNew ? string.Empty : Signature(ToReader() with { Fps = reader.Fps });
+        IsSavedOnAction = !isNew && reader.Mode == ReaderMode.OnAction;
         UpdateSaveState();
 
         _video = ctx.LiveVideo?.Create(VideoPlace);
@@ -136,7 +137,20 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     /// <summary>Not saved yet (New).</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanReadNow))]
     public partial bool IsNew { get; private set; }
+
+    /// <summary>The stored reader is On action: the server reads the stored reader, not the draft.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanReadNow))]
+    public partial bool IsSavedOnAction { get; private set; }
+
+    /// <summary>Read now runs: the ring in the icon's place.</summary>
+    [ObservableProperty]
+    public partial bool IsReadingNow { get; private set; }
+
+    /// <summary>The icon right of Mode: a saved On action reader whose draft is On action too, for a user who may change readers.</summary>
+    public bool CanReadNow => MayChange && !IsNew && IsSavedOnAction && IsOnAction;
 
     [ObservableProperty]
     public partial string Id { get; private set; }
@@ -175,7 +189,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
     public partial bool IsLoadingCamera { get; private set; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsWatching), nameof(IsOnAction), nameof(ModeChoice))]
+    [NotifyPropertyChangedFor(nameof(IsWatching), nameof(IsOnAction), nameof(ModeChoice), nameof(CanReadNow))]
     public partial ReaderMode Mode { get; set; }
 
     /// <summary>The Mode select's choices, in this order.</summary>
@@ -190,6 +204,33 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
     /// <summary>On action: reads only when an event rule runs Read text.</summary>
     public bool IsOnAction => Mode == ReaderMode.OnAction;
+
+    /// <summary>The icon right of Mode: one picture now with the real events, so the rules on the reader run.</summary>
+    [RelayCommand]
+    private async Task ReadNowAsync()
+    {
+        if (IsReadingNow || !CanReadNow)
+        {
+            return;
+        }
+
+        IsReadingNow = true;
+        try
+        {
+            await _ctx.InvokeAsync(OcrMethods.ReadNow, OcrJson.Serialize(new ReaderRequest { ReaderId = Id }), CancellationToken.None)
+                .ConfigureAwait(true);
+        }
+#pragma warning disable CA1031 // The server's reason in the host's message.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            await _ctx.ShowMessageAsync(OcrTexts.ReadNowTitle, ServerErrors.Message(ex)).ConfigureAwait(true);
+        }
+        finally
+        {
+            IsReadingNow = false;
+        }
+    }
 
     /// <summary>Watching: the frame rate shows.</summary>
     public bool IsWatching => Mode == ReaderMode.Watching;
@@ -906,6 +947,7 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
 
             Id = saved.Id;
             IsNew = false;
+            IsSavedOnAction = saved.Mode == ReaderMode.OnAction;
             _savedJson = Signature();
             JustSaved = true;
             UpdateSaveState();

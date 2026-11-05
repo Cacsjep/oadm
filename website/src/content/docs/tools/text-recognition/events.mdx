@@ -31,16 +31,18 @@ The placeholders work in every text of an action, next to OADM's own such as `{t
 |---|---|
 | **Watching** | When an area's text changes and holds: the reader compares the last 5 pictures and sends the new text once 2 pictures in a row agree. A single bad picture changes nothing |
 | **Watching** with **Moving objects** | Once a value was read in [2 pictures in a row](../tuning/#belts-and-passing-vehicles) |
-| **On action** | For every area, every time **Read text** runs, changed or not |
-| Text gone from a watching area | Once, with an empty **Text** |
+| **On action** | For every area with text, every time **Read text** runs, changed or not |
+| No text in an area | Never. That is [No text read](#event-no-text-read) |
 | Live results on the page, also while [paused](../tuning/#pause-to-tune-a-format) | Never |
+
+To test a rule, select the lightning icon right of **Mode** on a saved **On action** reader. It reads one picture and fires
+the real event, so the rule runs its actions.
 
 ### Typical checks
 
 | Check | Fires when |
 |---|---|
 | **Matches format** is yes | A format matched |
-| **Text** is not empty | Text was read in an area with **Any text** |
 | **Confidence** > 90 | The read is sure |
 | **Number** > 5000 | A meter passes a value |
 | **Text** contains `LOADING` | A sign shows a word |
@@ -56,8 +58,20 @@ to 0:
 
 - A watching reader fires only when the text changes, so the same text does not repeat.
 - **Max per minute** still limits the rule. Raise it for a busy gate.
-- Add a check such as **Matches format** is yes, so that text leaving an area runs nothing.
+- Add a check such as **Matches format** is yes, so that other text in the area runs nothing.
 - A rule that runs **Read text** with its own reader is then limited by **Max per minute** alone.
+
+## Event: No text read
+
+Each reader also has the event **No text read**, next to **Text read**, with the value **Area** (`{area}`). Use it in its own
+rule, so it never uses up the dead time of a rule on real reads.
+
+| Reader | Fires |
+|---|---|
+| **Watching** | Once when the text has left an area, after the same vote as **Text read**. Never for an area that has not read text yet |
+| **On action** | For every area with no text, every time **Read text** runs |
+
+Text that does not match the format is not **No text read**: it fires **Text read** with **Matches format** no.
 
 ## Event: Reader problem
 

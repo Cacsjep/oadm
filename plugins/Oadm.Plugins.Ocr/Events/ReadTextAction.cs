@@ -8,7 +8,7 @@ namespace Oadm.Plugins.Ocr.Events;
 
 /// <summary>
 /// Rule action "Read text" (docs/spec/ocr.md "Events and the rule action"): reads one picture of the chosen reader (On
-/// action, or the fresh reading of a Watching one) now and publishes every area's event "Text read", changed or not. While a reading of that reader
+/// action, or the fresh reading of a Watching one) now and publishes "Text read" of every area with text and "No text read" of the others, changed or not. While a reading of that reader
 /// runs the action ends with "Already reading" in the event log and nothing is queued; loops (a Text read event that runs
 /// Read text of the same reader) are held by the rule limits. Contributed by Text recognition, available while it is on.
 /// Event rules are for users with all devices (docs/spec/device-scope.md), so every reader is a choice.

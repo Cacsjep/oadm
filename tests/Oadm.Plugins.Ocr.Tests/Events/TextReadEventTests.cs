@@ -85,6 +85,32 @@ public sealed class TextReadEventTests
     }
 
     [Fact]
+    public async Task AFormatThatDidNotMatchStillFiresWithTheRawText()
+    {
+        var ocr = new OcrHarness();
+        var parts = new ReaderParts
+        {
+            Frames = _ => ocr.Frames,
+            Recognizer = _ => ocr.Recognizer,
+            Matcher = new NoMatch(),
+            Time = ocr.Time,
+        };
+        await using var plugin = new OcrPlugin(parts);
+        await plugin.StartAsync(ocr.Context, CancellationToken.None);
+        var reader = OcrJson.Deserialize<SaveReaderReply>(await ocr.Context.InvokeAsync(plugin, ocr.Context.CallAsAllDevices(), OcrMethods.SaveReader,
+            OcrJson.Serialize(new SaveReaderRequest { Reader = ocr.NewReader(areas: new Area { Name = "Order", Expected = ExpectedText.WithFormat("#####") }) }))).Reader!;
+        ocr.Frames.Single = "anything";
+
+        await plugin.ReadOnceAsync(plugin.FindReader(reader.Id)!, CancellationToken.None);
+
+        Assert.Empty(ocr.NoText); // text was read, only not the format
+        var fired = Assert.Single(ocr.TextRead);
+        Assert.Equal(string.Empty, fired.Data[OcrInfo.TextField]);
+        Assert.Equal("HELLO", fired.Data[OcrInfo.TextReadField]);
+        Assert.Equal(OcrInfo.No, fired.Data[OcrInfo.MatchesFormatField]);
+    }
+
+    [Fact]
     public async Task AMatcherWithEveryMatchFillsAllMatchesAndTheConfidence()
     {
         var ocr = new OcrHarness();
@@ -111,6 +137,12 @@ public sealed class TextReadEventTests
         var fired = Assert.Single(ocr.TextRead);
         Assert.Equal("12345 67890", fired.Data[OcrInfo.AllMatchesField]);
         Assert.Equal("64", fired.Data[OcrInfo.ConfidenceField]);
+    }
+
+    private sealed class NoMatch : ITextMatcher
+    {
+        public AreaValue Match(IReadOnlyList<TextLine> lines, ExpectedText expected) =>
+            new(new AreaMatch(string.Empty, false, "HELLO"), [], 0, null);
     }
 
     private sealed class TwoMatches : ITextMatcher

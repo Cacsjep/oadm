@@ -13,10 +13,16 @@ public static class OcrTexts
 {
     public const string OnAction = "On action";
 
+    /// <summary>The icon of an On action reader. It fires real events, so the rules run.</summary>
+    public const string ReadNowTip = "Read now and fire the event";
+
+    public const string ReadNowTitle = "Read now";
+
     /// <summary>The short message when a reader is set to On action (once per reader and session).</summary>
     public const string OnActionNoticeTitle = "Reads only on an action";
 
-    public const string OnActionNotice = "This reader reads only when an event rule runs the action Read text with it.";
+    public const string OnActionNotice = "This reader reads only when an event rule runs the action Read text with it.\n\n"
+        + "The results below the video are a live preview and fire no event. To test the event, save the reader and select the lightning icon next to Mode.";
 
     /// <summary>The short message when Use read text as format made a format that checks a container number.</summary>
     public const string CheckFormatTitle = "Check this format";

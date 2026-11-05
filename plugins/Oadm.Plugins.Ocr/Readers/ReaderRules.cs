@@ -56,6 +56,9 @@ public static class ReaderRules
     /// <summary>The action Read text without a reader.</summary>
     public const string ReaderMissing = "Choose a reader.";
 
+    /// <summary>Read now on a reader that is not On action (the page shows it only for those).</summary>
+    public const string ReadNowOnActionOnly = "Only an On action reader can read now.";
+
     public const string FormatMissing = "Enter a format.";
 
     public static readonly string FormatTooLong = string.Create(CultureInfo.InvariantCulture, $"A format has at most {MaxFormatLength} characters.");

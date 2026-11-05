@@ -15,7 +15,7 @@ namespace Oadm.Plugins.Ocr.Tests;
 /// The real parts together (docs/spec/ocr.md "Readers", "Events and the rule action", "Accuracy"): the ONNX recognition on the
 /// CPU, <see cref="TextMatcher"/>, the vote and the SkiaSharp cut-outs, with recorded pictures of the accuracy set in place
 /// of a camera. A watching reader on the coffee box (recorded read-only from 10.0.0.48) publishes each value once the vote
-/// holds and an empty value once when the box is gone; the action Read text reads a container number with its format.
+/// holds and No text read when the box is gone; the action Read text reads a container number with its format.
 /// </summary>
 [Collection(RecognitionGroup.Name)]
 public sealed class EndToEndTests(RecognizerFixture fixture)
@@ -25,7 +25,7 @@ public sealed class EndToEndTests(RecognizerFixture fixture)
     private OcrHarness Harness() => new(recognizer: new Borrowed(fixture.Recognizer), matcher: new TextMatcher(), cutter: new PictureCutter());
 
     [Fact]
-    public async Task AWatchingReaderPublishesTheBoxsTextsOnceAndEmptyOnceWhenTheBoxIsGone()
+    public async Task AWatchingReaderPublishesTheBoxsTextsOnceAndNoTextOnceWhenTheBoxIsGone()
     {
         await using var ocr = Harness();
         await ocr.Plugin.StartAsync(ocr.Context, CancellationToken.None);
@@ -51,15 +51,14 @@ public sealed class EndToEndTests(RecognizerFixture fixture)
         Assert.Equal("4/12", first[1].Data[OcrInfo.AllMatchesField]);
         Assert.Equal(string.Empty, first[1].Data[OcrInfo.NumberField]);
 
-        // The box is gone: after the vote turned, both areas publish once with an empty text, and nothing more.
+        // The box is gone: after the vote turned, No text read once per area and no Text read.
         for (var i = 0; i < 4; i++)
         {
             await SendAsync(ocr, yard);
         }
 
-        var gone = ocr.TextRead.Skip(first.Count).ToList();
-        Assert.Equal([("Brand", ""), ("Intensity", "")], gone.Select(e => (e.Data[OcrInfo.AreaField], e.Data[OcrInfo.TextField])));
-        Assert.All(gone, e => Assert.Equal(OcrInfo.No, e.Data[OcrInfo.MatchesFormatField]));
+        Assert.Equal(first.Count, ocr.TextRead.Count);
+        Assert.Equal(["Brand", "Intensity"], ocr.NoText.Select(e => e.Data[OcrInfo.AreaField]));
     }
 
     [Fact]

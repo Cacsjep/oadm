@@ -334,6 +334,9 @@ internal sealed class OcrHarness : IAsyncDisposable
     /// <summary>The "Text read" events published so far.</summary>
     public IReadOnlyList<FakePublishedRuleEvent> TextRead => [.. Publisher.Published.Where(e => e.TypeId.StartsWith(OcrInfo.TextReadTypePrefix, StringComparison.Ordinal))];
 
+    /// <summary>The "No text read" events published so far.</summary>
+    public IReadOnlyList<FakePublishedRuleEvent> NoText => [.. Publisher.Published.Where(e => e.TypeId.StartsWith(OcrInfo.NoTextTypePrefix, StringComparison.Ordinal))];
+
     /// <summary>Sends a frame to a watching reader's camera and waits until it was read.</summary>
     public async Task SendAndWaitAsync(Guid deviceId, string text)
     {

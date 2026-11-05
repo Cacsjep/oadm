@@ -45,6 +45,19 @@ public static class OcrInfo
         return TextReadTypePrefix + readerId;
     }
 
+    /// <summary>The start of a reader's event type id for no text: <c>oadm.ocr.no-text.&lt;reader id&gt;</c>.</summary>
+    public const string NoTextTypePrefix = PluginId + ".no-text.";
+
+    /// <summary>The name of a reader's event when an area holds no text.</summary>
+    public const string NoTextName = "No text read";
+
+    /// <summary>The event type of a reader "No text read" (stable while the reader lives).</summary>
+    public static string NoTextTypeId(string readerId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(readerId);
+        return NoTextTypePrefix + readerId;
+    }
+
     /// <summary>The start of a reader's event type id for its problems: <c>oadm.ocr.reader-problem.&lt;reader id&gt;</c>.</summary>
     public const string ReaderProblemTypePrefix = PluginId + ".reader-problem.";
 
@@ -128,6 +141,12 @@ public static class OcrMethods
 
     /// <summary><see cref="ReaderRequest"/> -> {}: deletes a reader. Change.</summary>
     public const string DeleteReader = "deleteReader";
+
+    /// <summary>
+    /// <see cref="ReaderRequest"/> -> {}: an On action reader reads one picture now and fires its real Text read events, so
+    /// the rules on it run (the same as the action Read text; refused for a watching reader). Change, audited.
+    /// </summary>
+    public const string ReadNow = "readNow";
 
     /// <summary>
     /// <see cref="ReaderRequest"/> -> <see cref="ReadingReply"/>: the reader's last reading and last reads with the cut-outs

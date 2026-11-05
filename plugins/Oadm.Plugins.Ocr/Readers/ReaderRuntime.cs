@@ -225,7 +225,7 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
     public static readonly TimeSpan FreshReading = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// Reads one picture of <paramref name="reader"/> now and publishes every area's event, changed or not. A watching reader
+    /// Reads one picture of <paramref name="reader"/> now and publishes the event of every area (Text read or No text read), changed or not. A watching reader
     /// answers with its reading of at most <see cref="FreshReading"/> ago, else with the reading in work once it ends (its
     /// stream reads all the time). Refuses with <see cref="OcrInfo.AlreadyReading"/> while another single reading of the reader
     /// runs (nothing is queued), with <see cref="ReaderRules.Off"/> when its camera is not in its owner's devices and with
@@ -969,8 +969,22 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         return new ReadingReply { Reading = reading.Reading, Details = details };
     }
 
-    private void Fire(Reader reader, AreaResult area, AreaDetails details) =>
-        _ctx.EventPublisher?.Fire(OcrInfo.TextReadTypeId(reader.Id), reader.DeviceId, TextReadEvents.Data(area, details));
+    /// <summary>
+    /// The event of one area. Nothing read is the event No text read, never an empty Text read: that would run the rules on
+    /// real reads and start their dead time, so the real read right after it would be held back. A format that did not match
+    /// still fires Text read, with the raw text in Text read.
+    /// </summary>
+    private void Fire(Reader reader, AreaResult area, AreaDetails details)
+    {
+        if (area.Text.Length > 0 || area.TextRead.Length > 0)
+        {
+            _ctx.EventPublisher?.Fire(OcrInfo.TextReadTypeId(reader.Id), reader.DeviceId, TextReadEvents.Data(area, details));
+        }
+        else
+        {
+            _ctx.EventPublisher?.Fire(OcrInfo.NoTextTypeId(reader.Id), reader.DeviceId, TextReadEvents.NoTextData(area));
+        }
+    }
 
     private ReaderSlot SlotOf(string readerId) => _slots.GetOrAdd(readerId, _ => new ReaderSlot());
 

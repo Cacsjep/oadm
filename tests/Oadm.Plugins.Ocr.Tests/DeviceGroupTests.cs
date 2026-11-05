@@ -28,6 +28,7 @@ public sealed class DeviceGroupTests
             .WithoutDevices(OcrMethods.GetEngine, "what reads the pictures on this server")
             .AllDevicesOnly(OcrMethods.SetUseGpu, """{"useGpu":false}""")
             .WithoutDevices(OcrMethods.DeleteReader, "a reader of the caller's own device scope", """{"readerId":"r1"}""")
+            .WithoutDevices(OcrMethods.ReadNow, "a reader of the caller's own device scope", """{"readerId":"r1"}""")
             .Method(OcrMethods.StartPreview, """{"reader":{"name":"Gate","deviceId":"{device}"}}""")
             .WithoutDevices(OcrMethods.StopPreview, "a preview of the caller's own device scope", """{"previewId":"p1"}""")
             .WithoutDevices(OcrMethods.GetPreview, "a preview of the caller's own device scope", """{"previewId":"p1"}""")

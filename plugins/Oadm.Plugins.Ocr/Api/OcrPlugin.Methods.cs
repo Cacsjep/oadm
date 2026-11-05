@@ -88,6 +88,22 @@ public sealed partial class OcrPlugin
                 return "{}";
             }
 
+            case OcrMethods.ReadNow:
+            {
+                var reader = Visible(store, caller, payloadJson);
+                if (reader.Mode != ReaderMode.OnAction)
+                {
+                    throw new InvalidOperationException(ReaderRules.ReadNowOnActionOnly);
+                }
+
+                await CallDevices.RequireAsync(caller, [reader.DeviceId], ct).ConfigureAwait(false);
+
+                // The rule's time for an action, not the call's: a closed page is no timeout of the reader.
+                using var timeout = new CancellationTokenSource(OcrLimits.ReadNowTimeout);
+                await runtime.ReadOnceAsync(reader, timeout.Token).ConfigureAwait(false);
+                return "{}";
+            }
+
             case OcrMethods.StartPreview:
             {
                 var request = OcrJson.Deserialize<PreviewRequest>(payloadJson);

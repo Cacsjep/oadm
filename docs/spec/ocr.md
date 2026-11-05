@@ -70,7 +70,7 @@ A reader is a saved setup: name, camera, video source, resolution, mode, frame r
     it is (an order number on a receipt laid anywhere on a counter, a label on a parcel). Any text over a large area is
     allowed but rarely useful for rules.
 - **Mode**:
-  - **Watching** (new readers start with it): reads continuously at 1, 2, 4, 8, 12 or 15 frames per second (default 1)
+  - **Watching** (new readers start with it): reads continuously at 1, 2, 4, 8, 12 or 15 frames per second (default 4)
     from the camera's MJPEG stream
     (`/axis-cgi/mjpg/video.cgi?fps=<n>&resolution=<w>x<h>&camera=<source>` through `ctx.Vapix` with a streamed answer
     marked `VapixRequestOptions.LiveStream`, so device routing and sites work and the stream holds none of a site's large
@@ -214,7 +214,7 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
 - No match: the area's value is empty and **Matches format** is No; the raw text stays in the event's **Text read**, the page
   shows neither a box nor the raw text (decision 2026-11-04).
 - **Any text** has no format to match: Matches format is always No (decision 2026-11-03: a rule "Matches format is
-  Yes" fires only for a format that matched; "text was read" is a Text that is not empty).
+  Yes" fires only for a format that matched; an area with Any text fires only with text).
 - The page's format field has the format help as its tooltip.
 - **Use read text as format** (area's ⋯ menu, decision 2026-11-04; off without a read text in that area or the change
   right): the format field takes the shape of the text read now, digits `#`, letters `@`, the rest as written
@@ -271,9 +271,9 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
   (decision 2026-11-04), a save that restarts its stream too; an On action reader stays off until its next failed action. A plugin that is not loaded sends nothing: that is the host's event
   Optional plugin not loaded (`docs/spec/add-ons.md`).
 - **Watching** publishes an area's event only when its value changes, and only once the vote of the last 5 frames ("Accuracy") gives the same value in 2 frames
-  in a row (no flicker between two readings of one picture); with Moving objects once the value itself was read in 2 frames in a row ("Moving objects"). An area that becomes empty publishes once with Text empty.
+  in a row (no flicker between two readings of one picture); with Moving objects once the value itself was read in 2 frames in a row ("Moving objects"). No text at all is never an empty Text read, for watching readers and the action alike (decision 2026-11-05: an empty event ran rules and its dead time held back the real read after it): the area fires the reader's own stateless event **No text read** (`oadm.ocr.no-text.<reader id>`, value Area, same tree folder), once when a watching area's text is gone (never for an area that was never read) and on every action. A format that did not match still fires Text read with the raw text.
 - Rule action **Read text** (`IActionPlugin`): parameter the reader (On action or Watching; a rule without one is refused
-  at its save: "Choose a reader."). Reads one picture now and publishes every area's event, changed or not; a reader
+  at its save: "Choose a reader."). Reads one picture now and publishes Text read of every area with text and No text read of the others, changed or not (the event log line says "no text" for those); a reader
   without an area ends "The reader has no area. Draw one on the Text recognition page." and reads nothing. A watching
   reader answers with its own reading of at most 1 s ago (`ReaderRuntime.FreshReading`, the voted values), else with the
   reading its stream has in work once it ends, else with a picture of its own: its stream reads all the time, so the
@@ -375,11 +375,11 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
   areas); they show again when the drag ends. The drag's end is final: the overlay hands the new box to the reader
   before it lets go of the pointer (releasing the pointer capture cancels a drag still in progress, which made areas
   snap back), and nothing the preview sends replaces the areas.
-- **Live preview, no Read now**: while the page shows a reader (the page is visible), the server reads it live as a
+- **Live preview**: while the page shows a reader (the page is visible), the server reads it live as a
   preview in both modes, at the reader's rate (On action: 1 per second), so the results follow while areas are set up.
   The page sends its draft as it is (saved or not, a new reader too): on every change and every 10 s as the keep-alive
   (`startPreview`); the server takes new areas without opening the stream again, a new camera, source, resolution or
-  rate opens it again. A preview publishes **no** events: the rule events come only from Watching and from the action.
+  rate opens it again. A preview publishes **no** events: the rule events come from Watching, the action and Read now. **Read now** (decision 2026-11-05; the zap icon right of the Mode select, only for a saved On action reader whose draft is On action too and with "Change text readers", `OcrMethods.ReadNow`, audited) reads one picture and fires the real Text read events like the action, so the rules on the reader run; a watching reader is refused.
   - The draft is read as far as it can be (`ReaderRules.PreviewOf`): camera and resolution must be right; areas outside
     the picture are left out, a missing area name reads as "Area 2", a format with a problem reads any text, a frame rate
     not offered the default.
@@ -554,7 +554,7 @@ after the start). All time through the plugin's `TimeProvider`.
 The limits follow the CPU on every
 server, the traffic light ("Runtime stats") is the real guard.
 
-- **Frames per second**: 1, 2, 4, 8, 12 or 15 for every reader on every server (`OcrLimits.FpsChoices`; default 1). A
+- **Frames per second**: 1, 2, 4, 8, 12 or 15 for every reader on every server (`OcrLimits.FpsChoices`; default 4, decision 2026-11-05: the vote needs about 4 pictures, so a text change shows after about 1 s). A
   small fixed area costs a worker about 28 ms (35 pictures per second), an unchanged one about 5 ms, so one reader at 15 is
   about half a worker; a server that cannot keep up turns the light orange or red and says which reader reads slower.
 - **Watching readers**: 4 per recognition worker (`max(1, cores / 2)`), at least 8 and at most 50

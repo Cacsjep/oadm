@@ -61,7 +61,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
     /// <summary>The events "Text read" and "Reader problem" of every reader and "Any reader problem"; none while the plugin is stopped.</summary>
     public IReadOnlyList<EventTypeInfo> EventTypes => _store is null
         ? []
-        : [.. AllReaders.Select(TextReadEvents.TypeOf), .. AllReaders.Select(ReaderProblemEvents.TypeOf), ReaderProblemEvents.AnyType];
+        : [.. AllReaders.Select(TextReadEvents.TypeOf), .. AllReaders.Select(TextReadEvents.NoTextTypeOf), .. AllReaders.Select(ReaderProblemEvents.TypeOf), ReaderProblemEvents.AnyType];
 
     /// <summary>Every reader, whoever owns it (the action, the event types); none while the plugin is stopped.</summary>
     internal IReadOnlyList<Reader> AllReaders => _store?.All ?? [];
@@ -72,7 +72,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
     /// <summary>The reader of <paramref name="id"/>, whoever owns it; null when there is none.</summary>
     internal Reader? FindReader(string? id) => _store?.Find(id);
 
-    /// <summary>Reads one picture of <paramref name="reader"/> now and publishes every area's event (<see cref="ReaderRuntime.ReadOnceAsync"/>).</summary>
+    /// <summary>Reads one picture of <paramref name="reader"/> now and publishes the event of every area (<see cref="ReaderRuntime.ReadOnceAsync"/>).</summary>
     internal Task<ReaderReading> ReadOnceAsync(Reader reader, CancellationToken ct) =>
         (_runtime ?? throw new InvalidOperationException(ReaderRules.NotRunning)).ReadOnceAsync(reader, ct);
 
@@ -158,18 +158,18 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
     /// <summary>"Use GPU" is server-wide: only users with all devices (the host refuses the others first).</summary>
     public bool RequiresAllDevices(string method) => method is OcrMethods.SetUseGpu;
 
-    public bool IsAudited(string method) => method is OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.SetUseGpu;
+    public bool IsAudited(string method) => method is OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.ReadNow or OcrMethods.SetUseGpu;
 
     /// <summary>The page reads only (Viewer on); changing readers is a right of its own.</summary>
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
     [
         new(PermissionKeys.Show, OcrInfo.ViewPermissionName, "See the text readers and what they read.") { ViewerDefault = true },
-        new(OcrInfo.ChangePermission, OcrInfo.ChangePermissionName, "Create, change and delete text readers."),
+        new(OcrInfo.ChangePermission, OcrInfo.ChangePermissionName, "Create, change, delete and run text readers."),
     ];
 
-    /// <summary>New, Delete, Save and Use GPU: "change"; the rest (the page's preview too): "show".</summary>
+    /// <summary>New, Delete, Save, Read now and Use GPU: "change"; the rest (the page's preview too): "show".</summary>
     public string? RequiredPermission(string method) =>
-        method is OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.SetUseGpu ? OcrInfo.ChangePermission : PermissionKeys.Show;
+        method is OcrMethods.SaveReader or OcrMethods.DeleteReader or OcrMethods.ReadNow or OcrMethods.SetUseGpu ? OcrInfo.ChangePermission : PermissionKeys.Show;
 
     /// <summary>In-process calls without a user (the host itself, tests): as a user with all devices.</summary>
     public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>

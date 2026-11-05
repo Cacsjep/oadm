@@ -110,15 +110,19 @@ public sealed class WatchingTests
         Assert.Equal([2], ocr.Frames.Rates);
 
         // The vote of the last 5 frames (all read with the same confidence): the value most frames had, the newest on a tie.
-        foreach (var text in new[] { "", "", "A", "B", "B", "B", "B", "A", "A", "A", "A", "", "", "", "" })
+        foreach (var text in new[] { "", "", "A", "B", "B", "B", "B", "A", "A", "A", "A", "", "", "", "", "", "A", "A", "A", "A", "A" })
         {
             await ocr.SendAndWaitAsync(ocr.Inside.Id, text);
         }
 
         // Empty at the start: nothing. A for one frame: never the vote. B wins at the 4th frame and holds at the 5th: B once,
-        // never again while it stays. A wins at its 3rd frame (B B A A A) and holds: A once. Empty wins at its 3rd frame and
-        // holds: once, empty.
-        Assert.Equal(["B", "A", ""], Texts(ocr));
+        // never again while it stays. A wins at its 3rd frame (B B A A A) and holds: A once. Empty wins too: No text read
+        // once, at the start none. The same A comes back after that: once more.
+        Assert.Equal(["B", "A", "A"], Texts(ocr));
+        var noText = Assert.Single(ocr.NoText);
+        Assert.Equal(OcrInfo.NoTextTypeId(reader.Id), noText.TypeId);
+        Assert.Equal(ocr.Inside.Id, noText.DeviceId);
+        Assert.Null(noText.IsOn); // stateless
         var last = ocr.TextRead[^1];
         Assert.Equal(OcrInfo.TextReadTypeId(reader.Id), last.TypeId);
         Assert.Equal(ocr.Inside.Id, last.DeviceId);

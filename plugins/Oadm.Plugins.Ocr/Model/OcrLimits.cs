@@ -3,6 +3,9 @@ namespace Oadm.Plugins.Ocr.Model;
 /// <summary>The limits of text recognition (docs/spec/ocr.md "Rules that never break" and "Readers").</summary>
 public static class OcrLimits
 {
+    /// <summary>The time of one Read now, the same as a rule's action.</summary>
+    public static readonly TimeSpan ReadNowTimeout = TimeSpan.FromSeconds(30);
+
     /// <summary>Areas per reader at most.</summary>
     public const int MaxAreas = 8;
 
@@ -52,7 +55,7 @@ public static class OcrLimits
     public const int PreviewFpsOnAction = 1;
 
     /// <summary>The frame rate of a new reader.</summary>
-    public const int DefaultFps = 1;
+    public const int DefaultFps = 4;
 
     /// <summary>
     /// Text boxes read per picture at most, over all areas together (the highest detection scores first); more are dropped

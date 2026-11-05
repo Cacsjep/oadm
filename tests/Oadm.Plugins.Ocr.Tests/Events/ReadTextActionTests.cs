@@ -106,6 +106,49 @@ public sealed class ReadTextActionTests
     }
 
     [Fact]
+    public async Task ReadNowFiresTheRealEventOfAnOnActionReader()
+    {
+        await using var ocr = await OcrHarness.StartAsync();
+        var reader = await ocr.SaveAsync(ocr.NewReader("Gate"));
+        ocr.Frames.Single = "0815";
+
+        await ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = reader.Id });
+
+        Assert.Equal(1, ocr.Frames.Singles);
+        Assert.Equal("0815", Assert.Single(ocr.TextRead).Data[OcrInfo.TextField]);
+    }
+
+    [Fact]
+    public async Task ReadNowRefusesAWatchingReaderAndAnUnknownOne()
+    {
+        await using var ocr = await OcrHarness.StartAsync();
+        var watching = await ocr.SaveAsync(ocr.NewReader("Gate", ReaderMode.Watching));
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = watching.Id }));
+        var gone = await Assert.ThrowsAsync<ArgumentException>(() => ocr.CallAsync(OcrMethods.ReadNow, new ReaderRequest { ReaderId = "nobody" }));
+
+        Assert.Equal(ReaderRules.ReadNowOnActionOnly, refused.Message);
+        Assert.Equal(ReaderRules.Gone, gone.Message);
+        Assert.Empty(ocr.TextRead);
+    }
+
+    [Fact]
+    public async Task NoTextFiresNoTextReadAndTheEventLogSaysSo()
+    {
+        await using var ocr = await OcrHarness.StartAsync();
+        var reader = await ocr.SaveAsync(ocr.NewReader("Gate"));
+        ocr.Frames.Single = string.Empty;
+        var log = new FakeActionContext();
+
+        await Action(ocr).ExecuteAsync(log, Invocation(reader.Id), CancellationToken.None);
+
+        Assert.Equal(1, ocr.Frames.Singles);
+        Assert.Empty(ocr.TextRead);
+        Assert.Equal(reader.Areas[0].Name, Assert.Single(ocr.NoText).Data[OcrInfo.AreaField]);
+        Assert.EndsWith(": no text", Assert.Single(log.Lines), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AReadingIsKeptForThePageWithoutItsPicture()
     {
         await using var ocr = await OcrHarness.StartAsync();

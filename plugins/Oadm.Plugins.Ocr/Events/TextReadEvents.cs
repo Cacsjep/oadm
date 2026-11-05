@@ -50,6 +50,37 @@ public static class TextReadEvents
     }
 
     /// <summary>
+    /// The event "No text read" of <paramref name="reader"/> next to Text read: one event per area with nothing read, so the
+    /// rules on real reads never run for it or lose their dead time to it. Only the Area value.
+    /// </summary>
+    public static EventTypeInfo NoTextTypeOf(Reader reader)
+    {
+        ArgumentNullException.ThrowIfNull(reader);
+        return new EventTypeInfo(
+            OcrInfo.NoTextTypeId(reader.Id),
+            OcrInfo.NoTextName,
+            OcrInfo.EventGroup,
+            EventKind.Stateless,
+            EventScope.Device,
+            [new EventField(OcrInfo.AreaField, "Area", EventFieldType.Choice, [.. reader.Areas.Select(a => a.Name)])])
+        {
+            Description = $"The reader {reader.Name} found no text in an area: the text left it, or Read text found nothing.",
+            DeviceIds = [reader.DeviceId],
+            FixedDeviceId = reader.DeviceId,
+            SplitField = OcrInfo.AreaField,
+            OwnerScopeKey = OwnerScope.Of(reader.OwnerScopeKey),
+            Path = OcrInfo.TextReadPath(reader.Name),
+        };
+    }
+
+    /// <summary>The values of the event "No text read".</summary>
+    public static IReadOnlyDictionary<string, string> NoTextData(AreaResult area)
+    {
+        ArgumentNullException.ThrowIfNull(area);
+        return new Dictionary<string, string>(StringComparer.Ordinal) { [OcrInfo.AreaField] = area.Area };
+    }
+
+    /// <summary>
     /// The event's values of one area: Text and Text read with the lines joined by a space (a line ending in "-" without
     /// one), at most <see cref="MaxTextLength"/> characters; Confidence rounded to one decimal; Matches format Yes or No.
     /// </summary>

@@ -81,7 +81,7 @@ public sealed class PageViewModelTests
         using var vm = await LoadedAsync(ctx);
 
         Assert.Equal(string.Empty, vm.RunsOnText);
-        Assert.Equal("Watching · 1 fps", vm.Readers[0].ModeText);
+        Assert.Equal("Watching · 4 fps", vm.Readers[0].ModeText);
         Assert.Equal(OcrLimits.FpsChoices, vm.Editor!.FpsChoices);
         Assert.Single(vm.Editor.VideoSources);
         Assert.Contains(new Resolution(1920, 1080), vm.Editor.Resolutions);
@@ -240,7 +240,8 @@ public sealed class PageViewModelTests
         var message = Assert.Single(ctx.Messages);
         Assert.Equal((OcrTexts.OnActionNoticeTitle, OcrTexts.OnActionNotice), message);
         Assert.Equal("Reads only on an action", message.Title);
-        Assert.Equal("This reader reads only when an event rule runs the action Read text with it.", message.Message);
+        Assert.StartsWith("This reader reads only when an event rule runs the action Read text with it.", message.Message, StringComparison.Ordinal);
+        Assert.Contains("fire no event", message.Message, StringComparison.Ordinal);
 
         // Back and forth: not again for this reader, also after opening it again.
         editor.Mode = ReaderMode.Watching;
@@ -364,6 +365,35 @@ public sealed class PageViewModelTests
         Assert.Equal(OcrTexts.NewAreaTip, editor.NewAreaTip);
         editor.SelectAreaAt(new Point(0.5, 0.3));
         Assert.Equal("Container number", editor.SelectedArea!.Name);
+    }
+
+    [Fact]
+    public async Task Read_now_asks_the_server_and_shows_its_refusal()
+    {
+        var ctx = Samples.Context();
+        ctx.Answers[OcrMethods.ReadNow] = _ => "{}";
+        using var vm = await LoadedAsync(ctx);
+        Assert.False(vm.Editor!.CanReadNow); // the first reader is watching
+
+        await vm.OpenAsync(vm.Readers.Single(r => r.Id == "r2"), CancellationToken.None);
+        var editor = vm.Editor!;
+        Assert.True(editor.CanReadNow);
+
+        await editor.ReadNowCommand.ExecuteAsync(null);
+        Assert.Equal("{\"readerId\":\"r2\"}", ctx.LastPayloadOf(OcrMethods.ReadNow));
+        Assert.False(editor.IsReadingNow);
+        Assert.Empty(ctx.Messages);
+
+        ctx.Answers[OcrMethods.ReadNow] = _ => throw new InvalidOperationException(ReaderRules.Gone);
+        await editor.ReadNowCommand.ExecuteAsync(null);
+        Assert.Equal(OcrTexts.ReadNowTitle, ctx.Messages.Single().Title);
+        Assert.False(editor.IsReadingNow);
+
+        // The stored reader is what reads: a draft set to Watching has no icon, and the reverse neither until it is saved.
+        editor.Mode = ReaderMode.Watching;
+        Assert.False(editor.CanReadNow);
+        editor.Mode = ReaderMode.OnAction;
+        Assert.True(editor.CanReadNow);
     }
 
     [Fact]
