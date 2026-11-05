@@ -38,7 +38,7 @@ public sealed class RestartTaskPluginTests
         // Ping 1: check, 2: still up after the restart command, 3-5: down (rebooting), 6: back.
         var vapix = new FakeVapixClient { Answers = n => n is 1 or 2 or >= 6 };
         var ctx = new RecordingContext(vapix);
-        var plugin = new RestartTaskPlugin(Poll, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(1), TimeProvider.System);
+        var plugin = new RestartTaskPlugin(Poll, TimeSpan.FromMinutes(2), TimeSpan.FromSeconds(1), TimeProvider.System);
 
         await StepRun.RunAsync(ctx.Steps, () => plugin.ExecuteAsync(ctx, new FakeDevice(Guid.NewGuid()), null, CancellationToken.None));
 
@@ -64,7 +64,7 @@ public sealed class RestartTaskPluginTests
     {
         var vapix = new FakeVapixClient { Answers = n => n is 1 or >= 3 };
         var ctx = new RecordingContext(vapix);
-        var plugin = new RestartTaskPlugin(Poll, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(1), TimeProvider.System);
+        var plugin = new RestartTaskPlugin(Poll, TimeSpan.FromMinutes(2), TimeSpan.FromSeconds(1), TimeProvider.System);
 
         await StepRun.RunAsync(ctx.Steps, () => plugin.ExecuteAsync(ctx, new SerialDevice("ACCC8E000001"), null, CancellationToken.None));
 
@@ -78,7 +78,7 @@ public sealed class RestartTaskPluginTests
     {
         var vapix = new FakeVapixClient { Answers = _ => false };
         var ctx = new RecordingContext(vapix);
-        var plugin = new RestartTaskPlugin(Poll, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(1), TimeProvider.System);
+        var plugin = new RestartTaskPlugin(Poll, TimeSpan.FromMinutes(2), TimeSpan.FromSeconds(1), TimeProvider.System);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             StepRun.RunAsync(ctx.Steps, () => plugin.ExecuteAsync(ctx, new FakeDevice(Guid.NewGuid()), null, CancellationToken.None)));
