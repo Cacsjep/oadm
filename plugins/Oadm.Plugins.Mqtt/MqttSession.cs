@@ -67,11 +67,10 @@ public sealed class MqttSession : IRecipientSession, IMqttPublisher
         _trusted = request.CertificatesOf("trustedCa");
         _time = time ?? TimeProvider.System;
 
-        var clientId = request.Get("clientId")?.Trim();
         var builder = new MqttClientOptionsBuilder()
             .WithTcpServer(host, port)
             .WithProtocolVersion(request.Get("protocolVersion") == MqttRecipient.Version311 ? MqttProtocolVersion.V311 : MqttProtocolVersion.V500)
-            .WithClientId(string.IsNullOrEmpty(clientId) ? MqttRecipient.DefaultClientId(request.RecipientId) : clientId)
+            .WithClientId(MqttRecipient.ClientId(request.Get("clientId"), request.RecipientId))
             .WithTimeout(AnswerTimeout);
         var user = request.Get("user") ?? string.Empty;
         var password = request.Get("password");
@@ -162,22 +161,27 @@ public sealed class MqttSession : IRecipientSession, IMqttPublisher
     public async ValueTask DisposeAsync()
     {
         Interlocked.Exchange(ref _ended, 1);
-        if (_client.IsConnected)
+        try
         {
-            using var timeout = new CancellationTokenSource(CloseTimeout, _time);
-            try
+            if (_client.IsConnected)
             {
-                await _client.DisconnectAsync(new MqttClientDisconnectOptions(), timeout.Token).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is MqttCommunicationException or OperationCanceledException)
-            {
-                // The broker is gone already.
+                using var timeout = new CancellationTokenSource(CloseTimeout, _time);
+                try
+                {
+                    await _client.DisconnectAsync(new MqttClientDisconnectOptions(), timeout.Token).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is MqttCommunicationException or OperationCanceledException)
+                {
+                    // The broker is gone already.
+                }
             }
         }
-
-        _client.DisconnectedAsync -= OnDisconnectedAsync;
-        _client.Dispose();
-        _keyStoreCopy?.Dispose(); // takes the key out of the key store
+        finally
+        {
+            _client.DisconnectedAsync -= OnDisconnectedAsync;
+            _client.Dispose();
+            _keyStoreCopy?.Dispose(); // takes the key out of the key store
+        }
     }
 
     /// <summary>

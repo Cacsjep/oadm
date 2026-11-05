@@ -48,7 +48,7 @@ Event **Recipient not connected** (stateful, server, values `count` and `recipie
 
 | Package | Id | Recipient holds | Action |
 |---|---|---|---|
-| MQTT, library MQTTnet (MIT; before a release look at issue #2280, a private security report, and the unreleased TLS fix #2254) | `oadm.mqtt` | Broker host, port, protocol version (3.1.1 or 5.0), see "Security", user name, password, client id (default `oadm-<server>`) | **Publish MQTT message**: topic, payload (text or JSON, placeholders escaped), QoS 0, 1 or 2, retain, off edge |
+| MQTT, library MQTTnet (MIT; before a release look at issue #2280, a private security report, and the unreleased TLS fix #2254) | `oadm.mqtt` | Broker host, port, protocol version (3.1.1 or 5.0), see "Security", user name, password, client id (default one per recipient; a Test adds a unique ending, also to a chosen id, so it never takes the open session's place) | **Publish MQTT message**: topic, payload (text or JSON, placeholders escaped), QoS 0, 1 or 2, retain, off edge |
 | Modbus, our own client, no library: function codes 05, 06 and 16 only (the same connection rule as Send TCP message) | `oadm.modbus` | Host, port (502), unit id | **Write Modbus value**: coil or holding register, address, value, optional pulse with a time; a value on the off edge |
 | OPC UA, library OPCFoundation.NetStandard.Opc.Ua.Client (OPC Foundation MIT License 1.00 since the stack's relicensing, checked in the 2.0.1 package on 2026-11-05) | `oadm.opcua` | Endpoint (`opc.tcp://host:4840`, a new `ActionFieldFormat`), see "Security" | **Write OPC UA value**: node id, Value type (on or off, number, text), value; a value on the off edge |
 
@@ -84,6 +84,10 @@ as unused. The run may take the pulse plus 45 s: connect, queue and off write.
 cancelled after sending, resets the connection (linger 0) and drops the session: a graceful close would still deliver what the kernel
 holds. TCP keep alive shows an idle connection that was cut after about a minute. A reply counts only with the session's unit id and exactly
 the echo of the request.
+
+**Placeholders in a Publish MQTT message:** the topic is filled per placeholder, and a value with `/`, `+`, `#` or NUL, a leading `$` or no text
+is refused ("Nothing was sent."): a value must never change the topic level or reach a system topic. An unknown {name} is never sent literally, in
+the topic or the payload, and a payload that came out empty is not sent: an empty retained message would clear the topic.
 
 Nothing is read: no MQTT subscribe, no Modbus read function, no OPC UA read or subscription (rule confirmed by the maintainer on
 2026-11-05). What a protocol needs for a write stays: the broker's acknowledge, the echo or exception of a Modbus write, the status of

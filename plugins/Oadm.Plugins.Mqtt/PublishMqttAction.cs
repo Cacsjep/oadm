@@ -16,12 +16,23 @@ public static class MqttRecipient
 
     public const string Version500 = "5.0";
 
-    /// <summary>The client ID of a recipient without one.</summary>
     /// <summary>
-    /// One per recipient, so two recipients on one broker never take each other's place, and a Test (no id) never takes the open
+    /// The client ID of a recipient without one: one per recipient, so two recipients on one broker never take each other's place, and a Test (no id) never takes the open
     /// session's. 23 characters at most: the longest id every broker must accept.
     /// </summary>
     public static string DefaultClientId(Guid? recipientId) => "oadm-" + (recipientId ?? Guid.NewGuid()).ToString("N")[..18];
+
+    /// <summary>
+    /// The client ID of a connection. A Test (no recipient id) gets a unique ending on a chosen ID too: with the same ID it would throw
+    /// the open session off the broker.
+    /// </summary>
+    public static string ClientId(string? chosen, Guid? recipientId)
+    {
+        var id = chosen?.Trim();
+        return string.IsNullOrEmpty(id) ? DefaultClientId(recipientId)
+            : recipientId is null ? id + "-" + Guid.NewGuid().ToString("N")[..8]
+            : id;
+    }
 
     public static RecipientType Type { get; } = new(
         TypeId,
@@ -48,7 +59,8 @@ public static class MqttRecipient
 
 /// <summary>
 /// Event rule action "Publish MQTT message": one message to a broker, with an optional payload when the rule turns off. The topic is
-/// checked after its placeholders are filled, before anything is sent. Output only, and a failed message is not sent later.
+/// filled per placeholder and checked before anything is sent: a value must not add a level, a wildcard or a system topic. Output
+/// only, and a failed message is not sent later.
 /// </summary>
 public sealed class PublishMqttAction : IActionPlugin
 {
@@ -113,19 +125,55 @@ public sealed class PublishMqttAction : IActionPlugin
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(invocation);
-        var topic = ctx.Text(invocation.Get("topic"));
+        var topic = FilledTopic(ctx, invocation.Get("topic"));
+        var message = new MqttMessage(topic, FilledPayload(ctx, invocation), invocation.GetInt("qos", 1), invocation.GetBool("retain"));
+        var session = await ctx.SessionAsync<IMqttPublisher>(RecipientKey, ct).ConfigureAwait(false);
+        await session.PublishAsync(message, ct).ConfigureAwait(false);
+        ctx.Log("Published to " + topic);
+    }
+
+    /// <summary>The topic with each placeholder's value checked on its own; the text around them is the user's.</summary>
+    private static string FilledTopic(IActionContext ctx, string? template)
+    {
+        RefuseUnknown(ctx, template);
+        string? offending = null;
+        var topic = ActionPlaceholders.Fill(template, name =>
+        {
+            var value = ctx.Text("{" + name + "}");
+            if (!FitsInTopic(value))
+            {
+                offending ??= name;
+            }
+
+            return value;
+        });
         if (TopicProblem(topic) is { } problem)
         {
             throw new InvalidOperationException($"{problem} {NothingSent}");
         }
 
-        var payload = invocation.Get(invocation.Edge == ActionEdge.TurnedOff ? "offPayload" : "payload");
-        var escape = invocation.Get("format") == Json ? PlaceholderEscape.Json : PlaceholderEscape.None;
-        var message = new MqttMessage(topic, ctx.Text(payload, escape), invocation.GetInt("qos", 1), invocation.GetBool("retain"));
-        var session = await ctx.SessionAsync<IMqttPublisher>(RecipientKey, ct).ConfigureAwait(false);
-        await session.PublishAsync(message, ct).ConfigureAwait(false);
-        ctx.Log("Published to " + topic);
+        return offending is null ? topic : throw new InvalidOperationException($"The value of {{{offending}}} cannot go in a topic. {NothingSent}");
     }
+
+    private static string FilledPayload(IActionContext ctx, ActionInvocation invocation)
+    {
+        var template = invocation.Get(invocation.Edge == ActionEdge.TurnedOff ? "offPayload" : "payload");
+        RefuseUnknown(ctx, template);
+        var payload = ctx.Text(template, invocation.Get("format") == Json ? PlaceholderEscape.Json : PlaceholderEscape.None);
+        return payload.Length > 0 || string.IsNullOrEmpty(template) ? payload : throw new InvalidOperationException($"The payload is empty. {NothingSent}");
+    }
+
+    private static void RefuseUnknown(IActionContext ctx, string? text)
+    {
+        if (ActionPlaceholders.FirstUnknown(text, ctx) is { } unknown)
+        {
+            throw new InvalidOperationException($"The placeholder {unknown} is unknown. {NothingSent}");
+        }
+    }
+
+    /// <summary>A value stays inside one topic level: no separator, no wildcard, no system topic, and it holds a level at all.</summary>
+    private static bool FitsInTopic(string value) =>
+        value.Length > 0 && value[0] != '$' && value.AsSpan().IndexOfAny("/+#\0") < 0;
 
     /// <summary>Why a broker would never take this topic; null when it can.</summary>
     private static string? TopicProblem(string topic)

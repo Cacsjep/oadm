@@ -64,6 +64,7 @@ public static class MqttCertificateCheck
         using var chain = new X509Chain();
         chain.ChainPolicy.TrustMode = X509ChainTrustMode.CustomRootTrust;
         chain.ChainPolicy.RevocationMode = X509RevocationMode.NoCheck;
+        chain.ChainPolicy.DisableCertificateDownloads = true;
         chain.ChainPolicy.ApplicationPolicy.Add(new Oid(ServerAuthentication));
         chain.ChainPolicy.CustomTrustStore.AddRange(trusted.ToArray());
         if (presented is not null)

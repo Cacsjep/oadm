@@ -108,6 +108,17 @@ public sealed class PublishMqttActionTests
     }
 
     [Fact]
+    public void AChosenClientIdStaysAndATestGetsItsOwn()
+    {
+        var recipient = Guid.NewGuid();
+
+        Assert.Equal("line-3", MqttRecipient.ClientId(" line-3 ", recipient));
+        Assert.Equal(MqttRecipient.DefaultClientId(recipient), MqttRecipient.ClientId(" ", recipient));
+        Assert.StartsWith("line-3-", MqttRecipient.ClientId("line-3", null), StringComparison.Ordinal);
+        Assert.NotEqual(MqttRecipient.ClientId("line-3", null), MqttRecipient.ClientId("line-3", null));
+    }
+
+    [Fact]
     public void RecipientFieldsAreChecked()
     {
         var type = MqttRecipient.Type;
@@ -238,6 +249,80 @@ public sealed class PublishMqttActionTests
         Assert.Equal($"{text} Nothing was sent.", refused.Message);
         Assert.Empty(publisher.Sent);
         Assert.Empty(context.Lines);
+    }
+
+    [Theory]
+    [InlineData("a/b")]
+    [InlineData("+")]
+    [InlineData("x#")]
+    [InlineData("x\0y")]
+    [InlineData("$SYS")]
+    [InlineData("")]
+    public async Task AValueThatChangesTheTopicLevelSendsNothing(string value)
+    {
+        var (context, publisher) = Context();
+        context.Placeholders["device"] = value;
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => Action.ExecuteAsync(context, Run(new { topic = "site/{device}/state", payload = "p" }), CancellationToken.None));
+
+        Assert.EndsWith("Nothing was sent.", refused.Message, StringComparison.Ordinal);
+        Assert.Empty(publisher.Sent);
+    }
+
+    [Fact]
+    public async Task ADollarInsideAValueIsAllowed()
+    {
+        var (context, publisher) = Context();
+        context.Placeholders["device"] = "door$1";
+
+        await Action.ExecuteAsync(context, Run(new { topic = "site/{device}", payload = "p" }), CancellationToken.None);
+
+        Assert.Equal("site/door$1", Assert.Single(publisher.Sent).Topic);
+    }
+
+    [Theory]
+    [InlineData("site/{gone}", "p")]
+    [InlineData("t", "door {gone}")]
+    public async Task AnUnknownPlaceholderSendsNothing(string topic, string payload)
+    {
+        var (context, publisher) = Context();
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => Action.ExecuteAsync(context, Run(new { topic, payload }), CancellationToken.None));
+
+        Assert.Equal("The placeholder {gone} is unknown. Nothing was sent.", refused.Message);
+        Assert.Empty(publisher.Sent);
+    }
+
+    [Fact]
+    public async Task APayloadThatCameOutEmptySendsNothing()
+    {
+        var (context, publisher) = Context();
+        context.Placeholders["site"] = string.Empty;
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => Action.ExecuteAsync(context, Run(new { topic = "t", payload = "{site}", retain = true }), CancellationToken.None));
+
+        Assert.Equal("The payload is empty. Nothing was sent.", refused.Message);
+        Assert.Empty(publisher.Sent);
+    }
+
+    [Fact]
+    public async Task AnEmptyPayloadFromTheRuleItselfGoesOut()
+    {
+        var (context, publisher) = Context();
+
+        await Action.ExecuteAsync(context, Run(new { topic = "t", payload = string.Empty }), CancellationToken.None);
+
+        Assert.Equal(string.Empty, Assert.Single(publisher.Sent).Payload);
+    }
+
+    [Fact]
+    public async Task JsonBracesAreNotPlaceholders()
+    {
+        var (context, publisher) = Context();
+
+        await Action.ExecuteAsync(context, Run(new { topic = "t", format = "json", payload = "{\"door\": {\"open\": true}}" }), CancellationToken.None);
+
+        Assert.Single(publisher.Sent);
     }
 
     [Fact]

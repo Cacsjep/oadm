@@ -117,9 +117,25 @@ public sealed class MqttSessionTests
             logins.Enqueue((e.UserName, e.Password, e.ClientId));
             return Task.CompletedTask;
         });
-        await using var session = new MqttSession(Sessions.Request(broker.Port, new { user = "oadm", password = "secret", clientId = "line-3" }));
+        await using var session = new MqttSession(Sessions.Request(broker.Port, new { user = "oadm", password = "secret", clientId = "line-3" }) with { RecipientId = Guid.NewGuid() });
         await session.ConnectAsync(Sessions.Patient);
         Assert.Equal(("oadm", "secret", "line-3"), Assert.Single(logins));
+    }
+
+    [Fact]
+    public async Task ATestLeavesTheOpenSessionWithAChosenClientIdAlone()
+    {
+        await using var broker = await TestBroker.StartAsync();
+        await using var open = new MqttSession(Sessions.Request(broker.Port, new { clientId = "line-3" }) with { RecipientId = Guid.NewGuid() });
+        var drops = new ConcurrentQueue<string>();
+        open.Dropped += (_, e) => drops.Enqueue(e.Reason);
+        await open.ConnectAsync(Sessions.Patient);
+
+        await using var test = new MqttSession(Sessions.Request(broker.Port, new { clientId = "line-3" }));
+        await test.ConnectAsync(Sessions.Patient);
+
+        await Eventually.TrueAsync(async () => (await broker.Server.GetClientsAsync()).Count == 2, "the broker holds both");
+        Assert.Empty(drops);
     }
 
     [Fact]
@@ -208,12 +224,12 @@ public sealed class MqttSessionTests
     public async Task ASecondConnectionWithTheClientIdSaysSo()
     {
         await using var broker = await TestBroker.StartAsync();
-        await using var first = new MqttSession(Sessions.Request(broker.Port, new { clientId = "same" }));
+        await using var first = new MqttSession(Sessions.Request(broker.Port, new { clientId = "same" }) with { RecipientId = Guid.NewGuid() });
         var reasons = new ConcurrentQueue<string>();
         first.Dropped += (_, e) => reasons.Enqueue(e.Reason);
         await first.ConnectAsync(Sessions.Patient);
 
-        await using var second = new MqttSession(Sessions.Request(broker.Port, new { clientId = "same" }));
+        await using var second = new MqttSession(Sessions.Request(broker.Port, new { clientId = "same" }) with { RecipientId = Guid.NewGuid() });
         await second.ConnectAsync(Sessions.Patient);
 
         await Eventually.TrueAsync(() => !reasons.IsEmpty, "the first session reports the drop");
