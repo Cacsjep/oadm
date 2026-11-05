@@ -571,7 +571,7 @@ public static partial class OadmServerHost
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<ILoggerFactory>()));
         services.AddSingleton(sp => new RecipientEventSource(
-            sp.GetRequiredService<RecipientSessionPool>(),
+            () => sp.GetRequiredService<RecipientSessionPool>(), // the pool needs the catalog, which holds this source
             () => sp.GetRequiredService<RuleEngine>().PublisherFor(RecipientEventSource.EventSourceId)));
         services.AddSingleton<IHostEventSource>(sp => sp.GetRequiredService<RecipientEventSource>());
         services.AddSingleton(new RuleEngineOptions());

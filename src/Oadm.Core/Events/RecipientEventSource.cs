@@ -20,12 +20,20 @@ public sealed class RecipientEventSource : IHostEventSource
 
     public const string RecipientField = "recipient";
 
-    private readonly RecipientSessionPool _pool;
+    private readonly Func<RecipientSessionPool> _pool;
     private readonly Func<IEventPublisher> _publisher;
     private readonly Lock _gate = new();
     private string? _reported;
 
     public RecipientEventSource(RecipientSessionPool pool, Func<IEventPublisher> publisher)
+        : this(() => pool, publisher)
+    {
+        ArgumentNullException.ThrowIfNull(pool);
+    }
+
+    /// <param name="pool">Read at <see cref="Start"/>: the pool needs the event catalog, which holds this source.</param>
+    /// <param name="publisher">Read at the first report.</param>
+    public RecipientEventSource(Func<RecipientSessionPool> pool, Func<IEventPublisher> publisher)
     {
         _pool = pool ?? throw new ArgumentNullException(nameof(pool));
         _publisher = publisher ?? throw new ArgumentNullException(nameof(publisher));
@@ -54,7 +62,7 @@ public sealed class RecipientEventSource : IHostEventSource
     /// <summary>The first full report (the rule engine runs); then the event follows the pool.</summary>
     public void Start()
     {
-        _pool.Changed += (_, _) => Report();
+        _pool().Changed += (_, _) => Report();
         Report();
     }
 
@@ -62,7 +70,7 @@ public sealed class RecipientEventSource : IHostEventSource
     {
         lock (_gate)
         {
-            var names = _pool.Statuses()
+            var names = _pool().Statuses()
                 .Where(s => s.State == RecipientConnectionState.NotConnected)
                 .Select(s => s.Name)
                 .Order(StringComparer.CurrentCultureIgnoreCase)
