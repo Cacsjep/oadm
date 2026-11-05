@@ -99,6 +99,8 @@ works with the fewest fields, and security is there when it is needed.
 
 - The pool with a fake session and a `FakeTimeProvider`: one session for many rules under load, the wait grows and resets, idle close,
   change and delete, a dropped connection, a stop with a stuck session.
-- MQTT against MQTTnet's own in-process broker, Modbus against a fake socket from recorded frames (exception replies, wrong transaction id,
-  a reply cut short), OPC UA against the stack's own in-process server. No network outside the machine in unit tests; a real broker, PLC
-  and OPC UA server only in hardware tests, on request.
+- Unit tests: MQTT against MQTTnet's own in-process broker, Modbus against a fake PLC on the loopback (exception replies, wrong transaction
+  id, a reply cut short), OPC UA without a network where possible. No network outside the machine.
+- The real servers run only when someone works on these types (decision 2026-11-05): `manage test recipients` starts Mosquitto, a Modbus server
+  and an OPC UA server from `tests/RecipientStack/docker-compose.yml`, connects and writes once to each (`Category=RecipientStack`, also
+  `HardwareWrite`, so no other run and no CI touches them), and stops them.

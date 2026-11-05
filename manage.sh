@@ -152,7 +152,7 @@ parse_args() {
     build)   TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client|plugins|docs|docs-offline) ;; *) usage_error build "unknown target '$TARGET' for build" ;; esac ;;
     run)     [ -n "$TARGET" ] || usage_error run "missing target for run (server, client, dev, node or node-app)"
              case "$TARGET" in server|client|dev|node|node-app) ;; *) usage_error run "unknown target '$TARGET' for run" ;; esac ;;
-    test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|hardware|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
+    test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|hardware|recipients|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
     publish) TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client) ;; *) usage_error publish "unknown target '$TARGET' for publish" ;; esac ;;
     package) [ -n "$TARGET" ] || usage_error package "missing target for package (windows, linux, macos, site-node, addons or nuget)"
              case "$TARGET" in windows|linux|macos|site-node|addons|nuget) ;; *) usage_error package "unknown target '$TARGET' for package" ;; esac ;;
@@ -444,6 +444,14 @@ cmd_run() {
 cmd_test() {
   require_dotnet
   local filter
+  if [ "$TARGET" = recipients ]; then
+    # The real MQTT, Modbus and OPC UA servers in Docker: tests/RecipientStack, connect and write once to each.
+    local compose="$REPO_ROOT/tests/RecipientStack/docker-compose.yml" status=0
+    docker compose -f "$compose" up -d || exit $?
+    "$DOTNET" test "$REPO_ROOT/tests/Oadm.RecipientStack.Tests/Oadm.RecipientStack.Tests.csproj" -c "$CONFIGURATION" --filter "Category=RecipientStack" ${EXTRA[@]+"${EXTRA[@]}"} || status=$?
+    docker compose -f "$compose" down
+    return "$status"
+  fi
   case "$TARGET" in
     unit) filter="Category!=Hardware&Category!=Perf&Category!=HardwareWrite" ;;
     perf) filter="Category=Perf" ;;
