@@ -216,12 +216,11 @@ must never break.
   Administrators only, audited; after a server update an older plugin keeps running; a plugin that cannot load stays
   off and OADM runs as usual; a build without the hash only takes a folder by hand, which must pass the version rule too.
 - **[Text recognition](docs/spec/ocr.md)** (built, hardware runs open; add-on `oadm.ocr`, rail group Vision, free, off by
-  default): readers (camera, up to 8 areas, Any text or a format) read text only inside their areas, on the action Read
+  default): readers (camera, up to 8 areas, Any text or a format) read text only inside their areas, row by row at any
+  turn (`Text` never holds a line break, `Text read` holds one per row; no model), on the action Read
   text or watching the MJPEG stream at 1 to 15 fps (watching readers by the CPU cores, 4 per site), on a usable graphics
   card, else on the CPU, which always works; the models are never in git (downloaded and checked at build); events Text
   read, No text read and Reader problem for the rules; read only, pictures never stored.
-- **[Text recognition: rows](docs/spec/ocr-multi-line.md)** (spec, not built): rows of an area from the rotated boxes, at any
-  turn, always on, no model; `Text read` carries the rows with line breaks, `Text` never does; no new event value.
 - **[Recipients](docs/spec/recipients.md)**: shared targets of event rule actions (HTTP, Email, TCP, MQTT, Modbus, OPC
   UA, declared by plugins, at most 200), for MQTT, Modbus and OPC UA one shared connection per recipient
   ([recipient sessions](docs/spec/recipient-sessions.md)); a rule keeps a link, the host merges the recipient's fields

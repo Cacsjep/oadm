@@ -17,8 +17,13 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Event rules: a changed target asks for the password again, a stored password never goes to a new target.
 - PKI: a certificate or CA a recipient uses cannot be deleted.
 - Plugin SDK 0.12.0: recipient sessions, one call that reads and watches a page's events, GuardedRun, ByteSize and PluginJson.
+- Text recognition reads an area row by row at any turn, so an article and its price stay together.
 
 ### Changed
+
+- Text recognition: the word order of Text and Text read changes on turned or tabular text, and Text read now holds a line break between rows.
+- Text recognition: the results table shows the rows of an area without a format as lines.
+- Send TCP message: a line break in a value becomes a space, it was removed before.
 
 - Event rules: the mail server, URL or host of an action moves to a recipient; rules from older versions show Choose a recipient until you pick one.
 - Event rules: the target of a recipient is fixed, placeholders stay in the action: message, query, headers, subject and topic.
@@ -49,6 +54,8 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Fixed
 
 - Text recognition: the package for Intel Macs has its recognition library, it was missing since 4.10.0.
+- Text recognition: a text found twice where two parts of a large area overlap is read once.
+- Event rules: what an action writes to the event log and the server log always stays on one line.
 - Plugins page: Restart server waits while an update or another plugin's install runs.
 - Operators and custom roles can again use the Edge storage tools, Action Rule Editor runs and VAPIX Commander rollouts.
 - Logging in again after logging out from a plugin page works.

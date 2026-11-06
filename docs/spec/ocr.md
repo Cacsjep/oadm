@@ -171,8 +171,6 @@ model (later, as a choice per reader).
 
 ### Several lines
 
-Rows built 2026-11-06 from [ocr-multi-line.md](ocr-multi-line.md): the outputs of other plugins and the open points are still there.
-
 An area can hold several lines. They are put in rows, so what stands on one line of the text stays on one line, at any
 turn of the text: an article and its price on a receipt, a label and its value on a sign. Always on, no setting (decision
 2026-11-06). No model and no pixels: arithmetic on the rotated boxes the recognition already has (`TextLine.Turn`), in
@@ -238,6 +236,25 @@ picture never mix).
 - **Limits.** Two objects side by side at the same angle: their rows mix (one area per object; different angles stay
   apart). Under a strong tilt a row can split in two and the fan of directions can split a text into two blocks. What the
   recognition loses stays lost: two close lines merge at about 45 to 60 degrees ("Why it breaks"); rows do not repair that.
+
+- **Where the line breaks of `Text read` go** (checked in the code, 2026-11-06). Two rules: a value never fakes a log
+  line, and a value never adds a line at a TCP receiver, where a line is often a command.
+
+  | Output | What happens to a line break |
+  |---|---|
+  | Event log and server log | One line per entry: the host turns line breaks into a space in every action's log lines and failure text (`ActionRunner`, [event-rules.md](event-rules.md)); the action Read text logs through `TextReadEvents.Join`; Log entry writes one line |
+  | Email | The subject is one line, the text body keeps the rows, an HTML body shows one line unless the template uses `<pre>` |
+  | HTTP | A header gets a space; URL and form are encoded, JSON and XML escaped; a plain body keeps the rows |
+  | MQTT | A JSON payload is escaped, a text payload keeps the rows; in the topic the value is refused ("cannot go in a topic", nothing sent) |
+  | Send TCP message | Text and XML get a space (`PlaceholderEscape.SingleLine`), JSON is escaped: never a second line |
+  | VAPIX command | Path, query and form are encoded, JSON escaped, a header is refused; a text or XML body takes the break as it is (open point below) |
+  | Modbus and OPC UA text | The break is written as it is; Modbus refuses a value over the set length |
+  | Dashboard | The table shows one line (a break becomes a space, cut at 100 characters); a Text widget shows the rows |
+
+- **Open before a release.** Real pictures from the cameras: every number above is from generated receipts. The text body
+  of a VAPIX command: accept the line break (the command's author sets the field's pattern) or fill it with
+  `SingleLine`; not decided. Whether a mean of the axis per neighbourhood gets strongly tilted rows without losing the
+  wide table (not measured).
 
 - **One area per value**, never line numbers: lines are found anew in each picture and their count changes with light
   and focus, so "line 2" would point at another line. The page's empty area list says "Draw one area around each text
