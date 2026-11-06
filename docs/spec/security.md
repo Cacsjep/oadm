@@ -69,6 +69,17 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `Login`, `CreateFirstAdmin`) and PERMISSION_DENIED with what the role lacks ("Your role does not allow: Delete tasks.",
   `AccessPolicy.DeniedMessage`); it sets `CallerContext` (user, role, the role's `PermissionSet`), so a task's Owner is
   "<user>@<client machine>". `Logout` revokes. Failed logins: 5 per user in 5 minutes, then 5 minutes locked, logged.
+  Per client address (IPv6: per /64): 50 failed logins in 5 minutes, then every login from that address is refused until
+  the 5 minutes end (`LoginAddressLimit` on the `AddressRateLimiter` of the site port, asked before the request is looked
+  at; 50 because users behind one NAT share an address and a single name locks after 5; audited once as "Login locked"
+  with the address; signed-in users go on). Before authentication nothing long is kept: a user name over 64 or a
+  password over 256 characters (the limits of the users) is a wrong login with the same answer, never looked up or
+  hashed (the dummy hash still runs, so the time says nothing); the throttle, the audit and the server log take at most
+  the first 64 characters of a name, and every audit text has its control characters replaced by spaces
+  (`AuditLog.Clean`: a line break in a name never starts a made-up log line). Failed logins with unknown user names are
+  one audit entry per client address and minute ("Unknown user", then its detail counts: "12 failed logins with unknown
+  user names", `AuthManager.AuditUnknownAsync`), so made-up names never push the history out; a wrong password of a
+  user keeps one entry each. A setup code over 64 characters is wrong.
   `AuthMaintenanceHostedService` removes expired sessions and old audit entries hourly. A new password or a disabled user
   ends the sessions; a new role applies to the next call (`AuthTokenStore.SetRole`). An expired session ends like a
   logout (`SessionsEnded` for its token, when its next use finds it expired or in the hourly cleanup): its streams, plugin
@@ -332,7 +343,8 @@ server.
 ## Tests
 
 `tests/Oadm.Server.Tests`: `AuthTests` (every service per role, the role table against the contracts, plugin method
-roles, first administrator, sessions, throttling, audit), `TlsPinningTests` (real Kestrel with TLS), `MasterKeyCheckTests`,
+roles, first administrator, sessions, throttling, audit), `LoginLimitsTests` (long names and passwords, the audit entry
+of unknown names, the limit per address), `TlsPinningTests` (real Kestrel with TLS), `MasterKeyCheckTests`,
 `MasterKeyFileTests`, `KeyReplacedNoticeTests`, `DeviceLimitsTests`, `UploadStoreTests`; `MethodRoleTests` in the DHCP,
 NTP, PKI and VAPIX Commander test projects; `tests/Oadm.Client.Tests`: `LoginTests`, `CrashHandlingTests`.
 `TestServerHost` calls as the administrator "admin" (`InvokerFor(token)` / `InvokerForUserAsync(name, role)` for others,

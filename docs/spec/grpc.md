@@ -20,7 +20,8 @@ used again.
 
 - **`AuthService`** (`auth.proto`): `Status` (server name, version, `needs_first_admin`, `updating_to` from Install now until the update's result, `setup_code_required` when the
   caller is not loopback), `Login(user, password, remember)` -> {token, UserInfo} (UNAUTHENTICATED one message for wrong
-  password, unknown and disabled user; RESOURCE_EXHAUSTED while locked), `CreateFirstAdmin(user, password, setup_code,
+  password, unknown and disabled user, and for a name over 64 or a password over 256 characters; RESOURCE_EXHAUSTED while
+  the user name or the client address is locked, `docs/spec/security.md` "Tokens"), `CreateFirstAdmin(user, password, setup_code,
   remember)` (FAILED_PRECONDITION users exist, PERMISSION_DENIED setup code, INVALID_ARGUMENT), `Logout` (revokes the
   call's token), `Me`, `WatchSession` (the caller's user with role and permissions now and after every change).
   `UserInfo`: `role` (the two-value role of older clients: ADMIN for Administrator), `role_id`, `role_name`, for the

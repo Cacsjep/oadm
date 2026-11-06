@@ -185,6 +185,7 @@ public static partial class OadmServerHost
         // Access: TLS certificate of the gRPC endpoint, audit and session cleanup
         services.AddSingleton<ServerTlsCertificate>();
         services.AddSingleton<CallerStreams>();
+        services.AddSingleton<LoginAddressLimit>();
         services.AddHostedService<AuthMaintenanceHostedService>();
 
         // Installed service (SYSTEM / root): admin-only folders, firewall rules of the NTP and DHCP plugins (Windows).

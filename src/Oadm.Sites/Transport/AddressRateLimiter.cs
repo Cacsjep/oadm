@@ -107,6 +107,18 @@ public sealed class AddressRateLimiter
         }
     }
 
+    /// <summary>
+    /// True when the source <paramref name="key"/> has used up its attempts of the running window (nothing counted, the
+    /// total limit not looked at): a caller that counts only failures asks before it does the work.
+    /// </summary>
+    public bool IsLimited(string key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        var now = _time.GetTimestamp();
+        lock (_lock)
+            return _buckets.TryGetValue(key, out var node) && !Ended(node.Value.Start, now) && node.Value.Count >= _perAddress;
+    }
+
     private bool Ended(long start, long now) => _time.GetElapsedTime(start, now) >= _window;
 
     private sealed class Bucket(string key)

@@ -32,6 +32,23 @@ public sealed class LimitsTests
     }
 
     [Fact]
+    public void AnAddressIsLimitedOnceItsAttemptsAreUsedUntilTheWindowEnds()
+    {
+        var time = new FakeTimeProvider();
+        var limiter = new AddressRateLimiter(perAddress: 2, total: 0, TimeSpan.FromMinutes(1), time);
+
+        Assert.False(limiter.IsLimited("10.0.0.5")); // never seen
+        Assert.True(limiter.TryAcquire("10.0.0.5"));
+        Assert.False(limiter.IsLimited("10.0.0.5"));
+        Assert.True(limiter.TryAcquire("10.0.0.5"));
+        Assert.True(limiter.IsLimited("10.0.0.5"));
+        Assert.False(limiter.IsLimited("10.0.0.6")); // asking counts nothing and limits nobody else
+
+        time.Advance(TimeSpan.FromMinutes(1));
+        Assert.False(limiter.IsLimited("10.0.0.5"));
+    }
+
+    [Fact]
     public void IPv6CountsPerSlash64AndMappedIPv4AsIPv4()
     {
         Assert.Equal(AddressRateLimiter.KeyOf(IPAddress.Parse("2001:db8:1:2::5")), AddressRateLimiter.KeyOf(IPAddress.Parse("2001:db8:1:2:ffff::1")));
