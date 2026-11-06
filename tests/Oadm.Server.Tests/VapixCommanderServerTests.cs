@@ -87,4 +87,47 @@ public sealed class VapixCommanderServerTests
             Directory.Delete(library, recursive: true);
         }
     }
+
+    /// <summary>
+    /// The rollout task is hidden and has no permission a role could hold: the page's "Run on many devices" is the check
+    /// (docs/spec/security.md, Page tasks), and TaskService.Run never starts it.
+    /// </summary>
+    [Fact]
+    public async Task AnOperatorWithTheRolloutRightStartsARolloutAndRunNeverStartsTheHiddenTask()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        var library = WriteSampleLibrary();
+        try
+        {
+            await RegisterAsync(host, library);
+            await host.Get<Core.Auth.RoleStore>().SyncCatalogAsync(Core.Auth.PermissionCatalog.Build(host.Get<PluginRegistry>()), CancellationToken.None);
+            var device = (await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.1", 1)).Id;
+            var op = await host.InvokerForUserAsync("tech1", Sdk.Plugins.UserRole.Operator);
+
+            var reply = await new Proto.PluginService.PluginServiceClient(op).InvokeAsync(new Proto.InvokeRequest
+            {
+                PluginId = VapixCommanderPlugin.PluginId,
+                Method = CommanderMethods.Rollout,
+                PayloadJson = CommandJson.Write(new RolloutRequest
+                {
+                    DeviceIds = [device],
+                    Commands = [new RolloutCommand { Command = new CommandRef { Source = CommandSources.Library, Id = "common.brand.read" } }],
+                }),
+            });
+
+            var started = CommandJson.Read<RolloutReply>(reply.PayloadJson);
+            Assert.Null(started.Error);
+            var taskId = Assert.Single(started.TaskIds);
+            var tasks = await host.Tasks.ListAsync(new Proto.ListTasksRequest());
+            Assert.Contains(tasks.Tasks, t => t.Id == taskId.ToString() && t.PluginId == RolloutTaskPlugin.PluginId);
+
+            var direct = await Assert.ThrowsAsync<Grpc.Core.RpcException>(async () => await host.Tasks.RunAsync(
+                new Proto.RunTaskRequest { PluginId = RolloutTaskPlugin.PluginId, PayloadJson = "{}", DeviceIds = { device.ToString() } }));
+            Assert.Equal((Grpc.Core.StatusCode.PermissionDenied, "This task starts only from its page."), (direct.StatusCode, direct.Status.Detail));
+        }
+        finally
+        {
+            Directory.Delete(library, recursive: true);
+        }
+    }
 }
