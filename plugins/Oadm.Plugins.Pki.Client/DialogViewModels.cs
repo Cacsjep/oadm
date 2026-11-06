@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Plugins.Pki.Ca;
+using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Validation;
 
 namespace Oadm.Plugins.Pki.Client;
@@ -141,23 +142,19 @@ public sealed partial class CreateCaViewModel : PkiDialogViewModel
 
         var request = new CreateCaRequest(CommonName.Trim(), IsIntermediate, IsIntermediate ? Issuer?.Value : null, Key?.Value, PkiValidation.ParseInt(ValidityYears) ?? 0);
         IsBusy = true;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             if (await _submit(this, request).ConfigureAwait(true))
             {
                 Close();
             }
-        }
-#pragma warning disable CA1031 // Shown under the name field; the dialog stays open.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            Validation.SetServerError(nameof(CommonName), Message(ex));
+            Validation.SetServerError(nameof(CommonName), error);
         }
-        finally
-        {
-            IsBusy = false;
-        }
+
+        IsBusy = false;
     }
 
     private bool CanCreate() => IsFormValid && !IsBusy;
@@ -281,23 +278,19 @@ public sealed partial class ImportCaViewModel : PkiDialogViewModel
             string.IsNullOrEmpty(Password) ? null : Password,
             NeedsKeyFile && _keyFile is not null ? Convert.ToBase64String(_keyFile) : null,
             string.IsNullOrEmpty(KeyPassword) ? null : KeyPassword);
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             if (await _submit(this, request).ConfigureAwait(true))
             {
                 Close();
             }
-        }
-#pragma warning disable CA1031 // Shown under the file; the dialog stays open.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            Validation.SetServerError(nameof(File), Message(ex));
+            Validation.SetServerError(nameof(File), error);
         }
-        finally
-        {
-            IsBusy = false;
-        }
+
+        IsBusy = false;
     }
 
     private bool CanImport() => IsFormValid && !IsBusy;
@@ -361,24 +354,20 @@ public sealed partial class BackupViewModel : PkiDialogViewModel
             return;
         }
 
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             IsBusy = true;
             if (await _submit(this, Password).ConfigureAwait(true))
             {
                 Close();
             }
-        }
-#pragma warning disable CA1031 // Shown under the password; the dialog stays open.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            Validation.SetServerError(nameof(Password), Message(ex));
+            Validation.SetServerError(nameof(Password), error);
         }
-        finally
-        {
-            IsBusy = false;
-        }
+
+        IsBusy = false;
     }
 
     private bool CanBackup() => IsFormValid && !IsBusy;
@@ -443,23 +432,19 @@ public sealed partial class ImportAuthorityViewModel : PkiDialogViewModel
         }
 
         IsBusy = true;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             if (await _submit(this, new ImportAuthorityRequest(Convert.ToBase64String(_file!), File)).ConfigureAwait(true))
             {
                 Close();
             }
-        }
-#pragma warning disable CA1031 // Shown under the file; the dialog stays open.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            Validation.SetServerError(nameof(File), Message(ex));
+            Validation.SetServerError(nameof(File), error);
         }
-        finally
-        {
-            IsBusy = false;
-        }
+
+        IsBusy = false;
     }
 
     private bool CanImport() => IsFormValid && !IsBusy;

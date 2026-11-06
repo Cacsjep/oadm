@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using Oadm.Plugins.Pki.Certificates;
 using Oadm.Plugins.Pki.Policies;
 using Oadm.Sdk.Certificates;
+using Oadm.Sdk.Client;
 
 namespace Oadm.Plugins.Pki.Client;
 
@@ -96,23 +97,19 @@ public sealed partial class CreateCertificateViewModel : PkiDialogViewModel
         }
 
         IsBusy = true;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             if (await _submit(this, new CreateCertificateRequest(Use!.Value, Policy!.Policy.Id, Name.Trim(), Addresses), Password).ConfigureAwait(true))
             {
                 Close();
             }
-        }
-#pragma warning disable CA1031 // Shown below the name; the dialog stays open.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            Validation.SetServerError(nameof(Name), Message(ex));
+            Validation.SetServerError(nameof(Name), error);
         }
-        finally
-        {
-            IsBusy = false;
-        }
+
+        IsBusy = false;
     }
 
     private bool CanCreate() => IsFormValid && !IsBusy;
@@ -191,23 +188,19 @@ public sealed partial class SignRequestViewModel : PkiDialogViewModel
         }
 
         IsBusy = true;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             if (await _submit(this, new SignCertificateRequest(Policy!.Policy.Id, Convert.ToBase64String(_file!), File)).ConfigureAwait(true))
             {
                 Close();
             }
-        }
-#pragma warning disable CA1031 // Shown below the file; the dialog stays open.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            Validation.SetServerError(nameof(File), Message(ex));
+            Validation.SetServerError(nameof(File), error);
         }
-        finally
-        {
-            IsBusy = false;
-        }
+
+        IsBusy = false;
     }
 
     private bool CanSign() => IsFormValid && !IsBusy;
@@ -284,23 +277,19 @@ public sealed partial class ImportCertificateViewModel : PkiDialogViewModel
         }
 
         IsBusy = true;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             if (await _submit(this, new ImportCertificateRequest(Convert.ToBase64String(_file!), File, NeedsPassword && Password.Length > 0 ? Password : null)).ConfigureAwait(true))
             {
                 Close();
             }
-        }
-#pragma warning disable CA1031 // Shown below the file; the dialog stays open.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            Validation.SetServerError(nameof(File), Message(ex));
+            Validation.SetServerError(nameof(File), error);
         }
-        finally
-        {
-            IsBusy = false;
-        }
+
+        IsBusy = false;
     }
 
     private bool CanImport() => IsFormValid && !IsBusy;
@@ -365,23 +354,19 @@ public sealed partial class ExportKeyViewModel : PkiDialogViewModel
         }
 
         IsBusy = true;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             if (await _submit(this, Password).ConfigureAwait(true))
             {
                 Close();
             }
-        }
-#pragma warning disable CA1031 // Shown below the password; the dialog stays open.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            Validation.SetServerError(nameof(Password), Message(ex));
+            Validation.SetServerError(nameof(Password), error);
         }
-        finally
-        {
-            IsBusy = false;
-        }
+
+        IsBusy = false;
     }
 
     private bool CanExport() => IsFormValid && !IsBusy;

@@ -26,8 +26,8 @@ public sealed record Choice(string Value, string Label);
 /// </summary>
 public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 {
-    /// <summary>Wait before watching again after the event stream ended or failed.</summary>
-    public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
+    /// <summary>The waits of the event watch (again after the stream ended or broke); a test passes its own.</summary>
+    public PluginEventWatchOptions EventWatch { get; init; } = new();
 
     public const string TrustTooltip = "Firefox and Java use their own certificate stores: import the exported certificate there separately.";
 
@@ -173,23 +173,17 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
     /// <summary>Reads the whole state.</summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var json = await _ctx.InvokeAsync(PkiMethods.GetState, null, ct).ConfigureAwait(true);
             if (json is not null)
             {
                 await ApplyStateAsync(PkiJson.Deserialize<PkiState>(json)).ConfigureAwait(true);
             }
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        }, GuardedCancel.Throw, ct).ConfigureAwait(true);
+        if (error is not null)
         {
-            throw;
-        }
-#pragma warning disable CA1031 // Any server error is shown in the status line.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            SetStatus(ServiceStatus.Error, "Cannot read the PKI state", PkiDialogViewModel.Message(ex));
+            SetStatus(ServiceStatus.Error, "Cannot read the PKI state", error);
         }
     }
 
@@ -452,7 +446,7 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
 
         _serverWork[fingerprint] = new IssuedCertificateStatus("Installing on the server", "accent");
         Authorities.RefreshTrust();
-        try
+        var failure = await GuardedRun.RunAsync(async () =>
         {
             var reply = PkiJson.Deserialize<InstallReply>(await _ctx.InvokeAsync(PkiMethods.InstallServerTrust, PkiJson.Serialize(new InstallTrustRequest(fingerprint)), CancellationToken.None)
                 .ConfigureAwait(true));
@@ -479,18 +473,14 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
             _clientTrustStates[fingerprint] = result.Installed
                 ? new IssuedCertificateStatus(TrustedHere, ServiceStatus.Ok, TrustedHereTip)
                 : new IssuedCertificateStatus("Failed on this computer", ServiceStatus.Error, result.Error);
-        }
-#pragma warning disable CA1031 // Shown in the badges.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (failure is not null)
         {
-            _serverWork[fingerprint] = new IssuedCertificateStatus("Failed on the server", ServiceStatus.Error, PkiDialogViewModel.Message(ex));
+            _serverWork[fingerprint] = new IssuedCertificateStatus("Failed on the server", ServiceStatus.Error, failure);
         }
-        finally
-        {
-            InstallTrustCommand.NotifyCanExecuteChanged();
-            Authorities.RefreshTrust();
-        }
+
+        InstallTrustCommand.NotifyCanExecuteChanged();
+        Authorities.RefreshTrust();
     }
 
     /// <summary>The badge of a root CA once it is in the server's root store.</summary>
@@ -626,47 +616,15 @@ public sealed partial class PkiViewModel : ValidatingViewModel, IDisposable
         }
     }
 
-    private async Task RunAsync(CancellationToken ct)
-    {
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                var events = _ctx.WatchEventsAsync(ct).GetAsyncEnumerator(ct);
-                try
-                {
-                    // Subscribe first, then read the state: nothing published in between is lost.
-                    var next = events.MoveNextAsync();
-                    await LoadAsync(ct).ConfigureAwait(true);
-                    await Policies.LoadAsync(ct).ConfigureAwait(true);
-                    await LoadListsAsync(ct).ConfigureAwait(true); // events may have been missed while not watching
-                    while (await next.ConfigureAwait(true))
-                    {
-                        await HandleEventAsync(events.Current).ConfigureAwait(true);
-                        next = events.MoveNextAsync();
-                    }
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    return;
-                }
-#pragma warning disable CA1031 // The connection dropped: read again and watch again after a short delay.
-                catch (Exception)
-#pragma warning restore CA1031
-                {
-                }
-                finally
-                {
-                    await events.DisposeAsync().ConfigureAwait(true);
-                }
+    // Subscribe first, then read the state: nothing published in between is lost. After a drop the page waits, reads
+    // again and watches again.
+    private Task RunAsync(CancellationToken ct) => _ctx.RunAsync(ReadAllAsync, HandleEventAsync, EventWatch, ct);
 
-                await Task.Delay(ReconnectDelay, ct).ConfigureAwait(true);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // page hidden
-        }
+    private async Task ReadAllAsync(CancellationToken ct)
+    {
+        await LoadAsync(ct).ConfigureAwait(true);
+        await Policies.LoadAsync(ct).ConfigureAwait(true);
+        await LoadListsAsync(ct).ConfigureAwait(true); // events may have been missed while not watching
     }
 
     private void SetStatus(string kind, string text, string? detail)

@@ -222,20 +222,8 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
         BusyText = StartingTrialText;
         IsBusy = true;
         Error = null;
-        try
-        {
-            await _ctx.StartProTrialAsync(CancellationToken.None).ConfigureAwait(true);
-        }
-#pragma warning disable CA1031 // Shown below the buttons.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            Error = ServerErrors.Message(ex);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        Error = await GuardedRun.RunAsync(() => _ctx.StartProTrialAsync(CancellationToken.None)).ConfigureAwait(true);
+        IsBusy = false;
 
         await LoadAsync(CancellationToken.None).ConfigureAwait(true); // the license state the server part sees now
     }
@@ -256,20 +244,16 @@ public sealed partial class ServerSwitchViewModel : ObservableObject
         BusyText = (method == ServerSwitchMethods.TurnOn ? "Starting the " : "Stopping the ") + _name;
         IsBusy = true;
         Error = null;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             Apply(ServerSwitchMethods.Deserialize(await _ctx.InvokeAsync(method, null, CancellationToken.None).ConfigureAwait(true)));
-        }
-#pragma warning disable CA1031 // Shown below the buttons.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            Error = ServerErrors.Message(ex);
+            Error = error;
         }
-        finally
-        {
-            IsBusy = false;
-        }
+
+        IsBusy = false;
     }
 
     private void NotifyButtons()

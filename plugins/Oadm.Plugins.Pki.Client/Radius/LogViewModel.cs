@@ -409,16 +409,14 @@ public sealed partial class LogViewModel : ObservableObject
             return;
         }
 
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             await _ctx.InvokeAsync(RadiusMethods.DeleteLog, null, CancellationToken.None).ConfigureAwait(true);
             Cleared();
-        }
-#pragma warning disable CA1031 // Shown directly below the table.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            Error = ServerErrors.Message(ex);
+            Error = error;
         }
     }
 }
