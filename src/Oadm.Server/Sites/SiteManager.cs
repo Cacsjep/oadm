@@ -574,9 +574,9 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     /// <summary>
     /// Makes <paramref name="control"/> the control link of the site. One session per node identity: while the current
     /// session still answers, a second control link with the same key is refused (a copied node); otherwise it replaces it.
-    /// False (nothing started, the caller disposes the link) when the site is gone, Accept site nodes is off or the server
-    /// stops: a session never starts that <see cref="ForgetAsync"/>, <see cref="SetAcceptAsync"/> or
-    /// <see cref="DisposeAsync"/> would not end.
+    /// False (nothing started, the caller disposes the link) when the site is gone or not bound (its node was reset: only
+    /// a new bind gives it a session), Accept site nodes is off or the server stops: a session never starts that
+    /// <see cref="ForgetAsync"/>, <see cref="SetAcceptAsync"/> or <see cref="DisposeAsync"/> would not end.
     /// </summary>
     private async Task<bool> AttachControlAsync(Guid siteId, NodeLink control, bool fresh)
     {
@@ -586,7 +586,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             attaching = CanAttach() ? _sites.GetValueOrDefault(siteId) : null;
         }
 
-        if (attaching is null)
+        if (attaching is null || attaching.Row.NotBound)
         {
             return false;
         }
@@ -641,7 +641,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             var now = Time.GetTimestamp();
             lock (_lock)
             {
-                if (!CanAttach() || !_sites.TryGetValue(siteId, out var entry) || entry != attaching)
+                if (!CanAttach() || !_sites.TryGetValue(siteId, out var entry) || entry != attaching || entry.Row.NotBound)
                 {
                     _ = session.DisposeAsync().AsTask();
                     return false;
@@ -670,7 +670,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             lock (_lock)
             {
                 var entry = _sites.GetValueOrDefault(siteId);
-                if (!CanAttach() || entry != attaching || entry.Session != session)
+                if (!CanAttach() || entry != attaching || entry.Session != session || entry.Row.NotBound)
                 {
                     if (entry?.Session == session)
                     {

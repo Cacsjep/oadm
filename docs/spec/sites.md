@@ -66,6 +66,10 @@ side.
   asks a set. A range scan probes each address of the range once whatever the node answers
   (`DiscoveryService.ScanSiteAsync`); a TCP relay keeps at most 512 connections (`SiteTcpRelay.MaxConnections`, the
   node holds 256) and at most 512 refusals waiting for the link, a UDP relay nothing longer than a datagram.
+- **A reset node's old key:** once a site is Not bound (Reset on the node), a link with the site's key that says Bound
+  is closed after its Hello, never trusted, and gets no session (logged; `SiteManager.ResetKeysRefused`); the key
+  counts as unknown for the limits above. Only a new bind gives the site a session again; a node that accepted a new
+  server identity still waits to bind its site again.
 - **Binding** with J-PAKE (`Oadm.Sites.Binding`): one at a time; the node's Bind runs to its end whatever the caller does;
   Unbind when the site cannot be stored or Bind's answer was lost; a node that accepted a new server identity binds its
   site again with the code.

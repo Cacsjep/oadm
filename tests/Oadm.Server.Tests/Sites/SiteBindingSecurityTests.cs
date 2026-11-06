@@ -155,6 +155,39 @@ public sealed class SiteBindingSecurityTests
     }
 
     [Fact]
+    public async Task TheKeyANodeHadBeforeItsResetGetsNoSession()
+    {
+        await using var server = await SiteServer.StartAsync();
+        await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address);
+        var id = await server.BindAsync(node, "Building B");
+        // The node as it was before the Reset (a lost or stolen node, a copy): bound to this server, with the site's key.
+        var before = node.CopyFolder();
+        try
+        {
+            var reset = await node.Get<SiteNode.AdminChannel.AdminHandler>().HandleAsync(AdminRequest.Of(AdminCommands.Reset), isAdmin: true, CancellationToken.None);
+            Assert.True(reset.Ok);
+            await Eventually.TrueAsync(async () => (await server.ListAsync()).Sites.Any(s => s.Id == id.ToString() && s.State == Proto.SiteState.NotBound), "the site not bound");
+            await Eventually.TrueAsync(() => server.Manager.LiveSessions == 0, "the reset node's session ended");
+            var started = server.Manager.SessionsStarted;
+
+            await using var old = await SiteTestNode.StartAsync(folder: before);
+
+            // Refused after its Hello: the old node sees a server that closes its connection, and no session started.
+            await Eventually.TrueAsync(
+                () => server.Manager.ResetKeysRefused >= 1 && old.Get<SiteNode.Feed.ConnectionState>().Text == SiteNode.Admin.AdminTexts.CannotReach(server.Address),
+                "the key from before the Reset refused");
+            Assert.Equal(started, server.Manager.SessionsStarted);
+            Assert.False(server.Manager.HasSession(id));
+            var site = Assert.Single((await server.ListAsync()).Sites, s => s.Id == id.ToString());
+            Assert.Equal((Proto.SiteState.NotBound, SiteTexts.NotBound), (site.State, site.Message));
+        }
+        finally
+        {
+            SiteTestNode.TryDelete(before);
+        }
+    }
+
+    [Fact]
     public async Task ANodeThatAcceptedTheServersNewIdentityBindsItsSiteAgainWithTheCode()
     {
         await using var server = await SiteServer.StartAsync();
