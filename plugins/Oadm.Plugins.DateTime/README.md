@@ -93,7 +93,7 @@ from DHCP or manual, a custom date and time and the time zone from DHCP or manua
 | Time zone only with NTP / manual | Server time mode disables the zone: the devices get the OADM server's time zone (named in the note below the radio button). |
 | Synchronize with server computer time | Below the radio button: the server time and the difference to the device ("device and server agree", "device is 3.2 s ahead"). NTP off; the OADM server's UTC time is sent once per device when its task runs (like ACS). |
 | Synchronize with NTP server: Obtain from DHCP / Use server | Below the radio button: an **Obtain from DHCP** check box and one field for up to 5 host names or addresses, separated by commas. **Use NTS (Network Time Security)** when a selected device supports it (the field then takes NTS KE servers). |
-| Set manually | Below the radio button: date, time and "Use this computer's time", in the device's time zone; NTP off. |
+| Set manually | Below the radio button: date, time and "Use this computer's time", in the device's time zone; NTP off. The entered time holds at OK: a device whose task runs later gets the time since then on top (see `manualSetAt`), so thousands of devices end with the same clock. |
 | (always writes everything) | Same, **exactly like ADM**: no "Keep unchanged"; OK writes the time zone and the selected time mode to every selected device. The time mode starts at the first device's mode (NTP if enabled, else Set manually). The steps skip values a device already has ("Already ..."). |
 | OK | OK, disabled with the reason as tooltip until a time zone is chosen and every field is valid. Each error sits below its input; the time zone error below the drop-down. Device notes ("500 of the selected devices lack the date and time settings of AXIS OS 9.30 or later ...") are one small line below the chosen mode's input. |
 
@@ -133,6 +133,12 @@ Europe/Vienna.".
 - `mode`: `Ntp`, `ServerTime`, `Manual`; required, a payload without it is refused;
 - `ntp`: {`source` Dhcp/Static, `servers`, `nts`};
 - `manualDateTime`: "yyyy-MM-ddTHH:mm:ss", device local time;
+- `manualSetAt`: optional, manual mode: the moment for which `manualDateTime` was entered (the dialog's OK), on the OADM
+  server's clock. The dialog takes it from the server time it read with the first device (`CurrentTimeSettings.ServerUtc`
+  plus the time since), never from the client's clock. The task writes `manualDateTime` plus the time since that moment
+  by its `TimeProvider` (step detail "... (the entered time plus 250 s since OK)"); a moment ahead of the server's clock
+  adds nothing. Without it (an older client, or the dialog could not read the device time) every device gets
+  `manualDateTime` as entered, however long it waited;
 - `timeZoneUnchanged`: name hint from the dialog (one device whose zone and DST stay as they are).
 
 No secrets. `GetTaskName(payloadJson)` (`ITaskPlugin.GetTaskName`) gives the task name: "Change date and time", or the
@@ -174,5 +180,6 @@ device ([device groups](../../docs/spec/device-scope.md)). Tests: server `Device
 ## Tests
 
 `tests/Oadm.Plugins.DateTime.Tests`: parsers from the recorded answers (`Fixtures/`), request building, validation,
-time zones and POSIX rules, the task with a fake device, the dialog view model, Perf scale tests and a headless
+time zones and POSIX rules, the task with a fake device (also a manual time on a device that waited in the queue, on a
+fake clock), the dialog view model, Perf scale tests and a headless
 screenshot. No write was sent to a device.

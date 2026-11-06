@@ -54,13 +54,20 @@ public sealed record NtpSettings(NtpSource Source, IReadOnlyList<string> Servers
 /// Name hint from the dialog: the time zone equals what the (single) device already has, so the task is named after
 /// the time mode ("Set NTP servers 10.0.0.17") instead of "Change date and time". Changes nothing that is written.
 /// </param>
+/// <param name="ManualSetAt">
+/// <see cref="TimeMode.Manual"/>: the moment, on the OADM server's clock, for which <paramref name="ManualDateTime"/> was
+/// entered (the dialog's OK). Every device gets the entered time plus the time since then, so the last device of a long
+/// run is not set behind. Null (an older client, or the dialog never read the server's time): every device gets the
+/// entered time as it is.
+/// </param>
 public sealed record DateTimePayload(
     string? TimeZone,
     TimeMode Mode,
     NtpSettings? Ntp = null,
     string? ManualDateTime = null,
     bool DaylightSaving = true,
-    bool TimeZoneUnchanged = false)
+    bool TimeZoneUnchanged = false,
+    DateTimeOffset? ManualSetAt = null)
 {
     public const string ManualFormat = "yyyy-MM-ddTHH:mm:ss";
 

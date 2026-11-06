@@ -582,7 +582,8 @@ zone from the 313 IANA zones of AXIS OS, daylight saving, time mode: server time
 - Rules that must hold: behaves exactly like ADM (no "Keep unchanged": OK writes the time zone and the chosen time mode
   to every selected device); values the device already has are skipped; every write is verified by reading again;
   devices without the Time API fail setting the clock with "Nothing was changed" (no `date.cgi`); task names say what
-  changes ("Set NTP servers ...", "Sync with server time", else "Change date and time").
+  changes ("Set NTP servers ...", "Sync with server time", else "Change date and time"); a manual time holds at OK, a
+  device whose task runs later gets the time since then on top (payload `manualSetAt`, on the server's clock).
 
 ## Device configuration
 

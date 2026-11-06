@@ -84,11 +84,18 @@ internal sealed class DateTimeTaskRunner(TimeProvider time, Func<TimeZoneInfo> s
             if (section.Kind == SectionKind.DateTime)
             {
                 using var step = ctx.BeginStep(section.StepName);
-                var utc = plan.UseServerTime ? time.GetUtcNow() : plan.ManualUtc!.Value;
+                // Set manually: the entered time was right when the dialog closed; a device whose turn comes later gets the
+                // time since then on top.
+                var since = plan.UseServerTime ? TimeSpan.Zero : SinceEntered(payload);
+                var utc = plan.UseServerTime ? time.GetUtcNow() : plan.ManualUtc!.Value + since;
                 await WriteAsync(ctx, plan.DateTimeRequest(utc), section, done, ct).ConfigureAwait(false);
                 setUtc = utc;
                 setAt = time.GetTimestamp();
-                step.Complete(plan.UseServerTime ? $"{TimePlan.FormatUtc(utc)} (server time)" : TimePlan.FormatUtc(utc));
+                step.Complete(plan.UseServerTime
+                    ? $"{TimePlan.FormatUtc(utc)} (server time)"
+                    : since < TimeSpan.FromSeconds(1)
+                        ? TimePlan.FormatUtc(utc)
+                        : string.Create(CultureInfo.InvariantCulture, $"{TimePlan.FormatUtc(utc)} (the entered time plus {Math.Floor(since.TotalSeconds):0} s since OK)"));
                 done.Add(section.Description);
                 continue;
             }
@@ -126,6 +133,16 @@ internal sealed class DateTimeTaskRunner(TimeProvider time, Func<TimeZoneInfo> s
         {
             await ReadNtpStepAsync(ctx, apis, StepVerifyNtp, new CurrentTimeSettings(), ct, verify: (step, read) => VerifyNtp(step, plan.Expected, read)).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Set manually: the time since the dialog fixed the entered time (<see cref="DateTimePayload.ManualSetAt"/>, on this
+    /// server's clock). Zero without that moment (an older client) or when it lies ahead of the clock.
+    /// </summary>
+    private TimeSpan SinceEntered(DateTimePayload payload)
+    {
+        var since = payload.ManualSetAt is { } at ? time.GetUtcNow() - at : TimeSpan.Zero;
+        return since > TimeSpan.Zero ? since : TimeSpan.Zero;
     }
 
     /// <summary>Steps shown as Pending from the start: like ADM the time zone and the time mode are always written.</summary>
