@@ -140,7 +140,9 @@ public sealed class DeviceGroupTests
         await rig.SettleAsync();
 
         Assert.Equal(("100", "50"), (Exposure(rig, stays), Exposure(rig, leaves)));
-        Assert.Equal([stays.Id], rig.Probes.Open.Select(p => p.DeviceId));
+
+        // The runner closes the stream of a camera that left without waiting for it.
+        await Eventually.TrueAsync(() => rig.Probes.Open.Select(p => p.DeviceId).SequenceEqual([stays.Id]), "the stream of the camera that left is closed");
         await rig.RunToEndAsync();
         Assert.Equal("50", Exposure(rig, stays));
         var detail = await rig.DetailAsync(started.RunId);
