@@ -269,6 +269,8 @@ public sealed class PublishMqttActionTests
     [InlineData("+")]
     [InlineData("x#")]
     [InlineData("x\0y")]
+    [InlineData("TOTAL 10.60\nORDER 23F7H")]
+    [InlineData("a\tb")]
     [InlineData("$SYS")]
     [InlineData("")]
     public async Task AValueThatChangesTheTopicLevelSendsNothing(string value)

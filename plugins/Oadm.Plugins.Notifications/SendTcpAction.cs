@@ -176,7 +176,7 @@ public sealed class SendTcpAction : IActionPlugin
         }
 
         // A value of the event never adds a line at the receiver, where a line is often a command: JSON escapes line
-        // breaks, Text and XML lose them (and every other control character). The typed message keeps its own.
+        // breaks, Text and XML turn them into a space (and lose every other control character). The typed message keeps its own.
         var text = format switch
         {
             "json" => ctx.Text(message, PlaceholderEscape.Json),

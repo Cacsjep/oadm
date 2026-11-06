@@ -55,8 +55,8 @@ public sealed class SendTcpActionTests
     }
 
     [Theory]
-    [InlineData("text", "ALARM {objectId}\nEND", "ALARM 7OPEN gate<1>\nEND\r\n")]
-    [InlineData("xml", "<alarm id=\"{objectId}\"/>\n<end/>", "<alarm id=\"7OPEN gate&lt;1&gt;\"/>\n<end/>\r\n")]
+    [InlineData("text", "ALARM {objectId}\nEND", "ALARM 7 OPEN gate<1>\nEND\r\n")]
+    [InlineData("xml", "<alarm id=\"{objectId}\"/>\n<end/>", "<alarm id=\"7 OPEN gate&lt;1&gt;\"/>\n<end/>\r\n")]
     [InlineData("json", "{\"id\": \"{objectId}\"}", "{\"id\": \"7\\r\\nOPEN gate<1>\\t\\u0000\"}\r\n")]
     public async Task A_value_of_the_event_never_adds_a_line(string format, string message, string expected)
     {

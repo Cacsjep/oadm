@@ -71,7 +71,7 @@ public async Task ExecuteAsync(IActionContext ctx, ActionInvocation invocation, 
 {
     var subject = ctx.Text(invocation.Get("subject"));       // placeholders filled
     await Smtp.SendAsync(invocation.Get("to")!, subject, ctx.Text(invocation.Get("body")), invocation.Get("smtpPassword"), ct);
-    ctx.Log("Sent to " + invocation.Get("to"));              // one line in the event log entry; never a secret
+    ctx.Log("Sent to " + invocation.Get("to"));              // one line in the event log entry (OADM turns line breaks into spaces); never a secret
 }
 ```
 
@@ -87,8 +87,8 @@ public async Task ExecuteAsync(IActionContext ctx, ActionInvocation invocation, 
   `{serial}`, `{tags}`, `{site}` (the device's site, or the site of a "Site offline" event), ..., and every value of the
   event by its name (`{port}`). `ctx.Text(text,
   PlaceholderEscape.Json)` (or `Xml`, `Url`) escapes each value for a body or a URL, never the text around it;
-  `SingleLine` removes the control characters of a value, so it never adds a line to a text protocol where a line is a
-  command. `ActionPlaceholders.Fixed` lists the fixed placeholders. `ActionPlaceholders.FirstUnknown(text, ctx)` names a
+  `SingleLine` turns a line break of a value into a space and removes its other control characters, so it never adds a
+  line to a text protocol where a line is a command. `ActionPlaceholders.Fixed` lists the fixed placeholders. `ActionPlaceholders.FirstUnknown(text, ctx)` names a
   `{name}` the run does not fill, for an action that must not send it as it is.
 - `Password` fields are stored encrypted and never sent back to a client. `ctx.Settings` are the plugin's settings
   (the package's, or the owning core plugin's): an SMTP server, for example.
