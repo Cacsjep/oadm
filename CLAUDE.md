@@ -122,7 +122,7 @@ must never break.
 - **[Packaging, CI and website](docs/spec/packaging.md)**: self-contained single-file exes, plugins next to each exe;
   terms of use accepted on the first client start; installers MSI, .deb, .pkg with "Server and client" / "Client only",
   the OADM Site Node MSI and .deb, a ZIP per optional plugin and platform (never in the installers); one workflow
-  `release.yml` on tags `v*.*.*` (a `-rc.N` tag is a pre-release), `pr.yml`, weekly `vulnerabilities.yml`; every Action
+  `release.yml` on tags `v*.*.*` (a `-rc.N` tag is a pre-release), `main.yml` (tests on every push to main), `pr.yml`, weekly `vulnerabilities.yml`; every Action
   pinned by hash; the website (oadm.app).
   Never Native AOT or trimming for the host apps; never `Assembly.Location`; FFmpeg LGPL builds only.
 - **[gRPC services](docs/spec/grpc.md)**: every service and method, its role and errors. Every call needs the token in
