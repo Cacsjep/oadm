@@ -141,7 +141,9 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   when the plugin names what the call did, SDK 0.10.0). The entry is written when the call ends, however it ends, and
   never with the call's own cancellation token: a call that failed adds " (failed)" to the detail, one the client gave up
   " (cancelled)" (it may have changed something already; `PluginGrpcService.AuditCallAsync`, Invoke and Download; tests
-  `PluginCallAuditTests`, `PluginDownloadTests`); a call that ended well keeps its detail. VAPIX Commander `tryRequest`
+  `PluginCallAuditTests`, `PluginDownloadTests`); a call that ended well keeps its detail. A download is different: its
+  entry is written when it opens (a long download has it while it runs, and when the server stops), and one that failed
+  or was cancelled gets a second entry with the suffix (the only one when the plugin never opened it). VAPIX Commander `tryRequest`
   and `rollout` are audited; "Install in trusted root store" on the server asks with the CA's SHA-256 fingerprint and is
   audited. `TaskService.Run` needs every key `PermissionCatalog.RunKeys` names for the payload (refused before any task
   starts), and so does a run a core plugin starts through `call.Tasks` of the user's call or job (`TaskRunPermissions`, the

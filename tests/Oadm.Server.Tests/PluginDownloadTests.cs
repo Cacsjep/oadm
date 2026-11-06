@@ -102,7 +102,7 @@ public sealed class PluginDownloadTests
         await Assert.ThrowsAsync<RpcException>(() => ReadAllAsync(host.Plugins, "refuse", null));
         Assert.Equal(["refuse (failed)"], await DetailsAsync());
 
-        // The client goes away in the middle: the entry is written although the call's token is cancelled.
+        // The client goes away in the middle: a second entry, written although the call's token is cancelled.
         using (var cts = new CancellationTokenSource())
         {
             using var call = host.Plugins.Download(new Proto.InvokeRequest { PluginId = PluginId, Method = "endless" }, cancellationToken: cts.Token);
@@ -111,12 +111,30 @@ public sealed class PluginDownloadTests
             await cts.CancelAsync();
         }
 
-        await Oadm.Sdk.Testing.Eventually.TrueAsync(async () => (await DetailsAsync()).Count == 2, "the cancelled download is audited");
-        Assert.Equal(["refuse (failed)", "Exported without end (cancelled)"], await DetailsAsync());
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(async () => (await DetailsAsync()).Count == 3, "the cancelled download is audited");
+        Assert.Equal(["refuse (failed)", "Exported without end", "Exported without end (cancelled)"], await DetailsAsync());
 
-        // A download that ends well keeps the words it always had.
+        // A download that ends well has one entry, with the words it always had.
         await ReadAllAsync(host.Plugins, "file", "{\"size\":10}");
-        Assert.Equal("Exported 10 bytes", (await DetailsAsync())[^1]);
+        Assert.Equal(["refuse (failed)", "Exported without end", "Exported without end (cancelled)", "Exported 10 bytes"], await DetailsAsync());
+    }
+
+    [Fact]
+    public async Task ADownloadIsAuditedWhenItOpensNotWhenItEnds()
+    {
+        var plugin = new DownloadPlugin { AuditEverything = true };
+        await using var host = await StartAsync(plugin);
+        using var cts = new CancellationTokenSource();
+        using var call = host.Plugins.Download(new Proto.InvokeRequest { PluginId = PluginId, Method = "endless" }, cancellationToken: cts.Token);
+
+        // The header goes out after the entry is written: a download that still runs (or a server that stops) has it.
+        Assert.True(await call.ResponseStream.MoveNext());
+        var entry = Assert.Single((await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries, e => e.Action == AuditActions.PluginCall);
+        Assert.Equal("Exported without end", entry.Detail);
+        Assert.False(plugin.Disposed.Task.IsCompleted);
+
+        await cts.CancelAsync();
+        await plugin.Disposed.Task.WaitAsync(TimeSpan.FromSeconds(30));
     }
 
     private static async Task<TestServerHost> StartAsync(DownloadPlugin plugin, bool withoutDownloads = false)

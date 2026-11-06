@@ -257,6 +257,7 @@ public sealed partial class PluginGrpcService(PluginRegistry registry, CorePlugi
         var access = Authorize(request);
         var caller = await CallerAsync(context).ConfigureAwait(false);
         var done = false;
+        var opened = false;
         string? detail = null;
         try
         {
@@ -282,6 +283,12 @@ public sealed partial class PluginGrpcService(PluginRegistry registry, CorePlugi
             await using (download.ConfigureAwait(false))
             {
                 detail = download.AuditDetail;
+                if (access is { Audited: true })
+                {
+                    // At the open, not at the end: a long download has its entry while it runs, and when the server stops.
+                    await audit.WriteAsync(AuditActions.PluginCall, access.PluginName, detail ?? request.Method, CancellationToken.None).ConfigureAwait(false);
+                    opened = true;
+                }
 
                 // Video and archives do not compress; the chunks go out as they are read.
                 context.WriteOptions = new WriteOptions(WriteFlags.NoCompress);
@@ -310,7 +317,9 @@ public sealed partial class PluginGrpcService(PluginRegistry registry, CorePlugi
         }
         finally
         {
-            if (access is { Audited: true })
+            // A download that ended well has its entry from the open; one that failed or that the client gave up gets a
+            // second one (the only one when the plugin never opened it).
+            if (access is { Audited: true } && !(done && opened))
             {
                 await AuditCallAsync(access.PluginName, detail ?? request.Method, done, context).ConfigureAwait(false);
             }
@@ -324,7 +333,8 @@ public sealed partial class PluginGrpcService(PluginRegistry registry, CorePlugi
     /// <summary>
     /// The audit entry of an audited page call, written when the call ends, however it ends: a call that failed or that the
     /// client gave up may have changed something already. Never with the call's own token (a cancelled call still gets
-    /// its entry). The detail of a call that ended well stays as it always was.
+    /// its entry). The detail of a call that ended well stays as it always was. A download has its entry from the open and
+    /// gets this one only when it did not arrive whole.
     /// </summary>
     private Task AuditCallAsync(string pluginName, string detail, bool done, ServerCallContext context) =>
         audit.WriteAsync(

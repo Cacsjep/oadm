@@ -52,7 +52,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - A task started from a dialog, such as EST - Certificate Enrollment, also finishes when more than 10,000 tasks are in the list.
 - Live video no longer uses more and more memory while the window is busy.
 - Login: a very long user name or password is refused like a wrong password and no longer fills the server log.
-- Vulnerabilities: a list that is empty or dated in the future no longer replaces the server's list.
+- Vulnerabilities: an empty list no longer replaces the server's list, and a list dated in the future counts as dated now.
 - Audit: plugin actions that failed or were cancelled are logged too.
 - Event rules: a rule whose target does not answer, such as a mail server that is down, no longer delays other rules.
 - Event rules: stay fast and correct when thousands of devices change tags or are removed.
@@ -72,7 +72,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Web View: the debug log no longer holds the query of a request, which can carry a password.
 - Web View: when the server refuses a request, the tab says why.
 - The client settings file is saved safely and is readable only by its owner on Linux and macOS.
-- A service that had to repair its data folder's permissions no longer loads the plugins in it.
+- A service that finds a plugin folder other users could change no longer loads it and moves it aside; the other plugins load.
 - A damaged request to a plugin page is refused with a plain text instead of a plugin error.
 
 ## [4.11.0] - 2026-11-05

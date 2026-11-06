@@ -185,8 +185,8 @@ used again.
   - `Download(InvokeRequest)`: stream of `DownloadChunk` {file_name, length (-1 unknown), data}, a file of a core plugin
     that implements `ICorePluginDownloads` (e.g. a recording passed on from a camera); the first message carries the name
     and length, every data message at most 256 KB, uncompressed, nothing stored on the server; the permission, the audit
-    (detail `PluginDownload.AuditDetail`, written when the download ends, with " (failed)" or " (cancelled)" when it did
-    not arrive whole) and the errors of Invoke; UNIMPLEMENTED for a plugin without downloads; the
+    (detail `PluginDownload.AuditDetail`, written when the download opens; a second entry with " (failed)" or
+    " (cancelled)" when it did not arrive whole) and the errors of Invoke; UNIMPLEMENTED for a plugin without downloads; the
     download is disposed at the end or when the client goes away (tests `PluginDownloadTests`).
   - Invoke, Watch and Download run with the caller's call (`PluginCaller`: user + device view,
     `docs/spec/device-scope.md` "Plugins"). For a user with a device group: PERMISSION_DENIED "Only users with all devices

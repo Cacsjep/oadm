@@ -309,9 +309,9 @@ token; disposing the file ends the call.
 
 - **Errors** travel like those of `InvokeAsync`: `ArgumentException` is bad input, `InvalidOperationException` a wrong
   state, each with its message.
-- **Audit.** When `IsAudited(method)` is true the host writes the entry at the end of the download, with
-  `PluginDownload.AuditDetail` as its detail (null: the method name; never a secret) and " (failed)" or " (cancelled)"
-  when the file did not arrive whole.
+- **Audit.** When `IsAudited(method)` is true the host writes the entry when the download opens, with
+  `PluginDownload.AuditDetail` as its detail (null: the method name; never a secret), and a second entry with
+  " (failed)" or " (cancelled)" when the file did not arrive whole.
 - **A device answer.** Open the request with `VapixRequestOptions.StreamResponse` and pass the response as the
   download's `owner`: it is disposed after the stream. Edge Recording Export passes recordings from the camera straight
   to the client this way.
