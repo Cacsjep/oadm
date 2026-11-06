@@ -29,12 +29,13 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
     private readonly CancellationTokenSource _life = new();
     private bool _applyingTab;
 
-    public WebViewPageViewModel(ICorePluginClientContext ctx, WebRuntimeState runtime)
+    public WebViewPageViewModel(ICorePluginClientContext ctx, WebRuntimeState runtime, TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(runtime);
         _ctx = ctx;
         Runtime = runtime;
+        Time = time ?? TimeProvider.System;
         SelectedPreset = WebPagePreset.All[0];
         Validation.Rule(nameof(CustomPath), () => !SelectedPreset.IsCustom || IsDevicePath(CustomPath.Trim()) ? null : WebViewTexts.CustomPathInvalid);
         _ctx.DevicesChanged += OnDevicesChanged;
@@ -55,6 +56,9 @@ public sealed partial class WebViewPageViewModel : ValidatingViewModel, IDisposa
     }
 
     public WebRuntimeState Runtime { get; }
+
+    /// <summary>The clock of the tabs (the pause between two addresses for the system browser); tests pass a fake one.</summary>
+    internal TimeProvider Time { get; }
 
     public bool IsRuntimeMissing => !Runtime.IsAvailable;
 

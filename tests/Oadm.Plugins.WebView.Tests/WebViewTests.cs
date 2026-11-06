@@ -4,6 +4,8 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.VisualTree;
 
+using Microsoft.Extensions.Time.Testing;
+
 using Oadm.Plugins.WebView.Client;
 using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
@@ -15,13 +17,13 @@ namespace Oadm.Plugins.WebView.Tests;
 /// <summary>The Web View page: the tag tree, tabs, Close all and Back, the page select with Custom, and its look.</summary>
 public sealed class WebViewTests(ITestOutputHelper output)
 {
-    private static (TestContext Ctx, WebViewPageViewModel Vm, TestDevice A, TestDevice B, TestDevice C) Page()
+    private static (TestContext Ctx, WebViewPageViewModel Vm, TestDevice A, TestDevice B, TestDevice C) Page(TimeProvider? time = null)
     {
         var a = new TestDevice("10.0.0.48", "P3265-V", "Building A", "PTZ");
         var b = new TestDevice("10.0.0.9", "M3106-L", "Building A") { Status = DeviceStatus.CredentialsRequired };
         var c = new TestDevice("10.0.0.120", "A9210") { Status = DeviceStatus.Unreachable, Category = DeviceCategory.IoModule };
         var ctx = new TestContext([a, b, c]);
-        return (ctx, new WebViewPageViewModel(ctx, WebRuntimeState.Available), a, b, c);
+        return (ctx, new WebViewPageViewModel(ctx, WebRuntimeState.Available, time), a, b, c);
     }
 
     [Fact]
@@ -211,6 +213,42 @@ public sealed class WebViewTests(ITestOutputHelper output)
         await Task.Yield();
         Assert.Equal(WebLinkTarget.Nowhere, vm.ActiveTab!.TargetOf(new Uri(relay, "/")));
         Assert.Equal(WebLinkTarget.Outside, vm.ActiveTab.TargetOf(new Uri("https://www.axis.com/")));
+    }
+
+    [Fact]
+    public async Task A_page_that_asks_for_websites_again_and_again_opens_one_in_the_system_browser_every_few_seconds()
+    {
+        var time = new FakeTimeProvider();
+        var (ctx, vm, a, b, _) = Page(time);
+        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == a.Id));
+        await Task.Yield();
+        var tab = vm.ActiveTab!;
+        var relay = ctx.Web.Sessions[0].Origin;
+        var website = new Uri("https://www.axis.com/support");
+
+        // A script of the page needs no click to leave the tab: the first address opens, a loop opens nothing more.
+        Assert.Equal(WebLinkTarget.Outside, tab.Open(website));
+        Assert.Equal(WebLinkTarget.Nowhere, tab.Open(website));
+        Assert.Equal(WebLinkTarget.Nowhere, tab.Open(new Uri("http://evil.example.com/login")));
+        Assert.Equal(WebLinkTarget.Nowhere, tab.Open(new Uri("mailto:someone@example.com")));
+        time.Advance(WebTab.OutsidePause - TimeSpan.FromMilliseconds(1));
+        Assert.Equal(WebLinkTarget.Nowhere, tab.Open(website));
+
+        // The device's own pages and the browser's are never held back.
+        Assert.Equal(WebLinkTarget.Tab, tab.Open(new Uri(relay, "/camera/index.html#/apps")));
+        Assert.Equal(WebLinkTarget.Browser, tab.Open(new Uri("about:blank")));
+        Assert.Equal(WebLinkTarget.Nowhere, tab.Open(new Uri("http://localhost:8080/")));
+
+        // After the pause the next one opens; what was dropped meanwhile did not make it longer.
+        time.Advance(TimeSpan.FromMilliseconds(1));
+        Assert.Equal(WebLinkTarget.Outside, tab.Open(website));
+        Assert.Equal(WebLinkTarget.Nowhere, tab.Open(website));
+
+        // Every tab has its own pause.
+        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == b.Id));
+        await Task.Yield();
+        Assert.NotSame(tab, vm.ActiveTab);
+        Assert.Equal(WebLinkTarget.Outside, vm.ActiveTab!.Open(website));
     }
 
     [Fact]

@@ -53,9 +53,13 @@ internal enum WebLinkTarget
 /// </summary>
 public sealed partial class WebTab : ObservableObject, IDisposable
 {
+    /// <summary>A tab hands the system browser at most one address in this time (<see cref="Open"/>).</summary>
+    internal static readonly TimeSpan OutsidePause = TimeSpan.FromSeconds(5);
+
     private readonly WebViewPageViewModel _owner;
     private IDeviceWebSession? _session;
     private int _generation;
+    private long? _lastOutside;
 
     internal WebTab(WebViewPageViewModel owner, IDeviceInfo device, string groupKey, WebPagePreset preset, string path)
     {
@@ -126,6 +130,29 @@ public sealed partial class WebTab : ObservableObject, IDisposable
         }
 
         return address!.IsLoopback ? WebLinkTarget.Nowhere : WebLinkTarget.Outside;
+    }
+
+    /// <summary>
+    /// <see cref="TargetOf"/> for an address the page asks for now. The system browser opens without a click (a script, a
+    /// redirect), so a tab hands it one address in <see cref="OutsidePause"/>; the others in that time are dropped
+    /// (<see cref="WebLinkTarget.Nowhere"/>): a page that asks again and again cannot open window after window.
+    /// </summary>
+    internal WebLinkTarget Open(Uri? address)
+    {
+        var target = TargetOf(address);
+        if (target != WebLinkTarget.Outside)
+        {
+            return target;
+        }
+
+        var now = _owner.Time.GetTimestamp();
+        if (_lastOutside is { } last && _owner.Time.GetElapsedTime(last, now) < OutsidePause)
+        {
+            return WebLinkTarget.Nowhere;
+        }
+
+        _lastOutside = now;
+        return WebLinkTarget.Outside;
     }
 
     [RelayCommand]

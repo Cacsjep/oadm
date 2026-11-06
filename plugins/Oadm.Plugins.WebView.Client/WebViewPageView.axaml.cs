@@ -345,7 +345,10 @@ internal sealed class WebTabBrowser : Panel, IDisposable
         _status.Text = _tab.Error ?? (_tab.IsLoading ? "Opening" : string.Empty);
     }
 
-    /// <summary>The tab shows only its device: an address that leaves it is cancelled; a website opens in the system browser.</summary>
+    /// <summary>
+    /// The tab shows only its device: an address that leaves it is cancelled; a website opens in the system browser, one
+    /// in a few seconds (<see cref="WebTab.Open"/>: a script needs no click for this).
+    /// </summary>
     private void OnNavigationStarted(object? sender, WebViewNavigationStartingEventArgs e)
     {
         if (_disposed)
@@ -353,7 +356,7 @@ internal sealed class WebTabBrowser : Panel, IDisposable
             return;
         }
 
-        var target = _tab.TargetOf(e.Request);
+        var target = _tab.Open(e.Request);
         if (target is WebLinkTarget.Outside or WebLinkTarget.Nowhere)
         {
             e.Cancel = true;
@@ -376,7 +379,7 @@ internal sealed class WebTabBrowser : Panel, IDisposable
             return;
         }
 
-        switch (_tab.TargetOf(uri))
+        switch (_tab.Open(uri))
         {
             case WebLinkTarget.Tab:
                 _browser.Navigate(uri);

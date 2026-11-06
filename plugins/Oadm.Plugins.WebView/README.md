@@ -52,7 +52,9 @@ and `Oadm.Client/DeviceWeb`.
   `ValidatingViewModel`), `WebViewPageView` (code-behind owns one `NativeWebView` per tab, kept alive while hidden). A
   tab shows only its device (`WebTab.TargetOf`): an address outside the tab's relay (a link, a script, a redirect) is
   cancelled; a website or mail link opens in the system browser (`Oadm.Sdk.Client.EmbeddedBrowserLinks`, shared with
-  the Help window), another address on this computer (another tab's relay) nowhere. Links that open a new window open
+  the Help window), another address on this computer (another tab's relay) nowhere. A script or a redirect needs no
+  click for this, so a tab hands the system browser one address in 5 s (`WebTab.Open`, `WebTab.OutsidePause`); the others
+  in that time are dropped. Links that open a new window open
   in the same tab when they stay on the device. Back follows the browser's history: the web interfaces are single-page
   apps whose steps load no page, and the control passes on no history event, so after every page load a small script in
   the page reports pushState, replaceState, back / forward and hash changes through the control's message channel
