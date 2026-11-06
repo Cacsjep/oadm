@@ -24,7 +24,7 @@ Every rule here and in `docs/spec/` is agreed with the maintainer; change one on
 | Live video | RTSP (server, own client) relayed as encoded H.265/H.264 over gRPC, decoded in the client with FFmpeg (LGPL, bundled) |
 | Text recognition | ONNX Runtime with PaddleOCR models, in an optional plugin; DirectML (Windows x64), CUDA (Linux x64) or the CPU |
 | Event rule targets | MQTTnet (MQTT), the OPC Foundation .NET stack (OPC UA), our own Modbus TCP client, in plugins |
-| Embedded browser | `Avalonia.Controls.WebView` (MIT; WebView2, WKWebView, WPE WebKit / WebKitGTK of the OS), in the client host for the Web View plugin |
+| Embedded browser | `Avalonia.Controls.WebView` (MIT; WebView2, WKWebView, WPE WebKit / WebKitGTK of the OS), in the client host for the Web View plugin, Help and the MyAxis sign-in |
 
 Cross-platform is a day-one requirement: Windows, Linux, macOS. No Windows-only APIs
 (no DPAPI, no registry, no WMI). Paths via `Path.Combine`, data folder via
@@ -39,20 +39,15 @@ Oadm.sln
 src/
   Oadm.Contracts/      protobuf files + generated gRPC stubs, shared enums
   Oadm.Sdk/            plugin SDK: interfaces, attributes, context objects, Layout/TileLayout (tile grid rules). No Avalonia, no EF
-  Oadm.Sdk.Testing/    fakes for plugin tests (NuGet Oadm.Sdk.Testing): StepRun, Eventually, FakeCamera, FakeDevice, FakeSettings,
-                       FakeTaskContext, FakeActionContext, FakeCoreContext, FakeCallContext, FakeComplianceContext, FakeEventPublisher,
-                       FakeDeviceScopes, FakeSites, FakeHostRules, FakePluginJobs, FakePluginServices, FakeProtectedTags,
-                       FakeStreamProbes, FakeAxisDownloads, PluginCanary, TaskPluginCanaryHost
+  Oadm.Sdk.Testing/    fakes for plugin tests (NuGet Oadm.Sdk.Testing): StepRun, Eventually, FakeCamera, FakeDevice,
+                       the fake contexts, PluginCanary and more (all of them: docs/spec/plugins.md "Test helpers")
   Oadm.Plugin.Sdk/     MSBuild project SDK of plugins (NuGet Oadm.Plugin.Sdk, Sdk/ + targets/): assembly names, SDK
                        references without copies, plugin.json from properties, the plugin folder; Oadm.Plugin.Repo.* for
                        plugins inside this repository; Oadm.Plugin.Versions.props = the host's versions
-  Oadm.Sdk.Client/     client-side plugin SDK: dialog/page/toolbar interfaces, ITaskDialogContext,
-                       IToolbarContext, shared controls (Controls/: IconLabel, SearchBox, OadmIcon,
-                       DialogTitleBar, CardHeader, DialogFooter, StatusChip, StatCard, FileRow, ProgressRow, LoadingOverlay,
-                       ToolbarButton, ToolbarSeparator, ToolbarOverflowPanel, PasswordBox, MessageWindow, FormField, DevicePickerWindow, DeviceIcon,
-                       GroupedChoice, CheckChoice, DeviceTree, PageHeader, PageTab, TileGrid, PageDeviceChoice, ProgressRing, InfoIcon, OffState,
-                       WizardSteps, CodeView, CodeEditor, CertificateWindow, IssuedCertificateList, RowActions, GridGroup, GridSort, LineChart, BarChart), LiveVideo (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch,
-                       form validation (Validation/: ValidatingViewModel, FormValidator), Network/InterfaceSelection,
+  Oadm.Sdk.Client/     client-side plugin SDK: dialog/page/toolbar interfaces, ITaskDialogContext, IToolbarContext, the
+                       shared controls (Controls/, about 40: docs/spec/visual-style.md "Shared controls"), LiveVideo
+                       (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch, form validation (Validation/:
+                       ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
   Oadm.Server/         host: gRPC services, plugin loader, polling, Serilog setup
@@ -64,60 +59,31 @@ src/
   Oadm.SiteNode/       OADM Site Node service and command line (README with the manual test plan)
   Oadm.SiteNode.Admin/ the node's local channel, texts and parsing shared by service, command line and app
   Oadm.SiteNode.App/   the OADM Site Node app (Avalonia)
-plugins/                (layout and SDK guide: plugins/README.md)
-  Oadm.Plugins.Restart/   first Task plugin (server only)
-  Oadm.Plugins.Firmware(.Client)/         Upgrade AXIS OS
-  Oadm.Plugins.Users(.Client)/            Users (accounts on the devices)
-  Oadm.Plugins.DateTime(.Client)/         Date and time
-  Oadm.Plugins.Network(.Client)/          Network settings, Assign IP address
-  Oadm.Plugins.Acap(.Client)/             Applications (ACAP) and their license keys
-  Oadm.Plugins.SnapshotReport(.Client)/   first Core plugin: rail page + PDF maintenance report (off by default)
-  Oadm.Plugins.VapixCommander(.Client)/   core plugin: VAPIX command library, raw requests, rollouts
-  Oadm.Plugins.NtpServer(.Client)/        core plugin: NTP server (RFC 5905 server mode) + "Use OADM as NTP server"
-  Oadm.Plugins.DhcpServer(.Client)/       core plugin: DHCP server (RFC 2131) with static leases and lease list
-  Oadm.Plugins.MetadataMonitor(.Client)/  core plugin: live event stream of one camera (RTSP metadata, port of AXIS Metadata Monitor, off by default)
-  Oadm.Plugins.Pki(.Client)/              core plugin: PKI (one CA for device certificates, trusted root store); one package with
-                                          the core plugins EST server (Est/) and 802.1X server (Radius/), its OADM PRO parts
-                                          (off by default, Turn on on their pages, each with its own source-available LICENSE)
-  Oadm.Plugins.SystemReport(.Client)/     core plugin without a page: toolbar "System report" (server reports in one ZIP)
-  Oadm.Plugins.HardeningScan(.Client)/    core plugin: read-only scan against the AXIS OS hardening guide (off by default)
-  Oadm.Plugins.ImageHealth(.Client)/      core plugin: Image Health Dashboard, AXIS Image Health Analytics status of the chosen cameras (off by default)
-  Oadm.Plugins.AppManagement(.Client)/   core plugin: Applications page, the apps of many devices, log and settings (off by default)
-  Oadm.Plugins.LoadTest(.Client)/ core plugin: Load test, a load test of the chosen cameras and the network (off by default)
-  Oadm.Plugins.DeviceConfig(.Client)/     Maintenance: Export / Import configuration, Configure devices, Create configuration file
-  Oadm.Plugins.Outputs/                   event rule action "Set output" (relays, outputs)
-  Oadm.Plugins.Notifications/             event rule actions "Send email", "Send HTTP request", "Send TCP message" (each to a recipient) and "Log entry"
-  Oadm.Plugins.Modbus/                    event rule action "Write Modbus value" and the recipient type Modbus, our own client, write functions only
-  Oadm.Plugins.Mqtt/                      event rule action "Publish MQTT message" and the recipient type MQTT (MQTTnet, one connection per recipient)
-  Oadm.Plugins.OpcUa/                     event rule action "Write OPC UA value", recipient type OPC UA (one session per recipient)
-  Oadm.Plugins.IoMonitor(.Client)/        core plugin: live inputs and outputs of one device (off by default)
-  Oadm.Plugins.DeviceTriggers(.Client)/   core plugin: events of the devices for the event rules (WebSocket, off by default)
-  Oadm.Plugins.WebView(.Client)/          core plugin: the web interface of the devices in tabs, logged in through the server
-  Oadm.Plugins.LiveView(.Client)/         core plugin: saved views of several cameras (a grid of live videos), opened in tabs (off by default)
-  Oadm.Plugins.Dashboards(.Client)/       core plugin: live values of events (device triggers) and live video on saved dashboards (off by default)
-  Oadm.Plugins.EdgeRecordingExport(.Client)/ core plugin: downloads the recordings on the cameras' SD cards to the client (off by default)
-  Oadm.Plugins.EdgeStorage(.Client)/      core plugin: the SD cards of the chosen cameras and their tools (format, check, encryption; off by default)
-  Oadm.Plugins.ActionRules(.Client)/      core plugin: Action Rule Editor, the devices' own action rules changed for many at once (off by default)
-  Oadm.Plugins.Ocr(.Client)/              optional plugin (add-on, not in the installers): Text recognition, rail group Vision (off by default)
-  Shared/                                 source linked into several plugins (CachedApiCheck, DeviceSweep, SweepRows,
-                                          ActionEngine: the devices' action rules over SOAP, DeviceEvents: a device's event list)
+plugins/               layout and SDK guide: plugins/README.md; every bundled plugin has its entry (id, what it does, on
+                       or off by default, its rules) in docs/spec/bundled-plugins.md
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
+  Oadm.Plugins.Pki(.Client)/    also holds the core plugins EST server (Est/) and 802.1X server (Radius/)
+  Oadm.Plugins.Ocr(.Client)/    optional plugin (add-on, not in the installers): Text recognition (docs/spec/ocr.md)
+  Shared/                       source linked into several plugins (CachedApiCheck, ContextCall, DeviceSweep, SweepRows,
+                                ViewerScopes, ActionEngine: the devices' action rules over SOAP, DeviceEvents: a
+                                device's event list, DeviceClock: the clock check before a certificate, DeviceId: the
+                                Axis device ID roots)
 tests/
   Oadm.<Project>.Tests/  one test project per project and per plugin (Oadm.Core.Tests, Oadm.Client.Tests,
                        Oadm.Plugins.Pki.Tests, ...); TestPlugins/ holds the plugins the loader tests load
   Oadm.RecipientStack.Tests/ the real MQTT, Modbus and OPC UA servers (`manage test recipients`, never in CI)
   RecipientStack/      their docker-compose.yml
-  Shared/              RecordingFirewall, RecordingStreams, CallWatchers, CountingDeviceScopes, FakeAxisCom, FakeSiteTransport,
-                       TestRepository (linked into tests; StepRun moved to src/Oadm.Sdk.Testing)
+  Shared/              linked into tests: RecordingFirewall, RecordingStreams, CallWatchers, CountingDeviceScopes,
+                       FakeAxisCom, FakeSiteTransport, TestRepository
 tools/                 Oadm.DiscoveryProbe (manual discovery tests), Oadm.Notices (THIRD-PARTY-NOTICES.txt generator),
                        Oadm.ApiDocs (SDK reference of the website), Oadm.NewPlugin ("manage new", the templates),
-                       Oadm.Tools (the "oadm" command, NuGet Oadm.Tools; "manage license")
-samples/               the plugins of the developer tutorials: Oadm.Samples.UpnpName (task with a dialog),
-                       Oadm.Samples.FirmwareOverview (core plugin with a page), Oadm.Samples.VirtualInput (event rule
-                       action), each with its tests (Oadm.Sdk.Testing); on the plugin project SDK from source (plugin.json
-                       from their properties); in Oadm.sln, built and tested by CI, never deployed
+                       Oadm.Tools (the "oadm" command, NuGet Oadm.Tools; "manage license"), Oadm.Vulnerabilities (the
+                       base list of Axis CVEs)
+samples/               the plugins of the developer tutorials, each with its tests (Oadm.Sdk.Testing): Oadm.Samples.UpnpName
+                       (task with a dialog), .FirmwareOverview (core plugin with a page), .VirtualInput (event rule
+                       action); on the plugin project SDK from source; in Oadm.sln, built and tested by CI, never deployed
                        (samples/Directory.Build.props sets OadmSkipPluginDeploy)
 templates/             Oadm.Plugin.Templates.csproj: packs the templates generated from samples/ (not in Oadm.sln)
 packaging/             installers (windows/, linux/, macos/), addons/ (the optional plugins' ZIPs), icons/, notices/licenses/
@@ -144,7 +110,7 @@ Two processes, like ADM:
 - Server change feeds (devices, tasks) deliver every change in order while a watcher keeps up; beyond
   1,024 waiting changes they coalesce per entity (`KeyedCoalescingChannel`: the latest snapshot wins,
   an Added stays Added), so a slow client never loses a final state and never blocks the server.
-- gRPC responses are gzip-compressed (live view frames excepted); server `MaxReceiveMessageSize` 16 MB,
+- gRPC responses are gzip-compressed (live view frames, device web content and file downloads excepted); server `MaxReceiveMessageSize` 16 MB,
   client 32 MB.
 
 # Feature specs
@@ -153,13 +119,11 @@ The details of every feature live in `docs/spec/` and are part of the spec like 
 change before you change it, and update it in the same change. One paragraph each here: what it is and the rules that
 must never break.
 
-- **[Packaging, CI and website](docs/spec/packaging.md)**: self-contained single-file exes (`PublishSingleFile`,
-  `PublishReadyToRun`; server and site node with `IncludeNativeLibrariesForSelfExtract`, the client's native libraries beside its exe), plugins next to each exe, generated
-  `THIRD-PARTY-NOTICES.txt`; terms of use accepted on the first client start; installers MSI (Windows x64), .deb
-  (amd64, arm64), .pkg (macOS x64) with "Server and client" / "Client only", the OADM Site Node MSI and .deb, a ZIP per
-  optional plugin and platform (never in the installers); one
-  workflow `release.yml` on tags `v*.*.*` (tests on three OS, installers, smoke, release, NuGet; a `-rc.N` tag is a
-  pre-release); `pr.yml` for pull requests; `vulnerabilities.yml` weekly (pull request with the new base list of Axis CVEs); every Action pinned by hash; the website (Astro Starlight, oadm.app).
+- **[Packaging, CI and website](docs/spec/packaging.md)**: self-contained single-file exes, plugins next to each exe;
+  terms of use accepted on the first client start; installers MSI, .deb, .pkg with "Server and client" / "Client only",
+  the OADM Site Node MSI and .deb, a ZIP per optional plugin and platform (never in the installers); one workflow
+  `release.yml` on tags `v*.*.*` (a `-rc.N` tag is a pre-release), `pr.yml`, weekly `vulnerabilities.yml`; every Action
+  pinned by hash; the website (oadm.app).
   Never Native AOT or trimming for the host apps; never `Assembly.Location`; FFmpeg LGPL builds only.
 - **[gRPC services](docs/spec/grpc.md)**: every service and method, its role and errors. Every call needs the token in
   the metadata except `AuthService.Status`, `Login`, `CreateFirstAdmin`; every method has a rule in `AccessPolicy`.
@@ -184,11 +148,10 @@ must never break.
   for devices that are not Ok), **[Event rules](docs/spec/event-rules.md)** (events and actions from plugins, the engine,
   limits, the log; field checks on event values: at most 5 per condition, all must hold), **[Tasks](docs/spec/tasks.md)** (one task per device, named steps, never persisted payloads,
   parallelism per plugin).
-- **[Vulnerabilities](docs/spec/vulnerabilities.md)**: the Axis CVEs of the devices' AXIS OS, Vulnerabilities column ("2 · High")
-  and search by CVE id, matched by model, AXIS OS version and chip in the client; data only from the CVE records and NVD (never
-  advisory PDFs or HTML); a match on an LTS track the record gives no fix for is "possible", shown apart and not counted
-  ("+3 possible"); a base list ships with every release, the online update
-  is opt-in ("Update the list online": Off by default, By the server, By the clients) and never sends device data.
+- **[Vulnerabilities](docs/spec/vulnerabilities.md)**: the Axis CVEs of the devices' AXIS OS in the
+  Vulnerabilities column, matched in the client; data only from the CVE records and NVD (never advisory PDFs or HTML); a
+  match on an LTS track the record gives no fix for is "possible", shown apart and not counted; a base list ships with
+  every release, the online update is opt-in (Off by default) and never sends device data.
 - **[Plugin system](docs/spec/plugins.md)**: task and core plugins, SDK and client SDK, loading, plugins on and off,
   licenses, plugin documentation (every plugin has its `README.md`). New SDK members are default interface members.
 - **[Bundled plugins](docs/spec/bundled-plugins.md)**: one entry per plugin: id, what it does, on or off by default, the
@@ -202,70 +165,63 @@ must never break.
   this server's ID; the public keys in the repo, the private keys never; only PRO plugins and the PRO parts of PKI (EST and
   802.1X servers) read it, **OADM itself is never limited**; Settings card License.
 - **[EST server](docs/spec/est-server.md)**: a PRO part of PKI (core plugin `oadm.est` in the PKI package, off by default,
-  Turn on on its tab of the PKI page, runs only with OADM PRO, its own source-available license): RFC 7030 on TCP 9454, cameras enroll
-  with their Axis device ID and only if OADM manages them, the OADM CA of PKI signs, cameras renew by themselves (renewals
-  the OADM CA issued directly never show Certificate changed), also at sites (a relay of the site node).
+  Turn on on its tab of the PKI page, runs only with OADM PRO, its own source-available license): RFC 7030 on TCP 9454,
+  cameras enroll with their Axis device ID and only if OADM manages them, the CA of the profile's issuing policy signs,
+  cameras renew by themselves (a renewal a CA of PKI issued directly never shows Certificate changed), also at sites (a
+  relay of the site node).
 - **[Device groups](docs/spec/device-scope.md)**: a user limited to a device group (sites, tags,
   single devices by serial, except); explicit `DeviceView` from the caller, fail closed; plugins get the call explicitly
   (`call.Devices`); shared objects owned by a group; Administrator always all devices.
-- **[PKI, the certificate control center](docs/spec/pki.md)**: one package with the EST and 802.1X servers
-  (their 4.1 folders skipped, "Merged into PKI", their choices taken over once); one rail entry with the tabs Certificates, Policies,
-  802.1X server, EST server; every rule about certificates is a PKI policy (issuing, 802.1X, EST, Expiry warning;
-  no overlaps; converted once from the old settings), the servers keep no rules of their own; there is no OADM CA: Create
-  CA (root or intermediate) and an import add a CA, every CA can be deleted while no policy names it, any CA
-  with its key can issue (the policy's Issued by); the certificate list holds
-  every CA and each camera's current certificate per use (a new one replaces the old once confirmed on the camera; the old
-  one is then no longer accepted) with create, sign request, import, export and delete (no revoke: a deleted certificate
-  is no longer accepted); certificates start 5 minutes early and
-  the install dialogs ask when the camera's clock is behind.
+- **[PKI, the certificate control center](docs/spec/pki.md)**: one package with the EST and 802.1X servers, one rail
+  entry (tabs Certificates, Policies, 802.1X server, EST server); every rule about certificates is a PKI policy (no
+  overlaps), the servers keep no rules of their own; there is no special OADM CA: the root CA of the first start, Create
+  CA and an import all add an ordinary CA, every CA can be deleted while no policy names it, any CA with its key can
+  issue; the certificate list holds every CA and each camera's current certificate per use (a new one replaces the old
+  once confirmed on the camera; the old one is then no longer accepted); no revoke: a deleted certificate is no longer
+  accepted; certificates start 5 minutes early and the install dialogs ask when the camera's clock is behind.
 - **[802.1X server](docs/spec/radius-server.md)** (a PRO part of PKI: core plugin `oadm.radius`, off by default,
-  Turn on on its tab of the PKI page, runs only with OADM PRO): RADIUS on UDP 1812 with EAP-TLS for the switch ports, only devices OADM
-  manages with a certificate of a CA of an 802.1X trusted CA policy pass, fragmentation both ways, a deep session state and plain
-  TLS alert texts, switches changed while it runs; its rules (its certificate, TLS, trusted CAs, VLAN, Block) are PKI's policies
-  (docs/spec/pki.md), never settings of its own.
+  Turn on on its tab of the PKI page, runs only with OADM PRO): RADIUS on UDP 1812 with EAP-TLS for the switch ports,
+  only devices OADM manages with a certificate of a CA of an 802.1X trusted CA policy pass; its rules (its certificate,
+  TLS, trusted CAs, VLAN, Block) are PKI's policies (docs/spec/pki.md), never settings of its own.
 - **[MCP server](docs/spec/mcp.md)** (spec, not built): AI agents do what a user can in the client, through the server's
   gRPC services with an access key (the user's role and device group); off by default, own port with a PKI certificate;
   every change is preview then run; never all devices in a result; no secrets over MCP; rights and settings GUI only.
-- **[Load test](docs/spec/load-test.md)** (core plugin `oadm.load-test`, off by
-  default): a load test of the chosen cameras and the network to the server (RTP over UDP, TCP at sites), at most 1,000
-  camera streams per check in batches of at most 200, ramp, normal and low-light phases, the result as graphs on the page; the exposure is the only
-  write and always goes back.
-- **[Help](docs/spec/help.md)**: the user docs of oadm.app shipped with the client (build flag `OADM_DOCS_OFFLINE`,
-  without developer docs, Get started and video) and shown in a Help window (title bar button) with the embedded browser,
-  served on 127.0.0.1 only; never loads oadm.app; client only.
+- **[Load test](docs/spec/load-test.md)** (core plugin `oadm.load-test`, off by default): a load test of the chosen
+  cameras and the network to the server, at most 1,000 camera streams per check in batches of at most 200; the exposure
+  is the only write and always goes back.
+- **[Help](docs/spec/help.md)**: the user docs of oadm.app shipped with the client and shown in a Help window with the
+  embedded browser, served on 127.0.0.1 only; never loads oadm.app; client only.
 - **[Zero-touch provisioning](docs/spec/provisioning.md)** (spec, not built; OADM PRO plugin `oadm.provisioning`): a
-  profile (staging DHCP range, password, configuration files, applications, name and tags, certificate and 802.1X, fixed
-  address range) runs by itself on factory-new cameras only; the fixed IP is written only on Apply network and checked;
-  the DHCP server's settings are saved and always restored; Administrator only.
+  profile runs by itself on factory-new cameras only; the fixed IP is written only on Apply network and checked; the
+  DHCP server's settings are saved and always restored; Administrator only.
 - **[Application management](docs/spec/app-management.md)** (core plugin `oadm.app-management`, free, off by default):
-  the chosen devices and the applications of the selected ones, Hide AXIS apps; every change
-  is a task of `oadm.acap` with its checks and permissions; reads only on demand, kept in server memory.
+  the chosen devices and the applications of the selected ones; every change is a task of `oadm.acap` with its checks
+  and permissions; reads only on demand, kept in server memory.
 - **[Audio](docs/spec/audio.md)** (spec, not built; core plugin `oadm.audio`, free, off by default): clips, sound,
-  C17 display, siren and light profiles, speaker and light tests of many devices; every change a task, hazardous
-  settings confirmed, tests ask first; no live audio, no multicast, presets via the Action Rule Editor; siren and light v2 or the legacy API.
-- **[MyAxis sign-in](docs/spec/myaxis.md)** (built; verified on Windows and Ubuntu with a real MyAxis account, macOS not yet): each user signs in to their own MyAxis account (title
-  bar, left of Help) on Axis's page in the embedded browser; only the session cookie is kept, per user, encrypted on the
-  server, sent only to axis.com, never to plugins; Upgrade AXIS OS downloads the versions from axis.com with it (Recommended, Latest LTS,
-  Latest active per model); on Linux with WebKitGTK OADM's own cookie glue until Avalonia has it.
-- **[Self update](docs/spec/self-update.md)**: Install now in the new version dialog updates the server
-  and the Administrator's client with their own installers run silently by the same program in update mode
-  (no extra app); Administrators only, stable releases only, SHA-256 of the release, never during a task; the server keeps
-  the update record and shows the result after the restart; no rollback by OADM; only from an installed package (the
-  ZIP and `dotnet run` keep Open download page); never a real installer in tests;
-  site nodes are updated by hand (they run with few rights).
+  display, siren and light of many devices; every change a task, hazardous settings confirmed, tests ask first; no live
+  audio, no multicast, presets via the Action Rule Editor.
+- **[MyAxis sign-in](docs/spec/myaxis.md)** (built; macOS not verified yet): each user signs in to their own MyAxis
+  account on Axis's page in the embedded browser; only the session cookie is kept, per user, encrypted on the server,
+  sent only to axis.com, never to plugins; Upgrade AXIS OS downloads the versions from axis.com with it.
+- **[Self update](docs/spec/self-update.md)**: Install now in the new version dialog updates the server and the
+  Administrator's client with their own installers run silently by the same program in update mode (no extra app);
+  Administrators only, stable releases only, SHA-256 of the release, never during a task, only from an installed
+  package; no rollback by OADM; never a real installer in tests; site nodes are updated by hand.
 - **[Add-on plugins](docs/spec/add-ons.md)** (built; users see "Optional plugins", never "add-on"): OADM's own plugins
-  outside the installers (the vision plugins), installed on demand on the Plugins page without a restart (removed files go at the next start); the user downloads the ZIP and sends it
-  through the client, the server never downloads one; only the exact genuine ZIP of this server's version and system installs (its SHA-256 built into every server build, checked before
-  unpacking, an OADM login must not become code as SYSTEM or root), Administrators only, audited; clients get the client part from the server; after a server update an older plugin keeps running, a fingerprint of its source says Up to date or Update available, with a dialog for
-  Administrators; a plugin that cannot load stays off and OADM runs as usual; a build without the hash only takes a folder by hand, which must pass the version rule too.
+  outside the installers, installed on the Plugins page without a restart; the user sends the ZIP through the client,
+  the server never downloads one; only the exact genuine ZIP of this server's version and system installs (its SHA-256
+  built into every server build, checked before unpacking, an OADM login must not become code as SYSTEM or root),
+  Administrators only, audited; after a server update an older plugin keeps running; a plugin that cannot load stays
+  off and OADM runs as usual; a build without the hash only takes a folder by hand, which must pass the version rule too.
 - **[Text recognition](docs/spec/ocr.md)** (built, hardware runs open; add-on `oadm.ocr`, rail group Vision, free, off by
-  default): readers (camera, up to 8 areas, Any text or a format such as `@@@U ###### #`) read text only inside their
-  areas, on a usable graphics card (DirectML on Windows, CUDA on Linux x64) unless a model is clearly slower there, else on the CPU, which always works (ONNX Runtime, PaddleOCR models, never
-  in git: downloaded and checked at build), on the action Read text or watching the MJPEG stream at 1 to 15 fps, frames overlapping only with room, results in order (watching
-  readers by the CPU cores, 4 per site); events Text read, No text read and Reader problem for the rules; read only, pictures never stored.
-- **[Recipients](docs/spec/recipients.md)** ([recipient sessions](docs/spec/recipient-sessions.md): MQTT, Modbus, OPC UA, one shared connection per recipient, output only): shared
-  targets of event rule actions (HTTP, Email, TCP, MQTT, Modbus, OPC UA, declared by plugins, at most 200); a rule keeps a link, the host merges the
-  recipient's fields into the action's settings before a run; no placeholders in a target, old rules are never converted ("Choose a
+  default): readers (camera, up to 8 areas, Any text or a format) read text only inside their areas, on the action Read
+  text or watching the MJPEG stream at 1 to 15 fps (watching readers by the CPU cores, 4 per site), on a usable graphics
+  card, else on the CPU, which always works; the models are never in git (downloaded and checked at build); events Text
+  read, No text read and Reader problem for the rules; read only, pictures never stored.
+- **[Recipients](docs/spec/recipients.md)**: shared targets of event rule actions (HTTP, Email, TCP, MQTT, Modbus, OPC
+  UA, declared by plugins, at most 200), for MQTT, Modbus and OPC UA one shared connection per recipient
+  ([recipient sessions](docs/spec/recipient-sessions.md)); a rule keeps a link, the host merges the recipient's fields
+  into the action's settings before a run; no placeholders in a target, old rules are never converted ("Choose a
   recipient."), delete refused while a rule uses one, passwords encrypted and never sent back; output only.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
@@ -342,16 +298,13 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   dependency DLLs stay locked (the plugin assemblies load from memory), and a running app must never see a half-copied
   plugin.
 - **HARD RULE, validation errors directly below the field.** On every input of the client and of every plugin, a
-  validation error appears directly below that input, like Vuetify: small red text (`Oadm.StatusErrorBrush`,
-  `Oadm.FontSizeSmall`) aligned with the input's left edge plus a red input border, no space reserved without an
-  error, the label stays level with the input. Never collected elsewhere: no error lists at the bottom of dialogs, no
-  summary lines under cards (row errors stay in the row's Status column, a whole-table error directly below the
-  table). Labeled rows are `ui:FormField` (label, input, hint or error below the input); the error itself is Avalonia's
-  `DataValidationErrors` styled in `OadmTheme.axaml` from `INotifyDataErrorInfo`. Form view models derive from
-  `Oadm.Sdk.Client.Validation.ValidatingViewModel` (rules per property on its `FormValidator`: `Rule`, `Rules`,
-  `ShowAll`, `Reset`, `SetServerError`); errors show once the field was edited, the user left it (`FormField` on lost focus tells
-  `IFormFieldVisits.FieldLeft` the bound property, an empty required field says so) or a submit was
-  tried, never on an untouched form; submit buttons stay disabled while any error exists and their tooltip says why. Usage:
+  validation error appears directly below that input, like Vuetify: small red text aligned with the input's left edge
+  plus a red input border, no space reserved without an error, the label stays level with the input. Never collected
+  elsewhere: no error lists at the bottom of dialogs, no summary lines under cards (row errors stay in the row's Status
+  column, a whole-table error directly below the table). Labeled rows are `ui:FormField`; form view models derive from
+  `Oadm.Sdk.Client.Validation.ValidatingViewModel` (rules per property on its `FormValidator`); errors show once the
+  field was edited, the user left it (an empty required field says so) or a submit was tried, never on an untouched
+  form; submit buttons stay disabled while any error exists and their tooltip says why. Usage and the pieces:
   `plugins/README.md` "Validation".
 - **HARD RULE, loading feedback.** Everything that can take longer than 1 s at 100,000 devices shows that it is working
   from the first moment: a page or dialog that waits for a read `ui:LoadingOverlay` (ring and text, Cancel stays usable),
@@ -392,9 +345,9 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
     with `manage test perf` (not in `manage test unit`), each with a generous but meaningful time
     budget, and write their measured times to the test output.
   - **HARD RULE, tests that never flake** (no timing category, no CI retry: every unit test runs in CI once). A test never depends on how fast the machine is or what runs next to it:
-    - Waiting for another thread: `Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "what")` (checks every 10 ms, 30 s
-      ceiling, returns as soon as it holds), never a fixed `Task.Delay` / `Thread.Sleep` before an assert. "Nothing else
-      happens" checks wait first for a positive sign that the work ended; `Eventually.StaysTrueAsync` only when none exists.
+    - Waiting for another thread: `Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "what")`, never a fixed
+      `Task.Delay` / `Thread.Sleep` before an assert. "Nothing else happens" checks wait first for a positive sign that
+      the work ended; `Eventually.StaysTrueAsync` only when none exists.
     - Time in the code (timeouts, intervals, retries, debounce): a `TimeProvider`, and the test passes a
       `FakeTimeProvider` and advances it. Real timeouts in tests are generous (30 s); an upper bound only proves "it did not
       hang". Concurrency limits are tested with gates that hold the work, not with overlapping delays.
@@ -410,10 +363,10 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   the host page header via `ui:PageHeader.Subtitle` (2 px top margin, theme); the status never sits top right in the page
   header but directly left of the Save button it reports on (or next to the value it describes, e.g. the CA validity on the
   PKI page; a live status of the whole page may sit there: Text recognition's load); the card starts with
-  the form. User-facing texts use plain language (no protocol jargon such as stratum, DISCOVER/OFFER).
+  the form. User-facing texts use plain language ("Wording").
 - Dialogs with a single operation (one form: back up, import, generate, static lease, export) have no card: the form sits
-  in `Border.dialogBody` (theme, padded like `ui:MessageWindow`) between title bar and footer, and the window sizes to its
-  content (`SizeToContent="Height"`, fixed width). Cards only in dialogs with several sections or a list.
+  in `Border.dialogBody` between title bar and footer, and the window sizes to its content (`SizeToContent="Height"`,
+  fixed width). Cards only in dialogs with several sections or a list.
 - Button and menu labels never end with "..." / "…", also when they open a dialog or a file picker ("Back up", "Import CA",
   "Choose file").
 - **HARD RULE, buttons follow Fluent** (like Intune), all in the theme, never per view:
@@ -429,16 +382,13 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   `Button.secondary` in a form or dialog, with the devices icon): while an inline editor is open, its button (Retry, Create tag) is the primary one and the
   footer's main button turns secondary. A disabled primary keeps its role: the accent at about 35 % with dimmed text.
 - **Destructive actions are red**: `Button.danger` (red fill, white text) only for the confirming button of a dialog
-  whose operation deletes or removes (Remove users, Delete certificates, the confirmation's Delete);
-  `Button.toolbar.danger` (red text and icon, flat) everywhere else: toolbars, card headers, form rows, panels (Delete
-  all, Delete tag, credential Remove, Remove license, a policy's Delete); `Button.link.danger` for row links (DHCP Delete
-  and Release, PKI Remove). `ui:MessageWindow` makes its confirm button red when the confirm text starts with Delete, Remove
-  or Release (`MessageWindow.IsDestructive`, `IsDanger` overrides). Destructive entries sit apart from everyday ones
-  (separator, last in a menu).
+  whose operation deletes or removes; `Button.toolbar.danger` (red text and icon, flat) everywhere else: toolbars, card
+  headers, form rows, panels; `Button.link.danger` for row links. `ui:MessageWindow` makes its confirm button red when
+  the confirm text starts with Delete, Remove or Release (`MessageWindow.IsDestructive`, `IsDanger` overrides).
+  Destructive entries sit apart from everyday ones (separator, last in a menu). Examples: `docs/spec/visual-style.md`.
 - `ui:DialogFooter` with no visible action puts its lone Close / Cancel on the right.
-- Grids whose status text explains a problem (add page, address tables, Upgrade AXIS OS, certificate install, system report,
-  hardening detail) have the class `wrapRows`: rows grow and `ui:StatusChip` shows up to two lines (`MaxLines`).
-  Numeric columns (days, offsets, scores, durations) are right-aligned: `CellStyleClasses="number"` plus a header
+- Grids whose status text explains a problem have the class `wrapRows`: rows grow and `ui:StatusChip` shows up to two
+  lines (`MaxLines`). Numeric columns are right-aligned: `CellStyleClasses="number"` plus a header
   `TextBlock.numberHeader`. Empty lists say in one line what to do first.
 - **HARD RULE, no style differences.** Same kind of element, same look, everywhere: one
   style per element type in `src/Oadm.Theme/OadmTheme.axaml`, no local overrides of font size,

@@ -194,7 +194,8 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
 - Window and layout like the add devices dialog: explicit `Width`/`Height` (e.g. 1040 x 700),
   `WindowDecorations="BorderOnly"` and `CanResize="False"` (no system title bar; dialogs are modal, fixed size and do not move), a root grid of title bar, cards with
   `Margin="16,0"` (`16,16,16,0` for each further card) and the footer. A dialog with a single form has no card: the form
-  sits in `Border.dialogBody`, the window has a fixed width and `SizeToContent="Height"`.
+  sits in `Border.dialogBody` (theme, padded like `ui:MessageWindow`), the window has a fixed width and
+  `SizeToContent="Height"`.
 - Controls from `Oadm.Sdk.Client.Controls` (`xmlns:ui="using:Oadm.Sdk.Client.Controls"`), never hand-built copies:
 
   | Control | Use for |
@@ -258,8 +259,9 @@ Dialogs use the host look (HARD RULE: reuse controls, no style differences):
 
 ### Validation (HARD RULE: errors directly below the field)
 
-Every validation error appears **directly below its input**: small red text aligned with the input's left edge, red
-input border, no space reserved without an error. Never an error list at the bottom of a dialog or a summary line
+Every validation error appears **directly below its input**: small red text (`Oadm.StatusErrorBrush`,
+`Oadm.FontSizeSmall`) aligned with the input's left edge, red input border, no space reserved without an error, the
+label stays level with the input. Never an error list at the bottom of a dialog or a summary line
 under a card. Row errors stay in the row (Status column); an error of a whole table (e.g. "Not enough addresses") goes
 directly below the table.
 
@@ -283,7 +285,8 @@ directly below the table.
   ```
 
   The theme shows the error of the bound property below a `TextBox`, `ui:PasswordBox`, `NumericUpDown` or `ComboBox`
-  (Avalonia `DataValidationErrors`); `ui:FormField` hides its hint meanwhile.
+  (Avalonia `DataValidationErrors`, styled in `OadmTheme.axaml` from `INotifyDataErrorInfo`). Labeled rows are
+  `ui:FormField` (label, input, hint or error below the input); it hides its hint meanwhile.
 - `Validation` is a `FormValidator`:
   - `Rule(property, () => message or null)`;
   - `Rules(properties, () => dictionary)`: one validator for several properties (e.g. the server's payload validator);
@@ -293,7 +296,8 @@ directly below the table.
   - `IsValidFor(...)` / `FirstErrorOf(...)` for part of a form (e.g. an inline editor).
 
   A view model that cannot change its base class owns a `FormValidator` and forwards `INotifyDataErrorInfo` to it.
-- An error shows once the field was edited, the user left it (`ui:FormField` reports the bound property on lost focus) or a submit was tried, never on an untouched form. Rules always run: submit
+- An error shows once the field was edited, the user left it (`ui:FormField` tells `IFormFieldVisits.FieldLeft` the
+  bound property on lost focus; an empty required field says so) or a submit was tried, never on an untouched form. Rules always run: submit
   buttons stay disabled while any error exists (`IsFormValid`, or the command's `CanExecute` with
   `Validation.IsValid`), and their tooltip says why (`FormError` or `FirstErrorOf`, with
   `ToolTip.ShowOnDisabled="True"`). Override `OnValidationChanged` to refresh commands.

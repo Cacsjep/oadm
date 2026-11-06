@@ -77,7 +77,10 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   or list header rows are flat, icon in the lighter accent `#7D6EF0` and neutral text (`Button.toolbar` with
   `ui:IconLabel` / `ui:ToolbarButton`; actions left, search right); icon-only buttons in the text colour, the accent on
   hover; disabled buttons dimmed; one filled accent button only for the main action of a dialog or form; filled red only
-  for the confirming button of a destructive dialog, flat red text elsewhere. A command button at the right end of a
+  for the confirming button of a destructive dialog, flat red text elsewhere. Red in use: `Button.danger` for Remove
+  users, Delete certificates, a confirmation's Delete; `Button.toolbar.danger` for Delete all, Delete tag, a credential's
+  Remove, Remove license, a policy's Delete; `Button.link.danger` for the DHCP rows' Delete and Release and PKI's
+  Remove. A command button at the right end of a
   panel header (New in the Areas header of Text recognition) has the class `atEnd` (`Button.toolbar.atEnd`): its text
   ends level with the fields below and sits on the title's baseline.
 - Text: primary `#F2F2F2`, secondary `#9A9A9A` (labels like "Source", column headers).
@@ -100,6 +103,10 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
 - Lists of rows with inputs whose row selects something elsewhere (`ListBox.areaRows`, the areas of a Text recognition
   reader): the selected row has no fill, its name turns to the accent colour, so the inputs and a red error below them
   stay readable in both themes. The name in such a row is `TextBlock.areaName` (level with the inputs, trimmed).
+- Grids whose status text explains a problem (add page, address tables, Upgrade AXIS OS, certificate install, system
+  report, hardening detail) have the class `wrapRows`: rows grow and `ui:StatusChip` shows up to two lines. Numeric
+  columns (days, offsets, scores, durations) are right-aligned (`CellStyleClasses="number"`, header
+  `TextBlock.numberHeader`).
 - Grouped grids (`DataGrid.groups`): a collapsible header per group, chevron and name; a `ui:GridGroup` key adds its icon
   between them (PKI's policy groups). Rows a link points to are tinted with the accent for a few seconds and fade back
   (`DataGrid.highlightRows`, the rows `DataGridRow.highlight`; PKI's Policies tab after a server tab's "N policies

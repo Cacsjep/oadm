@@ -324,6 +324,25 @@ into a file in `ICorePluginContext.DataDirectory`), enforces its own size limit 
 token (the timeout covers the headers only); the 16 MB limit of buffered answers is unchanged. Used by the System report
 for server reports.
 
+## Test helpers (Oadm.Sdk.Testing)
+
+`src/Oadm.Sdk.Testing` (NuGet `Oadm.Sdk.Testing`): the fakes plugin tests run on, no server and no device. Guide:
+`website/src/content/docs/dev/testing.md`.
+
+- Running and waiting: `StepRun` (runs a task plugin with the engine's end rules), `Eventually` (waits for what another
+  thread does, instead of a fixed delay).
+- Devices: `FakeCamera` (an `IVapixClient`: parameters, basic device information, the API list, restart, every request
+  recorded), `FakeDevice` (an `IDeviceInfo`, every value settable).
+- Contexts: `FakeTaskContext` (one task), `FakeActionContext` (one action run), `FakeCoreContext` (a core plugin: devices,
+  a camera per device, settings, tasks, events), `FakeCallContext` (a user's call, with all devices or a device group),
+  `FakeComplianceContext` and `FakeComplianceQueryContext` (one compliance check), `FakeSettings`, `FakeProLicense`.
+- Host services: `FakeEventPublisher` (the events a source fires or switches), `FakeDeviceScopes` (device groups),
+  `FakeSites`, `FakeSite`, `FakeDeviceNetwork` and `FakePluginNetwork` with the in-memory relays (sites and sockets),
+  `FakePluginJobs`, `FakePluginServices`, `FakeProtectedTags`, `FakeStreamProbes` (the server's measuring video streams),
+  `FakeAxisDownloads` (files from axis.com); `FakeHostRules` (internal) holds the server's rules for a user's call.
+- Device groups: `PluginCanary` calls every method of a core plugin with a device outside the caller's group and fails
+  on a leak; `TaskPluginCanaryHost` puts task plugins and actions under it.
+
 ## SDK versions
 
 `SdkInfo.Version` (0.12.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
