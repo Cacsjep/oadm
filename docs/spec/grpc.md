@@ -285,7 +285,8 @@ used again.
   FAILED_PRECONDITION with the reason).
 - **`VulnerabilityService`** (`vulnerabilities.proto`, `docs/spec/vulnerabilities.md`): `Get` (signed in: the list as JSON,
   the setting, date, source, count), `Upload` (signed in, only while `Vulnerabilities.Update` is "clients", else
-  FAILED_PRECONDITION; INVALID_ARGUMENT for a list that does not parse; a newer list is kept and audited "Updated
+  FAILED_PRECONDITION; INVALID_ARGUMENT for a list that does not parse, is empty or is dated more than 10 minutes after
+  the server's clock; a newer list is kept and audited "Updated
   vulnerability list"), `Refresh` (Admin, only while the setting is "server"; UNAVAILABLE when the internet is not reached).
 - **`MyAxisService`** (`myaxis.proto`, `docs/spec/myaxis.md`; every signed-in user, always the caller's own sign-in, an
   Administrator included): `Get` (signed in, since when, expired), `SignIn` (INVALID_ARGUMENT for anything but one pair

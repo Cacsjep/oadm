@@ -56,7 +56,10 @@ Server setting `Vulnerabilities.Update`, Settings card **Vulnerabilities** ("Upd
 No device data leaves the network: the calls only read the public CVE list. The server keeps the newest list
 (`vulnerabilities.json` in the data folder; a newer release's base list wins over an older stored one, a broken file falls
 back to the base list), refuses an upload older than the one it has and one that does not parse or is larger than the
-limits (5,000 CVEs, 2 MB, valid ids and versions, at most 32 chips of at most 64 characters per entry, none empty). The card shows the count, the list's date and where it came from.
+limits (5,000 CVEs, 2 MB, valid ids and versions, at most 32 chips of at most 64 characters per entry, none empty). An
+empty list and a list dated more than 10 minutes after the server's clock are refused too, from every source
+(`VulnerabilityStore.Refusal`: such an upload would blank the column for everyone and no newer list could replace it); a
+stored file like that loses to the base list at the start and the next sound list replaces it. The card shows the count, the list's date and where it came from.
 
 ## Devices page
 
@@ -115,8 +118,8 @@ limits (5,000 CVEs, 2 MB, valid ids and versions, at most 32 chips of at most 64
 and the NVD page: exact ranges, free text with NVD's ranges, models, a track list, Camera Station left out, a chip with NVD's
 repeated and single-model ranges; `Platforms/`: exact ranges per chip), every text form, model codes, platforms as chips, the
 version compare, the matcher (worst first, fixed build, 5.0 rule, chips and an unknown chip, possible on an LTS track, cache), the list's limits; the store
-(newest wins across a restart, broken file, newer release); the service (modes, permissions, audit, no outgoing call while
-off). `tests/Oadm.Client.Tests`: the client update with a fake fetch and clock, column text with possible ones, sort and tooltip, rows following
+(newest wins across a restart, broken file, newer release, an empty list or one dated in the future); the service (modes,
+permissions, audit, refused uploads, no outgoing call while off). `tests/Oadm.Client.Tests`: the client update with a fake fetch and clock, column text with possible ones, sort and tooltip, rows following
 a new list, an AXIS OS upgrade and a chip, the CVE search (possible too), the Settings card, the context menu entry and the window with possible rows
 (`DeviceVulnerabilitiesWindowTests`); headless screenshots (`VulnerabilityHeadlessTests`,
 `OADM_SCREENSHOT_DEVICES` renders a JSON list of real devices); Perf at 100,000 devices.

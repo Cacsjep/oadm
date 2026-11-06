@@ -294,7 +294,7 @@ public static partial class OadmServerHost
         services.AddSingleton<Updates.ServerUpdateCoordinator>();
         // Vulnerabilities (docs/spec/vulnerabilities.md): the list of Axis CVEs; fetched online only when the setting allows.
         services.AddSingleton(sp => new Vulnerabilities.VulnerabilityStore(
-            sp.GetRequiredService<OadmPaths>(), sp.GetRequiredService<ILogger<Vulnerabilities.VulnerabilityStore>>()));
+            sp.GetRequiredService<OadmPaths>(), sp.GetRequiredService<ILogger<Vulnerabilities.VulnerabilityStore>>(), sp.GetRequiredService<TimeProvider>()));
         services.TryAddSingleton<Vulnerabilities.IVulnerabilitySource>(sp => new Vulnerabilities.InternetVulnerabilitySource(sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<Vulnerabilities.VulnerabilityUpdater>();
         services.AddHostedService(sp => sp.GetRequiredService<Vulnerabilities.VulnerabilityUpdater>());
