@@ -43,8 +43,10 @@ public enum FolderVerdict
 public sealed record FolderCheck(string Path, FolderVerdict Verdict, string? Problem = null, string? FixError = null);
 
 /// <summary>
-/// What the folder check of a start found about the installed plugins (<c>&lt;datafolder&gt;/plugins</c>), before it fixed
-/// the data folder: which of them others could change until now (<see cref="InstalledPluginsTrust"/> sets those aside).
+/// What the folder check of a start found about one folder of plugins in the data folder, before it fixed the data folder:
+/// which of them others could change until now. The installed plugins (<c>&lt;datafolder&gt;/plugins</c>:
+/// <see cref="InstalledPluginsTrust"/> sets those aside) and the optional plugins (<c>&lt;datafolder&gt;/addons</c>:
+/// <see cref="AddOns.AddOnInstaller.LoadInstalledAsync(LoosePlugins, CancellationToken)"/> deletes those).
 /// </summary>
 /// <param name="All">
 /// The data folder or the plugins folder itself was loose: others could create, replace or remove anything in it, so
@@ -56,7 +58,7 @@ public sealed record FolderCheck(string Path, FolderVerdict Verdict, string? Pro
 /// </param>
 public sealed record LoosePlugins(bool All, IReadOnlyList<string> Entries)
 {
-    /// <summary>Nothing about the installed plugins was loose.</summary>
+    /// <summary>Nothing about the plugins was loose.</summary>
     public static LoosePlugins None { get; } = new(false, []);
 
     /// <summary>Nothing in the plugins folder can be trusted.</summary>
@@ -65,10 +67,11 @@ public sealed record LoosePlugins(bool All, IReadOnlyList<string> Entries)
 
 /// <param name="Fixed">Something in a server folder was loose and was fixed.</param>
 /// <param name="Plugins">What was loose about the installed plugins.</param>
-public sealed record ServerFoldersCheck(bool Fixed, LoosePlugins Plugins)
+/// <param name="AddOns">What was loose about the optional plugins.</param>
+public sealed record ServerFoldersCheck(bool Fixed, LoosePlugins Plugins, LoosePlugins AddOns)
 {
     /// <summary>A start that checked nothing (a console run) or found nothing.</summary>
-    public static ServerFoldersCheck Untouched { get; } = new(false, LoosePlugins.None);
+    public static ServerFoldersCheck Untouched { get; } = new(false, LoosePlugins.None, LoosePlugins.None);
 }
 
 /// <summary>
@@ -128,16 +131,37 @@ public sealed partial class FolderGuard(IFolderPermissions permissions, ILogger<
     /// whether a folder had to be fixed and, read before the fix, what was loose about the installed plugins in
     /// <paramref name="pluginsFolder"/> (inside one of the folders): a loose file elsewhere says nothing about them.
     /// </summary>
-    public async Task<ServerFoldersCheck> EnsureServerFoldersAsync(IEnumerable<string> folders, string pluginsFolder, CancellationToken ct)
+    public Task<ServerFoldersCheck> EnsureServerFoldersAsync(IEnumerable<string> folders, string pluginsFolder, CancellationToken ct) =>
+        EnsureServerFoldersAsync(folders, pluginsFolder, addOnsFolder: null, ct);
+
+    /// <summary>
+    /// <see cref="EnsureServerFoldersAsync(IEnumerable{string}, string, CancellationToken)"/>, and the same facts about the
+    /// optional plugins in <paramref name="addOnsFolder"/> (<see cref="ServerFoldersCheck.AddOns"/>; null: not asked).
+    /// </summary>
+    public async Task<ServerFoldersCheck> EnsureServerFoldersAsync(IEnumerable<string> folders, string pluginsFolder, string? addOnsFolder, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(folders);
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginsFolder);
         var fixedAny = false;
         var plugins = LoosePlugins.None;
+        var addOns = LoosePlugins.None;
         foreach (var folder in folders)
         {
-            Func<Task>? beforeFix = IsBelow(pluginsFolder, folder)
-                ? async () => plugins = await FindLoosePluginsAsync(folder, pluginsFolder, ct).ConfigureAwait(false)
+            var holdsPlugins = IsBelow(pluginsFolder, folder);
+            var holdsAddOns = addOnsFolder is not null && IsBelow(addOnsFolder, folder);
+            Func<Task>? beforeFix = holdsPlugins || holdsAddOns
+                ? async () =>
+                {
+                    if (holdsPlugins)
+                    {
+                        plugins = await FindLoosePluginsAsync(folder, pluginsFolder, ct).ConfigureAwait(false);
+                    }
+
+                    if (holdsAddOns)
+                    {
+                        addOns = await FindLoosePluginsAsync(folder, addOnsFolder!, ct).ConfigureAwait(false);
+                    }
+                }
                 : null;
             var check = await EnsureAsync(folder, readableByUsers: false, beforeFix, ct).ConfigureAwait(false);
             fixedAny |= check.Verdict == FolderVerdict.Fixed;
@@ -149,14 +173,14 @@ public sealed partial class FolderGuard(IFolderPermissions permissions, ILogger<
             }
         }
 
-        return new ServerFoldersCheck(fixedAny, plugins);
+        return new ServerFoldersCheck(fixedAny, plugins, addOns);
     }
 
     /// <summary>
-    /// What is loose about the plugins in <paramref name="pluginsFolder"/>, asked while <paramref name="dataFolder"/> still
-    /// is as it was found. Everything when a folder on the way from the data folder to the plugins folder is loose itself
-    /// (others could put anything there), or when the facts cannot be read; else each entry of the plugins folder that is
-    /// loose or holds something loose.
+    /// What is loose about the plugins in <paramref name="pluginsFolder"/> (the installed plugins' folder or the optional
+    /// plugins'), asked while <paramref name="dataFolder"/> still is as it was found. Everything when a folder on the way
+    /// from the data folder to the plugins folder is loose itself (others could put anything there), or when the facts
+    /// cannot be read; else each entry of the plugins folder that is loose or holds something loose.
     /// </summary>
     private async Task<LoosePlugins> FindLoosePluginsAsync(string dataFolder, string pluginsFolder, CancellationToken ct)
     {

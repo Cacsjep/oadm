@@ -7,6 +7,7 @@ using Oadm.Contracts.Updates;
 using Oadm.Core.Plugins;
 using Oadm.Sdk.Testing;
 using Oadm.Server.AddOns;
+using Oadm.Server.Hosting;
 
 [assembly: AssemblyMetadata(Oadm.Server.AddOns.AssemblyAddOnHashes.MetadataPrefix + "oadm.test", "ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789")]
 [assembly: AssemblyMetadata(Oadm.Server.AddOns.AssemblyAddOnHashes.MetadataPrefix + "oadm.short", "abcdef")]
@@ -227,7 +228,7 @@ public sealed class AddOnInstallerTests
         await rig.InstallAsync();
 
         rig.Restart();
-        await rig.Installer.LoadInstalledAsync(foldersTrusted: false, CancellationToken.None);
+        await rig.Installer.LoadInstalledAsync(LoosePlugins.Everything, CancellationToken.None);
 
         Assert.False(Directory.Exists(Path.Combine(rig.Root, $".update-{Id}")));
     }
@@ -933,7 +934,7 @@ public sealed class AddOnInstallerTests
         using var rig = new AddOnRig();
         rig.PlaceFolder();
 
-        await rig.Installer.LoadInstalledAsync(foldersTrusted: false, CancellationToken.None);
+        await rig.Installer.LoadInstalledAsync(LoosePlugins.Everything, CancellationToken.None);
 
         Assert.False(rig.Registry.HasPackage(Id));
         Assert.Empty(rig.List.Items);
@@ -948,17 +949,155 @@ public sealed class AddOnInstallerTests
         rig.PlaceFolder();
         rig.List.Items = [new InstalledAddOn(Id, AddOnRig.Version)];
 
-        await rig.Installer.LoadInstalledAsync(foldersTrusted: false, CancellationToken.None);
+        await rig.Installer.LoadInstalledAsync(LoosePlugins.Everything, CancellationToken.None);
 
         Assert.False(rig.Registry.HasPackage(Id));
         Assert.False(Directory.Exists(rig.Folder));
         var status = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
-        Assert.Equal((AddOnState.Failed, AddOnTexts.InstallAgain), (status.State, status.Message));
+        Assert.Equal((AddOnState.Failed, AddOnTexts.FolderWasLoose), (status.State, status.Message));
 
         rig.Restart();
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
         Assert.False(rig.Registry.HasPackage(Id));
         Assert.Equal(AddOnState.Failed, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).State);
+    }
+
+    [Fact]
+    public async Task AnAddOnWhoseFolderOthersCouldChangeGoesSaysWhyAndInstallsAgain()
+    {
+        using var rig = new AddOnRig();
+        rig.PlaceFolder();
+        rig.List.Items = [new InstalledAddOn(Id, AddOnRig.Version)];
+
+        await rig.Installer.LoadInstalledAsync(new LoosePlugins(false, [rig.Folder]), CancellationToken.None);
+
+        Assert.False(rig.Registry.HasPackage(Id));
+        Assert.False(Directory.Exists(rig.Folder));
+        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        Assert.Equal((AddOnState.Failed, AddOnTexts.FolderWasLoose, true), (row.State, row.Message, row.CanInstall));
+        Assert.Equal([row.Entry.DisplayName], rig.Installer.NotLoaded); // the event rules hear of it
+        Assert.Equal([new InstalledAddOn(Id, AddOnRig.Version)], rig.List.Items);
+
+        Assert.Equal(AddOnState.Installed, (await rig.InstallAsync()).State);
+        Assert.True(rig.Registry.HasPackage(Id));
+    }
+
+    [Fact]
+    public async Task AFolderPutInByHandThatOthersCouldChangeIsNotTakenUp()
+    {
+        using var rig = new AddOnRig();
+        rig.PlaceFolder();
+
+        await rig.Installer.LoadInstalledAsync(new LoosePlugins(false, [rig.Folder]), CancellationToken.None);
+
+        Assert.False(rig.Registry.HasPackage(Id));
+        Assert.Empty(rig.List.Items);
+        Assert.False(Directory.Exists(rig.Folder));
+        Assert.Equal(AddOnState.NotInstalled, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).State);
+    }
+
+    [Fact]
+    public async Task SomethingLooseBesideAnAddOnsFolderChangesNothingForIt()
+    {
+        using var rig = new AddOnRig();
+        rig.PlaceFolder();
+        rig.List.Items = [new InstalledAddOn(Id, AddOnRig.Version)];
+        var other = Path.Combine(rig.Root, "oadm.other"); // another optional plugin's folder
+        Directory.CreateDirectory(other);
+        var upload = Path.Combine(rig.Root, AddOnFolders.UploadFolderName);
+        Directory.CreateDirectory(upload);
+
+        await rig.Installer.LoadInstalledAsync(new LoosePlugins(false, [other, upload]), CancellationToken.None);
+
+        Assert.True(rig.Registry.HasPackage(Id));
+        Assert.True(Directory.Exists(rig.Folder));
+        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        Assert.Equal((AddOnState.Installed, null), (row.State, row.Message));
+        Assert.Equal([new InstalledAddOn(Id, AddOnRig.Version)], rig.List.Items);
+    }
+
+    [Fact]
+    public async Task AWaitingUpdateOthersCouldChangeIsNotUsedAndTheOlderAddOnKeepsRunning()
+    {
+        using var rig = await OlderAsync();
+        await rig.InstallAsync();
+        var waiting = Path.Combine(rig.Root, $".update-{Id}");
+
+        rig.Restart();
+        await rig.Installer.LoadInstalledAsync(new LoosePlugins(false, [waiting]), CancellationToken.None);
+
+        Assert.Equal("4.10.0", AddOnFolders.ReadVersion(rig.Folder)); // never swapped in
+        Assert.False(Directory.Exists(waiting));
+        Assert.True(rig.Registry.HasPackage(Id));
+        Assert.True(Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
+        Assert.Equal([new InstalledAddOn(Id, "4.10.0")], rig.List.Items);
+    }
+
+    [Fact]
+    public async Task TheWaitingUpdateOfAnAddOnWhoseFolderOthersCouldChangeGoesWithIt()
+    {
+        using var rig = await OlderAsync();
+        await rig.InstallAsync();
+
+        rig.Restart();
+        await rig.Installer.LoadInstalledAsync(new LoosePlugins(false, [rig.Folder]), CancellationToken.None);
+
+        Assert.False(rig.Registry.HasPackage(Id)); // the waiting update did not take the folder's place
+        Assert.Empty(rig.Leftovers());
+        Assert.Equal(AddOnTexts.FolderWasLoose, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).Message);
+    }
+
+    /// <summary>A server on which a waiting update cannot be deleted (a file in it is held open).</summary>
+    private static AddOnRig WithWaitingUpdatesThatStay()
+    {
+        var rig = new AddOnRig
+        {
+            Limits = o => o with { DeleteFolder = f => !Path.GetFileName(f).StartsWith(".update-", StringComparison.Ordinal) && AddOnFolders.TryDelete(f) },
+        };
+        rig.Restart();
+        return rig;
+    }
+
+    [Fact]
+    public async Task AWaitingUpdateOthersCouldChangeThatCannotGoIsNeverUsed()
+    {
+        using var rig = WithWaitingUpdatesThatStay();
+        rig.PlaceFolder(version: "4.10.0");
+        rig.List.Items = [new InstalledAddOn(Id, "4.10.0")];
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+        await rig.InstallAsync();
+        var waiting = Path.Combine(rig.Root, $".update-{Id}");
+        Assert.True(Directory.Exists(waiting));
+
+        rig.Restart();
+        await rig.Installer.LoadInstalledAsync(new LoosePlugins(false, [waiting]), CancellationToken.None);
+
+        // Fail closed: nothing of it loads, and it counts as removed until its folders have gone.
+        Assert.False(rig.Registry.HasPackage(Id));
+        Assert.Equal("4.10.0", AddOnFolders.ReadVersion(rig.Folder)); // never swapped in
+        Assert.Equal([new InstalledAddOn(Id, "4.10.0", Removed: true)], rig.List.Items);
+
+        rig.Restart();
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+
+        Assert.False(rig.Registry.HasPackage(Id));
+        Assert.Empty(rig.Leftovers());
+        Assert.Empty(rig.List.Items);
+    }
+
+    [Fact]
+    public async Task AnInstallIsRefusedWhileALeftoverWaitingUpdateCannotBeDeleted()
+    {
+        using var rig = WithWaitingUpdatesThatStay();
+        await rig.Installer.LoadInstalledAsync(CancellationToken.None);
+        var waiting = Path.Combine(rig.Root, $".update-{Id}");
+        rig.PlaceFolder(waiting); // stayed from a start that could not delete it
+
+        var refused = await Assert.ThrowsAsync<AddOnException>(() => rig.InstallAsync());
+
+        Assert.Equal(AddOnTexts.CouldNotInstall, refused.Message);
+        Assert.False(rig.Registry.HasPackage(Id));
+        Assert.False(Directory.Exists(rig.Folder));
     }
 
     [Fact]
@@ -971,7 +1110,7 @@ public sealed class AddOnInstallerTests
             rig.PlaceFolder();
             rig.List.Items = [new InstalledAddOn(Id, AddOnRig.Version)];
 
-            await rig.Installer.LoadInstalledAsync(foldersTrusted: false, CancellationToken.None);
+            await rig.Installer.LoadInstalledAsync(LoosePlugins.Everything, CancellationToken.None);
             Assert.False(rig.Registry.HasPackage(Id));
             Assert.Equal([new InstalledAddOn(Id, AddOnRig.Version, Removed: true)], rig.List.Items);
 

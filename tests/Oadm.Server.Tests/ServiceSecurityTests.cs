@@ -1,16 +1,20 @@
 using System.Collections.Concurrent;
+using System.IO.Compression;
 using System.Security.AccessControl;
 using System.Security.Principal;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Oadm.Core.Persistence;
 using Oadm.Core.Plugins;
 using Oadm.Sdk.Network;
+using Oadm.Server.AddOns;
 using Oadm.Server.Hosting;
+using Oadm.Server.Tests.AddOns;
 using Oadm.Tests.Shared;
 
 namespace Oadm.Server.Tests;
@@ -411,6 +415,194 @@ public sealed class ServiceSecurityTests : IDisposable
         Assert.True((await Guard(permissions).EnsureServerFoldersAsync([data], plugins, CancellationToken.None)).Plugins.All);
     }
 
+    // ---------------------------------------------------------------- optional plugins (<datafolder>/addons)
+
+    /// <summary>Text recognition put into its folder by hand, of the version <see cref="BuildServer"/> gives the server.</summary>
+    private static string PlantAddOn(string data)
+    {
+        var folder = Path.Combine(AddOnFolders.Root(data), AddOnCatalog.TextRecognitionId);
+        Directory.CreateDirectory(folder);
+        using var zip = new ZipArchive(new MemoryStream(AddOnRig.Zip()), ZipArchiveMode.Read);
+        zip.ExtractToDirectory(folder, overwriteFiles: true);
+        return folder;
+    }
+
+    private static async Task<AddOnStatus> TextRecognitionAsync(WebApplication app) =>
+        Assert.Single(await app.Services.GetRequiredService<AddOnInstaller>().ListAsync(CancellationToken.None));
+
+    [Fact]
+    public async Task ALooseFileElsewhereInTheDataFolderIsFixedAndChangesNothingForTheOptionalPlugins()
+    {
+        var data = Path.Combine(_dir, "data");
+        var addOn = PlantAddOn(data);
+        var permissions = new FakePermissions();
+        // A log file and a backup an administrator copied in with their own account: nothing an optional plugin loads from.
+        permissions.Problems[Path.Combine(data, "logs", "server-20261106.log")] = "server-20261106.log is owned by PC\\anna";
+        permissions.Problems[Path.Combine(data, "backups", "monday.oadmbackup")] = "monday.oadmbackup is owned by PC\\anna";
+        await using var app = BuildServer(serviceMode: true, data, permissions, addOnVersion: AddOnRig.Version);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.Equal([data], permissions.Fixed); // fixed as before
+            Assert.Empty(permissions.Problems);
+            Assert.Equal(AddOnState.Installed, (await TextRecognitionAsync(app)).State);
+            Assert.True(Knows(app, AddOnCatalog.TextRecognitionId));
+            Assert.True(File.Exists(Path.Combine(addOn, PluginLoader.ManifestFileName)));
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Theory]
+    [InlineData("data")] // the data folder itself: anyone could put a folder into addons
+    [InlineData("addons")] // the addons folder itself
+    [InlineData("unreadable")] // something loose elsewhere, and the facts about addons cannot be read
+    public async Task OptionalPluginsOfAFolderThatWasLooseItselfOrCouldNotBeReadAreDeletedAndNotLoaded(string what)
+    {
+        var data = Path.Combine(_dir, "data");
+        var addOn = PlantAddOn(data);
+        var permissions = new FakePermissions();
+        switch (what)
+        {
+            case "data":
+                permissions.Problems[data] = "BUILTIN\\Users can write it";
+                break;
+            case "addons":
+                permissions.Problems[AddOnFolders.Root(data)] = "Everyone can write it";
+                break;
+            default:
+                permissions.Problems[Path.Combine(data, "logs", "server-20261106.log")] = "server-20261106.log is owned by PC\\anna";
+                permissions.OwnError = new UnauthorizedAccessException("Access denied");
+                break;
+        }
+
+        await using var app = BuildServer(serviceMode: true, data, permissions, addOnVersion: AddOnRig.Version);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.Equal([data], permissions.Fixed);
+            Assert.Equal(AddOnState.NotInstalled, (await TextRecognitionAsync(app)).State);
+            Assert.False(Knows(app, AddOnCatalog.TextRecognitionId));
+            Assert.False(Directory.Exists(addOn));
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Fact]
+    public async Task OnlyTheOptionalPluginWhoseFolderHeldSomethingLooseIsDeletedTheInstalledPluginsLoad()
+    {
+        var data = Path.Combine(_dir, "data");
+        var addOn = PlantAddOn(data);
+        var plugin = PlantPlugin(data);
+        var permissions = new FakePermissions();
+        permissions.Problems[Path.Combine(addOn, "models", "reader.onnx")] = "reader.onnx is owned by uid 1000";
+        await using var app = BuildServer(serviceMode: true, data, permissions, pluginRoots: [PluginPaths.Installed(data)], addOnVersion: AddOnRig.Version);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.Equal([data], permissions.Fixed);
+            Assert.Equal(AddOnState.NotInstalled, (await TextRecognitionAsync(app)).State);
+            Assert.False(Knows(app, AddOnCatalog.TextRecognitionId));
+            Assert.False(Directory.Exists(addOn));
+            Assert.True(Knows(app, "oadm.planted")); // a loose optional plugin says nothing about the installed plugins
+            Assert.True(Directory.Exists(plugin));
+            Assert.Empty(Directory.GetDirectories(data, InstalledPluginsTrust.AsidePrefix + "*"));
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Fact]
+    public async Task ALooseInstalledPluginChangesNothingForTheOptionalPlugins()
+    {
+        var data = Path.Combine(_dir, "data");
+        var addOn = PlantAddOn(data);
+        var plugin = PlantPlugin(data);
+        var permissions = new FakePermissions();
+        permissions.Problems[Path.Combine(plugin, "Acme.Server.dll")] = "Acme.Server.dll is owned by uid 1000";
+        await using var app = BuildServer(serviceMode: true, data, permissions, pluginRoots: [PluginPaths.Installed(data)], addOnVersion: AddOnRig.Version);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.False(Knows(app, "oadm.planted")); // moved aside, as before
+            Assert.Equal(AddOnState.Installed, (await TextRecognitionAsync(app)).State);
+            Assert.True(Directory.Exists(addOn));
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Fact]
+    public async Task TheFolderCheckSaysWhatWasLooseAboutTheOptionalPlugins()
+    {
+        var data = Path.Combine(_dir, "data");
+        var plugins = PluginPaths.Installed(data);
+        var addOns = AddOnFolders.Root(data);
+        var plugin = PlantPlugin(data, "acme.first");
+        var addOn = PlantAddOn(data);
+        var waiting = Path.Combine(addOns, ".update-" + AddOnCatalog.TextRecognitionId);
+        Directory.CreateDirectory(waiting);
+        var log = Path.Combine(data, "logs", "server-20261106.log");
+
+        // Nothing loose: nothing fixed, nothing said.
+        var permissions = new FakePermissions();
+        Assert.Equal(ServerFoldersCheck.Untouched, await Guard(permissions).EnsureServerFoldersAsync([data], plugins, addOns, CancellationToken.None));
+        Assert.Empty(permissions.Fixed);
+
+        // Loose elsewhere and in an installed plugin: fixed, the plugin is named, no optional plugin is.
+        permissions.Problems[log] = "owned by uid 1000";
+        permissions.Problems[Path.Combine(plugin, "a.dll")] = "owned by uid 1000";
+        var elsewhere = await Guard(permissions).EnsureServerFoldersAsync([data], plugins, addOns, CancellationToken.None);
+        Assert.True(elsewhere.Fixed);
+        Assert.Equal([Path.GetFullPath(plugin)], elsewhere.Plugins.Entries);
+        Assert.False(elsewhere.AddOns.All);
+        Assert.Empty(elsewhere.AddOns.Entries);
+
+        // Something loose in an optional plugin's folder and a loose waiting update: exactly those two, no installed plugin.
+        permissions.Problems[Path.Combine(addOn, "models", "reader.onnx")] = "owned by uid 1000";
+        permissions.Problems[waiting] = "owned by uid 1000";
+        var some = await Guard(permissions).EnsureServerFoldersAsync([data], plugins, addOns, CancellationToken.None);
+        Assert.False(some.AddOns.All);
+        Assert.Equal([Path.GetFullPath(waiting), Path.GetFullPath(addOn)], some.AddOns.Entries);
+        Assert.False(some.Plugins.All);
+        Assert.Empty(some.Plugins.Entries);
+
+        // The addons folder itself: every optional plugin, no installed plugin.
+        permissions.Problems[addOns] = "Everyone can write it";
+        var folder = await Guard(permissions).EnsureServerFoldersAsync([data], plugins, addOns, CancellationToken.None);
+        Assert.True(folder.AddOns.All);
+        Assert.False(folder.Plugins.All);
+
+        // The data folder itself: both.
+        permissions.Problems[data] = "Everyone can write it";
+        var both = await Guard(permissions).EnsureServerFoldersAsync([data], plugins, addOns, CancellationToken.None);
+        Assert.True(both.AddOns.All);
+        Assert.True(both.Plugins.All);
+
+        // Facts that cannot be read count as loose.
+        permissions.Problems[log] = "owned by uid 1000";
+        permissions.OwnError = new UnauthorizedAccessException("Access denied");
+        Assert.True((await Guard(permissions).EnsureServerFoldersAsync([data], plugins, addOns, CancellationToken.None)).AddOns.All);
+
+        // Asked without the optional plugins' folder: nothing is said about them.
+        permissions.OwnError = null;
+        permissions.Problems[data] = "Everyone can write it";
+        Assert.Same(LoosePlugins.None, (await Guard(permissions).EnsureServerFoldersAsync([data], plugins, CancellationToken.None)).AddOns);
+    }
+
     [Fact]
     public void ALoosePluginFolderThatCannotBeMovedKeepsThePluginsUnloadedAndOnlyItIsMovedLater()
     {
@@ -581,10 +773,14 @@ public sealed class ServiceSecurityTests : IDisposable
 
     private static FolderGuard Guard(IFolderPermissions permissions) => new(permissions, NullLogger<FolderGuard>.Instance);
 
-    private WebApplication BuildServer(bool serviceMode, string? dataDirectory = null, IFolderPermissions? permissions = null, IReadOnlyList<string>? pluginRoots = null) =>
-        OadmServerHost.Build([], new OadmServerHostOptions
+    /// <param name="addOnVersion">The server's version for its optional plugins (a folder of that version loads); null: the build's.</param>
+    private WebApplication BuildServer(
+        bool serviceMode, string? dataDirectory = null, IFolderPermissions? permissions = null, IReadOnlyList<string>? pluginRoots = null, string? addOnVersion = null)
+    {
+        dataDirectory ??= Path.Combine(_dir, "data-" + Guid.NewGuid().ToString("N"));
+        return OadmServerHost.Build([], new OadmServerHostOptions
         {
-            DataDirectory = dataDirectory ?? Path.Combine(_dir, "data-" + Guid.NewGuid().ToString("N")),
+            DataDirectory = dataDirectory,
             PluginRoots = pluginRoots ?? [],
             LogToConsole = false,
             ServiceMode = serviceMode,
@@ -596,8 +792,15 @@ public sealed class ServiceSecurityTests : IDisposable
                 {
                     services.AddSingleton(permissions);
                 }
+
+                if (addOnVersion is not null)
+                {
+                    services.RemoveAll<AddOnInstallerOptions>();
+                    services.AddSingleton(new AddOnInstallerOptions(dataDirectory, addOnVersion, AddOnInstallerOptions.CurrentRuntimeId()));
+                }
             },
         });
+    }
 
     private sealed class FakeRunner : ICommandRunner
     {

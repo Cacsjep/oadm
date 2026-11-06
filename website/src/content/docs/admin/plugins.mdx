@@ -101,6 +101,7 @@ install the plugin again.
 | **Not enough free disk space for the optional plugin.** | Free space on the drive of the data folder |
 | **The server is updating.** | Wait until the update is done |
 | **An optional plugin is being installed or removed. Try again when it is done.** | Wait, one install or remove runs at a time |
+| **Removed: other users could change its folder. Install it again.** | Click **Download ZIP** and **Install**. See [Plugin folders other users could change](#plugin-folders-other-users-could-change) |
 
 ## OADM PRO plugins
 
@@ -173,3 +174,12 @@ start.
   folder there: anyone could have put a plugin into it.
 
 Check the plugin, move its folder back into `plugins` and restart the OADM server service. It loads then.
+
+An [optional plugin](#optional-plugins) whose folder other users could change is deleted, because you can install it
+again from its ZIP. Its row says **Removed: other users could change its folder. Install it again.** Click
+**Download ZIP** and **Install**. Its settings and your choice of on or off are kept, and the other optional plugins
+load as usual. When other users could change the `addons` folder itself or the folder above it, every optional plugin
+is deleted.
+
+A file other users could change elsewhere in the data folder, a log file or a backup, is made writable only by
+administrators and changes nothing for plugins.

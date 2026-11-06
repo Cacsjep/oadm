@@ -643,7 +643,8 @@ public static partial class OadmServerHost
         if (folderGuard is not null)
         {
             folders = await folderGuard.EnsureServerFoldersAsync(
-                ServiceHosting.ServerFolders(paths.DataDirectory), PluginPaths.Installed(paths.DataDirectory), ct).ConfigureAwait(false);
+                ServiceHosting.ServerFolders(paths.DataDirectory), PluginPaths.Installed(paths.DataDirectory),
+                AddOns.AddOnFolders.Root(paths.DataDirectory), ct).ConfigureAwait(false);
         }
 
         // 0b. A restore staged before the restart: its database, key and plugin data replace the server's (the replaced files
@@ -696,9 +697,10 @@ public static partial class OadmServerHost
 
         loader.LoadFromRoots(roots);
         // Add-ons after the bundled and installed plugins (an id in both: the bundled one wins). Removed ones are deleted now;
-        // an older one keeps running, one that cannot waits for Install again. No add-on folder is used when the
-        // service had to fix the data folder at this start (until now others could write it).
-        await addOns.LoadInstalledAsync(foldersTrusted: !folders.Fixed, ct).ConfigureAwait(false);
+        // an older one keeps running, one that cannot waits for Install again. An add-on folder others could change until
+        // this start is not used and goes: all of them only when the data folder or the addons folder itself was loose. A
+        // loose file elsewhere in the data folder changes nothing.
+        await addOns.LoadInstalledAsync(folders.AddOns, ct).ConfigureAwait(false);
         foreach (var plugin in registry.TaskPlugins)
         {
             LogTaskPlugin(logger, plugin.Id, plugin.Origin.Directory ?? "built-in");

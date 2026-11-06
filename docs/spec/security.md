@@ -353,11 +353,12 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   by `chown -R 0:0`, `chmod -R go-w`). An unfixable data folder stops the start, an unfixable plugin folder is skipped
   with a load error (`PluginLoader.FolderCheck`). The development plugin folder
   (`artifacts/plugins`) is used only outside service mode. Optional plugins (`<datafolder>/addons/<id>/`,
-  `docs/spec/add-ons.md`) are plugin folders too: checked like them before they load, and a folder put in by hand is not
-  taken up when the data folder had to be fixed at this start (until then others could write it; anything fixed in it
-  counts, `ServerFoldersCheck.Fixed`). The installed plugins (`<datafolder>/plugins`) are judged by what was loose and
-  where, read before the fix wipes it (`FolderGuard.EnsureServerFoldersAsync` returns `LoosePlugins`;
-  `IFolderPermissions.FindOwnProblemAsync` asks about one folder or file itself, Unix `find <entry> -maxdepth 0 ...`):
+  `docs/spec/add-ons.md`) are plugin folders too: checked like them before they load. The installed plugins
+  (`<datafolder>/plugins`) and the optional plugins (`<datafolder>/addons`) are each judged by what was loose and
+  where, read before the fix wipes it (`FolderGuard.EnsureServerFoldersAsync` returns a `LoosePlugins` for each,
+  `ServerFoldersCheck.Plugins` and `.AddOns`, from one function;
+  `IFolderPermissions.FindOwnProblemAsync` asks about one folder or file itself, Unix `find <entry> -maxdepth 0 ...`).
+  The installed plugins:
   - The data folder itself or the plugins folder itself was loose (others could create, replace or remove entries in
     it, the case of a plugin planted before OADM was installed), or the facts could not be read: nothing in it is
     trusted, the whole plugins folder is moved to `<datafolder>/plugins-not-loaded-<UTC time>` before the loader runs,
@@ -372,6 +373,12 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   cannot be moved, the plugins folder is left out of the roots, and the file `<datafolder>/plugins-not-trusted` keeps it
   out at the next starts until the move works (after its first line it names the entries still to move; no names: the
   whole folder). A start that fixed nothing changes nothing (`InstalledPluginsTrust`). Tests: `ServiceSecurityTests`.
+
+  The optional plugins follow the same rule, but a loose one is deleted (its genuine ZIP installs it again): all of them
+  only when the data folder or `addons` itself was loose or the facts could not be read, else only the add-on whose
+  `addons/<id>` held something loose, or only a loose waiting update (`addons/.update-<id>`, never swapped in).
+  Something loose elsewhere, `plugins/` included, changes nothing for them. Details: `docs/spec/add-ons.md` "Server",
+  Loose folders.
 
 ## Optional plugins: trust
 
