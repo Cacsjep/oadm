@@ -27,6 +27,12 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   group get PERMISSION_DENIED "Only users with all devices can do this." and the client hides the Event rules page for
   them. Rules have no owner and run on all devices (migration `EventRulesWithoutOwner` drops the owner columns the migration
   `DeviceGroups` added); a deleted group changes no rule. Send HTTP request and Send TCP message send to any address.
+- **Names**: a rule name has 1 to 64 characters and no control characters (line break, tab, NUL): the server log, the
+  event log and the audit write it as it is, and a line break would forge a line. `RuleValidator` and the dialog refuse
+  one below the name, "Use letters, digits and punctuation only." (`RuleDefinition.NameInvalidText`, the same text for a
+  recipient). A rule stored before the check still loads and runs; only a save is refused, and a copy gets the name
+  without them. Send test and a recipient's Test run before a save: `EventGrpcService` takes the control characters out
+  of the name they send. A rule has no other free names (a schedule is days and times, a condition has no label).
 - **Recipients** ([recipients.md](recipients.md)): shared targets of Send email, Send HTTP request, Send TCP message, Publish MQTT message, Write Modbus value and Write OPC UA value (the last three share one connection per recipient, [recipient-sessions.md](recipient-sessions.md)). An action keeps
   the message and a link to its recipient (`ActionFieldType.Recipient`, `ActionField.Recipient`); `ActionRunner` merges the recipient's
   fields into the settings of a run and of a test. An action without its recipient fails with "Choose a recipient.".

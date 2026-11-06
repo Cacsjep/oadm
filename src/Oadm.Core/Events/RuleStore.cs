@@ -377,6 +377,8 @@ public sealed class RuleStore(IDbContextFactory<OadmDbContext> dbFactory, ISecre
 
     private static string CopyName(string name)
     {
+        // A rule saved before names were checked may hold a line break; its copy is a new name and never does.
+        name = name.Any(char.IsControl) ? string.Concat(name.Where(c => !char.IsControl(c))) : name;
         var copy = name + " (copy)";
         return copy.Length <= RuleDefinition.MaxNameLength ? copy : name[..(RuleDefinition.MaxNameLength - 7)].TrimEnd() + " (copy)";
     }

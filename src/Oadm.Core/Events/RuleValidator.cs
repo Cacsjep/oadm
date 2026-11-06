@@ -51,6 +51,12 @@ public static class RuleValidator
             return string.Create(CultureInfo.InvariantCulture, $"The name is longer than {RuleDefinition.MaxNameLength} characters.");
         }
 
+        if (name.Any(char.IsControl))
+        {
+            // The server log and the event log write the name as it is: a line break in it would forge a line.
+            return RuleDefinition.NameInvalidText;
+        }
+
         if (rule.Conditions.Count == 0 || rule.Conditions[0].Kind != RuleConditionKind.Event)
         {
             return "The rule needs an event as its first condition.";

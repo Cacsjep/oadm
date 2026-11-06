@@ -143,6 +143,22 @@ public sealed class EventRulesTests : IDisposable
     });
 
     [Fact]
+    public Task A_rule_name_with_a_tab_or_line_break_shows_below_the_name() => _ui.RunAsync(async () =>
+    {
+        var (api, _, _, page) = await CreateAsync();
+        var editor = await page.CreateEditorAsync(null);
+        Assert.NotNull(editor);
+
+        editor.Name = "Person\tlamp";
+        Assert.Equal("Use letters, digits and punctuation only.", editor.ErrorOf(nameof(editor.Name)));
+        editor.Name = "Person\nlamp";
+        Assert.Equal("Use letters, digits and punctuation only.", editor.ErrorOf(nameof(editor.Name)));
+        editor.Name = "Person lamp";
+        Assert.Null(editor.ErrorOf(nameof(editor.Name)));
+        api.Dispose();
+    });
+
+    [Fact]
     public Task The_dialog_builds_a_rule_with_conditions_actions_and_settings() => _ui.RunAsync(async () =>
     {
         var (api, store, _, page) = await CreateAsync();

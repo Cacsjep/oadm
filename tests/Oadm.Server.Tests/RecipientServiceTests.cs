@@ -202,6 +202,26 @@ public sealed class RecipientServiceTests
     }
 
     [Fact]
+    public async Task ANameWithALineBreakIsRefusedBelowTheNameAndATestWritesItOnOneLine()
+    {
+        var (host, events, _) = await StartAsync();
+        await using (host)
+        {
+            const string Forged = "Teams\r\n12:00:00 [INF] Oadm.Server: Login of admin";
+
+            var refused = await Assert.ThrowsAsync<RpcException>(async () => await events.SaveRecipientAsync(Request(Forged)));
+            Assert.Equal(StatusCode.InvalidArgument, refused.StatusCode);
+            Assert.Equal("Use letters, digits and punctuation only.", refused.Status.Detail);
+            Assert.Equal("name", refused.Trailers.GetValue(Proto.RecipientErrors.FieldTrailer));
+
+            // A test runs before the name is checked: the audit (and with it the server log) gets it without the line break.
+            Assert.True((await events.TestRecipientAsync(Request(Forged))).Ok);
+            var entry = Assert.Single((await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries, e => e.Action == AuditActions.RecipientTested);
+            Assert.Equal("Teams12:00:00 [INF] Oadm.Server: Login of admin", entry.Target);
+        }
+    }
+
+    [Fact]
     public async Task ALoginInAURLOfARefusedTestStaysOutOfTheAudit()
     {
         var (host, events, _) = await StartAsync();

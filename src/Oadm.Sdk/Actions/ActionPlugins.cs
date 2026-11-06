@@ -259,6 +259,9 @@ public sealed record RecipientType(string Id, string DisplayName, string? IconKe
     /// <summary>The refusal of a name another recipient has.</summary>
     public const string NameTakenText = "A recipient with this name already exists.";
 
+    /// <summary>The refusal of a name with a line break, a tab or another control character.</summary>
+    public const string NameInvalidText = Oadm.Sdk.Events.RuleDefinition.NameInvalidText;
+
     /// <summary>The refusal of an id that is gone.</summary>
     public const string NotFoundText = "The recipient no longer exists.";
 }

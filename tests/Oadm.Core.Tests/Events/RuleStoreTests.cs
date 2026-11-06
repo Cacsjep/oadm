@@ -114,6 +114,66 @@ public sealed class RuleStoreTests
         Assert.Equal(expected, ex.Message);
     }
 
+    /// <summary>Names with a control character, by a key (the test names stay printable).</summary>
+    internal static string ForgedName(string kind) => kind switch
+    {
+        "line feed" => "Gate\nrule",
+        "log line" => "Gate\r\n12:00:00 [INF] Oadm.Server: Login of admin",
+        "tab" => "Gate\trule",
+        "nul" => "Gate\0rule",
+        "next line" => "Gate\u0085rule",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
+    [Theory]
+    [InlineData("line feed")]
+    [InlineData("log line")]
+    [InlineData("tab")]
+    [InlineData("nul")]
+    [InlineData("next line")]
+    public async Task ARuleNameWithAControlCharacterIsRefused(string kind)
+    {
+        await using var rig = await EventRulesRig.StartAsync();
+        var rule = EventRulesRig.Rule(EventRulesRig.Pulse, rig.WithoutDevice());
+        rule.Name = ForgedName(kind);
+
+        var ex = await Assert.ThrowsAsync<RuleValidationException>(() => rig.Rules.SaveAsync(rule, CancellationToken.None));
+
+        Assert.Equal("Use letters, digits and punctuation only.", ex.Message);
+        Assert.Empty(await rig.Store.ListAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ARuleStoredWithALineBreakInItsNameStillRunsAndOnlyASaveIsRefused()
+    {
+        await using var rig = await EventRulesRig.StartAsync();
+        var camera = await rig.AddDeviceAsync("10.0.0.1");
+        var rule = EventRulesRig.Rule(EventRulesRig.Pulse, rig.WithoutDevice(new JsonObject { ["text"] = "hi" }));
+        rule.Id = Guid.NewGuid();
+        rule.Name = "Gate\nrule";
+        await using (var db = await rig.DbFactory.CreateDbContextAsync())
+        {
+            db.EventRules.Add(new EventRuleEntity { Id = rule.Id, Name = rule.Name, Enabled = false, DefinitionJson = rule.ToJson() });
+            await db.SaveChangesAsync();
+        }
+
+        // Read, turned on and run as before.
+        Assert.Equal("Gate\nrule", (await rig.Rules.GetAsync(rule.Id, CancellationToken.None))!.Value.Definition.Name);
+        Assert.NotNull(await rig.Rules.SetEnabledAsync(rule.Id, true, CancellationToken.None));
+        rig.Publisher.Fire(EventRulesRig.Pulse, camera.Id);
+        await rig.SettleAsync();
+        Assert.Single(rig.NoDevice.Runs);
+
+        // A save needs a clean name; a copy gets one.
+        var stored = (await rig.Rules.GetAsync(rule.Id, CancellationToken.None))!.Value.Definition;
+        var ex = await Assert.ThrowsAsync<RuleValidationException>(() => rig.Rules.SaveAsync(stored, CancellationToken.None));
+        Assert.Equal("Use letters, digits and punctuation only.", ex.Message);
+        var copy = await rig.Rules.DuplicateAsync(rule.Id, CancellationToken.None);
+        Assert.Equal("Gaterule (copy)", copy!.Value.Definition.Name);
+        stored.Name = "Gate rule";
+        Assert.Equal("Gate rule", (await rig.SaveAsync(stored)).Name);
+    }
+
     [Fact]
     public async Task SummariesDescribeConditionsActionsAndState()
     {

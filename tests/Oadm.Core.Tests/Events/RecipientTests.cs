@@ -148,6 +148,50 @@ public sealed class RecipientTests
         await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.Recipients.SaveAsync(Guid.NewGuid(), "Gone", TargetType, Values("https://c.example.com"), TargetFields, CancellationToken.None));
     }
 
+    [Theory]
+    [InlineData("line feed")]
+    [InlineData("log line")]
+    [InlineData("tab")]
+    [InlineData("nul")]
+    public async Task ARecipientNameWithAControlCharacterIsRefusedBelowTheName(string kind)
+    {
+        await using var rig = await RigAsync(new SendAction());
+
+        var refused = await Assert.ThrowsAsync<RecipientValidationException>(
+            () => rig.Recipients.SaveAsync(null, RuleStoreTests.ForgedName(kind), TargetType, Values("https://a.example.com"), TargetFields, CancellationToken.None));
+
+        Assert.Equal("Use letters, digits and punctuation only.", refused.Message);
+        Assert.Equal(RecipientValidationException.NameField, refused.Field);
+        Assert.Empty(await rig.Recipients.ListAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ARecipientStoredWithALineBreakInItsNameStillSendsAndOnlyASaveIsRefused()
+    {
+        var action = new SendAction();
+        await using var rig = await RigAsync(action);
+        var camera = await rig.AddDeviceAsync("10.0.0.1");
+        var id = Guid.NewGuid();
+        await using (var db = await rig.DbFactory.CreateDbContextAsync())
+        {
+            db.Recipients.Add(new RecipientEntity { Id = id, Name = "Gate\nteam", TypeId = TargetType, SettingsJson = Values("https://a.example.com").ToJsonString() });
+            await db.SaveChangesAsync();
+        }
+
+        var stored = (await rig.Recipients.GetAsync(id, CancellationToken.None))!;
+        Assert.Equal("Gate\nteam", stored.Name);
+        await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Pulse, Send(stored)));
+        rig.Publisher.Fire(EventRulesRig.Pulse, camera.Id);
+        await rig.SettleAsync();
+        Assert.Single(action.Runs);
+
+        var refused = await Assert.ThrowsAsync<RecipientValidationException>(
+            () => rig.Recipients.SaveAsync(id, stored.Name, TargetType, Values("https://a.example.com"), TargetFields, CancellationToken.None));
+        Assert.Equal(RecipientValidationException.NameField, refused.Field);
+        var (renamed, _) = await rig.Recipients.SaveAsync(id, "Gate team", TargetType, Values("https://a.example.com"), TargetFields, CancellationToken.None);
+        Assert.Equal("Gate team", renamed.Name);
+    }
+
     [Fact]
     public async Task ThereAreAtMost200Recipients()
     {

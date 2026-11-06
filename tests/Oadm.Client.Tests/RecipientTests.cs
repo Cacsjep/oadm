@@ -198,6 +198,21 @@ public sealed class RecipientTests : IDisposable
     });
 
     [Fact]
+    public Task A_name_with_a_tab_or_line_break_shows_below_the_name() => _ui.RunAsync(async () =>
+    {
+        var (api, _) = await ApiAsync();
+        var editor = await EditorAsync(api, typeId: FakeOadmApi.FakeEmailRecipientType);
+        FillEmail(editor, "Night\tshift");
+        Assert.Equal("Use letters, digits and punctuation only.", editor.ErrorOf(nameof(editor.Name)));
+        Assert.False(editor.SaveCommand.CanExecute(null));
+
+        editor.Name = "Night\nshift";
+        Assert.Equal("Use letters, digits and punctuation only.", editor.ErrorOf(nameof(editor.Name)));
+        editor.Name = "Night shift";
+        Assert.Null(editor.ErrorOf(nameof(editor.Name)));
+    });
+
+    [Fact]
     public Task A_server_refusal_stands_below_the_field_it_names() => _ui.RunAsync(async () =>
     {
         var (fake, _) = await ApiAsync();

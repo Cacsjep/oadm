@@ -204,6 +204,8 @@ public sealed class RuleDefinition
 {
     /// <summary>Longest rule name.</summary>
     public const int MaxNameLength = 64;
+    /// <summary>The refusal of a name with a line break, a tab or another control character (rule and recipient names).</summary>
+    public const string NameInvalidText = "Use letters, digits and punctuation only.";
     /// <summary>Most conditions per rule.</summary>
     public const int MaxConditions = 10;
     /// <summary>Most actions per rule.</summary>

@@ -21,7 +21,7 @@ kept its own server settings.
 | Delete | Refused while a rule uses it, with the rule names: "Used by OCR, Gate alarm. Change those rules first." |
 | Rights | The event rules' own: "See event rules" lists, "Change event rules" creates, changes, deletes and tests (audited). Users with a device group do not reach them, like every `EventService` method (`AccessRule.AllDevices`) |
 | Secrets | Password fields are stored with `ISecretProtector` (purpose `oadm:recipient:<id>:<field>`), never sent back to a client, decrypted only for a run or a test. Empty password on save keeps the stored one, only while every other field is unchanged: with a changed target Test and Save refuse an empty password below the field, "Enter the password again. The target changed."; a hidden one, which nobody can be asked for, is dropped on save and not used by Test. A stored optional password cannot be cleared on a changed target: a target without a login gets a new recipient |
-| Limit | At most 200 recipients (`RecipientStore.MaxRecipients`), names unique, at most 64 characters |
+| Limit | At most 200 recipients (`RecipientStore.MaxRecipients`), names unique, at most 64 characters, no control characters (line break, tab: the server log writes the name as it is; refused below the name with "Use letters, digits and punctuation only.", `RecipientType.NameInvalidText`). A recipient stored before the check still loads and sends, only a save is refused; Test takes them out of the name it writes to the audit |
 
 | Type | The recipient holds | The action keeps |
 |---|---|---|

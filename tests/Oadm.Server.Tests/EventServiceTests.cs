@@ -241,6 +241,22 @@ public sealed class EventServiceTests
         Assert.DoesNotContain((await events.ListLogAsync(new Proto.ListEventLogRequest())).Entries, e => e.Kind == Proto.EventLogKind.EventLogAction);
         Assert.Contains((await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries, e => e.Action == AuditActions.EventActionTested && e.Target == "Notify");
 
+        // The name of a rule that is not saved yet is not checked: the run, the server log and the audit get it on one line.
+        var forged = await events.TestActionAsync(new Proto.TestActionRequest
+        {
+            ActionId = action.Id,
+            SettingsJson = new JsonObject { ["message"] = "{rule}", ["token"] = "t" }.ToJsonString(),
+            RuleName = "Gate\r\n2026-11-06 12:00:00.000 +00:00 [INF] Oadm.Server: Login of admin",
+        });
+        Assert.True(forged.Ok, forged.Message);
+        Assert.Equal("Gate2026-11-06 12:00:00.000 +00:00 [INF] Oadm.Server: Login of admin|t", action.Messages.Last());
+        Assert.DoesNotContain((await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries, e => e.Detail.Contains('\n', StringComparison.Ordinal));
+        var unsaved = RuleDefinition.FromJson(saved.ToJson());
+        unsaved.Id = Guid.Empty;
+        unsaved.Name = "Gate\nrule";
+        var refusedName = await Assert.ThrowsAsync<RpcException>(async () => await events.SaveRuleAsync(new Proto.SaveRuleRequest { DefinitionJson = unsaved.ToJson() }));
+        Assert.Equal((StatusCode.InvalidArgument, "Use letters, digits and punctuation only."), (refusedName.StatusCode, refusedName.Status.Detail));
+
         var op = new Proto.EventService.EventServiceClient(await host.InvokerForUserAsync("tech1", UserRole.Operator));
         var refused = await Assert.ThrowsAsync<RpcException>(async () => await op.TestActionAsync(new Proto.TestActionRequest { ActionId = action.Id }));
         Assert.Equal(StatusCode.PermissionDenied, refused.StatusCode);

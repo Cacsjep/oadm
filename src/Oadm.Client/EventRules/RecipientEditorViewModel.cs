@@ -65,6 +65,7 @@ public sealed partial class RecipientEditorViewModel : ValidatingViewModel
             var name = Name.Trim();
             return name.Length == 0 ? "Enter a name."
                 : name.Length > MaxNameLength ? string.Create(CultureInfo.InvariantCulture, $"At most {MaxNameLength} characters.")
+                : name.Any(char.IsControl) ? RecipientType.NameInvalidText
                 : _takenNames.Contains(name) ? RecipientType.NameTakenText
                 : null;
         });
