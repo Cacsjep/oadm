@@ -40,6 +40,14 @@ public sealed partial class ConfigFile
             .Select(p => new ConfigSection(p.Key, ConfigSections.Name(p.Key), ConfigIdentity.CountImported(p.Key, p.Value!)))
             .ToList();
         UnknownSections = [.. data.Where(p => IsSectionKey(p.Key) && p.Value is JsonObject && !ConfigSections.Known.Contains(p.Key, StringComparer.Ordinal)).Select(p => p.Key)];
+        NotImported =
+        [
+            .. UnknownSections,
+            .. data.Where(p => ConfigSections.Known.Contains(p.Key, StringComparer.Ordinal) && p.Value is JsonObject)
+                .Select(p => (p.Key, Parts: ConfigIdentity.LeftOut(p.Key, p.Value!)))
+                .Where(area => area.Parts.Count > 0)
+                .Select(area => area.Key + " (" + string.Join(", ", area.Parts) + ")"),
+        ];
         if (data[ConfigSections.Param] is JsonObject param && ConfigIdentity.CountImported(ConfigSections.Connection, param) is > 0 and var count)
         {
             sections.Add(new ConfigSection(ConfigSections.Connection, ConfigSections.Name(ConfigSections.Connection), count));
@@ -65,6 +73,12 @@ public sealed partial class ConfigFile
 
     /// <summary>Areas of the file OADM does not know ("firewall.v1"): shown as not imported, never sent.</summary>
     public IReadOnlyList<string> UnknownSections { get; }
+
+    /// <summary>
+    /// What the dialog names as not imported: <see cref="UnknownSections"/>, then the parts of a known area that are
+    /// never sent ("user-management.v2 (users)", <see cref="ConfigIdentity.LeftOut"/>).
+    /// </summary>
+    public IReadOnlyList<string> NotImported { get; }
 
     /// <summary>"From AXIS P3265-V, AXIS OS 12.11.77".</summary>
     public string SourceText => "From " + ModelNames.Display(Model) + (string.IsNullOrWhiteSpace(FirmwareVersion) ? string.Empty : ", AXIS OS " + FirmwareVersion);
@@ -151,6 +165,7 @@ public static class ConfigSections
     public const string Param = "param.v2";
     public const string ActionRules = "action-rules.v2";
     public const string PowerSettings = "power-settings.v2";
+    public const string UserManagement = "user-management.v2";
 
     /// <summary>
     /// Not an area of the file: the values of <c>param.v2</c> that decide how OADM reaches the device
@@ -165,7 +180,7 @@ public static class ConfigSections
     /// </summary>
     public static readonly IReadOnlyList<string> Known =
     [
-        Param, ActionRules, "event-schedules.v2", "event-mqtt-bridge.v2", "time.v2", PowerSettings, "user-management.v2",
+        Param, ActionRules, "event-schedules.v2", "event-mqtt-bridge.v2", "time.v2", PowerSettings, UserManagement,
     ];
 
     /// <summary>Why an area of a file is not imported.</summary>
@@ -174,7 +189,10 @@ public static class ConfigSections
     /// <summary>An area OADM imports, or <see cref="Connection"/>.</summary>
     public static bool IsKnown(string key) => key == Connection || Known.Contains(key, StringComparer.Ordinal);
 
-    /// <summary>"Not imported: firewall.v1, ssh.v2. OADM does not import these settings."; null without unknown areas.</summary>
+    /// <summary>
+    /// "Not imported: firewall.v1, user-management.v2 (users). OADM does not import these settings."; null when nothing
+    /// is left out (<see cref="ConfigFile.NotImported"/>).
+    /// </summary>
     public static string? UnknownNote(IReadOnlyCollection<string> keys)
     {
         ArgumentNullException.ThrowIfNull(keys);
@@ -190,7 +208,7 @@ public static class ConfigSections
         "event-mqtt-bridge.v2" => "MQTT events",
         "time.v2" => "Time zone",
         PowerSettings => "Power",
-        "user-management.v2" => "Password policy",
+        UserManagement => "Password policy",
         _ => key,
     };
 
@@ -257,13 +275,61 @@ public static class ConfigIdentity
     ];
 
     /// <summary>
+    /// The only part of <c>user-management.v2</c> that is imported: <c>settings.passphraseComplexity</c>, the password
+    /// policy. A camera exports nothing else there (AXIS P3265-V, AXIS OS 12.11.77), but accounts in a file made by hand
+    /// could change or demote the account OADM uses, on every device of the import.
+    /// </summary>
+    private const string UserSettings = "settings";
+
+    private const string PasswordPolicy = "passphraseComplexity";
+
+    /// <summary>
+    /// The parts of an area that are never imported, by name and in file order ("users", "settings.anonymousAdmin");
+    /// empty for every area but <see cref="ConfigSections.UserManagement"/>.
+    /// </summary>
+    public static IReadOnlyList<string> LeftOut(string key, JsonNode section)
+    {
+        if (key != ConfigSections.UserManagement || section is not JsonObject area)
+        {
+            return [];
+        }
+
+        var names = new List<string>();
+        foreach (var (name, value) in area)
+        {
+            if (name == UserSettings && value is JsonObject settings)
+            {
+                names.AddRange(settings.Where(p => p.Key != PasswordPolicy).Select(p => UserSettings + "." + p.Key));
+            }
+            else
+            {
+                names.Add(name);
+            }
+        }
+
+        return names;
+    }
+
+    /// <summary>
     /// A copy of the section without the device's own and read-only values. <c>param.v2</c> also loses the connection
     /// values; for <see cref="ConfigSections.Connection"/> <paramref name="section"/> is <c>param.v2</c> and the copy has
-    /// only them (collection items keep their <c>groupId</c>).
+    /// only them (collection items keep their <c>groupId</c>). <c>user-management.v2</c> keeps the password policy only
+    /// (<see cref="LeftOut"/> names the rest).
     /// </summary>
     public static JsonNode Clean(string key, JsonNode section)
     {
         ArgumentNullException.ThrowIfNull(section);
+        if (key == ConfigSections.UserManagement)
+        {
+            var kept = new JsonObject();
+            if (section is JsonObject area && area[UserSettings] is JsonObject settings && settings[PasswordPolicy] is { } policy)
+            {
+                kept[UserSettings] = new JsonObject { [PasswordPolicy] = policy.DeepClone() };
+            }
+
+            return kept;
+        }
+
         if (key == ConfigSections.Connection)
         {
             return KeepConnection(Clean(ConfigSections.Param, section, ParamPaths), string.Empty) ?? new JsonObject();

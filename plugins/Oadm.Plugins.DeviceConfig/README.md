@@ -47,7 +47,7 @@ What an AXIS P3265-V with AXIS OS 12.11.77 exports: 7 of the 38 configuration AP
 | `event-mqtt-bridge.v2` | MQTT event publication / subscription |
 | `time.v2` | Time zone |
 | `power-settings.v2` | Power settings |
-| `user-management.v2` | Password policy only (no users) |
+| `user-management.v2` | Password policy only (no users): `settings.passphraseComplexity` |
 
 Not exported: users and passwords, certificates, network-settings v2, firewall, SSH, SNMP v1 (REST), OIDC, recordings,
 analytics, ACAP applications and their settings, overlays, stream profiles beyond param, and every API without the flag.
@@ -85,6 +85,7 @@ The export contains values that belong to **one device** and some that cannot be
 | Two import modes | One `.json` file applied to every selected device of its model, or the ZIP of a multi-device export where each device gets its own file back (matched by MAC address). |
 | Connection settings | Their own area, off by default: listed after the file's areas (unchecked) with a warning; unchecked, their values are left out of "Network and system settings" and of the verify like identity values; checked, they are written last in their own step and the confirmation warns. Which values: `DangerousParameters`, shared with Configure devices, so both ask for their restricted right (`connection`, `dangerous`) for the same parameters. |
 | Known areas only | An area of a file that is not one of the seven is shown as not imported ("Not imported: firewall.v1. OADM does not import these settings.") and never sent; the task skips it too when a payload names it ("OADM does not import these settings"). |
+| No accounts | Of `user-management.v2` only the password policy (`settings.passphraseComplexity`) is imported (`ConfigIdentity.Clean`), in the dialog and in the task. A camera exports nothing else there, but accounts in a file made by hand could change or demote the account OADM uses on every device. The rest of the area is named like an unknown area ("Not imported: user-management.v2 (users). OADM does not import these settings.", `ConfigFile.NotImported`) and never sent. |
 
 ### Export
 
@@ -120,8 +121,8 @@ The export contains values that belong to **one device** and some that cannot be
   method, IEEE 802.1X, IPv6, DNS, network link, web interface) can make the devices unreachable.". Only the areas OADM
   knows are listed. Notes below, only when they apply: "Host name, IP address and
   device names stay as they are on each device." (parameters in the file), "The file has no passwords. Event recipients
-  that need one must get it again." (event recipients), "Not imported: firewall.v1. OADM does not import these
-  settings." (areas OADM does not know), "2 of 6 devices are other models and are left out." / "None of
+  that need one must get it again." (event recipients), "Not imported: firewall.v1, user-management.v2 (users). OADM does not import these
+  settings." (areas OADM does not know, accounts in the password policy area), "2 of 6 devices are other models and are left out." / "None of
   the selected devices is an AXIS ...". A file with no known area keeps Import disabled ("The file has no settings OADM
   imports").
 - Import (primary, disabled with the reason as tooltip) asks in `ui:MessageWindow`: "Import the configuration into 4

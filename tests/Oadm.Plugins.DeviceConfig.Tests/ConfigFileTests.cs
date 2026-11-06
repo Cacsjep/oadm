@@ -109,6 +109,39 @@ public sealed class ConfigFileTests
     }
 
     [Fact]
+    public void Only_the_password_policy_of_the_user_area_is_imported()
+    {
+        // What the camera exports: the policy and nothing else, so nothing is left out.
+        var recorded = ConfigFile.Parse(Fixtures.Export);
+        Assert.Equal("""{"settings":{"passphraseComplexity":{"policy":"none"}}}""", recorded.Data[ConfigSections.UserManagement]!.ToJsonString());
+        Assert.Empty(recorded.NotImported);
+
+        // A file made by hand with accounts in the area.
+        var export = (JsonObject)JsonNode.Parse(Fixtures.Export)!;
+        var area = (JsonObject)export["data"]!["user-management.v2"]!;
+        area["users"] = new JsonArray(new JsonObject { ["name"] = "root", ["role"] = "viewer" });
+        area["groups"] = new JsonObject { ["admin"] = new JsonArray() };
+        area["settings"]!["anonymousAdmin"] = true;
+        export["data"]!["firewall.v1"] = new JsonObject { ["activated"] = true };
+        var file = ConfigFile.Parse(export.ToJsonString());
+
+        var cleaned = ConfigIdentity.Clean(ConfigSections.UserManagement, file.Data[ConfigSections.UserManagement]!);
+        Assert.Equal("""{"settings":{"passphraseComplexity":{"policy":"none"}}}""", cleaned.ToJsonString());
+        Assert.Equal(1, file.Sections.Single(s => s.Key == ConfigSections.UserManagement).ValueCount);
+        Assert.Equal(["firewall.v1"], file.UnknownSections);
+        Assert.Equal(["firewall.v1", "user-management.v2 (settings.anonymousAdmin, users, groups)"], file.NotImported);
+        Assert.Equal(
+            "Not imported: firewall.v1, user-management.v2 (settings.anonymousAdmin, users, groups). OADM does not import these settings.",
+            ConfigSections.UnknownNote(file.NotImported));
+
+        // Settings that are not an object, or no policy: nothing of the area is imported.
+        area["settings"] = "all";
+        var broken = ConfigFile.Parse(export.ToJsonString());
+        Assert.Equal("{}", ConfigIdentity.Clean(ConfigSections.UserManagement, broken.Data[ConfigSections.UserManagement]!).ToJsonString());
+        Assert.Contains("user-management.v2 (settings, users, groups)", broken.NotImported);
+    }
+
+    [Fact]
     public void The_parameters_Configure_devices_warns_about_are_connection_settings_of_an_import()
     {
         // One table (DangerousParameters): what needs the dangerous right in Configure devices needs the connection right here.

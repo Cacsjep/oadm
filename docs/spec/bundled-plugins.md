@@ -613,8 +613,9 @@ import, `/config/rest/$export`, `$import`, like its web interface), **Configure 
   addresses) and read-only values are never imported; "Connection settings" (HTTPS, ports, login method, 802.1X, IPv6,
   DNS, network link, web interface) are their own area, off by default, with a warning, written last when chosen; which
   parameters they are comes from the one table of Configure devices (`DangerousParameters`), so a parameter that needs
-  the `dangerous` right there needs the `connection` right here; only the seven areas OADM knows are imported, any other
-  area of a file is shown as not imported and never sent; the same model only
+  the `dangerous` right there needs the `connection` right here; of `user-management.v2` only the password policy is
+  imported, never accounts (no lock-out); only the seven areas OADM knows are imported, any other
+  area of a file and the left-out part of the password policy area are shown as not imported and never sent; the same model only
   ("Nothing was changed" otherwise); no backup by OADM (export first); the device validates and OADM shows its answer per
   area, one failed area does not stop the others; a ZIP entry must carry the device's MAC address; Export is a dialog,
   never a task.

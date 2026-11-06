@@ -140,6 +140,17 @@ public sealed class ImportDialogTests(ITestOutputHelper output) : IDisposable
         Assert.DoesNotContain(zip.Sections, s => s.Key == "firewall.v1");
         Assert.Contains("Not imported: firewall.v1. OADM does not import these settings.", zip.Notes);
 
+        // Accounts in the password policy area are left out and named the same way, for a file and a ZIP.
+        export["data"]!["user-management.v2"]!["users"] = new JsonArray(new JsonObject { ["name"] = "root", ["role"] = "viewer" });
+        const string leftOut = "Not imported: firewall.v1, user-management.v2 (users). OADM does not import these settings.";
+        var accounts = Dialog([new FakeDevice()]);
+        await accounts.LoadAsync(Write("with-users.json", export.ToJsonString()));
+        Assert.Contains(leftOut, accounts.Notes);
+        Assert.Contains(accounts.Sections, s => s.Key == "user-management.v2" && s.Name == "Password policy");
+        var accountsZip = Dialog([new FakeDevice()]);
+        await accountsZip.LoadAsync(Zip("site-users.zip", ("10.0.0.48_B8A44F631339_P3265-V_config.json", export.ToJsonString())));
+        Assert.Contains(leftOut, accountsZip.Notes);
+
         // Nothing OADM imports: Import stays off and says why.
         var only = Dialog([new FakeDevice()]);
         await only.LoadAsync(Write("only-firewall.json", """{"data":{"firewall.v1":{"activated":true}},"metadata":{"prodNbr":"P3265-V"}}"""));

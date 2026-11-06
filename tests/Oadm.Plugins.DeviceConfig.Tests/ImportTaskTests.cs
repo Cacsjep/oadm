@@ -179,6 +179,32 @@ public sealed class ImportTaskTests
     }
 
     [Fact]
+    public async Task Accounts_in_a_hand_made_file_are_never_sent()
+    {
+        // The recorded export has the password policy only. A file made by hand that demotes the account OADM uses.
+        var export = (JsonObject)JsonNode.Parse(ChangedFile())!;
+        var area = (JsonObject)export["data"]!["user-management.v2"]!;
+        area["users"] = new JsonArray(new JsonObject { ["name"] = "root", ["role"] = "viewer", ["password"] = "changed" });
+        area["settings"]!["passphraseComplexity"]!["policy"] = "strong";
+        area["settings"]!["anonymousAdmin"] = true;
+        var s = Setup(file: export.ToJsonString(), sections: ["user-management.v2"]);
+        await RunAsync(s);
+
+        Assert.Equal("Import password policy: Done", StepRun.Lines(s.Ctx.Steps)[2]);
+        Assert.Equal("1 value", StepRun.Detail(s.Ctx.Steps, "Import password policy"));
+        var sent = Assert.Single(s.Camera.Imports);
+        Assert.Equal("""{"settings":{"passphraseComplexity":{"policy":"strong"}}}""", sent.Data.ToJsonString());
+
+        // Accounts only: nothing of the area is sent.
+        area.Remove("settings");
+        var only = Setup(file: export.ToJsonString(), sections: ["user-management.v2", "time.v2"]);
+        await RunAsync(only);
+        Assert.Equal("Import password policy: Skipped", StepRun.Lines(only.Ctx.Steps)[2]);
+        Assert.Equal("Nothing to import", StepRun.Detail(only.Ctx.Steps, "Import password policy"));
+        Assert.Equal(["time.v2"], only.Camera.Imports.Select(i => i.Key));
+    }
+
+    [Fact]
     public async Task An_area_OADM_does_not_know_is_never_sent()
     {
         // A file with an area OADM has no identity rules for, and a payload (an older client, or one made by hand) that asks for it.

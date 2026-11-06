@@ -33,7 +33,7 @@ public sealed class ImportConfigTask : ITaskPlugin
             "event-mqtt-bridge.v2" => "Import MQTT events",
             "time.v2" => "Import time zone",
             ConfigSections.PowerSettings => "Import power settings",
-            "user-management.v2" => "Import password policy",
+            ConfigSections.UserManagement => "Import password policy",
             ConfigSections.Connection => "Import connection settings",
             _ => "Import " + key,
         };

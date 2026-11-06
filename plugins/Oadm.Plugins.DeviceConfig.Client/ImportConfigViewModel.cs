@@ -299,7 +299,7 @@ public sealed partial class ImportConfigViewModel : ObservableObject
             AddSection(new ImportSectionOption(section.Key, section.Name, DeviceConfigIds.Count(section.ValueCount, "value")));
         }
 
-        AddNotes(file.Data.ContainsKey(ConfigSections.Param), file.HasRecipients, file.UnknownSections);
+        AddNotes(file.Data.ContainsKey(ConfigSections.Param), file.HasRecipients, file.NotImported);
         if (_leftOut.Count > 0)
         {
             Notes.Add(_leftOut.Count == _devices.Count
@@ -601,7 +601,7 @@ public sealed class ZipPlan
                 }
             }
 
-            foreach (var key in file.UnknownSections)
+            foreach (var key in file.NotImported)
             {
                 if (seenKeys.Add(key))
                 {
