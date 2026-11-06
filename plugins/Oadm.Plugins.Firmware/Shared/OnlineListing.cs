@@ -118,13 +118,15 @@ public static partial class OnlineListing
         return null;
     }
 
-    [GeneratedRegex("<tr>(.*?)</tr>", RegexOptions.Singleline | RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 2000)]
+    // The time limits only stop a page made to take forever (a page is at most 8 MB). They are wall-clock time, so they are
+    // generous: on a computer that stalls for a moment a short limit ends a normal page as "could not be reached".
+    [GeneratedRegex("<tr>(.*?)</tr>", RegexOptions.Singleline | RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 10_000)]
     private static partial Regex Row();
 
-    [GeneratedRegex("""<a href="([^"]*)">([^<]*)</a>""", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 500)]
+    [GeneratedRegex("""<a href="([^"]*)">([^<]*)</a>""", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 10_000)]
     private static partial Regex Link();
 
-    [GeneratedRegex("""<td class="([a-z0-9]+)">([^<]*)</td>""", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 500)]
+    [GeneratedRegex("""<td class="([a-z0-9]+)">([^<]*)</td>""", RegexOptions.CultureInvariant, matchTimeoutMilliseconds: 10_000)]
     private static partial Regex TdWithClass();
 
     [GeneratedRegex(@"^([0-9]+(?:\.[0-9]+)?)\s*([KMG]?)$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
