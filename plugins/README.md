@@ -513,8 +513,10 @@ lacks.
   `RequiredPermission(method)`: a declared key or `PermissionKeys.Show`. Without an answer `RequiredRole` decides
   (Operator = "show", Admin = "manage"); a plugin that declares nothing but answers `RequiredRole` gets an automatic
   "manage". Declare "show" only to change its defaults (Web View: off for Operator). `IsAudited(method)` (default: the
-  Admin methods) writes a "Plugin action" entry after a call that succeeded, its detail the method or, when the plugin
+  Admin methods) writes a "Plugin action" entry when the call ends, its detail the method or, when the plugin
   answers `AuditDetail(method, payloadJson)` (SDK 0.10.0), that text ("Pressed Open gate on Gate house"; never a secret).
+  A call that threw gets " (failed)" after the detail, one the client gave up " (cancelled)": `AuditDetail` is read in
+  both cases too, so it must not rely on the call having worked.
 - **Task plugins**: one permission "task:<id>" by default. A task whose choices differ in risk declares `Permissions`
   and answers `RequiredPermissions(payloadJson)` with the keys a run needs (Users: add / update / remove). The run is
   refused before any task starts when the role lacks one; no answer means every declared key.
@@ -895,7 +897,8 @@ hidden; dispose it when its place goes away (the host disposes the rest when the
 A core plugin that also implements `ICorePluginDownloads` sends files to its page: `OpenDownloadAsync(method, payload,
 ct)` returns a `PluginDownload` {`Content` stream, `FileName`, `Length` when known, `AuditDetail`, an optional owner such
 as the device response the stream belongs to}. The host checks `RequiredPermission(method)` like an Invoke, writes the
-audit entry when `IsAudited(method)` (detail = `AuditDetail`), copies the stream to the client in 256 KB chunks without
+audit entry when `IsAudited(method)` (detail = `AuditDetail`; at the end of the download, with " (failed)" or
+" (cancelled)" when it did not arrive whole), copies the stream to the client in 256 KB chunks without
 compression (gRPC `PluginService.Download`, nothing stored on the server) and disposes the download at the end or when
 the client goes away. Errors like Invoke: `ArgumentException` = invalid argument, `InvalidOperationException` = failed
 precondition with the message. On the page `await using var file = await ctx.OpenDownloadAsync(method, payload, ct)`,

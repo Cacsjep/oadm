@@ -176,14 +176,16 @@ used again.
   - `Invoke(pluginId, method, payloadJson)`: the generic call of core plugin pages (NOT_FOUND unknown plugin or object,
     FAILED_PRECONDITION not running or turned off; a plugin the permission lookup does not find is answered there,
     never called later unchecked; INVALID_ARGUMENT for an `ArgumentException` of the plugin, INTERNAL otherwise; the
-    status detail is the message).
+    status detail is the message). An audited call gets its audit entry when it ends, also when it failed or was
+    cancelled (`docs/spec/security.md`).
   - `Watch(plugin_id)`: stream of `PluginEvent` {plugin_id, topic, payload_json} the plugin publishes through
     `ICorePluginContext.Events` from the call on; NOT_FOUND unknown plugin; `Oadm.Core.Plugins.PluginEventHub` fans out
     with 256 events buffered per watcher, oldest dropped; each event only to the watchers its audience covers.
   - `Download(InvokeRequest)`: stream of `DownloadChunk` {file_name, length (-1 unknown), data}, a file of a core plugin
     that implements `ICorePluginDownloads` (e.g. a recording passed on from a camera); the first message carries the name
     and length, every data message at most 256 KB, uncompressed, nothing stored on the server; the permission, the audit
-    (detail `PluginDownload.AuditDetail`) and the errors of Invoke; UNIMPLEMENTED for a plugin without downloads; the
+    (detail `PluginDownload.AuditDetail`, written when the download ends, with " (failed)" or " (cancelled)" when it did
+    not arrive whole) and the errors of Invoke; UNIMPLEMENTED for a plugin without downloads; the
     download is disposed at the end or when the client goes away (tests `PluginDownloadTests`).
   - Invoke, Watch and Download run with the caller's call (`PluginCaller`: user + device view,
     `docs/spec/device-scope.md` "Plugins"). For a user with a device group: PERMISSION_DENIED "Only users with all devices
