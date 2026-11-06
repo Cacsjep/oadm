@@ -113,6 +113,37 @@ public sealed class PageViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_page_of_a_new_login_holds_the_values_of_its_own_server()
+    {
+        // Server A gets a range. The user logs out (the host disposes the page) and logs in to server B: the host creates
+        // the page again, and the form is B's. A page kept across the login would save A's values to B.
+        using (var first = new DhcpServerViewModel(_ctx))
+        {
+            await first.LoadAsync();
+            first.IsEnabled = true;
+            first.RangeStart = "10.0.0.100";
+            first.RangeEnd = "10.0.0.199";
+            await first.SaveCommand.ExecuteAsync(null);
+            Assert.Equal("10.0.0.100", _plugin.Service!.Config.RangeStart);
+        }
+
+        var otherHub = new PluginEventHub();
+        await using var other = new DhcpServerPlugin(Options.Test(new FakeDhcpNetwork()));
+        await other.StartAsync(new TestCoreContext(new InMemoryPluginSettingsProvider().GetSettings(DhcpServerPluginInfo.PluginId), otherHub.For(DhcpServerPluginInfo.PluginId)), default);
+        using var second = new DhcpServerViewModel(new PluginPageContext(other, otherHub));
+        await second.LoadAsync();
+
+        Assert.False(second.IsEnabled);
+        Assert.Equal(string.Empty, second.RangeStart);
+        Assert.Equal(string.Empty, second.RangeEnd);
+
+        await second.SaveCommand.ExecuteAsync(null);
+        Assert.False(other.Service!.Config.Enabled);
+        Assert.Null(other.Service!.Config.RangeStart);
+        Assert.Null(other.Service!.Config.RangeEnd);
+    }
+
+    [Fact]
     public async Task Automatic_add_is_saved_with_save_and_loaded_again()
     {
         using var vm = new DhcpServerViewModel(_ctx);

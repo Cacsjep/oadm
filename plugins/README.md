@@ -474,7 +474,8 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
   window of its own, so `CreateView` can be called several times, each time with its own context. Keep all page state in
   the view model of that view (never in static or shared fields of the page class), start server work when the view is
   attached and stop it when it is detached (the windows close on logout, with the main window and when the plugin is
-  turned off), and keep server-side state per caller: a stream or job the page starts gets its own id (a "start" method
+  turned off; a logout also removes the rail page, and the next login gets a new view from `CreateView`, maybe for
+  another server), and keep server-side state per caller: a stream or job the page starts gets its own id (a "start" method
   returns it, events carry it, the page ignores events of other ids), like the Metadata Monitor and the I/O Monitor.
 - **Pages shown as tabs**: a page with `TabOf => "<host plugin id>"` gets no rail entry; the host creates its
   view with its own context and hands it to the host page, whose context lists it in `Tabs` (`CorePluginTab` {PluginId,

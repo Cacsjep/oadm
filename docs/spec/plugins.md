@@ -233,7 +233,9 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
 - Records: `IPluginRecords.GetAsync(collection, key)` reads one record (DIM through `ListAsync`; the host and
   `MemoryPluginRecords` read only that row).
 - `ICorePluginPage.CreateView(ctx)`: the rail page; `HasOwnCards` (the view lays out its own cards), `ShowTasksPane` (the
-  shared tasks pane below the page). `ICorePluginClientContext`: `InvokeAsync`, `WatchEventsAsync` (PluginService.Watch),
+  shared tasks pane below the page). The host calls it once per login: a logout removes and disposes every page (its
+  context, and its view model when that is `IDisposable`), the next connect creates them again
+  (`docs/spec/security.md` "Nothing of a session outlives its logout"). `ICorePluginClientContext`: `InvokeAsync`, `WatchEventsAsync` (PluginService.Watch),
   `Devices` + `DevicesChanged`, `SelectedDevices`, `OwnerName`, `ShowMessageAsync`, `ConfirmAsync`, `OpenAsync`, `Owner`,
   `DeviceWeb` (`IDeviceWebAccess`: a device's web interface for an embedded browser through the server, see "Web View" in
   `docs/spec/bundled-plugins.md`; `EmbeddedBrowserLinks.Leaves(address, origin)`, SDK 0.12.0: true for an address the

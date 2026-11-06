@@ -181,7 +181,15 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   <server>.", **Try again** repeats the start without restarting the client), the two certificate boxes of "TLS" (amber;
   the changed one with **Forget server**); below the password "Login locked" with the server's text. Fake mode signs in
   as "admin" without the window.
-- The title bar shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out; a
+- **Nothing of a session outlives its logout** (the next login may be another user or another server; the main window is
+  a new one per login, its view model lives on). `MainWindowViewModel.Stop`: the streams stop and what they filled is
+  emptied (`ServerConnection.SignOut`: devices, tasks, tags, the waiting list, compliance, sites; a batch a stopped
+  stream still had on its way to the UI thread is dropped; the Devices page shows its ring until the first list of the
+  next login), the Devices page is opened, every plugin page and tab is removed and disposed (the next connect creates
+  them again, so a page's form is always its own server's), plugin windows and Help close; a plugin list still being read
+  for the old session brings no pages. `AppShell` then clears the closed window's `DataContext`: its views let go of the
+  view model, and no plugin view stays in a window that is gone (a control has one parent; the next main window could
+  not show it). Host pages (Settings, Permissions, Credentials, About) read again on every connect.- The title bar shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out; a
   click on the user opens **Your role** (`Shell/MyRoleWindow`, `MyRoleViewModel`, `RoleService.Mine`): the role's name
   and what it allows, grouped like the matrix, read-only. `UserSession` keeps role name and permission keys
   (`Has(key)`, `PermissionsChanged`), fed by Login / Me and the session stream (`ServerConnection`); a server without

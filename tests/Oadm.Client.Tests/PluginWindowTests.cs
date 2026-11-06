@@ -164,8 +164,10 @@ public sealed class PluginWindowTests
                 // AppShell: a new main window per login, the view model lives on; logout stops it and closes the window.
                 if (windows.Count > 0)
                 {
-                    shell.Stop();
+                    shell.Stop(); // removes the plugin pages; the connect of the next login brings new ones
                     windows[^1].Close();
+                    windows[^1].DataContext = null;
+                    shell.SyncCorePluginPages([new CorePluginInfo { Id = "test.monitor", DisplayName = "Monitor", Group = "Monitoring" }]);
                 }
 
                 var main = new MainWindow { DataContext = shell, Width = 1800, Height = 900 };
@@ -173,16 +175,17 @@ public sealed class PluginWindowTests
                 windows.Add(main);
             }
 
+            Assert.Equal(3, page.Views); // one rail page per login
             shell.NavItems.Single(n => n.Key == "plugin:test.monitor").OpenInNewWindowCommand.Execute(null);
             Dispatcher.UIThread.RunJobs();
             Assert.Equal([0, 0, 1], windows.Select(w => w.PluginWindows.Count));
-            Assert.Equal(2, page.Views); // the rail page plus exactly one window
+            Assert.Equal(4, page.Views); // the rail page of this login plus exactly one window
 
             var pluginWindow = windows[^1].PluginWindows[0];
             pluginWindow.Close();
             Dispatcher.UIThread.RunJobs();
             Assert.Empty(windows[^1].PluginWindows);
-            Assert.True(page.Models[1].Disposed);
+            Assert.True(page.Models[3].Disposed);
             Assert.True(((CorePluginPageViewModel)pluginWindow.DataContext!).IsDisposed);
             windows[^1].Close();
             return Task.FromResult(true);
