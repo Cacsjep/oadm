@@ -23,13 +23,13 @@ public sealed class PolicyPageTests
     internal static readonly FakeDevice Camera = new FakeDevice { Serial = "ACCC8E000001", Address = "10.0.0.48", Tags = ["PTZ"] };
     internal static readonly FakeDevice Other = new FakeDevice { Serial = "ACCC8E000002", Address = "10.0.0.49" };
 
-    /// <summary>A PKI with the 802.1X defaults (the 802.1X server's conversion of a new server), one VLAN, one Block.</summary>
+    /// <summary>A PKI with the 802.1X defaults (what the 802.1X server adds on a new server), one VLAN, one Block.</summary>
     internal static async Task<PkiHarness> StartAsync(params IDeviceInfo[] devices) => await StartAsync(true, devices);
 
     internal static async Task<PkiHarness> StartAsync(bool pro, params IDeviceInfo[] devices)
     {
         var pki = await PkiHarness.StartAsync(devices: devices.Length == 0 ? [Camera, Other] : devices, pro: pro);
-        await pki.Policies.ConvertOnceAsync(Radius.RadiusPlugin.PluginId, ct => RadiusPolicies.ConvertAsync(new FakeSettings(), pki.Service.Authorities(), ct), CancellationToken.None);
+        await pki.Policies.ConvertOnceAsync(Radius.RadiusPlugin.PluginId, _ => Task.FromResult(RadiusPolicies.DefaultPolicies(pki.Service.Authorities())), CancellationToken.None);
         await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, new PkiPolicy { Name = "Building B", Kind = PolicyKinds.Vlan, Vlan = 30, Devices = new PolicyDevices { ThisServer = true, ExceptSerials = ["ACCC8E000002"] } });
         await pki.InvokeAsync<PolicySaveReply>(PolicyMethods.SavePolicy, new PkiPolicy { Name = "Storage room", Kind = PolicyKinds.Block, Devices = new PolicyDevices { Serials = ["ACCC8E000002"] } });
         return pki;

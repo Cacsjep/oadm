@@ -41,12 +41,6 @@ public static class PolicyKinds
     /// <summary>Issuing: the certificates of Enable IEEE 802.1X and of the EST profiles for IEEE 802.1X and MQTT, with the 802.1X settings (no devices).</summary>
     public const string Dot1xCertificate = "dot1xCertificate";
 
-    /// <summary>
-    /// Before 2026-10-25: the certificate of the 802.1X server or of the EST server. Converted once into
-    /// <see cref="Dot1xServer"/> and <see cref="EstServer"/> (<see cref="PolicyStore.ConvertKinds"/>); never stored again.
-    /// </summary>
-    public const string LegacyServerCertificate = "serverCertificate";
-
     /// <summary>The 802.1X server's certificate (CA, valid days, key), TLS settings, largest EAP packet and reauthentication (one only).</summary>
     public const string Dot1xServer = "dot1xServer";
 
@@ -63,9 +57,6 @@ public static class PolicyKinds
     /// The 802.1X server refuses the devices.
     /// </summary>
     public const string Block = "block";
-
-    /// <summary>Before 2026-10-25: the IEEE 802.1X certificates of the devices are revoked. Converted once into Block.</summary>
-    public const string LegacyRevoke = "revoke";
 
     /// <summary>The certificates of the devices count as "expires soon" this many days before their end.</summary>
     public const string ExpiryWarning = "expiryWarning";
@@ -86,13 +77,11 @@ public static class PolicyKinds
     {
         HttpsCertificate => "HTTPS certificate",
         Dot1xCertificate => "IEEE 802.1X certificate",
-        LegacyServerCertificate => "Server certificate",
         Dot1xServer => "802.1X server",
         EstServer => "EST server",
         AllowCa => "802.1X trusted CA",
         Vlan => "VLAN",
         Block => "Block",
-        LegacyRevoke => "Revoke",
         ExpiryWarning => "Expiry warning",
         Enrollment => "Enrollment",
         SignInCa => "EST sign-in CA",
@@ -273,25 +262,6 @@ public static class PolicySignIn
     };
 }
 
-/// <summary>Which server a Server certificate policy of before 2026-10-25 was for (read only by <see cref="PolicyStore.ConvertKinds"/>).</summary>
-public static class PolicyServers
-{
-    public const string Dot1x = "dot1xServer";
-    public const string Est = "estServer";
-
-    public static IReadOnlyList<string> All { get; } = [Dot1x, Est];
-
-    public static bool IsKnown(string? server) => server is Dot1x or Est;
-
-    /// <summary>"802.1X server", "EST server".</summary>
-    public static string Name(string? server) => server switch
-    {
-        Dot1x => "802.1X server",
-        Est => "EST server",
-        _ => server ?? string.Empty,
-    };
-}
-
 /// <summary>
 /// The devices of a policy: <see cref="AllDevices"/>, or chosen like a device group (the shared device picker's group mode):
 /// every device without a site (<see cref="ThisServer"/>), the devices of <see cref="SiteIds"/>, the devices with one of
@@ -365,7 +335,7 @@ public sealed record PkiPolicy
     /// </summary>
     public string? CertificateId { get; init; }
 
-    /// <summary>Block of before 2026-10-26: "Also revoke" (read only by the conversion, dropped on save; nothing is revoked).</summary>
+    /// <summary>Block of before 2026-10-26: "Also revoke" (no longer read, dropped on save; nothing is revoked).</summary>
     public bool? AlsoRevoke { get; init; }
 
     /// <summary>802.1X trusted CA: only certificates that name a device OADM manages pass (default); false: any valid certificate of the CA.</summary>
@@ -412,9 +382,6 @@ public sealed record PkiPolicy
 
     /// <summary>Before 2026-10-25: the RADIUS server CA imported into the policy (PEM, public only); read only by the conversion.</summary>
     public string? RadiusCaPem { get; init; }
-
-    /// <summary>A Server certificate policy of before 2026-10-25: the server it was for (<see cref="PolicyServers"/>); read only by the conversion.</summary>
-    public string? Server { get; init; }
 
     /// <summary>Enrollment: which profiles the devices may use (<see cref="PolicyProfiles"/>).</summary>
     public string? ProfileScope { get; init; }

@@ -147,23 +147,19 @@ public sealed class RenewalTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Not_renewed_survives_a_restart_and_older_records_of_earlier_versions_are_dropped()
+    public async Task Not_renewed_survives_a_restart()
     {
         var now = _time.GetUtcNow().UtcDateTime;
-        // 4.1.0-rc.2 kept every certificate: three of the same device and profile, in any order.
-        await _settings.SetAsync(EstStore.CertificatesKey, EstJson.Serialize(new[]
-        {
-            Certificate("A3", "https", now.AddDays(1)),
-            Certificate("A1", "https", now.AddDays(-1)),
-            Certificate("A2", "https", now),
-        }), CancellationToken.None);
+        // The current and the previous certificate of the same device and profile, in any order.
+        await _records.SetManyAsync(EstStore.CertificatesKey,
+        [
+            new("A3", EstJson.Serialize(Certificate("A3", "https", now.AddDays(1)))),
+            new("A2", EstJson.Serialize(Certificate("A2", "https", now))),
+        ], CancellationToken.None);
         await _est.DisposeAsync();
         _est = await StartAsync();
         Assert.Equal(["A3"], _est.Store.Current().Select(c => c.SerialNumber));
         Assert.Equal(2, _est.Store.CertificateCount);
-        await _est.Store.FlushAsync(CancellationToken.None);
-        Assert.Equal(["A2", "A3"], (await _records.ListAsync(EstStore.CertificatesKey, CancellationToken.None)).Keys.Order(StringComparer.Ordinal));
-        Assert.Null(await _settings.GetAsync(EstStore.CertificatesKey, CancellationToken.None)); // moved to the records
 
         _time.Advance(Lifetime);
         await _est.CheckRenewalsAsync(CancellationToken.None);
@@ -171,40 +167,6 @@ public sealed class RenewalTests : IAsyncLifetime
         _est = await StartAsync();
 
         Assert.True(_est.Store.FindCertificate("A3")!.NotRenewed);
-    }
-
-    [Fact]
-    public async Task Certificates_revoked_in_rc2_are_never_flagged_and_the_old_settings_go()
-    {
-        var now = _time.GetUtcNow().UtcDateTime;
-        var revoked = System.Text.Json.Nodes.JsonNode.Parse(EstJson.Serialize(Certificate("R1", "https", now)))!.AsObject();
-        revoked["revokedUtc"] = now.AddDays(1);
-        await _settings.SetAsync(EstStore.CertificatesKey, new System.Text.Json.Nodes.JsonArray(revoked).ToJsonString(), CancellationToken.None);
-        await _settings.SetAsync(EstStore.LegacyRevokedKey, "[]", CancellationToken.None);
-        await _est.DisposeAsync();
-        _est = await StartAsync();
-
-        _time.Advance(Lifetime);
-        await _est.CheckRenewalsAsync(CancellationToken.None);
-        await _est.Store.FlushAsync(CancellationToken.None);
-
-        Assert.Empty(_publisher.Fired);
-        Assert.NotNull(_est.Store.FindCertificate("R1")!.RenewalStoppedUtc);
-        Assert.Null(await _settings.GetAsync(EstStore.LegacyRevokedKey, CancellationToken.None));
-    }
-
-    [Fact]
-    public async Task A_move_of_rc2_data_cut_short_keeps_the_newer_state_of_the_records()
-    {
-        var now = _time.GetUtcNow().UtcDateTime;
-        var flagged = Certificate("A1", "https", now) with { NotRenewedUtc = now.AddDays(20) };
-        await _records.SetManyAsync(EstStore.CertificatesKey, [new("A1", EstJson.Serialize(flagged))], CancellationToken.None);
-        await _settings.SetAsync(EstStore.CertificatesKey, EstJson.Serialize(new[] { Certificate("A1", "https", now) }), CancellationToken.None); // not deleted yet
-        await _est.DisposeAsync();
-
-        _est = await StartAsync();
-
-        Assert.NotNull(_est.Store.FindCertificate("A1")!.NotRenewedUtc);
     }
 
     [Fact]

@@ -30,11 +30,11 @@ logs, enrollments).
 - **Ids stay:** the core plugins keep the ids `oadm.est` and `oadm.radius`, and the host keys settings (`Plugin:<id>:*`),
   records, the data folder (`plugin-data/<id>`), events, permissions (`<id>:show`, `<id>:manage`,
   `task:oadm.est.setup:enroll`), tasks, audit names and services by core plugin id, so stored rules and roles keep working.
-- **From OADM 4.1, once:** a plugin folder `oadm.est` or `oadm.radius` left from 4.1 is not loaded (the loader skips it with
-  one log line "Merged into PKI"; the installers remove it). The only choice stored per package, `Plugins.Enabled`, is taken
-  over once (`MergedPlugins.TakeOverAsync`: an entry of `oadm.est` / `oadm.radius` becomes `Plugin:<id>:serverOn`, a choice
-  made since wins, the entries leave `Plugins.Enabled`). The policies are converted once too ("Converting existing
-  settings"). Details: `docs/spec/plugins.md` "Merged packages" and "PRO parts of PKI".
+- **From OADM 4.1, once:** a plugin folder `oadm.est` left from 4.1 is not loaded (the loader skips it with one log line
+  "Merged into PKI"; the installers remove it; the 802.1X server never shipped as a package of its own). The only choice
+  stored per package, `Plugins.Enabled`, is taken over once (`MergedPlugins.TakeOverAsync`: the entry of `oadm.est` becomes
+  `Plugin:oadm.est:serverOn`, a choice made since wins, the entry leaves `Plugins.Enabled`). The policies are converted
+  once too ("Converting existing settings"). Details: `docs/spec/plugins.md` "Merged packages" and "PRO parts of PKI".
 - **Sites:** the link to the site node carries no plugin id (a relay is opened by protocol, port and reason, "EST server"
   on TCP 9454), so nodes of 4.1 and later relay unchanged; the relay opens only while the EST server runs.
 
@@ -573,11 +573,9 @@ server's data folder before 4.5.0.
 |---|---|---|
 | `oadm.pki` | `PkiService.ConvertOwnSettings` | PKI's warn before expiry (`config.expiryWarningDays`) becomes the Expiry warning policy "All devices" |
 | `oadm.pki:issuing` | `PkiService.ConvertIssuing` | the Device certificates and IEEE 802.1X cards (validity, EAPOL version, EAP identity, RADIUS server CA) become the issuing policies "HTTPS" and "IEEE 802.1X"; the EST server policy is added. The key: ECC on a new server, RSA where an OADM ran before (a stored CA or page settings), because the tasks made RSA 2048 keys on the devices; what the devices get does not change with the update |
-| `oadm.radius` | `RadiusPolicies.ConvertAsync`, at the 802.1X core plugin's start | the settings of development builds of the 802.1X server (Advanced in `config`, `trustedCas`, `policies`, `vlans`; it never shipped before 4.5): the 802.1X server policy (minimum TLS, largest EAP packet), one 802.1X trusted CA policy per ticked CA, named after the CA like EST's sign-in CA policies, with its "Only devices OADM manages", VLAN and Block policies (Revoke: Block) with the same names, devices and order, a Default VLAN as a last VLAN policy "All devices" (so no device changes its VLAN); a server without them gets the default policies of the 802.1X kinds. PKI starts first (the core plugins of a package start in name order); without the store the next start converts |
+| `oadm.radius` | `RadiusPolicies.DefaultPolicies`, at the 802.1X core plugin's start | the default policies of the 802.1X kinds (the 802.1X server never shipped before 4.5, so there are no settings to convert): the 802.1X server policy (TLS 1.2, 1,020 bytes) and one 802.1X trusted CA policy each for the first-start CA and the Axis device ID, both "Only devices OADM manages". PKI starts first (the core plugins of a package start in name order); without the store the next start adds them |
 | `oadm.est:profiles`, `oadm.est` | `EstPolicies.ConvertAsync`, `ConvertRulesAsync`, at the EST core plugin's start | each EST profile names the built-in issuing policy of its kind (its old validity and key are no longer read); the Enrollment policy "All devices" (every managed device, every profile); one EST sign-in CA policy per CA of 4.1's "Sign in with" (`config.signInWith`, kept by a save; 4.1 had none set: the Axis device ID and the first-start CA): "Axis device ID" (new certificates), the first-start root CA under its real name (renewals), a previous CA by its name (renewals); a previous CA PKI no longer lists is not converted. A renamed or removed EST profile is not followed into the policies (the policy keeps the name, which then allows nothing; the editor shows it to uncheck) |
-| `oadm.est:issuing-2026-10-25` | `EstPolicies.CleanUpAsync` | a profile that names a policy an earlier conversion made ("EST HTTPS", "EST 802.1X", "EST " + the profile's name, also "EST https" / "EST dot1x") names the built-in policy of its kind; those policies are deleted where no other profile names them |
 | `oadm.est:off-profiles-2026-10-25` | `EstPolicies.RemoveOffProfilesAsync` | EST profiles that were off are removed (`docs/spec/est-server.md` "Profiles") |
-| `oadm.pki:kinds-2026-10-25` | `PolicyStore.ConvertKinds` | the Server certificate policy of the 802.1X server goes into the 802.1X server policy (without one, one with the TLS defaults takes it), the one of the EST server becomes the EST server policy (id, name and values kept); a Revoke policy becomes a Block policy; names made unique per kind ("Stolen (2)"); without an EST server policy one with the defaults is added. `LegacyServerCertificate` and `LegacyRevoke` exist only for this (`PolicyKinds.IsKnown` refuses them) |
 | `oadm.pki:radius-ca-2026-10-25` | `PkiService.ConvertRadiusCasAsync`, at the end of the start | the RADIUS server CA of each IEEE 802.1X policy becomes a CA of the list: "OADM 802.1X server" the CA that issued the 802.1X server's certificate (else the first-start CA); a CA imported into the policy goes into the CA list (or the listed CA with its fingerprint) and is named; the Axis device ID entry never matches; one that cannot be read stays without a CA (logged; the form and the task ask for one, never a silent switch to another CA). `RadiusCa` and `RadiusCaPem` are read only here |
 | `oadm.pki:previous-cas-2026-10-26` | `PolicyStore.ConvertPreviousCasOnceAsync` | an 802.1X trusted CA policy of the first-start CA used to trust every previous OADM CA too; each previous OADM CA still listed gets its own 802.1X trusted CA policy with that policy's settings, named after the CA (made unique) and placed right after it, so every camera keeps passing. A previous CA a policy names already, or a list without a policy of the first-start CA, stays as it is. Runs only after the `oadm.radius` conversion: at PKI's start when that ran before, else right after it (`RadiusPlugin`) |
 
@@ -778,8 +776,8 @@ The detail lives in `plugins/Oadm.Plugins.Pki/README.md`; the map:
   `LegacyDeviceApiTests`, `CompatibilityMatrixTests`, `LegacyTaskTests`, `WebServerRestartTests`, `HttpsTaskTests`,
   `TaskSafetyFixesTests`, `DeviceSoapErrorTests`, `KeysOverHttpTests`, `FakeModeTests`; Perf `PolicyPerfTests`,
   `CertificateListPerfTests`, `IssuedScaleTests` (the device limit); `Oadm.Plugins.Est.Tests` `EnrollmentPolicyTests`,
-  `PolicyTests`, `ServerTests`; `Oadm.Plugins.Radius.Tests` `PolicyTests`, `AllowCaTests`, `ConversionTests` (fixtures of
-  every stored format in `Fixtures/Conversion`), `PkiTabHeadlessTests`; `Oadm.Client.Tests` `PluginTabTests`;
+  `PolicyTests`, `ServerTests`; `Oadm.Plugins.Radius.Tests` `PolicyTests`, `AllowCaTests`, `ConversionTests` (the
+  default 802.1X policies, added once), `PkiTabHeadlessTests`; `Oadm.Client.Tests` `PluginTabTests`;
   `Oadm.Core.Tests` `ExpiryWarningTests`.
 
 ## Not planned

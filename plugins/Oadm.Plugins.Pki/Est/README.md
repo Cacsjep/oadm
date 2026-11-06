@@ -21,7 +21,7 @@ A PRO part of the PKI plugin (`../README.md`, `docs/spec/pki.md` "One plugin"). 
     802.1X certificate for IEEE 802.1X and MQTT): its valid days for enrollments and renewals, its key for Set up; none
     readable: 503 "The issuing policy of this profile cannot be read."; the profiles' uses PKI checks before deleting a
     policy (`ProfileUses`) and the profile names for the editor (`ProfileNames`); the conversions of the EST settings
-    (`ConvertAsync`, `ConvertRulesAsync`, `CleanUpAsync`, `RemoveOffProfilesAsync`; owners in `docs/spec/pki.md` "Converting
+    (`ConvertAsync`, `ConvertRulesAsync`, `RemoveOffProfilesAsync`; owners in `docs/spec/pki.md` "Converting
     existing settings"). SAN of the shared server certificate = the server's addresses (network cards that are up) and host
     name; at a site the node's addresses the cameras were given.
   - `Serving/EstEndpoint`: `GET /.well-known/est/<profile>/cacerts` (the CA chain), `POST .../simpleenroll`,

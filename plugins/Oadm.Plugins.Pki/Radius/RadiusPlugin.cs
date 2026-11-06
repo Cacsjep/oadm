@@ -15,8 +15,8 @@ namespace Oadm.Plugins.Radius;
 /// sockets, no host), the server part in <c>Server/</c> (<see cref="RadiusService"/>), the page contract in <c>Api/</c>.
 /// A PRO part of PKI (docs/spec/pki.md "One plugin"): the core plugin always runs, the server only while it is turned on and
 /// OADM PRO is active (<see cref="ServerSwitch{TService}"/>); the server checks the license again on every request. Its
-/// rules are PKI's policies (<see cref="PolicyStore"/>, in process): the settings of the development builds before 4.5 become
-/// policies once, at the first start (<see cref="RadiusPolicies.ConvertAsync"/>). Events: "Device authenticated",
+/// rules are PKI's policies (<see cref="PolicyStore"/>, in process): a new server gets the default policies of the 802.1X
+/// kinds once, at the first start (<see cref="RadiusPolicies.DefaultPolicies"/>). Events: "Device authenticated",
 /// "Authentication failed".
 /// </summary>
 public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
@@ -93,7 +93,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
         await ConvertAsync(ctx, ct).ConfigureAwait(false);
         var server = new ServerSwitch<RadiusService>(DisplayName, ctx.Settings, ctx.Pro, async token =>
         {
-            await ConvertAsync(ctx, token).ConfigureAwait(false); // PKI was not there at the start: converted with the first server start
+            await ConvertAsync(ctx, token).ConfigureAwait(false); // PKI was not there at the start: the defaults come with the first server start
             var host = new RadiusHost(
                 ctx.Settings,
                 ctx.Devices,
@@ -131,9 +131,9 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);
 
     /// <summary>
-    /// Hands the 802.1X server's settings from before the policies to PKI's store, which makes policies of them once
-    /// (docs/spec/pki.md "Converting existing settings"). PKI starts first (the core plugins of a package start in name order);
-    /// without its store nothing happens now and the next start converts.
+    /// Hands the default policies of the 802.1X kinds to PKI's store, which adds them once (docs/spec/pki.md "Converting
+    /// existing settings"). PKI starts first (the core plugins of a package start in name order); without its store nothing
+    /// happens now and the next start adds them.
     /// </summary>
     internal static async Task ConvertAsync(ICorePluginContext ctx, CancellationToken ct)
     {
@@ -143,7 +143,7 @@ public sealed class RadiusPlugin : ICorePlugin, IEventSource, IAsyncDisposable
         }
 
         var authorities = ctx.Services.Find<IDeviceCertificateAuthority>()?.Authorities ?? [];
-        await store.ConvertOnceAsync(PluginId, token => RadiusPolicies.ConvertAsync(ctx.Settings, authorities, token), ct).ConfigureAwait(false);
+        await store.ConvertOnceAsync(PluginId, _ => Task.FromResult(RadiusPolicies.DefaultPolicies(authorities)), ct).ConfigureAwait(false);
         await store.ConvertPreviousCasOnceAsync(ct).ConfigureAwait(false); // the previous OADM CAs get their own trusted CA policies
     }
 

@@ -76,17 +76,11 @@ public sealed partial class PkiService
                 RadiusCa = dot1x.RadiusCa == RadiusCaSource.Imported ? RadiusCaSource.Imported : RadiusCaSource.Oadm,
                 RadiusCaPem = radiusPem,
             },
-            // The 802.1X server policy comes from the 802.1X server's conversion (RadiusPolicies.DefaultServerPolicy); the EST
-            // server's has a policy of its own. Both get their certificate when the server starts (decision 2026-10-25).
+            // The 802.1X server policy comes from the 802.1X server (RadiusPolicies.DefaultPolicies); the EST server's has
+            // a policy of its own. Both get their certificate when the server starts (decision 2026-10-25).
             new PkiPolicy { Name = PolicyLimits.EstServerCertificateName, Kind = PolicyKinds.EstServer },
         ];
     }
-
-    /// <summary>
-    /// The owner of the conversion of 2026-10-25 (<see cref="PolicyStore.ConvertKinds"/>): Server certificate into the server
-    /// policies, Revoke into Block with Also revoke.
-    /// </summary>
-    public const string KindsOwner = PkiPluginInfo.PluginId + ":kinds-2026-10-25";
 
     /// <summary>The owner of the conversion of the RADIUS server CA into a CA of the list (<see cref="ConvertRadiusCasAsync"/>).</summary>
     public const string RadiusCaOwner = PkiPluginInfo.PluginId + ":radius-ca-2026-10-25";
@@ -197,7 +191,6 @@ public sealed partial class PkiService
         var config = _config;
         await Policies.ConvertOnceAsync(PkiPluginInfo.PluginId, _ => Task.FromResult(ConvertOwnSettings(config)), ct).ConfigureAwait(false);
         await Policies.ConvertOnceAsync(IssuingOwner, async token => ConvertIssuing(config, await _store.UsedBeforeAsync(token).ConfigureAwait(false)), ct).ConfigureAwait(false);
-        await Policies.RewriteOnceAsync(KindsOwner, list => PolicyStore.ConvertKinds(list, RadiusPolicies.DefaultServerPolicy), ct).ConfigureAwait(false);
         Policies.Changed += OnPoliciesChanged;
         HandExpiryWarning();
     }

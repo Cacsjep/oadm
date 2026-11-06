@@ -197,19 +197,17 @@ The camera sends no event when a renewal fails (see "The camera's own EST errors
   than 30 days ago: dropped; a device OADM no longer manages: forgotten when the check finds its certificate due, or at once
   when its camera signs in again with a new device id (removed and added again). Stored as plugin records (`ctx.Records`,
   collection `certificates`, one row per certificate by serial number): a flush writes only the changed certificates, never
-  the whole list. A settings value `certificates` (4.1.0-rc.2) is loaded once, cut down, moved to the records and deleted.
+  the whole list.
 - **Not renewed:** the newest certificate, **halfway through its lifetime plus `NotRenewedGrace` (2 days)**, or a tenth of
   the lifetime when that is shorter (1 year: day 184.5), without a newer one. Checked 1 minute after the start and then
   every hour; flagged once (`NotRenewedUtc`, persisted): the event "Certificate not renewed", a warning in the server log, the
   page reads its list again. A later renewal replaces the record and ends it.
 - Never flagged (`RenewalStoppedUtc`): certificates of an `oadm_` profile removed with **Remove** in the dialog or by Set up
-  (a renamed or removed profile), and certificates revoked in 4.1.0-rc.2 (`revokedUtc` when loaded; the setting `revoked` is
-  deleted, so those cameras renew again).
+  (a renamed or removed profile).
 - Sites: a site that leaves the bound ones (removed, or its node reset and waiting to be replaced) loses its relay; its
   addresses stay until the hourly check finds no managed device there. A chosen interface that goes away while listening
   closes the listener ("Interface ... is not available"); failures of the hourly check and of the 30 s retry are logged.
-- Robustness: a failed write of the store is logged and tried again; stopping never opens a listener or relay any more; a
-  move of 4.1.0-rc.2 data cut short keeps the records' newer state.
+- Robustness: a failed write of the store is logged and tried again; stopping never opens a listener or relay any more.
 - Scale: a per-device index (`_profilesOf`) keeps Stop and Forget O(1) per device (`RenewalTests`, Perf at the device limit; measured: 30,000 cameras in
   about 0.5 s); one read of the device list per check; at most 20 log lines per check, then one summary line.
 

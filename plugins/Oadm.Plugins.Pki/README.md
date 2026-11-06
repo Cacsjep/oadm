@@ -143,7 +143,7 @@ revocation").
   `Dot1xPolicyChoiceTaskTests`, `IssueDialogTests` (headless `pki-enable-https.png`, `pki-enable-dot1x.png`, `pki-renew.png`,
   `pki-install-dot1x.png`, `pki-policy-https.png`, `pki-policy-dot1x-certificate.png`, `pki-policy-est-server.png`,
   `pki-policy-dot1x-server.png`), `PolicyTabHeadlessTests` (`pki-policies-1700.png`, `pki-policies-1000.png` and their
-  `-end` captures: nothing clipped, no sideways scroll), `SeveralCasTests` (the conversion of the kinds, Used in), Perf
+  `-end` captures: nothing clipped, no sideways scroll), `SeveralCasTests` (Used in), Perf
   `PolicyPerfTests` (the device limit).
 
 ## PKI Security tasks

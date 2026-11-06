@@ -68,7 +68,6 @@ public sealed class PolicyStoreTests
         Assert.Null(stolen.Error);
         Assert.Null(stolen.Saved!.AlsoRevoke);
         Assert.Null(await RefusedAsync(store, new PkiPolicy { Name = "Lost", Kind = PolicyKinds.Block, Devices = new PolicyDevices { Tags = ["Lost"] } })); // Block: tags too
-        Assert.Equal(new PolicyFieldError(PolicyFields.Kind, PolicyTexts.ChooseKind), await RefusedAsync(store, new PkiPolicy { Name = "Old", Kind = PolicyKinds.LegacyRevoke, Devices = new PolicyDevices { ThisServer = true } }));
         Assert.Equal(new PolicyFieldError(PolicyFields.Devices, PolicyTexts.SiteGone), await RefusedAsync(store, Vlan("Gone", 13, new PolicyDevices { SiteIds = [Guid.NewGuid()] })));
         Assert.Equal(new PolicyFieldError(PolicyFields.Kind, PolicyTexts.ChooseKind), await RefusedAsync(store, new PkiPolicy { Name = "What", Kind = "nope" }));
         Assert.Equal(new PolicyFieldError(PolicyFields.Kind, PolicyTexts.KindKept), await RefusedAsync(store, lobby with { Kind = PolicyKinds.Block }));

@@ -250,7 +250,6 @@ public static class PolicyRules
             RadiusCa = dot1x ? policy.RadiusCa?.Trim() : null,
             RadiusCaPem = dot1x && policy.RadiusCa?.Trim() == RadiusCaSource.Imported ? policy.RadiusCaPem : null,
             AlsoRevoke = null, // decision 2026-10-26: Block only refuses; a stored "Also revoke" is dropped on save
-            Server = null, // only Server certificate policies of before 2026-10-25 had it (the conversion reads the stored ones)
             ProfileScope = scope,
             Profiles = enrollment && scope == PolicyProfiles.Chosen
                 ? [.. (policy.Profiles ?? []).Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim()).Distinct(StringComparer.OrdinalIgnoreCase)]

@@ -92,12 +92,6 @@ public sealed class CaTrust
     /// </summary>
     public TrustedCaSettings? Selection { get; }
 
-    /// <summary>The default selection: the first-start root CA and the Axis device ID, both only managed devices.</summary>
-    public static TrustedCaSettings DefaultSelection { get; } = new()
-    {
-        Cas = [new TrustedCaChoice(CertificateAuthorityInfo.OadmId), new TrustedCaChoice(CertificateAuthorityInfo.AxisDeviceIdId)],
-    };
-
     /// <summary>The id of a previous OADM CA derived from an older PKI offer: "oadm-previous:&lt;sha256 of the CA&gt;".</summary>
     public static string PreviousId(byte[] der) => "oadm-previous:" + Convert.ToHexString(SHA256.HashData(der)).ToLowerInvariant();
 

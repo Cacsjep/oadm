@@ -462,9 +462,9 @@ camelCase with enums as camelCase strings; linked into the client part).
   SHA-256 of every CA OADM issues with, and the intermediates of PKI's other CAs help build the path (never anchors).
   `PolicyPlan`: the oldest VLAN policy that holds the device gives its VLAN and its name, any Block policy refuses (VLAN tags
   only while the host protects them). Sessions and Log carry the VLAN policy (`VlanPolicy`: "VLAN 30 by Building B");
-  refusals name the Block policy ("Blocked by Storage room"). The settings of development builds before 4.5 are converted
-  once by `RadiusPolicies.ConvertAsync` (`docs/spec/pki.md` "Converting existing settings") and left as they are; the tags
-  this server protected itself are released at its start.
+  refusals name the Block policy ("Blocked by Storage room"). A new server gets the default policies of the 802.1X kinds
+  once (`RadiusPolicies.DefaultPolicies`, `docs/spec/pki.md` "Converting existing settings"); the tags this server
+  protected itself are released at its start.
 - **Certificate check** (`DeviceCertificateValidator`, in memory): PKI's CA offer (none: alert 80 "The PKI has no
   certificate authority" for every certificate, the Axis device ID too), dates (alert 45, "Client certificate expired on
   ..."), extended key usage client authentication or none (42), a chain (`X509Chain`, custom root trust, offline) to
@@ -525,8 +525,8 @@ camelCase with enums as camelCase strings; linked into the client part).
   maintenance, stable server certificate names, one socket per address, the log search in local time, Delete all during a
   failed write, orphan certificates, nothing passes without PKI, a listed MQTT certificate refused, no CA reads per
   handshake, loopback and a new address within 5 s, intermediates: only CAs OADM issues with in between),
-  `DroppedRequestTests`, `AllowCaTests`, `PolicyTests`, `ConversionTests` (fixtures of every stored format in
-  `Fixtures/Conversion`), `PluginTests` (manifest, the canary over every method, rows of a group user), `PluginPerfTests`
+  `DroppedRequestTests`, `AllowCaTests`, `PolicyTests`, `ConversionTests` (the default policies, added
+  once), `PluginTests` (manifest, the canary over every method, rows of a group user), `PluginPerfTests`
   (Category=Perf: 100,000 authentications through the plugin, the log at 50,000 kept). Support: `Support/PluginHarness.cs`
   (`TestAuthority`, `TestDeviceIds`, `PluginSwitch`).
 - **Not built yet:** recorded conversations of real switches (no hardware here; the protocol tests replay the RFC examples),

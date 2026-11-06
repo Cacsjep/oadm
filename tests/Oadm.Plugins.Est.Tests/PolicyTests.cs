@@ -85,31 +85,6 @@ public sealed class PolicyTests
     }
 
     [Fact]
-    public async Task The_clean_up_points_the_profiles_at_the_built_in_policies_and_deletes_the_est_copies_once()
-    {
-        var store = await TestPolicies.StoreAsync();
-        var builtIn = store.FirstOf(PolicyKinds.Dot1xCertificate)!;
-        var copy = await TestPolicies.AddAsync(store, builtIn with { Id = Guid.Empty, Name = "EST 802.1X", ValidDays = 730 });
-        var mine = await TestPolicies.AddAsync(store, store.FirstOf(PolicyKinds.HttpsCertificate)! with { Id = Guid.Empty, Name = "Lab HTTPS", ValidDays = 90 });
-        var settings = new FakeSettings();
-        var config = EstJson.Deserialize<EstConfig>(Config41);
-        config = config with
-        {
-            Profiles = [.. config.Profiles.Select(p => p with { PolicyId = p.Name == "dot1x" ? copy.Id : mine.Id })],
-        };
-        await settings.SetAsync(EstStore.ConfigKey, EstJson.Serialize(config), CancellationToken.None);
-
-        Assert.True(await EstPolicies.CleanUpAsync(settings, store, CancellationToken.None));
-
-        var after = EstJson.Deserialize<EstConfig>(await settings.GetAsync(EstStore.ConfigKey, CancellationToken.None));
-        Assert.Equal(builtIn.Id, after.Profiles.Single(p => p.Name == "dot1x").PolicyId);
-        Assert.Equal(mine.Id, after.Profiles.Single(p => p.Name == "https").PolicyId); // a policy the user made stays chosen
-        Assert.Null(store.Find(copy.Id));
-        Assert.NotNull(store.Find(mine.Id));
-        Assert.False(await EstPolicies.CleanUpAsync(settings, store, CancellationToken.None)); // once
-    }
-
-    [Fact]
     public async Task The_profiles_that_were_off_in_oadm_41_are_removed_once_and_logged_by_name()
     {
         var store = await TestPolicies.StoreAsync();
@@ -140,7 +115,6 @@ public sealed class PolicyTests
         var store = await TestPolicies.StoreAsync();
         var settings = new FakeSettings();
         await settings.SetAsync(EstStore.ConfigKey, Config41, CancellationToken.None);
-        await EstPolicies.CleanUpAsync(settings, store, CancellationToken.None);
         await EstPolicies.ConvertAsync(settings, store, CancellationToken.None);
         await EstPolicies.ConvertRulesAsync(settings, store, CancellationToken.None);
         Assert.Contains(EstJson.Deserialize<EstConfig>(await settings.GetAsync(EstStore.ConfigKey, CancellationToken.None)).Profiles, p => !p.Enabled);
