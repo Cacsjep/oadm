@@ -114,7 +114,9 @@ public static class PluginEventWatch
                         next = events.MoveNextAsync().AsTask();
                     }
                 }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+#pragma warning disable CA1031 // Whatever the cancelled read or stream threw (a server call: the channel's error): the watch ends.
+                catch (Exception) when (ct.IsCancellationRequested)
+#pragma warning restore CA1031
                 {
                     return;
                 }

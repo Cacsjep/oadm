@@ -12,4 +12,12 @@ public static class ServerErrors
             : null;
         return string.IsNullOrEmpty(detail) ? ex.Message : detail;
     }
+
+    /// <summary>
+    /// A call that was cancelled: an <see cref="OperationCanceledException"/>, or the gRPC error of a cancelled call (the
+    /// host's channel throws that one, status Cancelled, when the token of a call is cancelled).
+    /// </summary>
+    internal static bool IsCancellation(Exception ex) =>
+        ex is OperationCanceledException
+        || (ex.GetType().GetProperty("StatusCode")?.GetValue(ex) is Enum code && code.ToString() == "Cancelled");
 }

@@ -9,7 +9,7 @@ public enum GuardedCancel
     /// <summary>No failure: the run ends without a text.</summary>
     Ignore,
 
-    /// <summary>Not caught: the <see cref="OperationCanceledException"/> leaves the run.</summary>
+    /// <summary>Not caught: an <see cref="OperationCanceledException"/> leaves the run.</summary>
     Throw,
 }
 
@@ -25,8 +25,9 @@ public static class GuardedRun
     /// <param name="work">The call, with everything that belongs to it.</param>
     /// <param name="cancel">What a cancellation is: a failure with a text (the default), nothing, or an exception that leaves the run.</param>
     /// <param name="ct">
-    /// With <see cref="GuardedCancel.Ignore"/> or <see cref="GuardedCancel.Throw"/>: only a cancellation while this token
-    /// is cancelled counts as one, any other is a failure with a text. Null: every cancellation counts.
+    /// With <see cref="GuardedCancel.Ignore"/> or <see cref="GuardedCancel.Throw"/>: whatever the call throws while this
+    /// token is cancelled counts as the cancellation, a cancellation at any other time is a failure with a text. Null:
+    /// every cancellation counts, also a server call that was cancelled.
     /// </param>
     public static async Task<string?> RunAsync(Func<Task> work, GuardedCancel cancel = GuardedCancel.Report, CancellationToken? ct = null)
     {
@@ -36,13 +37,21 @@ public static class GuardedRun
             await work().ConfigureAwait(true);
             return null;
         }
-        catch (OperationCanceledException) when (cancel == GuardedCancel.Throw && IsCancelled(ct))
+#pragma warning disable CA1031 // A cancelled server call throws the channel's own error, not an OperationCanceledException.
+        catch (Exception ex) when (cancel != GuardedCancel.Report && IsCancellation(ex, ct))
+#pragma warning restore CA1031
         {
-            throw;
-        }
-        catch (OperationCanceledException) when (cancel == GuardedCancel.Ignore && IsCancelled(ct))
-        {
-            return null;
+            if (cancel == GuardedCancel.Ignore)
+            {
+                return null;
+            }
+
+            if (ex is OperationCanceledException)
+            {
+                throw;
+            }
+
+            throw new OperationCanceledException(ex.Message, ex, ct ?? CancellationToken.None);
         }
 #pragma warning disable CA1031 // The helper's purpose: every failure of the call is a text for the page, never a crash.
         catch (Exception ex)
@@ -52,5 +61,10 @@ public static class GuardedRun
         }
     }
 
-    private static bool IsCancelled(CancellationToken? ct) => ct is not { } token || token.IsCancellationRequested;
+    /// <summary>
+    /// With a token: whatever the call threw while the token is cancelled (a cancelled server call throws the channel's
+    /// error, not an <see cref="OperationCanceledException"/>). Without: every cancellation, the channel's too.
+    /// </summary>
+    private static bool IsCancellation(Exception ex, CancellationToken? ct) =>
+        ct is { } token ? token.IsCancellationRequested : ServerErrors.IsCancellation(ex);
 }

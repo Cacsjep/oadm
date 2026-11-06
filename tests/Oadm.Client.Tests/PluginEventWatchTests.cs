@@ -1,6 +1,8 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 
+using Grpc.Core;
+
 using Microsoft.Extensions.Time.Testing;
 
 using Oadm.Sdk.Client;
@@ -238,6 +240,47 @@ public sealed class PluginEventWatchTests
         Assert.Equal(1, server.Subscriptions);
     }
 
+    // The host's channel throws an RpcException with the status Cancelled when the token of a call is cancelled, not
+    // an OperationCanceledException: the read and the stream of a hidden page end like that.
+    [Fact]
+    public async Task A_cancelled_server_call_ends_the_watch_and_is_no_failure()
+    {
+        var failures = 0;
+        var options = new PluginEventWatchOptions { Time = new RecordingTime(), Failed = _ => Interlocked.Increment(ref failures) };
+        var reading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var duringTheRead = new CancellationTokenSource();
+        using var duringTheStream = new CancellationTokenSource();
+
+        var whileReading = new Server().RunAsync(
+            async ct =>
+            {
+                reading.SetResult();
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, ct);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw CancelledCall();
+                }
+            },
+            _ => { },
+            options,
+            duringTheRead.Token);
+        await reading.Task.WaitAsync(Limit);
+        await duringTheRead.CancelAsync();
+        await whileReading.WaitAsync(Limit);
+
+        var server = new Server { StreamIsServerCall = true };
+        var whileWatching = server.RunAsync(_ => Task.CompletedTask, _ => { }, options, duringTheStream.Token);
+        await Eventually.TrueAsync(() => server.Open == 1, "the stream");
+        await duringTheStream.CancelAsync();
+        await whileWatching.WaitAsync(Limit);
+
+        Assert.Equal(0, server.Open);
+        Assert.Equal(0, Volatile.Read(ref failures));
+    }
+
     [Fact]
     public async Task The_next_event_waits_until_the_page_applied_the_one_before()
     {
@@ -309,6 +352,8 @@ public sealed class PluginEventWatchTests
         }
     }
 
+    private static RpcException CancelledCall() => new(new Status(StatusCode.Cancelled, "Call canceled by the client."));
+
     /// <summary>The fake clock, with the waits that were started on it.</summary>
     private sealed class RecordingTime : FakeTimeProvider
     {
@@ -356,6 +401,9 @@ public sealed class PluginEventWatchTests
             }
         }
 
+        /// <summary>A cancelled stream fails like the host's channel: with its error, not an OperationCanceledException.</summary>
+        public bool StreamIsServerCall { get; init; }
+
         public int Subscriptions => Volatile.Read(ref _subscriptions);
 
         /// <summary>The streams that are subscribed and not closed.</summary>
@@ -402,14 +450,29 @@ public sealed class PluginEventWatchTests
 
             try
             {
-                await foreach (var item in stream.Reader.ReadAllAsync(ct))
+                while (await MoreAsync(stream.Reader, ct))
                 {
-                    yield return item;
+                    while (stream.Reader.TryRead(out var item))
+                    {
+                        yield return item;
+                    }
                 }
             }
             finally
             {
                 Interlocked.Decrement(ref _open);
+            }
+        }
+
+        private async Task<bool> MoreAsync(ChannelReader<PluginEvent> reader, CancellationToken ct)
+        {
+            try
+            {
+                return await reader.WaitToReadAsync(ct);
+            }
+            catch (OperationCanceledException) when (StreamIsServerCall)
+            {
+                throw CancelledCall();
             }
         }
 

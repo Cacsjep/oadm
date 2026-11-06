@@ -373,7 +373,9 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
   whole state; null for a page that only applies events), hands every event to `handle` (an `Action<PluginEvent>`, or a
   `Func<PluginEvent, Task>` whose event must end before the next one), and after a failed read, an event that could not
   be applied or an ended or broken stream waits and does all of it again; a host without events is read at that pace. It
-  never throws and ends with `ct`, which the page cancels when it is hidden or disposed (a logout disposes every page).
+  never throws and ends with `ct`, which the page cancels when it is hidden or disposed (a logout disposes every page);
+  whatever the read or the stream throws once `ct` is cancelled ends the watch and never reaches `Failed` (a cancelled
+  server call throws an `RpcException` with the status Cancelled, not an `OperationCanceledException`).
   `PluginEventWatchOptions` (one per page, never a static): `RetryDelay` (2 s, `PluginEventWatch.DefaultRetryDelay`),
   `MaxRetryDelay` (null; set: the wait doubles up to it and starts again after a read that worked, Live View and
   Dashboards 1 s to 15 s), `Failed` (the reason for a page that shows it), `Time` (a `TimeProvider`; tests pass a fake
@@ -384,9 +386,12 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
   reads again only while no event arrives. Tests `Oadm.Client.Tests` `PluginEventWatchTests`.
 - **A guarded call** (`GuardedRun`, SDK 0.12.0; guide: `dev/core-plugins.md` "A guarded call"):
   `await GuardedRun.RunAsync(work)` runs a server call of a page or dialog and returns null, or the text to show when it failed (`ServerErrors.Message`: the server's reason, else the
-  exception's message); the one place of the catch-all with its `CA1031` reason. A cancellation is a failure with a text
-  unless the call says `GuardedCancel.Ignore` (no text) or `GuardedCancel.Throw` (the `OperationCanceledException` leaves
-  the run); with a token only a cancellation of that token counts, any other is a failure with a text. A catch that does more (several
+  exception's message); the one place of the catch-all with its `CA1031` reason. A cancellation (an
+  `OperationCanceledException`, or the `RpcException` with the status Cancelled a cancelled server call throws) is a
+  failure with a text unless the call says `GuardedCancel.Ignore` (no text) or `GuardedCancel.Throw` (an
+  `OperationCanceledException` leaves the run, also for a cancelled server call); with a token, whatever the call throws
+  while that token is cancelled counts as the cancellation, and a cancellation at any other time is a failure with a
+  text. A catch that does more (several
   fields, a row's state, its own text, a fallback value, a result) stays a `try` in the view model. Tests
   `Oadm.Client.Tests` `GuardedRunTests`.
 - **Pages shown as tabs**: `ICorePluginPage.TabOf` (DIM null) names the core plugin whose page shows this page as a tab.
