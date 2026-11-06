@@ -129,7 +129,7 @@ public sealed partial class RunListViewModel : ObservableObject
             return;
         }
 
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             await _ctx.InvokeAsync(LoadTestMethods.DeleteRun, LoadTestJson.Serialize(new RunRequest(row.RunId)), CancellationToken.None).ConfigureAwait(true);
             Runs.RemoveAll(r => r.RunId == row.RunId);
@@ -137,12 +137,10 @@ public sealed partial class RunListViewModel : ObservableObject
             OnPropertyChanged(nameof(ShowEmpty));
             ErrorText = null;
             _page.RunDeleted(row.RunId);
-        }
-#pragma warning disable CA1031 // Shown below the list.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            ErrorText = ServerErrors.Message(ex);
+            ErrorText = error;
         }
     }
 
