@@ -140,11 +140,17 @@ public sealed class DiscoveryGrpcService(
         // Discovery events and login results both produce messages; one writer sends them in order.
         var output = Channel.CreateUnbounded<Proto.DiscoveredDevice>(new UnboundedChannelOptions { SingleReader = true });
         var latest = new ConcurrentDictionary<string, (DiscoveredDevice Device, Managed Managed, int Progress)>(StringComparer.OrdinalIgnoreCase);
+
+        // Reading a device's login state and queueing its message is one step: an older state never follows a newer one.
+        var order = new Lock();
         using var subscription = authenticator.Subscribe(sessionId, serial =>
         {
             if (latest.TryGetValue(serial, out var known))
             {
-                output.Writer.TryWrite(Map(sessionId, known.Device, known.Managed, known.Progress));
+                lock (order)
+                {
+                    output.Writer.TryWrite(Map(sessionId, known.Device, known.Managed, known.Progress));
+                }
             }
         });
 
@@ -160,9 +166,12 @@ public sealed class DiscoveryGrpcService(
                             var managed = await ManagedAsync(device.Serial, view, ct).ConfigureAwait(false);
                             latest[device.Serial] = (device, managed, e.ProgressPercent);
                             authenticator.Ensure(sessionId, device, managed != Managed.No);
-                            var message = Map(sessionId, device, managed, e.ProgressPercent);
-                            message.ScanFinished = e.Finished;
-                            output.Writer.TryWrite(message);
+                            lock (order)
+                            {
+                                var message = Map(sessionId, device, managed, e.ProgressPercent);
+                                message.ScanFinished = e.Finished;
+                                output.Writer.TryWrite(message);
+                            }
                         }
                         else
                         {

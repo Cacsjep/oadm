@@ -52,6 +52,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Plugins page: Restart server waits while an update or another plugin's install runs.
 - Operators and custom roles can again use the Edge storage tools, Action Rule Editor runs and VAPIX Commander rollouts.
 - Logging in again after logging out from a plugin page works.
+- Add devices: a found device no longer stays on "logging in" after its login worked.
 - After a logout the next user no longer sees the last user's devices, tasks or page values, also on another server.
 - A task started from a dialog, such as EST - Certificate Enrollment, also finishes when more than 10,000 tasks are in the list.
 - Live video no longer uses more and more memory while the window is busy.
