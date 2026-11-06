@@ -48,8 +48,10 @@ public sealed class ActionRunnerOptions
     public int MaxPerRuleLong { get; init; } = 8;
 
     /// <summary>
-    /// A run that waited this long for a free slot (of its rule's share, then of the lane) is skipped and logged. A run of a "turns off" edge always waits: skipping
-    /// it could leave a relay on.
+    /// An action that got no slot (of its rule's share, then of the lane) for any of its targets this long after it asked is
+    /// skipped and logged: other actions hold the slots. The targets of one action never wait behind each other with this
+    /// clock running, and once the first one has a slot the others are never skipped. An action of a "turns off" edge
+    /// always waits: skipping it could leave a relay on.
     /// </summary>
     public TimeSpan MaxWait { get; init; } = TimeSpan.FromMinutes(1);
 
@@ -70,8 +72,10 @@ public sealed class ActionRunnerOptions
 /// delays another). Within an edge the actions run in the listed order, each on its targets in parallel (at most
 /// <see cref="ActionRunnerOptions.MaxParallel"/> runs at once, all rules together; runs that asked for a longer time have
 /// <see cref="ActionRunnerOptions.MaxParallelLong"/> slots of their own; one rule holds at most
-/// <see cref="ActionRunnerOptions.MaxPerRule"/> of them at a time). A run that waited
-/// <see cref="ActionRunnerOptions.MaxWait"/> for its slot is skipped, except on a "turns off" edge. A failed action is
+/// <see cref="ActionRunnerOptions.MaxPerRule"/> of them at a time). An action goes through its targets with at most the
+/// rule's share of runs at a time, so its own targets never wait behind each other for a slot. An action that got no slot
+/// for <see cref="ActionRunnerOptions.MaxWait"/> because other actions hold them is skipped as a whole; once its first
+/// target has a slot it runs on every target, however long the others wait. A "turns off" edge is never skipped. A failed action is
 /// logged and the next one still runs (no retry). Every run is a line in the event log. The device list of actions on
 /// tags, all devices or many devices is read once per version of the device table and shared. Nothing runs before
 /// <see cref="PluginsStarted"/>:
@@ -377,7 +381,8 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         if (!plugin.NeedsDevice)
         {
             // Actions without devices run with every edge (an email per camera), like actions on the event's device.
-            await RunOneAsync(job, catalogAction, settings, recipientIds, null, null, null, ct).ConfigureAwait(false);
+            using var single = NewRun(job, plugin, settings, 1);
+            await RunOneAsync(job, catalogAction, settings, recipientIds, null, null, single, ct).ConfigureAwait(false);
             return;
         }
 
@@ -407,24 +412,148 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             return;
         }
 
+        // The targets go through at most the rule's share of runs at a time, each asking for its slot when it is its turn:
+        // the targets of one action never wait behind each other with the clock running (an action on thousands of
+        // devices runs to its end), and a target that fails never stops the others.
+        using var run = NewRun(job, plugin, settings, targets.Count);
+        var next = -1;
+        Exception? failed = null;
+        async Task FeedAsync()
+        {
+            while (Interlocked.Increment(ref next) is var index && index < targets.Count)
+            {
+                ct.ThrowIfCancellationRequested();
+                var (id, device) = targets[index];
+                try
+                {
+                    await RunOneAsync(job, catalogAction, settings, recipientIds, id, device, run, ct).ConfigureAwait(false);
+                }
+#pragma warning disable CA1031 // One target that cannot be read must not end the others; the first failure is thrown at the end.
+                catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+#pragma warning restore CA1031
+                {
+                    Interlocked.CompareExchange(ref failed, ex, null);
+                }
+            }
+        }
+
+        await Task.WhenAll(Enumerable.Range(0, Math.Min(targets.Count, run.Lane.PerRule)).Select(_ => FeedAsync())).ConfigureAwait(false);
+
         // Runs of many targets that got no slot in time are one line with their count, never one line per device.
-        var late = targets.Count > 1 ? new LateRuns() : null;
-        await Task.WhenAll(targets.Select(target => RunOneAsync(job, catalogAction, settings, recipientIds, target.Id, target.Device, late, ct))).ConfigureAwait(false);
-        if (late is { Count: > 0 })
+        if (run.Late > 0)
         {
             Write(job, null, plugin.DisplayName, EventLogResult.Skipped,
-                string.Create(CultureInfo.InvariantCulture, $"{WaitedTooLong} ({late.Count:N0} of {targets.Count:N0} devices)"));
+                string.Create(CultureInfo.InvariantCulture, $"{WaitedTooLong} ({run.Late:N0} of {targets.Count:N0} devices)"));
+        }
+
+        if (failed is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(failed);
         }
     }
 
-    /// <summary>The runs of one action on many targets that waited too long for a slot.</summary>
-    private sealed class LateRuns
+    /// <summary>The lane and the time limit of one action on its targets, with these settings.</summary>
+    private ActionRun NewRun(RuleEdgeJob job, IActionPlugin plugin, JsonElement settings, int targets)
     {
-        private int _count;
+        // A run that asked for a longer time (a pulse) takes a slot of the long lane: it never holds a slot of the others.
+        var limit = _options.ActionTimeout;
+        var lane = _slots;
+        try
+        {
+            if (plugin.MaxRunTime(settings) is { } longer && longer > limit)
+            {
+                limit = longer < TimeSpan.FromHours(2) ? longer : TimeSpan.FromHours(2);
+                lane = _longSlots;
+            }
+        }
+#pragma warning disable CA1031 // Plugin code is untrusted: the default applies.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
 
-        public int Count => Volatile.Read(ref _count);
+        return new ActionRun(lane, limit, targets, job.Edge == ActionEdge.TurnedOff ? null : _options.MaxWait, _time);
+    }
 
-        public void Add() => Interlocked.Increment(ref _count);
+    /// <summary>
+    /// One action of one edge on its targets. It waits for a slot against the other actions only until it started: no target
+    /// got a slot within <see cref="ActionRunnerOptions.MaxWait"/> of the first one asking, and the whole action is skipped;
+    /// the first target got one, and every other target waits as long as it takes (a half-applied action is worse than a
+    /// late one). A "turns off" action counts as started from the beginning.
+    /// </summary>
+    private sealed class ActionRun : IDisposable
+    {
+        private const int Waiting = 0;
+        private const int Started = 1;
+        private const int GaveUp = 2;
+
+        private readonly Lock _sync = new();
+        private readonly TimeSpan? _maxWait;
+        private readonly TimeProvider _time;
+        private CancellationTokenSource? _deadline;
+        private int _state;
+        private int _late;
+
+        /// <param name="maxWait">Null: never skipped.</param>
+        public ActionRun(Lane lane, TimeSpan limit, int targets, TimeSpan? maxWait, TimeProvider time)
+        {
+            Lane = lane;
+            Limit = limit;
+            Many = targets > 1;
+            _maxWait = maxWait;
+            _time = time;
+            _state = maxWait is null ? Started : Waiting;
+        }
+
+        public Lane Lane { get; }
+
+        /// <summary>The time one run on one target may take.</summary>
+        public TimeSpan Limit { get; }
+
+        /// <summary>Several targets: skipped ones are one line with their count.</summary>
+        public bool Many { get; }
+
+        /// <summary>The targets that were skipped because the action got no slot in time.</summary>
+        public int Late => Volatile.Read(ref _late);
+
+        /// <summary>No target got a slot in time: the others are skipped without waiting again.</summary>
+        public bool IsSkipped => Volatile.Read(ref _state) == GaveUp;
+
+        public void AddLate() => Interlocked.Increment(ref _late);
+
+        /// <summary>A target got its slot. False: the action was given up at the same moment, the slot goes back.</summary>
+        public bool Start() => Interlocked.CompareExchange(ref _state, Started, Waiting) != GaveUp;
+
+        /// <summary>
+        /// The deadline passed for a waiting target. True: the action is skipped. False: another target got its slot
+        /// meanwhile, this one waits on.
+        /// </summary>
+        public bool GiveUp() => Interlocked.CompareExchange(ref _state, GaveUp, Waiting) != Started;
+
+        /// <summary>
+        /// Ends the wait of the targets that ask before the action started, <see cref="ActionRunnerOptions.MaxWait"/> after
+        /// the first of them had to wait. Never cancelled once the action started.
+        /// </summary>
+        public CancellationToken Deadline()
+        {
+            if (_maxWait is not { } maxWait || Volatile.Read(ref _state) == Started)
+            {
+                return CancellationToken.None;
+            }
+
+            lock (_sync)
+            {
+                return (_deadline ??= new CancellationTokenSource(maxWait, _time)).Token;
+            }
+        }
+
+        public void Dispose()
+        {
+            lock (_sync)
+            {
+                _deadline?.Dispose();
+            }
+        }
     }
 
     /// <summary>
@@ -585,54 +714,79 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     private sealed record DeviceList(long Version, IReadOnlyList<IDeviceInfo> Devices);
 
     /// <summary>
-    /// Waits for a slot of the lane: first for one of the rule's share (in the rule's own queue, holding nothing), then for
-    /// one of the lane. Null: the run waited <see cref="ActionRunnerOptions.MaxWait"/> in all and is skipped. A "turns off"
-    /// run waits as long as it takes (never skipped: a relay would stay on). The caller gives the result back with
-    /// <see cref="Lane.Release"/>.
+    /// Waits for a slot of the action's lane for one target: first for one of the rule's share (in the rule's own queue,
+    /// holding nothing), then for one of the lane. Null: the action got no slot for <see cref="ActionRunnerOptions.MaxWait"/>
+    /// and is skipped (<see cref="ActionRun"/>). A target of an action that started, or of a "turns off" edge, waits as long
+    /// as it takes. The caller gives the result back with <see cref="Lane.Release"/>.
     /// </summary>
-    private async Task<RuleShare?> WaitForSlotAsync(Lane lane, RuleEdgeJob job, CancellationToken ct)
+    private async Task<RuleShare?> WaitForSlotAsync(ActionRun run, RuleEdgeJob job, CancellationToken ct)
     {
+        if (run.IsSkipped)
+        {
+            return null;
+        }
+
+        var lane = run.Lane;
         var share = lane.Enter(job.Rule.Id);
         var inShare = false;
+        var inLane = false;
         var done = false;
         try
         {
             inShare = await share.Slots.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false);
-            if (inShare && await lane.Slots.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false))
+            inLane = inShare && await lane.Slots.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false);
+            if (!inLane)
             {
-                done = true;
-                return share; // free slots: nothing to wait for
-            }
-
-            using var late = job.Edge == ActionEdge.TurnedOff ? null : new CancellationTokenSource(_options.MaxWait, _time);
-            using var either = late is null ? null : CancellationTokenSource.CreateLinkedTokenSource(ct, late.Token);
-            var token = either?.Token ?? ct;
-            Interlocked.Increment(ref _waiting);
-            try
-            {
-                if (!inShare)
+                Interlocked.Increment(ref _waiting);
+                try
                 {
-                    await share.Slots.WaitAsync(token).ConfigureAwait(false);
-                    inShare = true;
-                }
+                    while (!inLane)
+                    {
+                        var deadline = run.Deadline();
+                        using var either = deadline.CanBeCanceled ? CancellationTokenSource.CreateLinkedTokenSource(ct, deadline) : null;
+                        var token = either?.Token ?? ct;
+                        try
+                        {
+                            if (!inShare)
+                            {
+                                await share.Slots.WaitAsync(token).ConfigureAwait(false);
+                                inShare = true;
+                            }
 
-                await lane.Slots.WaitAsync(token).ConfigureAwait(false);
-                done = true;
-                return share;
+                            await lane.Slots.WaitAsync(token).ConfigureAwait(false);
+                            inLane = true;
+                        }
+                        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                        {
+                            if (run.GiveUp())
+                            {
+                                return null;
+                            }
+
+                            // Another target of the action got its slot meanwhile: this one waits on, without a limit.
+                        }
+                    }
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _waiting);
+                }
             }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            {
-                return null;
-            }
-            finally
-            {
-                Interlocked.Decrement(ref _waiting);
-            }
+
+            // A stop frees the slots of the runs it ends: a target that gets one of them starts nothing, the slot goes back.
+            ct.ThrowIfCancellationRequested();
+            done = run.Start(); // false: given up at this moment, the slot goes back
+            return done ? share : null;
         }
         finally
         {
             if (!done)
             {
+                if (inLane)
+                {
+                    lane.Slots.Release();
+                }
+
                 lane.Leave(job.Rule.Id, share, inShare);
             }
         }
@@ -649,6 +803,9 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         private readonly Dictionary<Guid, RuleShare> _shares = [];
 
         public SemaphoreSlim Slots { get; } = new(size, size);
+
+        /// <summary>The slots one rule may hold at a time.</summary>
+        public int PerRule => _perRule;
 
         /// <summary>The rule's share, kept while a run of the rule waits or runs.</summary>
         public RuleShare Enter(Guid rule)
@@ -702,7 +859,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     }
 
     private async Task RunOneAsync(
-        RuleEdgeJob job, CatalogAction action, JsonElement settings, IReadOnlyDictionary<string, Guid> recipientIds, Guid? deviceId, IDeviceInfo? known, LateRuns? late, CancellationToken ct)
+        RuleEdgeJob job, CatalogAction action, JsonElement settings, IReadOnlyDictionary<string, Guid> recipientIds, Guid? deviceId, IDeviceInfo? known, ActionRun run, CancellationToken ct)
     {
         var plugin = action.Plugin;
         IDeviceInfo? device = null;
@@ -733,32 +890,15 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             textDevice = await _devices.FindAsync(eventDevice, ct).ConfigureAwait(false);
         }
 
-        // A run that asked for a longer time (a pulse) takes a slot of the long lane: it never holds a slot of the others.
-        var limit = _options.ActionTimeout;
-        var slots = _slots;
-        try
+        if (await WaitForSlotAsync(run, job, ct).ConfigureAwait(false) is not { } share)
         {
-            if (plugin.MaxRunTime(settings) is { } longer && longer > limit)
+            if (run.Many)
             {
-                limit = longer < TimeSpan.FromHours(2) ? longer : TimeSpan.FromHours(2);
-                slots = _longSlots;
-            }
-        }
-#pragma warning disable CA1031 // Plugin code is untrusted: the default applies.
-        catch (Exception)
-#pragma warning restore CA1031
-        {
-        }
-
-        if (await WaitForSlotAsync(slots, job, ct).ConfigureAwait(false) is not { } share)
-        {
-            if (late is null)
-            {
-                Write(job, deviceId, plugin.DisplayName, EventLogResult.Skipped, WaitedTooLong, device);
+                run.AddLate();
             }
             else
             {
-                late.Add();
+                Write(job, deviceId, plugin.DisplayName, EventLogResult.Skipped, WaitedTooLong, device);
             }
 
             return;
@@ -768,7 +908,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(limit);
+            timeout.CancelAfter(run.Limit);
             IVapixClient? vapix = null;
             if (device is not null)
             {
@@ -807,7 +947,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         }
         finally
         {
-            slots.Release(job.Rule.Id, share);
+            run.Lane.Release(job.Rule.Id, share);
         }
     }
 
@@ -1009,7 +1149,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
 
     private const string RecipientUnreadable = "The recipient cannot be read";
 
-    /// <summary>The event log's text of a run that got no slot within <see cref="ActionRunnerOptions.MaxWait"/>.</summary>
+    /// <summary>The event log's text of an action that got no slot within <see cref="ActionRunnerOptions.MaxWait"/>.</summary>
     public const string WaitedTooLong = "Waited too long: too many actions are running";
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Event rule {Rule}: action {Action}{On} failed: {Reason}")]

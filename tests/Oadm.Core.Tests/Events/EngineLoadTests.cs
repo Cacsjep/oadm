@@ -70,14 +70,14 @@ public sealed class EngineLoadTests(ITestOutputHelper output)
         Assert.Equal([ActionEdge.TurnedOn], rig.NoDevice.Edges.Select(e => e.Edge));
 
         // A target that does not answer holds the only slot; two fired edges (one on three devices) and the relay's
-        // "turns off" wait behind it.
+        // "turns off" wait behind it. Of the three devices only the one whose turn it is waits for the slot.
         rig.Publisher.SetState(EventRulesRig.Blur, camera.Id, true);
         await Eventually.TrueAsync(() => busy.Started == 1, "the slot is taken");
         rig.Publisher.Fire(EventRulesRig.Pulse, camera.Id);
         rig.Publisher.Fire(EventRulesRig.ReadingSent, camera.Id);
         rig.Publisher.SetState(EventRulesRig.Input, camera.Id, false);
         await rig.Engine.DrainAsync(CancellationToken.None);
-        await Eventually.TrueAsync(() => rig.Runner.Waiting == 5, "every run waits for the slot");
+        await Eventually.TrueAsync(() => rig.Runner.Waiting == 3, "every action waits for the slot");
 
         rig.Time.Advance(TimeSpan.FromMinutes(5));
         await Eventually.TrueAsync(() => rig.Runner.Waiting == 1, "the fired edges gave up");
@@ -179,6 +179,240 @@ public sealed class EngineLoadTests(ITestOutputHelper output)
         await rig.SettleAsync();
         Assert.Equal(2, relay.Started);
         Assert.Single(relay.Done, e => e == ActionEdge.TurnedOff);
+    }
+
+    // ---------- one action on many devices ----------
+    [Fact]
+    public async Task AnActionOnManyDevicesRunsOnEveryOneHoweverLongEachHoldsItsSlot()
+    {
+        var relay = new GatedAction("test.relay", needsDevice: true);
+        await using var rig = await EventRulesRig.StartAsync(beforeStart: r =>
+        {
+            r.Registry.RegisterActionPlugin(relay, r.ActionOrigin);
+            r.RunnerOptions = new ActionRunnerOptions { MaxParallel = 4, MaxPerRule = 2, MaxWait = TimeSpan.FromMinutes(1), ActionTimeout = TimeSpan.FromMinutes(10) };
+        });
+        var camera = await rig.AddDeviceAsync("10.0.0.1");
+        var doors = await AddDoorsAsync(rig, 100);
+        await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Pulse, OnDoors(relay)));
+
+        // Devices that answer late: each holds its slot for three minutes, far longer than a run may wait.
+        rig.Publisher.Fire(EventRulesRig.Pulse, camera.Id);
+        for (var round = 1; round <= 50; round++)
+        {
+            var started = 2 * round;
+            await Eventually.TrueAsync(() => relay.Started == started, "the next two devices run");
+            rig.Time.Advance(TimeSpan.FromMinutes(3));
+            relay.Release(2);
+        }
+
+        await rig.SettleAsync();
+        Assert.Equal(doors.Select(d => d.Id).Order(), relay.Runs.Select(r => r.Device!.Value).Order()); // every device, once
+        Assert.Equal(2, relay.MostAtOnce); // never more than the rule's share
+        Assert.DoesNotContain(await rig.LogLinesAsync(), l => l.Kind == EventLogKind.Action && l.Result == EventLogResult.Skipped);
+    }
+
+    [Fact]
+    public async Task AnActionThatCannotStartForAMinuteBecauseAnotherRuleHoldsEverySlotIsSkippedAndLogged()
+    {
+        var busy = new GatedAction("test.busy", needsDevice: false);
+        var relay = new GatedAction("test.relay", needsDevice: true);
+        await using var rig = await EventRulesRig.StartAsync(beforeStart: r =>
+        {
+            r.Registry.RegisterActionPlugin(busy, r.ActionOrigin);
+            r.Registry.RegisterActionPlugin(relay, r.ActionOrigin);
+            r.RunnerOptions = new ActionRunnerOptions { MaxParallel = 2, MaxPerRule = 2, MaxWait = TimeSpan.FromMinutes(1), ActionTimeout = TimeSpan.FromMinutes(10) };
+        });
+        var cameras = new[] { await rig.AddDeviceAsync("10.0.0.1"), await rig.AddDeviceAsync("10.0.0.2") };
+        await AddDoorsAsync(rig, 5);
+        var onDoors = await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Pulse, OnDoors(relay)));
+        await HoldEverySlotAsync(rig, busy, cameras);
+
+        // Only the devices whose turn it is wait for a slot; the others wait for their turn.
+        rig.Publisher.Fire(EventRulesRig.Pulse, cameras[0].Id);
+        await rig.Engine.DrainAsync(CancellationToken.None);
+        await Eventually.TrueAsync(() => rig.Runner.Waiting == 2, "the first two devices wait for a slot");
+
+        rig.Time.Advance(TimeSpan.FromMinutes(5));
+        await Eventually.TrueAsync(() => rig.Runner.Waiting == 0, "the action gave up");
+        IReadOnlyList<EventLogLine> skipped = [];
+        await Eventually.TrueAsync(
+            async () => (skipped = [.. (await rig.LogLinesAsync()).Where(l => l.Kind == EventLogKind.Action && l.Result == EventLogResult.Skipped)]).Count > 0,
+            "the skipped action is in the event log");
+        var line = Assert.Single(skipped); // the whole action, one line
+        Assert.Equal((onDoors.Id, ActionRunner.WaitedTooLong + " (5 of 5 devices)"), (line.RuleId!.Value, line.Message));
+        Assert.Equal(0, relay.Started);
+
+        // No slot stayed behind: with room again the same rule runs on every device.
+        busy.Open();
+        relay.Open();
+        await rig.SettleAsync();
+        rig.Publisher.Fire(EventRulesRig.Pulse, cameras[0].Id);
+        await rig.SettleAsync();
+        Assert.Equal(5, relay.Done);
+    }
+
+    [Fact]
+    public async Task AnActionThatStartedRunsOnEveryDeviceWhileOtherRulesHoldTheSlots()
+    {
+        var busy = new GatedAction("test.busy", needsDevice: false);
+        var relay = new GatedAction("test.relay", needsDevice: true);
+        await using var rig = await EventRulesRig.StartAsync(beforeStart: r =>
+        {
+            r.Registry.RegisterActionPlugin(busy, r.ActionOrigin);
+            r.Registry.RegisterActionPlugin(relay, r.ActionOrigin);
+            r.RunnerOptions = new ActionRunnerOptions { MaxParallel = 2, MaxPerRule = 2, MaxWait = TimeSpan.FromMinutes(1), ActionTimeout = TimeSpan.FromMinutes(10) };
+        });
+        var cameras = new[] { await rig.AddDeviceAsync("10.0.0.1"), await rig.AddDeviceAsync("10.0.0.2") };
+        await AddDoorsAsync(rig, 4);
+        await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Pulse, OnDoors(relay)));
+        await HoldEverySlotAsync(rig, busy, cameras);
+
+        rig.Publisher.Fire(EventRulesRig.Pulse, cameras[0].Id);
+        await rig.Engine.DrainAsync(CancellationToken.None);
+        await Eventually.TrueAsync(() => rig.Runner.Waiting == 2, "the first two devices wait for a slot");
+
+        // One slot gets free in time: the action started on its first device. The second one still waits behind the
+        // other rule, far longer than a minute, and is not skipped: a half-applied action is worse than a late one.
+        busy.Release(1);
+        await Eventually.TrueAsync(() => relay.Started == 1 && rig.Runner.Waiting == 1, "the action started on one device");
+        rig.Time.Advance(TimeSpan.FromMinutes(5));
+        busy.Release(1);
+        await Eventually.TrueAsync(() => relay.Started == 2, "the second device runs");
+
+        relay.Open();
+        await rig.SettleAsync();
+        Assert.Equal(4, relay.Done);
+        Assert.DoesNotContain(await rig.LogLinesAsync(), l => l.Kind == EventLogKind.Action && l.Result == EventLogResult.Skipped);
+    }
+
+    [Fact]
+    public async Task ATurnOffOnManyDevicesIsNeverSkipped()
+    {
+        var busy = new GatedAction("test.busy", needsDevice: false);
+        await using var rig = await EventRulesRig.StartAsync(beforeStart: r =>
+        {
+            r.Registry.RegisterActionPlugin(busy, r.ActionOrigin);
+            r.RunnerOptions = new ActionRunnerOptions { MaxParallel = 2, MaxPerRule = 2, MaxWait = TimeSpan.FromMinutes(1), ActionTimeout = TimeSpan.FromMinutes(10) };
+        });
+        var cameras = new[] { await rig.AddDeviceAsync("10.0.0.1"), await rig.AddDeviceAsync("10.0.0.2") };
+        var doors = await AddDoorsAsync(rig, 6);
+        rig.Publisher.ReplaceStates(EventRulesRig.Blur, []);
+        await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Blur,
+            new RuleAction { ActionId = rig.OnDevice.Id, Targets = new DeviceSelector { Mode = DeviceSelectorMode.Devices, Tags = ["Door"] } }));
+
+        // The relays turned on while there was room.
+        rig.Publisher.SetState(EventRulesRig.Blur, cameras[0].Id, true);
+        await rig.SettleAsync();
+        Assert.Equal(6, rig.OnDevice.Edges.Count(e => e.Edge == ActionEdge.TurnedOn));
+
+        // Another rule holds every slot for longer than a minute: the "turns off" waits and then runs on every device.
+        await HoldEverySlotAsync(rig, busy, cameras);
+        rig.Publisher.SetState(EventRulesRig.Blur, cameras[0].Id, false);
+        await rig.Engine.DrainAsync(CancellationToken.None);
+        await Eventually.TrueAsync(() => rig.Runner.Waiting == 2, "the first two devices wait for a slot");
+        rig.Time.Advance(TimeSpan.FromMinutes(5));
+        busy.Open();
+        await rig.SettleAsync();
+
+        Assert.Equal(doors.Select(d => d.Id).Order(), rig.OnDevice.Edges.Where(e => e.Edge == ActionEdge.TurnedOff).Select(e => e.Device!.Value).Order());
+        Assert.DoesNotContain(await rig.LogLinesAsync(), l => l.Kind == EventLogKind.Action && l.Result == EventLogResult.Skipped);
+    }
+
+    [Fact]
+    public async Task TwoRulesWithAnActionOnManyDevicesAtOnceBothFinish()
+    {
+        var first = new GatedAction("test.first", needsDevice: true);
+        var second = new GatedAction("test.second", needsDevice: true);
+        await using var rig = await EventRulesRig.StartAsync(beforeStart: r =>
+        {
+            r.Registry.RegisterActionPlugin(first, r.ActionOrigin);
+            r.Registry.RegisterActionPlugin(second, r.ActionOrigin);
+            r.RunnerOptions = new ActionRunnerOptions { MaxParallel = 4, MaxPerRule = 2, MaxWait = TimeSpan.FromMinutes(1), ActionTimeout = TimeSpan.FromMinutes(10) };
+        });
+        var camera = await rig.AddDeviceAsync("10.0.0.1");
+        await AddDoorsAsync(rig, 20);
+        await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Pulse, OnDoors(first)));
+        await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.ReadingSent, OnDoors(second)));
+
+        rig.Publisher.Fire(EventRulesRig.Pulse, camera.Id);
+        rig.Publisher.Fire(EventRulesRig.ReadingSent, camera.Id);
+        for (var round = 1; round <= 10; round++)
+        {
+            var started = 2 * round;
+            await Eventually.TrueAsync(() => first.Started == started && second.Started == started, "each rule runs its next two devices");
+            rig.Time.Advance(TimeSpan.FromMinutes(3));
+            first.Release(2);
+            second.Release(2);
+        }
+
+        await rig.SettleAsync();
+        Assert.Equal((20, 20), (first.Done, second.Done));
+        Assert.DoesNotContain(await rig.LogLinesAsync(), l => l.Kind == EventLogKind.Action && l.Result == EventLogResult.Skipped);
+    }
+
+    [Fact]
+    public async Task AStopEndsAnActionOnManyDevicesThatWaits()
+    {
+        var busy = new GatedAction("test.busy", needsDevice: false);
+        var relay = new GatedAction("test.relay", needsDevice: true);
+        await using var rig = await EventRulesRig.StartAsync(beforeStart: r =>
+        {
+            r.Registry.RegisterActionPlugin(busy, r.ActionOrigin);
+            r.Registry.RegisterActionPlugin(relay, r.ActionOrigin);
+            r.RunnerOptions = new ActionRunnerOptions { MaxParallel = 2, MaxPerRule = 2, MaxWait = TimeSpan.FromMinutes(1), ActionTimeout = TimeSpan.FromMinutes(10) };
+        });
+        var cameras = new[] { await rig.AddDeviceAsync("10.0.0.1"), await rig.AddDeviceAsync("10.0.0.2") };
+        await AddDoorsAsync(rig, 20);
+        await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Pulse, OnDoors(relay)));
+        await HoldEverySlotAsync(rig, busy, cameras);
+        rig.Publisher.Fire(EventRulesRig.Pulse, cameras[0].Id);
+        await rig.Engine.DrainAsync(CancellationToken.None);
+        await Eventually.TrueAsync(() => rig.Runner.Waiting == 2, "the first two devices wait for a slot");
+
+        await rig.StopEngineAsync();
+
+        // The waiting devices and the ones behind them ended with the stop; nothing ran on a device.
+        await Eventually.TrueAsync(() => rig.Runner.PendingChains == 0 && rig.Runner.Waiting == 0, "every chain ended");
+        Assert.Equal(0, relay.Started);
+    }
+
+    /// <summary>Devices with the tag Door, the targets of <see cref="OnDoors"/>.</summary>
+    private static async Task<List<Device>> AddDoorsAsync(EventRulesRig rig, int count)
+    {
+        var doors = new List<Device>(count);
+        for (var i = 0; i < count; i++)
+        {
+            doors.Add(await rig.Devices.AddAsync(
+                new Device
+                {
+                    Serial = "B8A44F" + i.ToString("X6", System.Globalization.CultureInfo.InvariantCulture),
+                    Address = $"10.0.{1 + (i / 200)}.{1 + (i % 200)}",
+                    Model = "A1210",
+                    Status = DeviceStatus.Ok,
+                    Category = DeviceCategory.DoorController,
+                    Tags = ["Door"],
+                },
+                CancellationToken.None));
+        }
+
+        return doors;
+    }
+
+    private static RuleAction OnDoors(GatedAction action) =>
+        new() { ActionId = action.Id, Targets = new DeviceSelector { Mode = DeviceSelectorMode.Devices, Tags = ["Door"] } };
+
+    /// <summary>
+    /// Another rule whose two runs do not end holds both slots of the lane (<c>MaxParallel</c> 2). Save the other rules
+    /// first: a save waits for every running action.
+    /// </summary>
+    private static async Task HoldEverySlotAsync(EventRulesRig rig, GatedAction busy, Device[] cameras)
+    {
+        var holder = EventRulesRig.Rule(EventRulesRig.ReadingSent, new RuleAction { ActionId = busy.Id });
+        holder.MaxRunsPerMinute = 1000;
+        await rig.SaveAsync(holder);
+        rig.Publisher.Fire(EventRulesRig.ReadingSent, cameras[0].Id);
+        rig.Publisher.Fire(EventRulesRig.ReadingSent, cameras[1].Id);
+        await Eventually.TrueAsync(() => busy.Started == 2, "the other rule holds both slots");
     }
 
     // ---------- the device list of actions on tags ----------
@@ -532,6 +766,100 @@ public sealed class EngineLoadTests(ITestOutputHelper output)
             }
 
             Done.Enqueue(invocation.Edge);
+        }
+    }
+
+    /// <summary>An action whose runs wait until the test lets them end, the oldest first.</summary>
+    private sealed class GatedAction(string id, bool needsDevice) : IActionPlugin
+    {
+        private readonly ConcurrentQueue<TaskCompletionSource> _running = new();
+        private readonly Lock _sync = new();
+        private volatile bool _open;
+        private int _started;
+        private int _done;
+        private int _now;
+        private int _most;
+
+        /// <summary>Runs that reached the action.</summary>
+        public int Started => Volatile.Read(ref _started);
+
+        public int Done => Volatile.Read(ref _done);
+
+        /// <summary>The most runs at the same time.</summary>
+        public int MostAtOnce
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _most;
+                }
+            }
+        }
+
+        public ConcurrentQueue<(ActionEdge Edge, Guid? Device)> Runs { get; } = new();
+
+        public string Id { get; } = id;
+
+        public string DisplayName => "Gate " + Id;
+
+        public string? IconKey => null;
+
+        public bool NeedsDevice { get; } = needsDevice;
+
+        public bool SupportsTurnOff => false;
+
+        public IReadOnlyList<ActionField> Fields => [];
+
+        /// <summary>Lets the <paramref name="count"/> oldest waiting runs end.</summary>
+        public void Release(int count)
+        {
+            for (var i = 0; i < count; i++)
+            {
+                Assert.True(_running.TryDequeue(out var gate), "No run waits for its release.");
+                gate.SetResult();
+            }
+        }
+
+        /// <summary>Every waiting run ends, and every later one at once.</summary>
+        public void Open()
+        {
+            _open = true;
+            while (_running.TryDequeue(out var gate))
+            {
+                gate.TrySetResult();
+            }
+        }
+
+        public async Task ExecuteAsync(IActionContext ctx, ActionInvocation invocation, CancellationToken ct)
+        {
+            var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_sync)
+            {
+                _most = Math.Max(_most, ++_now);
+            }
+
+            try
+            {
+                _running.Enqueue(gate);
+                if (_open)
+                {
+                    gate.TrySetResult(); // opened before this run was in the queue
+                }
+
+                Interlocked.Increment(ref _started);
+                await gate.Task.WaitAsync(ct);
+            }
+            finally
+            {
+                lock (_sync)
+                {
+                    _now--;
+                }
+            }
+
+            Runs.Enqueue((invocation.Edge, invocation.Device?.Id));
+            Interlocked.Increment(ref _done);
         }
     }
 }
