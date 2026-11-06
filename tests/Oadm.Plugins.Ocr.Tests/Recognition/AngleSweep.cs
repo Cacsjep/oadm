@@ -331,7 +331,7 @@ internal static class AngleSweep
         return data.ToArray();
     }
 
-    private static SKTypeface Typeface(string name) => Typefaces.GetOrAdd(name, n => n switch
+    internal static SKTypeface Typeface(string name) => Typefaces.GetOrAdd(name, n => n switch
     {
         RobotoBold => SKTypeface.FromFile(TestRepository.Path("plugins", "Oadm.Plugins.SnapshotReport", "Fonts", "Roboto-Bold.ttf")),
         RobotoRegular => SKTypeface.FromFile(TestRepository.Path("plugins", "Oadm.Plugins.SnapshotReport", "Fonts", "Roboto-Regular.ttf")),
@@ -340,7 +340,7 @@ internal static class AngleSweep
     });
 
     /// <summary>The cap height per font size (the height of "H").</summary>
-    private static float CapRatio(SKTypeface typeface)
+    internal static float CapRatio(SKTypeface typeface)
     {
         using var font = new SKFont(typeface, 100);
         font.MeasureText("H", out var bounds);
