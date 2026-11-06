@@ -45,8 +45,8 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
     /// <summary>The devices the page checks: video devices, like the server.</summary>
     internal static bool HasVideo(IDeviceInfo device) => device.HasVideo;
 
-    /// <summary>Wait before watching the events again after the stream broke.</summary>
-    public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
+    /// <summary>The waits of the event watch (again after the stream ended or broke); a test passes its own.</summary>
+    public PluginEventWatchOptions EventWatch { get; init; } = new();
 
     /// <summary>How often the page asks for the state while a check runs (its progress events may be missed).</summary>
     public static TimeSpan StatePollInterval { get; set; } = TimeSpan.FromSeconds(1);
@@ -102,7 +102,7 @@ public sealed partial class ImageHealthViewModel : ObservableObject, IDisposable
 
         _active = new CancellationTokenSource();
         var token = _active.Token;
-        _ = _ctx.RunAsync(HandleEvent, ReconnectDelay, token);
+        _ = _ctx.RunAsync(null, HandleEvent, EventWatch, token);
         _ = CheckAsync(token);
         SyncAutoRefresh();
     }
