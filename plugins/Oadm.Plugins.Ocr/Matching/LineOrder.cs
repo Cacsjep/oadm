@@ -13,8 +13,9 @@ namespace Oadm.Plugins.Ocr.Matching;
 /// block (two receipts at different angles stay apart).</item>
 /// <item>One axis per block: the length-weighted mean of the directions with the angles doubled (a line has no front); its
 /// side is the way most of the text length reads. Never a line's own direction: 2 degrees are 17 px at 500 px.</item>
-/// <item>Rows: two lines share a row when their centres lie, across the axis, within 0.55 of the smaller line's height; rows
-/// are the connected groups.</item>
+/// <item>Rows: two lines share a row when their centres lie, across the axis, within 0.55 of the smaller line's height, or
+/// when the smaller one lies on the larger one's height, at most a quarter of it outside, and stands next to it (a small
+/// line beside a large one); rows are the connected groups.</item>
 /// <item>Order: rows by their mean place across the axis, the lines of a row along it.</item>
 /// <item>Duplicates: two lines of a row that overlap along the axis by more than half of the shorter one are one text (the
 /// tile overlap); the narrower one goes.</item>
@@ -34,6 +35,13 @@ public static class LineOrder
 
     /// <summary>Two lines share a row when their centres lie within this share of the smaller line's height across the axis.</summary>
     private const double RowDistance = 0.55;
+
+    /// <summary>
+    /// Two lines also share a row when the smaller one lies on the larger one's height with at most this share of its own
+    /// height outside, and at most the larger height away along the axis. It only adds lines more than 1.6 times as high
+    /// as their neighbour, never two lines of one size.
+    /// </summary>
+    private const double RowOutside = 0.25;
 
     /// <summary>Two lines of a row that overlap along the axis by more than this share of the shorter one are one text.</summary>
     private const double DuplicateOverlap = 0.5;
@@ -408,7 +416,23 @@ public static class LineOrder
             start = end;
         }
 
-        bool SameRow(int a, int b) => Math.Abs(across[a] - across[b]) <= RowDistance * Math.Min(height[a], height[b]);
+        // On one row: the centres lie close, or the smaller line lies on the larger one's height and stands next to it, at
+        // most the larger height away (a small caption on the baseline of a large value, a raised small number). Lines of
+        // one size only ever meet the first: a looser rule would join a far price with the row above or below it, and
+        // without "next to it" one high box found by mistake would join every row beside it.
+        bool SameRow(int a, int b)
+        {
+            var distance = Math.Abs(across[a] - across[b]);
+            var smaller = Math.Min(height[a], height[b]);
+            if (distance <= RowDistance * smaller)
+            {
+                return true;
+            }
+
+            var larger = Math.Max(height[a], height[b]);
+            var gap = Math.Abs(along[a] - along[b]) - ((width[a] + width[b]) / 2);
+            return distance <= (larger / 2) - ((0.5 - RowOutside) * smaller) && gap <= larger;
+        }
 
         // One text found twice: a wider line of the row, itself on this line's height, covers more than half of this one
         // (of two equal ones the later goes).

@@ -175,6 +175,25 @@ public sealed class LineOrderTests
     }
 
     [Fact]
+    public void A_small_line_beside_a_large_one_stays_on_its_row()
+    {
+        // A caption on the baseline of a value more than twice as high, and a raised small number after one: their centres
+        // lie further apart than half the small height, but the small line lies on the large line's height.
+        var caption = new Printed[] { new("Nr.", 0, 98, 40, 24), new("4711", 50, 80, 150, 60) };
+        var raised = new Printed[] { new("12", 0, 80, 70, 60), new("99", 80, 62, 30, 24), new("EUR", 120, 98, 44, 24) };
+
+        foreach (var degrees in new[] { 0, 90, 180, 270, 15 })
+        {
+            Assert.Equal("Nr. 4711", RowsOf(Laid(caption, degrees)));
+            Assert.Equal("12 99 EUR", RowsOf(Laid(raised, degrees)));
+        }
+
+        // A small line that only touches the large line's edge is a row of its own.
+        var below = new Printed[] { new("4711", 0, 80, 150, 60), new("total", 0, 116, 60, 24) };
+        Assert.Equal("4711\ntotal", RowsOf(Laid(below, 0)));
+    }
+
+    [Fact]
     public void A_digit_line_read_the_wrong_way_round_does_not_turn_the_block()
     {
         foreach (var degrees in new[] { 0, 90, 180 })

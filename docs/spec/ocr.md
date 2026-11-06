@@ -185,7 +185,12 @@ pixels of the picture (`Matching/LineOrder`, used by the matcher and by the reco
    lines long enough to have a direction. Its side is the way most of the text length reads, so a line of digits read the
    wrong way round does not turn the block. One axis per block, never a line's own direction: 2 degrees are 17 px at
    500 px, more than half a line height, and a wide table would fall apart.
-3. **Rows.** Two lines share a row when their centres lie, across the axis, within 0.55 of the smaller line's height. Rows
+3. **Rows.** Two lines share a row when their centres lie, across the axis, within 0.55 of the smaller line's height, or
+   when the smaller one lies on the larger one's height with at most a quarter of its own height outside and stands next
+   to it, at most the larger height away along the axis: a small caption on the baseline of a large value ("Nr. 4711"), a
+   raised small number. The second only adds lines more than 1.6 times as high as their neighbour. Measured against the
+   table below: a looser overlap rule for all lines joined far prices with the wrong row (28/32 on the wide table), and
+   without "next to it" one high box found by mistake joined the rows beside it (38/40); as built the table is unchanged. Rows
    are the connected groups of that relation (at most 30 lines, so at most 435 pairs). No limit on the gap inside a row: a
    table with its prices far right is what this is for.
 4. **Order.** Rows by their mean place across the axis, the lines of a row along it.
