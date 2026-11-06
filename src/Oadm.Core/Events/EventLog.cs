@@ -26,7 +26,9 @@ public sealed record EventLogLine(
 /// <summary>
 /// The event log (table EventLogEntries): <see cref="Write"/> only queues (never blocks the engine); a writer stores
 /// batches every <see cref="FlushInterval"/> and pushes them to every watcher. A full queue drops the newest lines and
-/// logs how many. Retention: <see cref="PruneAsync"/> (hourly, <c>Events.LogRetentionDays</c> / <c>Events.LogMaxEntries</c>).
+/// logs how many. Retention: <see cref="PruneAsync"/> (hourly, <c>Events.LogRetentionDays</c> / <c>Events.LogMaxEntries</c>),
+/// and by the writer itself with <see cref="Retention"/> each time as many lines were written as the log may hold, so a
+/// flood between two hourly runs never grows the table beyond about twice its limit.
 /// </summary>
 public sealed partial class EventLog : IAsyncDisposable
 {
@@ -51,6 +53,17 @@ public sealed partial class EventLog : IAsyncDisposable
     private readonly Task _writer;
     private readonly SemaphoreSlim _flushLock = new(1, 1);
     private long _dropped;
+
+    // Lines written since the last prune, and after how many the writer prunes: the entries limit of the last prune.
+    // Until the first prune a first batch is enough, so the limit is known soon after a start.
+    private long _writtenSincePrune;
+    private long _pruneAfter = MaxBatch;
+
+    /// <summary>
+    /// The retention now (age, entries; null = no limit), asked by the writer before it prunes. Null (tests, no server):
+    /// the writer never prunes.
+    /// </summary>
+    public Func<CancellationToken, Task<(TimeSpan? MaxAge, int? MaxEntries)>>? Retention { get; set; }
 
     public EventLog(IDbContextFactory<OadmDbContext> dbFactory, TimeProvider? time = null, ILogger<EventLog>? logger = null)
     {
@@ -150,6 +163,8 @@ public sealed partial class EventLog : IAsyncDisposable
     /// <summary>Deletes lines older than <paramref name="maxAge"/> and beyond the newest <paramref name="maxEntries"/>. Returns the count.</summary>
     public async Task<int> PruneAsync(TimeSpan? maxAge, int? maxEntries, CancellationToken ct)
     {
+        Interlocked.Exchange(ref _writtenSincePrune, 0);
+        Interlocked.Exchange(ref _pruneAfter, maxEntries is > 0 ? maxEntries.Value : long.MaxValue); // no entries limit: nothing to hold
         await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
         var deleted = 0;
         if (maxAge is { } age)
@@ -273,6 +288,22 @@ public sealed partial class EventLog : IAsyncDisposable
         {
             watcher.Writer.TryWrite(stored);
         }
+
+        if (Interlocked.Add(ref _writtenSincePrune, rows.Count) >= Interlocked.Read(ref _pruneAfter) && Retention is { } retention)
+        {
+            try
+            {
+                var (maxAge, maxEntries) = await retention(ct).ConfigureAwait(false);
+                await PruneAsync(maxAge, maxEntries, ct).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // The lines are stored; the hourly retention tries again.
+            catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+            {
+                Interlocked.Exchange(ref _writtenSincePrune, 0); // not again with every batch
+                LogPruneFailed(ex);
+            }
+        }
     }
 
     private static EventLogLine ToLine(EventLogEntryEntity e) =>
@@ -286,6 +317,9 @@ public sealed partial class EventLog : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Event log: {Count} lines dropped (queue full)")]
     private partial void LogDropped(long count);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Event log: old lines could not be deleted")]
+    private partial void LogPruneFailed(Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Event log: a batch could not be written")]
     private partial void LogWriteFailed(Exception ex);

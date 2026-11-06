@@ -28,6 +28,26 @@ public sealed class Ipv4Range : IReadOnlyCollection<IPAddress>
     /// <summary>Number of addresses in the range (inclusive).</summary>
     public int Count => (int)(_last - _first + 1);
 
+    /// <summary>True when <paramref name="address"/> is an IPv4 address of the range.</summary>
+    public bool Contains(IPAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        if (address.AddressFamily != AddressFamily.InterNetwork)
+        {
+            return false;
+        }
+
+        Span<byte> bytes = stackalloc byte[4];
+        address.TryWriteBytes(bytes, out _);
+        var value = BinaryPrimitives.ReadUInt32BigEndian(bytes);
+        return value >= _first && value <= _last;
+    }
+
     /// <summary>Creates a range. Throws <see cref="ArgumentException"/> for non-IPv4, reversed or oversized ranges.</summary>
     public static Ipv4Range Create(IPAddress from, IPAddress to)
     {

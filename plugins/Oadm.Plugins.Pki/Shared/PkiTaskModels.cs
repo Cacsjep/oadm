@@ -183,11 +183,32 @@ public sealed record InstallPayload
 
     public IReadOnlyList<InstallFile> Files { get; init; } = [];
 
+    // Kept beside the record (not a field of it): two payloads with the same values stay equal.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<InstallPayload, ILookup<Guid, (InstallFile File, int Index)>> ByDevice = new();
+
+    /// <summary>
+    /// The files of one device in the order of <see cref="Files"/> (<see cref="Guid.Empty"/>: the files for every device,
+    /// "CA certificates only"). Indexed once per payload: thousands of devices do not search thousands of files each.
+    /// </summary>
+    public IEnumerable<(InstallFile File, int Index)> FilesFor(Guid deviceId) =>
+        ByDevice.GetValue(this, static payload => payload.Files.Select((file, index) => (file, index)).ToLookup(f => f.file.DeviceId))[deviceId];
+
     /// <summary>
     /// IEEE 802.1X: the IEEE 802.1X certificate policy whose settings and RADIUS server CA the run sets (the file brings the
     /// certificate). Null (older payloads): the first of the kind.
     /// </summary>
     public Guid? PolicyId { get; init; }
+
+    /// <summary>
+    /// The user's answer to "Send the keys anyway": a file with its private key may go to a device OADM reaches over HTTP.
+    /// False (also a payload without it, from an older client): not answered, such a device is refused
+    /// (<see cref="KeysOverHttpRefused"/>).
+    /// </summary>
+    public bool SendKeysOverHttp { get; init; }
+
+    /// <summary>The task's refusal for a device reached over HTTP without <see cref="SendKeysOverHttp"/>.</summary>
+    public const string KeysOverHttpRefused =
+        "The device is reached over HTTP: its private key would cross the network unencrypted. Start the task again and tick Send the keys anyway. Nothing was changed.";
 }
 
 /// <summary>One CA certificate of "Install CA certificates": the name for the step and the PEM.</summary>

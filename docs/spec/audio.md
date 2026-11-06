@@ -33,7 +33,7 @@ an AXIS C1710 (AXIS OS 12.11) and against the AXIS OS release notes up to 13.0.
    (`DeviceNotCompatibleException`, "Nothing was changed"); all values validated before the first write against what the
    device reported (capabilities, schema, formats, ranges, free slots); a read back after each write.
 2. **Choose devices first.** Nothing is read before the user chooses devices (`PageDeviceChoice` first in the toolbar,
-   `plugins/README.md` "Choose devices first"); only devices of the user's device group.
+   `website/src/content/docs/dev/core-plugins.md` "Choose devices first"); only devices of the user's device group.
 3. **Read only on demand, per tab** (decision 2026-10-29). The API list (cached `device.Apis`) decides which tabs a device takes part in;
    each tab reads its own APIs when it is first opened after a device choice, on **Refresh** (the open tab), and after a
    task of the page ends (that device, that tab). No reads in polling; results live in server memory per user session,
@@ -47,9 +47,9 @@ an AXIS C1710 (AXIS OS 12.11) and against the AXIS OS release notes up to 13.0.
 6. **Tests make sound and light, so they ask first.** Play, Send message, Start (profile), Calibrate, Run speaker test
    and Run health check ask before they run and name the device count; OADM never runs them by itself.
 7. **Preinstalled clips and profiles are never changed** (see "Preinstalled clips and profiles").
-8. **Scale.** 30,000 devices: reads as a plugin job (`IPluginJobs`) with the shared `DeviceSweep`, at most 16 devices at
+8. **Scale.** 100,000 devices: reads as a plugin job (`IPluginJobs`) with the shared `DeviceSweep`, at most 16 devices at
    once, 15 s per device and tab, progress row and Cancel; rows streamed in batches; every grid virtualized
-   (`RangeObservableCollection`); summaries, filters and search one pass over the rows. A test with 30,000 fake devices.
+   (`RangeObservableCollection`); summaries, filters and search one pass over the rows. A test with fake devices at the device limit.
 
 ## APIs
 
@@ -235,7 +235,7 @@ permissions (`task:oadm.audio:*`).
 
 Fakes for every API from the recorded C1410 and C1710 answers (`FakeCamera`; both JSON-RPC and REST siren and light,
 the `apiVersion` 2.0 error of `getProfiles`), the task steps and their checks, the hazardous confirmation, the
-preinstalled lists, the page at 30,000 devices, headless screenshots of each tab and form. Hardware writes only as
+preinstalled lists, the page at the device limit, headless screenshots of each tab and form. Hardware writes only as
 `Category=HardwareWrite`, only on request.
 
 Not tested on a device yet (no strobe or siren among the test devices, 2026-10-29): siren functions and their sounds, the

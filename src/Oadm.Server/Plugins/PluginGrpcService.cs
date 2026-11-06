@@ -256,55 +256,92 @@ public sealed partial class PluginGrpcService(PluginRegistry registry, CorePlugi
 
         var access = Authorize(request);
         var caller = await CallerAsync(context).ConfigureAwait(false);
-        PluginDownload download;
+        var done = false;
+        var opened = false;
+        string? detail = null;
         try
         {
-            download = await host.OpenDownloadAsync(
-                caller,
-                request.PluginId,
-                request.Method,
-                string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson,
-                context.CancellationToken).ConfigureAwait(false);
-        }
-        catch (NotSupportedException ex)
-        {
-            throw new RpcException(new Status(StatusCode.Unimplemented, ex.Message));
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException and not RpcException)
-        {
-            throw ToRpc(request.PluginId, ex);
-        }
-
-        await using (download.ConfigureAwait(false))
-        {
-            if (access is { Audited: true })
-            {
-                await audit.WriteAsync(AuditActions.PluginCall, access.PluginName, download.AuditDetail ?? request.Method, context.CancellationToken).ConfigureAwait(false);
-            }
-
-            // Video and archives do not compress; the chunks go out as they are read.
-            context.WriteOptions = new WriteOptions(WriteFlags.NoCompress);
-            await responseStream.WriteAsync(new Proto.DownloadChunk { FileName = download.FileName, Length = download.Length ?? -1 }).ConfigureAwait(false);
-            var buffer = new byte[DownloadChunkBytes];
+            PluginDownload download;
             try
             {
-                while (true)
-                {
-                    var read = await ReadChunkAsync(download.Content, buffer, context.CancellationToken).ConfigureAwait(false);
-                    if (read == 0)
-                    {
-                        break;
-                    }
+                download = await host.OpenDownloadAsync(
+                    caller,
+                    request.PluginId,
+                    request.Method,
+                    string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson,
+                    context.CancellationToken).ConfigureAwait(false);
+            }
+            catch (NotSupportedException ex)
+            {
+                throw new RpcException(new Status(StatusCode.Unimplemented, ex.Message));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException and not RpcException)
+            {
+                throw ToRpc(request.PluginId, ex);
+            }
 
-                    await responseStream.WriteAsync(new Proto.DownloadChunk { Data = Google.Protobuf.ByteString.CopyFrom(buffer, 0, read) }).ConfigureAwait(false);
+            await using (download.ConfigureAwait(false))
+            {
+                detail = download.AuditDetail;
+                if (access is { Audited: true })
+                {
+                    // At the open, not at the end: a long download has its entry while it runs, and when the server stops.
+                    await audit.WriteAsync(AuditActions.PluginCall, access.PluginName, detail ?? request.Method, CancellationToken.None).ConfigureAwait(false);
+                    opened = true;
+                }
+
+                // Video and archives do not compress; the chunks go out as they are read.
+                context.WriteOptions = new WriteOptions(WriteFlags.NoCompress);
+                await responseStream.WriteAsync(new Proto.DownloadChunk { FileName = download.FileName, Length = download.Length ?? -1 }).ConfigureAwait(false);
+                var buffer = new byte[DownloadChunkBytes];
+                try
+                {
+                    while (true)
+                    {
+                        var read = await ReadChunkAsync(download.Content, buffer, context.CancellationToken).ConfigureAwait(false);
+                        if (read == 0)
+                        {
+                            break;
+                        }
+
+                        await responseStream.WriteAsync(new Proto.DownloadChunk { Data = Google.Protobuf.ByteString.CopyFrom(buffer, 0, read) }).ConfigureAwait(false);
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or HttpRequestException && !context.CancellationToken.IsCancellationRequested)
+                {
+                    throw new RpcException(new Status(StatusCode.Unavailable, "The download stopped: " + ex.Message));
                 }
             }
-            catch (Exception ex) when (ex is IOException or HttpRequestException && !context.CancellationToken.IsCancellationRequested)
+
+            done = true;
+        }
+        finally
+        {
+            // A download that ended well has its entry from the open; one that failed or that the client gave up gets a
+            // second one (the only one when the plugin never opened it).
+            if (access is { Audited: true } && !(done && opened))
             {
-                throw new RpcException(new Status(StatusCode.Unavailable, "The download stopped: " + ex.Message));
+                await AuditCallAsync(access.PluginName, detail ?? request.Method, done, context).ConfigureAwait(false);
             }
         }
     }
+
+    /// <summary>What the audit entry of a call that did not end well adds to its detail.</summary>
+    public const string FailedSuffix = " (failed)";
+    public const string CancelledSuffix = " (cancelled)";
+
+    /// <summary>
+    /// The audit entry of an audited page call, written when the call ends, however it ends: a call that failed or that the
+    /// client gave up may have changed something already. Never with the call's own token (a cancelled call still gets
+    /// its entry). The detail of a call that ended well stays as it always was. A download has its entry from the open and
+    /// gets this one only when it did not arrive whole.
+    /// </summary>
+    private Task AuditCallAsync(string pluginName, string detail, bool done, ServerCallContext context) =>
+        audit.WriteAsync(
+            AuditActions.PluginCall,
+            pluginName,
+            done ? detail : detail + (context.CancellationToken.IsCancellationRequested ? CancelledSuffix : FailedSuffix),
+            CancellationToken.None);
 
     /// <summary>Fills <paramref name="buffer"/> as far as the stream allows (fewer, larger messages); 0 at the end.</summary>
     private static async Task<int> ReadChunkAsync(Stream content, byte[] buffer, CancellationToken ct)
@@ -362,26 +399,30 @@ public sealed partial class PluginGrpcService(PluginRegistry registry, CorePlugi
 
         var access = Authorize(request);
         var caller = await CallerAsync(context).ConfigureAwait(false);
+        var payload = string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson;
+        var done = false;
         try
         {
-            var payload = string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson;
             var result = await host.InvokeAsync(
                 caller,
                 request.PluginId,
                 request.Method,
                 payload,
                 context.CancellationToken).ConfigureAwait(false);
-            if (access is { Audited: true })
-            {
-                var detail = host.AuditDetailOf(request.PluginId, request.Method, payload); // the plugin's words, else the method
-                await audit.WriteAsync(AuditActions.PluginCall, access.PluginName, detail, context.CancellationToken).ConfigureAwait(false);
-            }
-
+            done = true;
             return new Proto.InvokeReply { PayloadJson = result ?? string.Empty };
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not RpcException)
         {
             throw ToRpc(request.PluginId, ex);
+        }
+        finally
+        {
+            if (access is { Audited: true })
+            {
+                var detail = host.AuditDetailOf(request.PluginId, request.Method, payload); // the plugin's words, else the method
+                await AuditCallAsync(access.PluginName, detail, done, context).ConfigureAwait(false);
+            }
         }
     }
 }

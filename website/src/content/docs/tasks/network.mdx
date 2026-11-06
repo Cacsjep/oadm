@@ -78,6 +78,9 @@ For a new static address OADM waits up to 90 seconds for the device at the new a
 moves the device in the list. If the device does not answer there, the task ends with a warning and OADM keeps the old
 address. With DHCP the new address is unknown. OADM finds the device again on its own within a few minutes.
 
+A device can change its address before it answers. OADM then looks for it at the new address too. When the device
+answers at neither address, the task fails and names the address to look at.
+
 <Aside type="caution">
 Check **Subnet mask** and **Default router** before you apply. Wrong values can make a device unreachable from OADM.
 </Aside>

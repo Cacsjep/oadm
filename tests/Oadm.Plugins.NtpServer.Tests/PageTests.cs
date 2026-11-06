@@ -91,6 +91,37 @@ public sealed class PageViewModelTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_page_of_a_new_login_holds_the_values_of_its_own_server()
+    {
+        // Server A is turned on. The user logs out (the host disposes the page) and logs in to server B: the host creates
+        // the page again, and the form is B's. A page kept across the login would save A's values to B.
+        using (var first = new NtpServerViewModel(_ctx))
+        {
+            first.Activate();
+            await Wait.UntilAsync(() => first.Interfaces.Count > 0);
+            first.IsEnabled = true;
+            first.SelectedInterface = first.Interfaces.Single(i => i.Id == "lo-id");
+            await first.SaveCommand.ExecuteAsync(null);
+            Assert.True(_plugin.Service!.Config.Enabled);
+            first.Deactivate();
+        }
+
+        var otherHub = new PluginEventHub();
+        await using var other = new NtpServerPlugin(Options.Test());
+        await other.StartAsync(new TestCoreContext(new InMemoryPluginSettingsProvider().GetSettings(NtpServerPluginInfo.PluginId), otherHub.For(NtpServerPluginInfo.PluginId)), CancellationToken.None);
+        using var second = new NtpServerViewModel(new PluginPageContext(other, otherHub));
+        second.Activate();
+        await Wait.UntilAsync(() => second.Interfaces.Count > 0);
+
+        Assert.False(second.IsEnabled);
+        Assert.Equal("all", second.SelectedInterface!.Id);
+
+        await second.SaveCommand.ExecuteAsync(null);
+        Assert.False(other.Service!.Config.Enabled);
+        second.Deactivate();
+    }
+
+    [Fact]
     public async Task Save_starts_the_server_and_requests_arrive_live_with_the_device_name()
     {
         _ctx.DeviceList.Add(new TestDevice("127.0.0.1", "P3265-V"));
@@ -240,18 +271,9 @@ public sealed class PageViewModelTests : IAsyncLifetime
     {
         var reads = 0;
         var polling = new PollingContext(_plugin, () => reads++);
-        var before = NtpServerViewModel.ReconnectDelay;
-        NtpServerViewModel.ReconnectDelay = TimeSpan.FromMilliseconds(50);
-        try
-        {
-            using var vm = new NtpServerViewModel(polling);
-            vm.Activate();
-            await Wait.UntilAsync(() => reads >= 3);
-        }
-        finally
-        {
-            NtpServerViewModel.ReconnectDelay = before;
-        }
+        using var vm = new NtpServerViewModel(polling) { EventWatch = new() { RetryDelay = TimeSpan.FromMilliseconds(50) } };
+        vm.Activate();
+        await Wait.UntilAsync(() => reads >= 3);
     }
 
     /// <summary>A host without WatchEventsAsync (SDK default: empty sequence).</summary>

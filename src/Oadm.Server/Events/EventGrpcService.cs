@@ -209,17 +209,25 @@ public sealed class EventGrpcService(
         return new Proto.ClearEventLogReply { Deleted = deleted };
     }
 
+    /// <summary>
+    /// The name of a rule or recipient that is tested before it is saved, so before its name is checked: it reaches the
+    /// server log and the audit without control characters, like a saved one (a line break would forge a log line).
+    /// </summary>
+    private static string WithoutControlCharacters(string name) =>
+        name.Any(char.IsControl) ? string.Concat(name.Where(c => !char.IsControl(c))) : name;
+
     public override async Task<Proto.TestActionReply> TestAction(Proto.TestActionRequest request, ServerCallContext context)
     {
         var settings = ParseSettings(request.SettingsJson);
         Guid? ruleId = string.IsNullOrEmpty(request.RuleId) ? null : GrpcGuard.ParseId(request.RuleId, "rule id");
         Guid? actionKey = string.IsNullOrEmpty(request.ActionKey) ? null : GrpcGuard.ParseId(request.ActionKey, "action key");
         Guid? deviceId = string.IsNullOrEmpty(request.DeviceId) ? null : GrpcGuard.ParseId(request.DeviceId, "device id");
+        var ruleName = WithoutControlCharacters(request.RuleName);
         var (ok, message) = await actions.TestAsync(
-            request.ActionId, settings, request.RuleName, ruleId, actionKey, string.IsNullOrEmpty(request.EventTypeId) ? null : request.EventTypeId,
+            request.ActionId, settings, ruleName, ruleId, actionKey, string.IsNullOrEmpty(request.EventTypeId) ? null : request.EventTypeId,
             deviceId, context.CancellationToken).ConfigureAwait(false);
         var name = rules.Catalog.FindAction(request.ActionId)?.Plugin.DisplayName ?? request.ActionId;
-        await audit.WriteAsync(AuditActions.EventActionTested, name, (ok ? "Sent" : "Failed") + (string.IsNullOrWhiteSpace(request.RuleName) ? string.Empty : " · " + request.RuleName) + (ok ? string.Empty : " · " + (message.Length > 200 ? message[..200] : message)), context.CancellationToken).ConfigureAwait(false);
+        await audit.WriteAsync(AuditActions.EventActionTested, name, (ok ? "Sent" : "Failed") + (string.IsNullOrWhiteSpace(ruleName) ? string.Empty : " · " + ruleName) + (ok ? string.Empty : " · " + (message.Length > 200 ? message[..200] : message)), context.CancellationToken).ConfigureAwait(false);
         return new Proto.TestActionReply { Ok = ok, Message = message };
     }
 
@@ -326,7 +334,7 @@ public sealed class EventGrpcService(
         var values = ParseSettings(request.SettingsJson);
         var raw = (System.Text.Json.Nodes.JsonObject)values.DeepClone(); // the test adds stored passwords to values
         var type = rules.Catalog.FindRecipientType(request.TypeId)?.Type;
-        var name = string.IsNullOrWhiteSpace(request.Name) ? type?.DisplayName ?? request.TypeId : request.Name.Trim();
+        var name = string.IsNullOrWhiteSpace(request.Name) ? type?.DisplayName ?? request.TypeId : WithoutControlCharacters(request.Name).Trim();
         var certificates = CertificatesOf(type, raw);
         try
         {

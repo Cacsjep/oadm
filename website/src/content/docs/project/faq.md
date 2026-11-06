@@ -12,7 +12,8 @@ The daily work is the same, but OADM runs on Windows, Linux and macOS, is open s
 event rules and NTP and DHCP servers. See [OADM and AXIS Device Manager](../../start/axis-device-manager-alternative/).
 
 **What does it cost?**
-Nothing. OADM is free under the Apache-2.0 license, also for commercial use.
+Nothing. OADM is free and open source under the Apache-2.0 license, also for commercial use. OADM PRO is paid and adds
+commercial support, the EST and 802.1X servers and PRO plugins; see [License](../../admin/settings/#license).
 
 **Which devices does it support?**
 Axis devices with AXIS OS: cameras, encoders, intercoms, speakers, radars, I/O modules, door controllers. Some tasks
@@ -33,7 +34,9 @@ Yes, any combination.
 
 **Does OADM need internet?**
 No. With internet the client looks for a new OADM version after you log in; turn that off with **Tell me about new
-versions** in [Settings](../../admin/settings/) > Client. Links such as the AXIS OS release notes and **Activate license**
+versions** in [Settings](../../admin/settings/) > Client. These go online only when you use them or turn them on:
+**Install now** and **Update client**, AXIS OS downloads with your MyAxis sign-in, **Update the list online** for the
+Axis CVEs and **Download ZIP** of an optional plugin. Links such as the AXIS OS release notes and **Activate license**
 open a web page. The 30-day trial of OADM PRO needs no internet.
 
 **ARM computers or Apple silicon?**

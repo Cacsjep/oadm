@@ -92,15 +92,5 @@ public sealed class EdgeRecordingExportPlugin : ICorePlugin, ICorePluginDownload
             : throw new ArgumentException($"Unknown download '{method}'.", nameof(method));
     }
 
-    private static T Read<T>(string? json)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<T>(json ?? string.Empty, EdgeRecordingInfo.Json) ?? throw new ArgumentException("The request is empty.");
-        }
-        catch (JsonException ex)
-        {
-            throw new ArgumentException("The request cannot be read: " + ex.Message, ex);
-        }
-    }
+    private static T Read<T>(string? json) => PluginJson.Parse<T>(json, EdgeRecordingInfo.Json);
 }

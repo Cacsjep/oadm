@@ -72,7 +72,7 @@ public sealed class FwmgrException : Exception
             402 when method == "upgrade" => "An installed application does not support this AXIS OS version. Update or remove it with Applications (ACAP), then try again.",
             409 when method == "upgrade" => "The device refuses to install an older AXIS OS version without a factory default.",
             410 => "This AXIS OS version has been revoked by Axis and cannot be installed.",
-            412 when method == "upgrade" => "A previous upgrade has not been committed yet. Commit or roll it back first.",
+            412 when method == "upgrade" => "A previous upgrade has not been committed yet. " + FwmgrClient.UncommittedAdvice,
             412 => "The active AXIS OS version is not committed.",
             415 => "The file is not a valid AXIS OS image.",
             421 => "The AXIS OS file does not match this device (wrong product).",
@@ -100,6 +100,9 @@ public sealed class FwmgrClient(IVapixClient vapix)
     public const string RequestApiVersion = "1.0";
     public const string Path = "axis-cgi/firmwaremanagement.cgi";
     public const string Context = "oadm";
+
+    /// <summary>What the user can do about an upgrade that waits for its commit (OADM has no commit action).</summary>
+    public const string UncommittedAdvice = "Wait until the device has rolled back by itself, or restart it, then try again.";
 
     private const string Boundary = "oadm-fw-7c1b0e4d5a2f";
 

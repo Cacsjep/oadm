@@ -59,7 +59,8 @@ does not follow the listed major (PTZ `ptz-control` 1.x / 2.x, `privacy-mask` 2.
 
 `CommandRenderer` fills `{{field}}`:
 
-- path: URL-escaped; the filled path must stay on the device (`CommandValidator.IsDevicePath`);
+- path: URL-escaped; the path must stay on the device and be sent as written (`CommandValidator.IsDevicePath`: no
+  `#`, `;`, `..`, `//`, `\`, no encoded `/` or `.`), also with its fields filled in (`IsFilledDevicePath`);
 - query: escaped, "," and ":" kept readable;
 - headers: as they are; `Authorization`, `Proxy-Authorization`, `Cookie`, `Host` and `Content-Length` are refused (OADM
   logs in);
@@ -147,5 +148,8 @@ From the [device safety rule](../../../CLAUDE.md#hard-rule-device-safety-for-tas
 - `writes: false` commands are read-only and may run without confirmation; `writes: true` needs a confirmation before
   it runs. Commands that restart, factory-default, change network or users set `"dangerous": true` and need a second
   confirmation.
+- The flags can only add: the server decides from the request itself (`RequestSafety`, see the
+  [README](../README.md#engine-server)). A GET of `factorydefault.cgi` is dangerous and a `param.cgi` update a write,
+  whatever the command says.
 - Secrets (`password` fields) never appear in logs, task steps or exports.
 - Commands made in the request builder follow the same rules.

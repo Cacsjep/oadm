@@ -167,6 +167,17 @@ internal sealed class FakeSiteTransport : ISiteTransport, ISiteStates, ISiteNetw
     public async IAsyncEnumerable<SiteRangeScanResult> RangeScanAsync(Guid siteId, IPAddress first, IPAddress last, int parallelism, TimeSpan timeout, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         var site = Usable(siteId);
+        if (site.ScanAnswers is { } answers)
+        {
+            foreach (var answer in answers)
+            {
+                ct.ThrowIfCancellationRequested();
+                yield return answer;
+            }
+
+            yield break;
+        }
+
         var start = ToNumber(first);
         var end = ToNumber(last);
         var total = (int)(end - start + 1);
@@ -242,6 +253,9 @@ internal sealed class FakeSiteTransport : ISiteTransport, ISiteStates, ISiteNetw
 
         /// <summary>What a Browse at the site finds.</summary>
         public List<SiteBrowseResult> Announced { get; } = [];
+
+        /// <summary>What a range scan at the site answers instead of looking (a node that sends whatever it likes); null = it looks.</summary>
+        public IReadOnlyList<SiteRangeScanResult>? ScanAnswers { get; set; }
 
         /// <summary>(upper case host, port) -> where the fake device listens.</summary>
         public ConcurrentDictionary<(string Host, int Port), IPEndPoint> Targets { get; } = new();

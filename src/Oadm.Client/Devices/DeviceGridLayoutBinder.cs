@@ -10,10 +10,12 @@ namespace Oadm.Client.Devices;
 /// View glue between the device DataGrid and <see cref="ColumnLayoutViewModel"/>: applies saved visibility,
 /// order and widths (columns are matched by their Tag), and captures user reorder/resize for persistence.
 /// </summary>
-internal sealed class DeviceGridLayoutBinder
+internal sealed class DeviceGridLayoutBinder : IDisposable
 {
     private readonly DataGrid _grid;
     private readonly ColumnLayoutViewModel _layout;
+    private bool _listensToOptions;
+    private bool _disposed;
 
     private DeviceGridLayoutBinder(DataGrid grid, ColumnLayoutViewModel layout)
     {
@@ -21,7 +23,11 @@ internal sealed class DeviceGridLayoutBinder
         _layout = layout;
     }
 
-    public static void Attach(DataGrid grid, ColumnLayoutViewModel layout)
+    /// <summary>
+    /// Binds the grid to the layout until the result is disposed. The layout lives longer than a view: the view disposes
+    /// the result when it lets go of its view model (a grid that was never shown never leaves a visual tree).
+    /// </summary>
+    public static IDisposable Attach(DataGrid grid, ColumnLayoutViewModel layout)
     {
         var binder = new DeviceGridLayoutBinder(grid, layout);
         binder.Apply();
@@ -30,16 +36,49 @@ internal sealed class DeviceGridLayoutBinder
             option.PropertyChanged += binder.OnOptionChanged;
         }
 
-        grid.ColumnReordered += (_, _) => binder.Capture();
-        grid.AddHandler(InputElement.PointerReleasedEvent, (_, _) => binder.Capture(), RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
-        grid.DetachedFromVisualTree += (_, _) =>
+        binder._listensToOptions = true;
+        grid.ColumnReordered += binder.OnColumnReordered;
+        grid.AddHandler(InputElement.PointerReleasedEvent, binder.OnPointerReleased, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
+        grid.DetachedFromVisualTree += binder.OnDetached;
+        return binder;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
         {
-            binder.Capture();
-            foreach (ColumnOptionViewModel option in layout.Columns)
-            {
-                option.PropertyChanged -= binder.OnOptionChanged;
-            }
-        };
+            return;
+        }
+
+        _disposed = true;
+        StopListeningToOptions();
+        _grid.ColumnReordered -= OnColumnReordered;
+        _grid.RemoveHandler(InputElement.PointerReleasedEvent, OnPointerReleased);
+        _grid.DetachedFromVisualTree -= OnDetached;
+    }
+
+    private void OnColumnReordered(object? sender, DataGridColumnEventArgs e) => Capture();
+
+    private void OnPointerReleased(object? sender, PointerReleasedEventArgs e) => Capture();
+
+    private void OnDetached(object? sender, Avalonia.VisualTreeAttachmentEventArgs e)
+    {
+        Capture();
+        StopListeningToOptions();
+    }
+
+    private void StopListeningToOptions()
+    {
+        if (!_listensToOptions)
+        {
+            return;
+        }
+
+        _listensToOptions = false;
+        foreach (ColumnOptionViewModel option in _layout.Columns)
+        {
+            option.PropertyChanged -= OnOptionChanged;
+        }
     }
 
     private static string? KeyOf(DataGridColumn column) => column.Tag as string;

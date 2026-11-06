@@ -94,7 +94,7 @@ for s in preinstall postinstall; do
   tr -d '\r' < "$HERE/scripts/$s" > "$SCRIPTS/$s"
   chmod 0755 "$SCRIPTS/$s"
 done
-# The client package's preinstall removes plugin folders an upgrade would keep (4.1's oadm.est and oadm.radius).
+# The client package's preinstall removes plugin folders an upgrade would keep (4.1's oadm.est).
 CLIENT_SCRIPTS="$WORK/client-scripts"
 mkdir -p "$CLIENT_SCRIPTS"
 tr -d '\r' < "$HERE/client-scripts/preinstall" > "$CLIENT_SCRIPTS/preinstall"

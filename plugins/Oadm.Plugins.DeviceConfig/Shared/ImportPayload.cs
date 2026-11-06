@@ -35,6 +35,29 @@ public sealed class ImportPayload
 
     public string ToJson() => JsonSerializer.Serialize(this, Options);
 
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<string, ImportPayload> Parsed = new();
+
+    /// <summary>
+    /// <see cref="Parse"/> once per payload string: the engine hands the same string to every task of a run, so 5,000 devices
+    /// with their 5,000 entries parse it once, not 5,000 times. The payload is never changed after it is read.
+    /// </summary>
+    public static ImportPayload ParseShared(string? json)
+    {
+        if (json is null)
+        {
+            return Parse(json);
+        }
+
+        if (Parsed.TryGetValue(json, out var cached))
+        {
+            return cached;
+        }
+
+        var payload = Parse(json);
+        Parsed.AddOrUpdate(json, payload);
+        return payload;
+    }
+
     /// <summary>Throws <see cref="ArgumentException"/> for a missing or broken payload.</summary>
     public static ImportPayload Parse(string? json)
     {

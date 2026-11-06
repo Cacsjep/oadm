@@ -34,11 +34,46 @@ The payload stays in memory only; password values are never logged and are maske
   commands ("Save with values" keeps the file) and the event rule action carry it; there is no upload store. It may only
   be the `file` of a `multipart` part (`CommandValidator.ValidateFileUses`); the request line shows `file "profiles", 2
   KB`, never the bytes. Used by Siren and light **Upload siren and light profiles**.
+- `RequestSafety` decides what a request does to a device (`SafetyLevel` Read, Write, Dangerous), for the server and the
+  page alike; a command's `writes` and `dangerous` can only raise the level, never lower it. **An unknown request
+  counts as changing**: a request is a read only when every sign it carries is known to read. A user's own harmless
+  GET may ask for a confirmation once. The signs:
+  - Method and body: a GET without a body, or a POST whose JSON `method` is a read (`get*`, `list*`, `status`,
+    `systemready`) or whose SOAP body is one `Get*` operation. A GET with a body is at least a write.
+  - Actions: every `action` of the query, of a form body and of a text body is a read (`list`, `get`, `statusall`,
+    ...), with every method. A text body is read as pairs like a query (`action=update&Network...` on `param.cgi`);
+    its pairs only add to the level.
+  - Path: not a changing one: `param.cgi` without `action=list`, `ptz.cgi` / `ptzconfig.cgi` without `query`, the
+    application and clip CGIs, `opticssetup.cgi`, `record/continuous/addconfiguration.cgi` and
+    `removeconfiguration.cgi`, `disks/checkdisk.cgi`, and a file whose name starts with what it does (`set`, `add`,
+    `remove`, `delete`, `update`, `create`, `check`, `format`, `clear`, `reset`, `start`, `stop`, `restart`, `enable`,
+    `disable`, `perform`, `apply`, `install`, `uninstall`, `upload`, `import`, `activate`, `mount`, ...:
+    `RequestSafety.ChangingNames`).
+  - Parameters: on a path without a rule of its own only names that choose what is read (`group`, `listformat`,
+    `responseformat`, `schemaversion`, `camera`, `resolution`, and per known CGI: `io/port.cgi` `check` /
+    `checkactive`, `serverreport.cgi` `mode`, ...); any name on `list*.cgi` / `get*.cgi` and on the image CGIs
+    (`jpg/image.cgi`, `bitmap/image.cgi`, `mjpg/video.cgi`). Any other name makes the request a write.
+
+  Always dangerous: `restart.cgi`, `factorydefault.cgi`, `hardfactorydefault.cgi`, `firmwareupgrade.cgi`,
+  `disks/format.cgi`, `record/remove.cgi`, `pwdgrp.cgi` except `action=get`, `applications/control.cgi` except start /
+  stop / restart, `firmwaremanagement.cgi` except its reads and `commit`, every change through `network_settings.cgi`
+  and `capturemode.cgi`, and a `param.cgi` change of `Network.*` (except UPnP, QoS, Bonjour, ZeroConf), `HTTPS.*`,
+  `System.Boa*` or `IEEE8021X.*`.
+
+  The path is judged as the device could read it (`RequestSafety.Target`): cut at `#` (never sent), decoded until
+  nothing changes, `\` as `/`, in lower case, `.` and `..` resolved, without `;` parameters, trailing dots and spaces;
+  the query is split at `&` and `;`. `CommandValidator.IsDevicePath` refuses most of these forms in a command (`#`,
+  `;`, `\`, `//`, `.` and `..` segments, a trailing dot, an encoded `/`, `\`, `.`, `%`, `#`, `?`, `;` or control
+  character), so the request that is judged is the request that is sent; the rule holds without the validator (tests
+  from the attacker's side: `RequestSafetyTests`, "A disguised reset ..."). The server decides from the filled-in
+  request; the page from the definition, where a value still to be filled in counts as the worst case of its path. A
+  test holds the rule against the bundled library: without the flags it finds the kind of every bundled command.
 - `CommandRenderer` fills the fields (rules in [command-format.md](Schema/command-format.md#placeholders)). Timeout via
-  `VapixRequestOptions.Timeout` (default 15 s, at most 600 s). Paths must stay on the device
-  (`CommandValidator.IsDevicePath`, checked again after the fields are filled in).
+  `VapixRequestOptions.Timeout` (default 15 s, at most 600 s). Paths must stay on the device and be sent as written
+  (`CommandValidator.IsDevicePath`; after the fields are filled in `IsFilledDevicePath`, which allows the escapes of
+  the values: "a/b" is sent as "a%2Fb").
 - `CommandExecutor` sends with the factory's cached client (never disposed by the plugin), decodes the body as UTF-8
-  (Axis sends `charset=utf8`), shows binary answers as "image/jpeg, 123.4 KB", pretty-prints JSON / XML (cut at 256 KB)
+  (Axis sends `charset=utf8`), shows binary answers as "image/jpeg, 123 KB", pretty-prints JSON / XML (cut at 256 KB)
   and interprets the answer per response kind (`ResponseInterpreter`): Axis devices often answer an error with HTTP 200.
 - Errors: the device text (`# Error: ...` line, JSON `message (code N)`, REST error / problem+json, SOAP fault, Axis
   `GeneralError`, first text line, HTML title) or the shared transport texts of `DeviceMessages` ("Timeout after 15 s",
@@ -77,8 +112,8 @@ the shared tasks pane sits below the page (`ShowTasksPane`), so a started rollou
 - Scale: the problem list is virtualized; `Targets`, `SelectedTargets` and `ProblemTargets` are replaced as whole lists
   (one reset), sorted by IPv4 address; the choice is resolved in one O(n) pass after every choice and device change;
   compatibility comes from each device's cached API list on the client (`Compatibility.Check`), no request per device.
-  At 30,000 devices All devices, the Devices page selection, a tag and the compatibility each stay under 200 ms
-  (`ScaleTests`).
+  At the device limit All devices, the Devices page selection, a tag and the compatibility each stay under 1 s
+  (`PageViewModelTests`, Perf).
 
 ## Request builder
 
@@ -93,21 +128,27 @@ Its own dialog (`RequestBuilderWindow` / `RequestBuilderViewModel`, 1360x760).
   timeout, response kind, the fields from `{{placeholders}}` (a placeholder renamed or broken while typing keeps its
   field's label, type and value; removing a field puts its value back in place of the placeholder), "Requires API"
   prefilled from the path (param.cgi -> param-cgi 1.0, `/config/rest/<api>/v<n>` -> `<api> n.0`, known CGIs), "Changes
-  the device" (prefilled from method and action) and "Dangerous (restart, reset, network, users)". A loaded command keeps
-  what the editor does not show (choices, limits, docs, extracts).
+  the device" and "Dangerous (restart, reset, network, users)", both from `RequestSafety`: a box the request asks for
+  stays ticked, the user can only tick more. A loaded command keeps what the editor does not show (choices, limits, docs,
+  extracts).
 - Right: "Send to <device>" + **Send** (checks everything but name and category), the progress row, the result card.
 - Footer: Cancel, Back (new command), Next / **Save** (disabled with the first problem as tooltip; a refused save left of
   it). An unsaved request cannot go to the rollout set: save it, then click it in the library.
 
 ## Task steps
 
-`rollout` validates every command and value first (nothing starts on an error); writes need `confirmed`. Then
-`ITaskRunner.RunAsync` with the hidden task plugin `oadm.vapix-commander.run` (`ShowInMenus = false`; one task per
-device; task name: the command name, or "<first command> +N more").
+`rollout` validates every command and value first (nothing starts on an error); a request that changes devices
+(`RequestSafety`, from the filled-in request) needs `confirmed`, a dangerous one `confirmedDangerous` as well. Without
+them nothing starts: the reply has `needsConfirmation`, `dangerous`, the command names (`confirmCommands`) and a plain
+`error` ("These commands change the devices and were not confirmed. Nothing was changed."); the page then asks that
+question and sends again. The page sends only the answers the user gave. Then `ITaskRunner.RunAsync` with the hidden
+task plugin `oadm.vapix-commander.run` (`ShowInMenus = false`; one task per device; task name: the command name, or
+"<first command> +N more"). The answers travel in the task payload and the task checks them again before any step, so
+a task started by hand with its own payload is refused the same way.
 
 | Step | What happens |
 |---|---|
-| Check compatibility | a fresh `GetApiListAsync` when a command writes or nothing is cached, else the cached API list; detail "All 3 commands supported (fresh API list)" |
+| Check compatibility | a fresh `GetApiListAsync` when a request changes the device (`RequestSafety`) or nothing is cached, else the cached API list; detail "All 3 commands supported (fresh API list)" |
 | one step per command, named like the command ("(2)" for repeats) | the extracted result ("Product: P3265-V") or the error as detail |
 
 - A requirement means the same major version and at least the minor one; `"minVersion": "any"` is explained in
@@ -128,7 +169,7 @@ reply, not as gRPC errors. `tryRequest` and `rollout` are audited.
 |---|---|
 | `listLibrary`, `listSaved` | the bundled and the saved commands |
 | `save`, `delete`, `import`, `export` | the saved commands |
-| `tryRequest` | deviceId, a command ref (library / saved / inline), values, confirmed: read-only commands run at once, writes need `confirmed` and re-check a fresh API list; refuses Certificate changed and cached-incompatible devices; returns status, reason, duration, headers, the body, the request line and the interpreted result |
+| `tryRequest` | deviceId, a command ref (library / saved / inline), values, confirmed, confirmedDangerous: reads run at once, a request that changes the device (`RequestSafety`) needs `confirmed` and re-checks a fresh API list, a dangerous one needs `confirmedDangerous` too (else `needsConfirmation`, with `dangerous`, and nothing is sent); refuses Certificate changed and cached-incompatible devices; returns status, reason, duration, headers, the body, the request line and the interpreted result |
 | `checkCompatibility` | device ids x command refs against the cached `device.Apis`: Compatible, Missing API, Version too old, API list not read yet, Needs a video device |
 | `rollout` | see Task steps |
 
@@ -136,8 +177,9 @@ reply, not as gRPC errors. `tryRequest` and `rollout` are audited.
 
 `RunCommandAction` (`oadm.vapix-commander.command`, group Devices): a saved command (with its stored values and
 passwords) or a library command that needs no input, when the rule turns on or fires, and optionally another "When the
-rule turns off". The same device safety as a rollout: the command must fit the cached API list, a write re-checks a
-fresh one, dangerous commands need "Allow dangerous commands". Available while the plugin is on. Spec:
+rule turns off". The same device safety as a rollout: the command must fit the cached API list, a request that changes
+the device re-checks a fresh one, dangerous requests need "Allow dangerous commands" (both from `RequestSafety`, at
+the run from the filled-in request). Available while the plugin is on. Spec:
 [event rules](../../docs/spec/event-rules.md).
 
 ## Permissions
@@ -170,7 +212,7 @@ Page methods get the user's call (`InvokeAsync(caller, ...)`); see [device group
 - `tests/Oadm.Plugins.VapixCommander.Tests`: rendering of every field type, typed JSON, booleans per kind, validation,
   files, every response kind with error texts and transport mapping against a fake device, stop on first error through
   the real task engine, saved commands (encryption, export, import), compatibility, the event rule action, the page and
-  request builder view models, `ScaleTests` (30,000 devices), `BundledLibraryTests`, `DeviceGroupTests` (`PluginCanary`
+  request builder view models, `ScaleTests` (the device limit), `BundledLibraryTests`, `DeviceGroupTests` (`PluginCanary`
   with every method and its id fields, the owner, stored passwords, the page), headless screenshots.
 - `tests/Oadm.Plugins.VapixCommander.Library.Tests`: the bundled library; see [Library/README.md](Library/README.md#tests).
 - `tests/Oadm.Client.Tests/CodeViewTests`; `tests/Oadm.Server.Tests/VapixCommanderServerTests` (routing, hidden task).

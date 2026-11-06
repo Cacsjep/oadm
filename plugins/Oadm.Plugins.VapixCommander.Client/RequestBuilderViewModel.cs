@@ -231,7 +231,8 @@ public sealed partial class RequestBuilderViewModel : ObservableObject
 
         var (command, _) = Raw.Build(forSave: false);
         var name = command.Request.Method + " " + command.Request.Path;
-        if (command.Writes && !await _host.ConfirmAsync("Send command", $"\"{name}\" changes {device.Address}. Send it now?", "Send").ConfigureAwait(true))
+        var level = RequestSafety.Of(command);
+        if (level != SafetyLevel.Read && !await _host.ConfirmAsync("Send command", SendConfirmation.Text(name, device.Address, level), "Send").ConfigureAwait(true))
         {
             return;
         }
@@ -240,10 +241,15 @@ public sealed partial class RequestBuilderViewModel : ObservableObject
         SendingText = "Sending the request to " + device.Address;
         try
         {
-            var reply = await _backend.TryAsync(
-                new TryCommandRequest { DeviceId = device.Id, Command = new CommandRef { Source = CommandSources.Inline, Command = command }, Values = Raw.Values(), Confirmed = command.Writes },
-                CancellationToken.None).ConfigureAwait(true);
-            TryResult = new TryResultViewModel(name, device.Address, reply.Outcome, reply.Error ?? (reply.NeedsConfirmation ? "The command changes the device and was not confirmed." : null));
+            var reply = await SendConfirmation.SendAsync(
+                _backend, _host, name, device.Address, level,
+                new TryCommandRequest { DeviceId = device.Id, Command = new CommandRef { Source = CommandSources.Inline, Command = command }, Values = Raw.Values() }).ConfigureAwait(true);
+            if (reply is null)
+            {
+                return; // the user said no to what the server asked for
+            }
+
+            TryResult = new TryResultViewModel(name, device.Address, reply.Outcome, reply.Error ?? SendConfirmation.Refusal(reply));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

@@ -69,6 +69,9 @@ public sealed class ToolbarContext : IToolbarContext
     /// <summary>Raised after the user's role or its permissions changed.</summary>
     public event EventHandler? PermissionsChanged;
 
+    /// <summary>The listeners of <see cref="PermissionsChanged"/> (tests: a view that went away is no longer one).</summary>
+    internal int PermissionsChangedListeners => PermissionsChanged?.GetInvocationList().Length ?? 0;
+
     /// <summary>The logged-in user whose permissions <see cref="Has"/> answers (set by the Devices page).</summary>
     public Shell.UserSession? Session
     {

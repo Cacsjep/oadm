@@ -1,6 +1,6 @@
 # Snapshot report (`oadm.snapshot-report`)
 
-Core plugin (+ `.Client`) with the rail page **Snapshot report** (group Reporting, icon `snapshot`), on by default. The
+Core plugin (+ `.Client`) with the rail page **Snapshot report** (group Reporting, icon `snapshot`), off by default. The
 yearly maintenance check: current snapshots of every video source of the chosen cameras, checked fast and exported as a
 PDF report. Read-only for devices. Rules: [Bundled plugins](../../docs/spec/bundled-plugins.md#snapshot-report-core-plugin).
 

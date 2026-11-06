@@ -62,7 +62,7 @@ The file layout of every installer and the user-facing install notes are in `pac
   pinned Hugging Face revision into a local cache (`OADM_MODEL_CACHE`, else `%LOCALAPPDATA%\Oadm\model-cache` or
   `~/.cache/oadm/models`, one folder per SHA-256), checked against the SHA-256 of `Models/README.md` (another hash fails
   the build), then copied into the output's `Models/` and so into the add-on ZIP. A cached file is never downloaded again.
-  `pr.yml` and the `tests` and `installers` jobs of `release.yml` keep the cache with `actions/cache`, keyed by the OS and
+  `pr.yml`, `main.yml` and the `tests` and `installers` jobs of `release.yml` keep the cache with `actions/cache`, keyed by the OS and
   the hash of `Models.targets`.
 - **The ZIPs come before the server** (`docs/spec/add-ons.md` rule 2): the server holds the SHA-256 of each ZIP of its
   system. `manage package addons` writes `artifacts/publish/addons/<rid>/addon-hashes-<version>.txt` (one "`<id> <sha256> <fingerprint>`"
@@ -160,11 +160,11 @@ each app.
   oadm-site-node of the same version, Recommends pkexec, icon `oadm-site-node.png`); amd64 and arm64; notices
   `tools/Oadm.Notices --product site-node` (hand-written part `packaging/notices/site-node.md`, no LGPL part); no macOS
   package, no portable ZIP. The node only connects out: no firewall rule on either system.
-- **Plugin folders a version no longer ships** (`oadm.est` and `oadm.radius`, parts of PKI, `docs/spec/pki.md` "One
-  plugin") are removed on upgrade: the MSI removes the old version first (MajorUpgrade `afterInstallValidate`), dpkg
-  removes the old package's files and the server and client postinst remove what is left in those two folders, the .pkg's
-  server and client preinstall remove them (an installer upgrade keeps files the new package lacks). Server and client
-  skip such a folder anyway ("Merged into PKI").
+- **Plugin folders a version no longer ships** (`oadm.est`, a part of PKI, `docs/spec/pki.md` "One plugin") are removed
+  on upgrade: the MSI removes the old version first (MajorUpgrade `afterInstallValidate`), dpkg removes the old package's
+  files and the server and client postinst remove what is left in that folder, the .pkg's server and client preinstall
+  remove it (an installer upgrade keeps files the new package lacks). Server and client skip such a folder anyway
+  ("Merged into PKI").
 - **Service:** the server runs as root / LocalSystem (NTP and DHCP plugins need UDP 123 and 67). As a service the host
   integrates with the SCM and systemd (`Oadm.Server.Hosting.ServiceHosting`: `AddWindowsService`, `AddSystemd`, content
   root = app folder; no-ops on a console). `ServiceHosting.IsRunningAsService()` (Windows service, systemd, or macOS with
@@ -217,7 +217,9 @@ when the jobs it needs passed:
   write`, no API key in GitHub); skipped without the repository variable `NUGET_USER` and for a pre-release tag (nuget.org
   keeps every version forever).
 
-Other workflows: `pr.yml` builds and unit-tests every pull request on Linux (check "tests ubuntu-latest", the same filter
+Other workflows: `main.yml` builds and unit-tests every push to main on Windows, Linux and macOS (the steps of the `tests` job
+of `release.yml`; a newer push cancels the older run; the same paths as below start nothing), so a test that fails on one
+system shows before a release tag. `pr.yml` builds and unit-tests every pull request on Linux (check "tests ubuntu-latest", the same filter
 and blame options, artifact `test-results`); changes only in `website/`, `docs/`, Markdown files (`*.md`) or the release
 and Pages workflows skip CodeQL and the .NET build and tests (`pr.yml` still reports its required check, with the steps
 skipped); started by hand or by `vulnerabilities.yml` (workflow_dispatch) it always builds and tests. `codeql.yml` runs
@@ -322,6 +324,11 @@ cacsjep.github.io/oadm addresses redirect). Texts follow "Wording".
 - **Diagrams:** ```mermaid blocks render in the browser (`astro-mermaid` 2.1.0 + mermaid 11, before Starlight in the
   integrations, theme `base` dark with the site colors); used for the architecture, plugin kinds, task runs, event rules
   and the tutorials.
+- **One SDK guide:** the developer pages (`website/src/content/docs/dev/`) are the only guide to the plugin SDK. A new
+  or changed SDK member is explained there, with a short example. `plugins/README.md` holds only what a plugin inside
+  this repository needs and a table that leads to the pages; `docs/spec/plugins.md` keeps the rules, limits and
+  decisions, never a how-to. Host services (`dev/host-services.md`): settings, records, network interfaces, ports and
+  the firewall, trust anchors, adding devices, services between plugins, protected tags.
 - **Developer pages** also cover debugging (`dev/debugging.md`) and SDK versions (`dev/compatibility.md`); the admin page
   Plugins has "Plugins from others" (plugins run with the server's rights). Developers > **Develop with the .NET SDK**
   (`dev/plugin-sdk.md`): the packages, the templates, the project SDK's properties, the development server, debugging,

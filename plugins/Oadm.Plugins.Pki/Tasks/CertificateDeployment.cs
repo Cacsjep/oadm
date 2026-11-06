@@ -696,7 +696,8 @@ public static class CertificateDeployment
     /// dialog's question with Yes (<paramref name="confirmed"/>, the payload's <c>clockConfirmed</c>): then it goes on and
     /// says when the certificate becomes valid on the device.
     /// </summary>
-    public static async Task CheckClockAsync(ITaskExecutionContext ctx, IReadOnlyList<DeviceApi> apis, TimeProvider time, bool confirmed, CancellationToken ct)
+    public static async Task CheckClockAsync(
+        ITaskExecutionContext ctx, IReadOnlyList<DeviceApi> apis, TimeProvider time, bool confirmed, CancellationToken ct, DateTime? notBeforeUtc = null)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(time);
@@ -704,6 +705,13 @@ public static class CertificateDeployment
         {
             var deviceNow = await DeviceClock.ReadAsync(ctx.Vapix, apis, ct).ConfigureAwait(false)
                 ?? throw new InvalidOperationException(CameraClock.Unreadable);
+
+            // A certificate from a file (Install certificates) starts when its issuer said: not valid yet on this device.
+            if (notBeforeUtc is { } start && CertificateFiles.NotValidYetProblem(start, deviceNow.UtcDateTime) is { } early)
+            {
+                throw new InvalidOperationException($"{early} The device's time is {deviceNow.UtcDateTime:yyyy-MM-dd HH:mm} UTC. Nothing was changed.");
+            }
+
             var behind = time.GetUtcNow() - deviceNow;
             if (CameraClock.NeedsQuestion(behind))
             {

@@ -2,8 +2,8 @@
 
 Core plugin (+ `.Client`) with the rail page **NTP server** (group Servers, icon `metronome`), on by default; the server
 itself starts disabled. Own RFC 5905 server-mode implementation (SNTPv4 compatible), no library. Contributes the task
-**Use OADM as NTP server**. Spec: [Bundled plugins](../../docs/spec/bundled-plugins.md#ntp-server-core-plugin), host
-support for service plugins: [plugins/README.md](../README.md#host-support-for-service-plugins-ntp-dhcp-).
+**Use OADM as NTP server**. Spec: [Bundled plugins](../../docs/spec/bundled-plugins.md#ntp-server-core-plugin), what
+the host offers a service plugin: [Host services](../../website/src/content/docs/dev/host-services.md) of the SDK guide.
 
 ## How it works
 
@@ -135,7 +135,7 @@ as not served at sites (never as "every site").
   `-upstream-warning.png`, `-checking.png`). A hardware test where the development camera queries OADM is a device write:
   never written or run without the developer explicitly asking.
 - Device groups: `CanaryTests` (the canary, filtered state and live requests), `PageViewModelTests` (read-only form for a
-  group), `GroupScaleTests` (5 groups at 30,000 devices: no read per round, + Perf; the view cache, forgotten groups, `Renew`, the page's renewal, the sites of the group).
+  group), `GroupScaleTests` (5 groups at the device limit: no read per round, + Perf; the view cache, forgotten groups, `Renew`, the page's renewal, the sites of the group).
 - Sites: `SiteServingTests` (relays per site with the in-memory relays of `Oadm.Sdk.Testing`, answers, the log, new and
   removed sites, rate limits per site, the task's address at a site), `PageViewModelTests` (sites on the page), headless
   `ntp-server-page-sites.png`.

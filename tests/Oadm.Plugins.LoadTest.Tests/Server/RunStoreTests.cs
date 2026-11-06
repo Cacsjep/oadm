@@ -76,6 +76,22 @@ public sealed class RunStoreTests
     }
 
     [Fact]
+    public async Task A_kept_run_that_cannot_be_read_is_left_out()
+    {
+        var rig = new Rig();
+        await using (rig)
+        {
+            var kept = new RunSummary(Guid.NewGuid(), rig.Time.GetUtcNow(), null, "anna", RunState.Running, 10, 1, 50, 2, "Checking batch 1 of 1", false, 0, 12, 0, null, 0.4, 1, CheckPhase.Normal, TimeSpan.FromMinutes(4), []);
+            await new RunStore(rig.Ctx.Records, rig.DataDirectory).SaveSummaryAsync(new StoredRun(kept, ICallContext.AllDevicesScopeKey), CancellationToken.None);
+            await rig.Ctx.PluginRecords.SetManyAsync("runs", [KeyValuePair.Create<string, string?>("damaged", "{ \"summary\": 7 }")], CancellationToken.None);
+
+            await rig.StartAsync(); // the damaged record does not stop the plugin
+
+            Assert.Equal(kept.RunId, Assert.Single(rig.Service.ListRuns(rig.Admin).Runs).RunId);
+        }
+    }
+
+    [Fact]
     public async Task Delete_removes_a_kept_run_but_not_the_running_one()
     {
         await using var rig = await new Rig(phaseSeconds: 1).StartAsync();

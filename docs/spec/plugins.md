@@ -13,8 +13,28 @@ Two kinds of plugins, one packaging format, one loader.
   task plugins, so the context menu does not care where a task came from, and a contributed task reaches its owning core
   plugin's state via the context.
 
-How-to and samples for plugin developers: `plugins/README.md`. Version history of the SDK:
+**Three documents, one job each.** This file is the spec: the rules, limits and decisions of the plugin system and the
+host side. How to use the SDK is explained in one place only, the developer pages of the website
+(`website/src/content/docs/dev/`, https://oadm.app/dev/overview/): a new or changed SDK member gets its explanation and a
+short example there, never here and never in `plugins/README.md`. `plugins/README.md` holds what only a plugin inside this
+repository needs (folders, build and deploy, the hand-written `plugin.json`, the shared sources, the tests over every
+bundled plugin) and a table that leads to each guide page. The version history of the SDK is
 `website/src/content/docs/dev/compatibility.md`.
+
+| Area of this file | Guide page (`website/src/content/docs/dev/`) |
+|---|---|
+| Task plugins, dialogs, steps | `tasks.md`, `tutorial-task.mdx` |
+| Core plugins, pages, toolbar plugins, permissions of a plugin | `core-plugins.md`, `tutorial-page.mdx` |
+| What the host offers a service (settings, records, ports, trust anchors, plugin services, protected tags) | `host-services.md` |
+| Devices and VAPIX | `devices.md` |
+| Device groups, the call context | `device-groups.md` |
+| Event rule actions, recipients, events | `event-rules.md`, `tutorial-action.mdx` |
+| Compliance check types | `compliance-checks.md` |
+| Sites | `sites.md` |
+| Shared controls, theme, validation, icons | `ui.md` |
+| Test helpers | `testing.md` |
+| Loading, project SDK, `plugin.json` | `plugins.md`, `plugin-sdk.md`, `compatibility.md` |
+| Plugin licenses | `licenses.md` |
 
 ## SDK (Oadm.Sdk, no UI dependencies)
 
@@ -35,7 +55,9 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   only) and `NotSupportedReason` (only when `CanRun` is false: plain language, what is missing and what to do, a device
   detail last as " (this device ...)"; empty or throwing = "Not supported on this device"; helpers `TaskSupportReasons`),
   `MaxParallelDevices` (only lowers the setting), `ShowInMenus` (false: started by its core plugin only; the role editor
-  then lists only the permissions it declares, none without), `GetTaskName` (see Tasks), `Permissions`
+  then lists only the permissions it declares, none without; without any it is a page task: `call.Tasks` of a page method
+  of its own package starts it on that method's permission, `TaskService.Run` refuses it, see
+  [security.md](security.md)), `GetTaskName` (see Tasks), `Permissions`
   (`PermissionDefinition` {Key, Name, Description, OperatorDefault, ViewerDefault, FullDeviceControl}: finer rights inside
   the task, "task:<id>:<key>"; empty = one "task:<id>") and `RequiredPermissions(payload)` (the keys one run needs; no
   answer = all declared), `ExecuteAsync`. Optional `ITaskPluginQuery.QueryAsync`: read-only reads for the dialog
@@ -47,7 +69,10 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   `HasPage` (false: no rail entry), `Group` (`CorePluginGroup`: the rail group; its place in the rail, on the Plugins page and in the permission matrix is
   `CorePluginGroups.RailOrder`, never the enum's value), `RequiredRole` / `IsAudited` / `AuditDetail` per method,
   `Permissions` (named rights "<id>:<key>"; "show" is automatic for a page, declared only to change its defaults; empty
-  = "manage" for the Admin methods) and `RequiredPermission(method)` (see "Plugin methods" in `docs/spec/security.md`).
+  = "manage" for the Admin methods) and `RequiredPermission(method)` (see "Plugin methods" in `docs/spec/security.md`),
+  `SelfCheck(pluginDirectory)` (SDK 0.12.0, DIM null: null when what the plugin ships works on this computer, else the
+  problem in plain words; no device, no network, no change; called by `Oadm.Server --self-check`, which the release runs
+  on every platform, `docs/spec/packaging.md`).
 - `ITaskExecutionContext`: `Vapix` (pre-authenticated for the device), `Logger`, `Owner` (the contributing core plugin),
   `Files` (uploads by id), steps (`PlanSteps`, `BeginStep` -> `ITaskStep` with `ReportProgress`, `Complete`, `Warn`,
   `Skip`, `Fail`; disposing without an end = Done, an escaping exception = Failed; helpers `StepAsync`, `SkipStep`;
@@ -56,8 +81,9 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   `UpdateCredentialsAsync`, `CreateClientForAsync` (the device at another address, caller disposes),
   `UpdateDeviceAddressAsync` and `UpdateDeviceTlsAsync` (the server verifies serial and certificate first, else
   `DeviceIdentityException` and the record stays; see "Following moved devices" in `docs/spec/discovery.md` and the PKI
-  tasks), `Network` (`IDeviceNetwork`), `Caller`, `ManagedAddressesAsync` (below), `AxisDownloads` (SDK 0.9.0, files from
-  axis.com with the starting user's MyAxis sign-in, null for system tasks; `docs/spec/myaxis.md` "For plugins").
+  tasks), `Network` (`IDeviceNetwork`), `Caller`, `ManagedAddressesAsync` (below), `AxisDownloads` (SDK 0.9.0, `IAxisDownloads.DownloadAsync(uri, sha256, size, progress, ct)` -> `AxisDownloadedFile`,
+  failures `AxisDownloadException`: files from axis.com with the starting user's MyAxis sign-in, null for system tasks;
+  `docs/spec/myaxis.md` "For plugins").
 - `ICorePluginContext`: `Devices`, `Vapix` (client factory), `Tasks` (start and cancel tasks, `IsActive`: queued or
   running; `AnyActiveAsync(ids)`: whether any of them is, on `call.Tasks` of a group user for the tasks of the user's
   devices whoever started them; `GetOutcomeAsync(id)` (SDK 0.7.0, DIM null): how an ended task ended, `TaskOutcome`
@@ -138,7 +164,8 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
     with a `SystemAccessReason` reach only `Exists` and `Contains` of every scope (yes or no about devices they have from
     `ctx.System`), never another scope's `Devices` or `NameOf`. `ctx.StreamProbes` (no call member) answers in a group
     user's call and its jobs only for devices of the caller's own scope (every group identity on the call, through
-    `ctx.DeviceScopes`' host); any other id is `KeyNotFoundException` like an unknown device, before any connection.
+    `ctx.DeviceScopes`' host); any other id is `KeyNotFoundException` like an unknown device, before any connection
+    (`FakeCoreContext.StreamProbes` of `Oadm.Sdk.Testing` follows the same rule with the call's group).
     `CorePluginHost.InvokeAsync(pluginId, ...)` without a
     caller stays for in-process host work and tests (no user, background).
   - Task plugin queries: `TaskPluginQueries.QueryAsync(caller, ...)` (the device through the view, the query context's
@@ -180,10 +207,17 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
     scope key, publish with `DeviceScope(key)`, a deleted group's sweep dropped, a changed one pruned).
   - Fakes: `FakeCoreContext.InvokeAsync` / `OpenDownloadAsync` / `QueryAsync` apply the same rules (`RefusedAccesses`,
     `ClientsCreated`, `PublishedEvents`, `EventsSeenBy(watcher)`), `PluginCanary` runs every method of a plugin with the
-    outside device (`plugins/README.md` "Call context"). Tests: `tests/Oadm.Core.Tests/Plugins/PluginCallContextTests`,
+    outside device (guide: `website/src/content/docs/dev/device-groups.md` "Test it: the canary"; every bundled plugin
+    runs one, `CanaryTests.EveryBundledPluginIsConvertedOrListed`). Tests: `tests/Oadm.Core.Tests/Plugins/PluginCallContextTests`,
     `HostDeviceScopesTests`, `PluginEventAudienceTests`, `TaskQueryCallTests`, `PluginCanaryTests`,
     `tests/Oadm.Server.Tests/DeviceGroups/PluginServiceGroupTests`, `tests/Oadm.Plugins.EdgeStorage.Tests/DeviceSweepsTests`.
-- Event rules: `IEventSource`, `IDynamicEventSource`, `IEventPublisher`, `IActionPlugin`, `IActionSource`; recipients (SDK 0.11.0,
+- Event rules: `IEventSource`, `IDynamicEventSource`, `IEventPublisher`, `IActionPlugin`, `IActionSource`; an
+  `ActionField` carries `Required`, `EmptyText` and `Format` (SDK 0.11.0; `ActionFieldFormat` Url, Host, Email, EmailList,
+  SDK 0.12.0 OpcEndpoint; `ActionFormats` is the one check of server and client), `Hint`, `Default`, `Min` / `Max`,
+  `MaxLength`, `VisibleWhenKey` / `VisibleWhenValue` (several values as "a|b"), `AlsoVisibleWhenKey` /
+  `AlsoVisibleWhenValue` (SDK 0.12.0: a second condition, either one shows the field) and `OffEdge`; placeholders:
+  `ActionPlaceholders.Fixed`, `FirstUnknown(text, ctx)`, `PlaceholderEscape` Json, Xml, Url and `SingleLine` (the control
+  characters of a value removed, for a text protocol where a line is a command; never the text around it); recipients (SDK 0.11.0,
   [recipients.md](recipients.md)): `ActionField.Recipient`, `RecipientType`, `IActionPlugin.RecipientTypes`, `ActionInvocation.RecipientIds`; persistent recipients (SDK 0.12.0, [recipient-sessions.md](recipient-sessions.md)): `RecipientType.Sessions`, `IRecipientSessionFactory`, `IRecipientSession`, `IActionContext.SessionAsync<T>`, `ActionField.ClientCertificate`, `ActionField.TrustedCertificate`, `RecipientSessionRequest.CertificatesOf`; an event's
   folders (`EventTypeInfo.Path`, SDK 0.10.0) are at most 4 (`PluginRegistry.MaxEventFolders`), none blank, else the path
   is dropped with a load error and the group is the folder; no path and no group: "Other". Tests:
@@ -192,6 +226,71 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
 - Compliance: `IComplianceCheckType` (standalone in a `*.Server.dll`, or through `IComplianceSource` of a core plugin),
   `IComplianceContext` with shared `Reads`, `ComplianceResult`; `ActionField.File` and `ChoicesFromDevice` for its
   settings (`docs/spec/compliance.md`). Tests: `Oadm.Sdk.Testing.FakeComplianceContext`.
+- Byte sizes (SDK 0.12.0; guide: `dev/tasks.md` "Steps"): `Oadm.Sdk.Formatting.ByteSize` is the one text of a number of
+  bytes, for the server and the client. `Text(bytes)`: "512 bytes", "1 byte", "412 KB", "87.0 MB", "1.2 GB"; `Progress(done, total)`: "37.0 of 82.4 MB",
+  both numbers in the unit of the total. Steps of 1,024; bytes and KB whole, one decimal from MB on; the decimal point on
+  every computer (a step detail written on the server reads the same in every client); a number that rounds up to 1,024
+  moves to the next unit (never "1024 KB"); a negative number keeps its sign. The host and the bundled plugins write
+  every measured size with it; nothing formats one by itself. Kept apart on purpose: a limit in a sentence names its
+  round number ("The file is larger than 1 MB."), Edge storage shows a card in decimal units like the card's label
+  (`StorageFormat`, "59.3 GB") and the SD card compliance check counts in GB like its setting.
+  `Oadm.Sdk.Client.FileSizeText.Format` stays for plugins built before 0.12.0 and gives the same text. Tests:
+  `tests/Oadm.Core.Tests/Formatting/ByteSizeTests`.
+- Plugin JSON (SDK 0.12.0; guide: `dev/core-plugins.md` "`InvokeAsync` errors"): `Oadm.Sdk.Plugins.PluginJson` is the
+  one JSON helper of page calls, events, task payloads and stored settings, for the server and the client part of a
+  plugin.
+  - `CreateOptions(enums, writeNulls)` makes the common options: camelCase names, names read in any case, numbers also
+    read from strings, null values left out (`writeNulls: true` writes them); enums as numbers
+    (`PluginJsonEnums.Numbers`), as names (`Names`) or as camelCase names (`CamelCase`). A plugin creates them once and
+    keeps them in a static of its own, never shared with the host or another plugin: the serializer remembers the
+    plugin's types in the options, and they must go away when the plugin is unloaded. That is why each plugin keeps one
+    small class (`DhcpJson`, `OcrJson`, ...) that holds its options and names what a call without a payload means; its
+    members only forward to `PluginJson`, so no call site can pick other options.
+  - `Serialize(value, options)`; `Parse<T>` for a text that must be there (no text, blank or `null`:
+    "The request is empty."); `ParseOrEmpty<T>` for one that may be left out (it reads like `{}`, every member at its
+    default); `TryParse<T>` for stored text that may be missing or damaged (null, never throws for the text).
+  - One error rule: broken JSON is an `ArgumentException` "The request cannot be read." without a parameter name and
+    without the reader's own error (it names .NET types and positions; a payload may hold a password). The server
+    answers an `ArgumentException` of a page call as INVALID_ARGUMENT (`PluginGrpcService.ToRpc`), of a task dialog
+    query as `TaskQueryError.InvalidArgument`; a `JsonException` that escapes a page call is INTERNAL
+    "Plugin <id> failed: ...". Code that reads stored text and goes on without it uses `TryParse` or catches
+    `ArgumentException`.
+  - Which method each bundled plugin uses (what its callers relied on before): `Parse` in DHCP server, NTP server, PKI,
+    EST server, 802.1X server, Dashboards, Live view and Edge recording export; `ParseOrEmpty` in Action Rule Editor,
+    Application management, Device triggers, Edge storage, Hardening scan, Image Health, I/O monitor, Load test,
+    Metadata monitor, Text recognition, Snapshot report, System report and the page API of VAPIX commander. Options
+    that differ from the common ones stay as they were on the wire: camelCase enums in Applications (ACAP),
+    Application management, Device triggers, Network and Users; enum names in Dashboards, Load test and Text
+    recognition; nulls written in EST server, 802.1X server and Users.
+  - Not moved, on purpose: the task payloads with their own "Nothing was changed." texts (`UsersJson.ParsePayload`,
+    `AcapPayload`, `DateTimePayload.Parse`, `FirmwarePayload.Parse`, `NetworkPayload`, the configuration payloads;
+    Users, Network and Applications (ACAP) take only their options from the helper), the strict library and export
+    files of VAPIX commander (`CommandJson.Strict`, unknown properties are errors, `JsonException` for the file dialog)
+    and the JSON of device answers. Tests: `tests/Oadm.Core.Tests/Plugins/PluginJsonTests`,
+    `tests/Oadm.Server.Tests/PluginJsonRefusalTests`.
+
+- Also in the SDK, each explained in the guide (`dev/devices.md`, `dev/host-services.md`):
+  - Devices and VAPIX: `DeviceMessages` (every status, refusal and HTTP error text; `Refusal(device)` is the one refusal
+    check, with "Site offline: <site>"), `DeviceApi` + `DeviceApiExtensions.Supports` / `Require` / `FindApi`, `DeviceXml`
+    (the only XML parser for device answers: at most 1 MB, no DTD), `VapixRequestOptions.Timeout`, `StreamResponse` and
+    `LiveStream` (SDK 0.10.0: a streamed answer that runs for hours takes none of a site's large transfer slots; the
+    plugin limits its own streams per site), `IVapixClient.GetVideoSourcesAsync` (`VideoSource`, `VideoResolutions.Choose`)
+    and `ConnectWebSocketAsync` (a one-time session token, never the stored login), `IDeviceEventStreams` ->
+    `IDeviceEventSource` (`DeviceMetadataDocument`, `LostDocuments`, `DeviceStreamException` with `DeviceStreamError`).
+  - Services of a network plugin (`Oadm.Sdk.Network`): `IServerNetworkInterfaces` / `SystemNetworkInterfaces`
+    (`ServerNetworkInterface`), `InterfaceOptions` / `InterfaceOption` (the "Listen on" select, `All` / `IsAll`),
+    `PortBindErrors` (`Classify(SocketError, HostOs)` -> `BindErrorKind`, the texts of a failed bind), `HostOsInfo`,
+    `IWindowsServiceProbe` / `ScQueryServiceProbe`, `ServiceStatus` (kind, text, the fix as detail),
+    `KeyedRateLimiter<TKey>` with `KeyedRateLimitOptions` (a token bucket per key, an LRU-capped table, one global
+    bucket, notices per key), `IFirewallRules` / `FirewallRule` / `FirewallRuleKeeper`.
+  - `IDeviceAutoAdd` (`ICorePluginContext.AutoAdd`): `AddAsync(address, expectedSerial, source, ct)` ->
+    `DeviceAutoAddOutcome` (`DeviceAutoAddResult` Added, AddedCredentialsRequired, AddedPasswordNotSet, AlreadyManaged,
+    NotAxis, SerialMismatch, Unreachable, LimitReached) through the add page's pipeline, passwords never reach the
+    plugin; `FollowAsync(serial, address, source, ct)` -> `DeviceFollowResult` (Moved, Unchanged, NotManaged,
+    KeptHostName, NotVerified); the server writes the audit entries.
+  - Permissions: `PermissionKeys` (`Show`, `Of(pluginId, key)`, `Task(taskId, key)`), `HostPermissionKeys`; a key is
+    letters and digits, starts with a letter, has at most 32 characters, is unique within the plugin and is never
+    renamed (roles store it).
 
 Task plugin names and groups: `DisplayName` is at most `TaskPluginNames.MaxDisplayNameLength` (32) characters and never
 ends with "..." (dialog tasks too); it is the menu and toolbar name only, the tasks pane shows `GetTaskName`. The server
@@ -217,18 +316,28 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
   starts its task itself (TaskService.Run, the tasks show in the tasks pane too) and follows it in the client's task
   mirror (`TaskDialogContext`, `TaskStore`: no extra stream) as `TaskRunState` {DeviceId, TaskId, `TaskRunStatus`, Step,
   Message} until every task ended; it then returns null from `ShowAsync`. First user: EST - Certificate Enrollment.
+  The mirror keeps at most 10,000 tasks: a task of the run that left it (`TaskStore.Forgotten`: an ended one beyond the
+  limit, e.g. a run on more than 10,000 devices, or a deleted one) has ended for the run, with the last state the mirror
+  had (its result when it had ended; one that left while the client still saw it running is Cancelled without a message:
+  the server has no call for one task's result). The run follows from before `TaskService.Run` answers, so a task that
+  arrives, ends and leaves a full mirror before the answer names it counts too.
+  `MyAxis` (SDK 0.9.0, DIM null: `IMyAxisSignIn` {`IsSignedIn`, `Changed`, `SignInAsync(owner)`}, the user's MyAxis
+  sign-in as the client knows it, `docs/spec/myaxis.md`).
   `StartView` (SDK 0.7.0, DIM null): the part of the dialog a page asked for with
   `ICorePluginClientContext.RunTaskAsync(pluginId, deviceIds, startView, ct)`, a name the dialog defines (Applications:
   "license" or "license:<package name>"); null and unknown names: the usual start. Host: `TaskPluginRunner.RunAsync(...,
   startView, ct)` -> `IDialogService.ShowTaskPluginDialogAsync(dialog, devices, startView)` -> `TaskDialogContext`.
-  Tests `TaskDialogAndLogTests.DialogContextRunsItsTask...`.
+  Tests `TaskDialogAndLogTests.DialogContextRunsItsTask...`, `A_run_on_more_devices_than_the_task_list_keeps...`.
 - Records: `IPluginRecords.GetAsync(collection, key)` reads one record (DIM through `ListAsync`; the host and
   `MemoryPluginRecords` read only that row).
 - `ICorePluginPage.CreateView(ctx)`: the rail page; `HasOwnCards` (the view lays out its own cards), `ShowTasksPane` (the
-  shared tasks pane below the page). `ICorePluginClientContext`: `InvokeAsync`, `WatchEventsAsync` (PluginService.Watch),
+  shared tasks pane below the page). The host calls it once per login: a logout removes and disposes every page (its
+  context, and its view model when that is `IDisposable`), the next connect creates them again
+  (`docs/spec/security.md` "Nothing of a session outlives its logout"). `ICorePluginClientContext`: `InvokeAsync`, `WatchEventsAsync` (PluginService.Watch),
   `Devices` + `DevicesChanged`, `SelectedDevices`, `OwnerName`, `ShowMessageAsync`, `ConfirmAsync`, `OpenAsync`, `Owner`,
   `DeviceWeb` (`IDeviceWebAccess`: a device's web interface for an embedded browser through the server, see "Web View" in
-  `docs/spec/bundled-plugins.md`), `LiveVideo` (`ILiveVideoAccess.Create(LiveVideoPlace)` -> `ILiveVideo` {View,
+  `docs/spec/bundled-plugins.md`; `EmbeddedBrowserLinks.Leaves(address, origin)`, SDK 0.12.0: true for an address the
+  browser must cancel because it leaves the session's `Origin`), `LiveVideo` (`ILiveVideoAccess.Create(LiveVideoPlace)` -> `ILiveVideo` {View,
   Start(device, camera), Close, Camera, CameraChosen}: the host's live video component,
   `Oadm.Client/LiveView/LiveVideoAccess`; the page's videos are disposed with the page; `docs/spec/live-view.md`),
   `OpenDownloadAsync(method, payload, ct)` (a file of the server part through `PluginService.Download`: `PluginDownload`
@@ -259,6 +368,32 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
   `OpenDevicePageRequested` (`DevicePageRequest` {DeviceId, Path}, DIM never raised) on the Web View page's context, which
   opens or reuses the device's tab on that path (its preset when one has the path, else Custom). First user: Open app page
   of Applications.
+- **Watching the events** (`PluginEventWatch`, SDK 0.12.0 for the overloads with a read; guide with an example:
+  `dev/core-plugins.md` "Read, then watch"): a page never writes the loop around `WatchEventsAsync` itself. `ctx.RunAsync(read, handle, options, ct)` subscribes first, runs `read` (the page's
+  whole state; null for a page that only applies events), hands every event to `handle` (an `Action<PluginEvent>`, or a
+  `Func<PluginEvent, Task>` whose event must end before the next one), and after a failed read, an event that could not
+  be applied or an ended or broken stream waits and does all of it again; a host without events is read at that pace. It
+  never throws and ends with `ct`, which the page cancels when it is hidden or disposed (a logout disposes every page);
+  whatever the read or the stream throws once `ct` is cancelled ends the watch and never reaches `Failed` (a cancelled
+  server call throws an `RpcException` with the status Cancelled, not an `OperationCanceledException`).
+  `PluginEventWatchOptions` (one per page, never a static): `RetryDelay` (2 s, `PluginEventWatch.DefaultRetryDelay`),
+  `MaxRetryDelay` (null; set: the wait doubles up to it and starts again after a read that worked, Live View and
+  Dashboards 1 s to 15 s), `Failed` (the reason for a page that shows it), `Time` (a `TimeProvider`; tests pass a fake
+  one or a short `RetryDelay`). A failed read ends its own subscription before the wait. `ctx.RunAsync(handle,
+  retryDelay, ct)` (the first form) stays. Pages: NTP server, DHCP server, Hardening scan, PKI, Live View, Dashboards
+  (read and watch); I/O Monitor, Metadata Monitor, Action Rule Editor, Applications, Edge storage, Image Health
+  Dashboard, Load test, Text recognition, EST server, 802.1X server (watch only). Device triggers keeps its own loop: it
+  reads again only while no event arrives. Tests `Oadm.Client.Tests` `PluginEventWatchTests`.
+- **A guarded call** (`GuardedRun`, SDK 0.12.0; guide: `dev/core-plugins.md` "A guarded call"):
+  `await GuardedRun.RunAsync(work)` runs a server call of a page or dialog and returns null, or the text to show when it failed (`ServerErrors.Message`: the server's reason, else the
+  exception's message); the one place of the catch-all with its `CA1031` reason. A cancellation (an
+  `OperationCanceledException`, or the `RpcException` with the status Cancelled a cancelled server call throws) is a
+  failure with a text unless the call says `GuardedCancel.Ignore` (no text) or `GuardedCancel.Throw` (an
+  `OperationCanceledException` leaves the run, also for a cancelled server call); with a token, whatever the call throws
+  while that token is cancelled counts as the cancellation, and a cancellation at any other time is a failure with a
+  text. A catch that does more (several
+  fields, a row's state, its own text, a fallback value, a result) stays a `try` in the view model. Tests
+  `Oadm.Client.Tests` `GuardedRunTests`.
 - **Pages shown as tabs**: `ICorePluginPage.TabOf` (DIM null) names the core plugin whose page shows this page as a tab.
   The host then adds no rail entry for it; it creates the view as for a rail page (its own `ICorePluginClientContext`, its
   own plugin id for `InvokeAsync` and events) and hands it to the host page: `ICorePluginClientContext.Tabs`
@@ -273,7 +408,22 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
   entry hides while the role lacks it) with `IToolbarContext` (selection: `SelectedDevices`, a copy per call, and
   `SelectedCount` without one for enabling buttons; devices, task plugins, `CanRunTask` / `CannotRunTaskReason`,
   `RunTaskAsync`, `OpenAsync`, `RemoveDevicesAsync`, `RefreshDevicesAsync`, `QueryAsync`, `UploadAsync`,
-  `InvokePluginAsync`, `Has` + `PermissionsChanged`, messages).
+  `InvokePluginAsync`, `Has` + `PermissionsChanged`, messages; `ToolbarTaskPlugin` {Id, DisplayName, IconKey,
+  ShowInToolbar, RequiresDialog}; `HostPages`: the keys of the host's pages for `OpenAsync`).
+- Also in the client SDK, each explained in the guide (`dev/ui.md`, `dev/host-services.md`):
+  - Form validation (`Oadm.Sdk.Client.Validation`): `ValidatingViewModel`, `FormValidator` (`Rule`, `Rules`, `ShowAll`,
+    `Reset`, `SetServerError`, `IsValidFor`, `FirstErrorOf`, `Validate`, `IsValid`), `IFormFieldVisits.FieldLeft`; the
+    rule is CLAUDE.md "validation errors directly below the field".
+  - `Collections.RangeObservableCollection<T>` (`ReplaceAll`, `AddRange`, `InsertRange`, `RemoveAll`, `RemoveFirst`: one
+    Reset; `IResettableList`), `Network.InterfaceSelection` (the view model of a "Listen on" select: the selection kept
+    across refreshes, a configured interface that is gone stays as "(not available)").
+  - Texts and helpers: `DeviceTexts` (`Removed(id)`, `Soc`, `OpenNotAllowed`), `ServerErrors.Message(ex)`,
+    `DeviceOrder.AddressKey` (IPv4 addresses numerically, names after them), `EmbeddedBrowserTexts` (the text of a
+    missing web view per system), `FileSizeText` (kept for plugins built before 0.12.0, the text of `ByteSize`),
+    `DeviceWebRefusedException` (a device `IDeviceWebAccess.OpenAsync` does not open, with the shared status text),
+    `IDeviceWebSession` {DeviceId, Origin, `StartAddress(path)`}.
+  - Controls: the catalogue is `docs/spec/visual-style.md` "Shared controls"; the usage table and the full icon list
+    are in `dev/ui.md` (a new icon goes into `src/Oadm.Theme/Icons.axaml` and into that list).
 
 ### Toolbar plugins
 
@@ -293,7 +443,7 @@ The Devices page toolbar is made of toolbar plugins. Built in (compiled into the
   HTTPS, Certificate expires as ISO date yyyy-MM-dd, Certificate, IEEE 802.1X, Compliance) in the grid's unsorted order,
   RFC 4180 quoting (`Infrastructure/Csv`), CRLF, UTF-8 with BOM, a cell starting with = + - @ gets a leading `'` (no
   formula injection), no password (the client has none); save picker `IDialogService.SaveFileAsync`, default name
-  `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a failed save = `ui:MessageWindow`; O(n), 5,000 devices tested.
+  `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a failed save = `ui:MessageWindow`; O(n), tested at the device limit.
 - One generic plugin with a button per task plugin that declares `ShowInToolbar` (Tasks; enabled when it can run on the
   whole selection, otherwise disabled with the reason as tooltip).
 - **AXIS OS - Release Notes** (Plugins, order 1000): an icon-only `ui:ToolbarButton` (icon `externalLink`, class
@@ -309,7 +459,8 @@ main one, still flat). The Columns button and the search box are host parts. Sam
 ### Dialogs, pages and requests
 
 Dialogs and pages are real Avalonia views with view models, styled by the host theme. They use the shared controls from
-`Oadm.Sdk.Client.Controls` (catalogue in `docs/spec/visual-style.md` "Shared controls", usage in `plugins/README.md`;
+`Oadm.Sdk.Client.Controls` (catalogue in `docs/spec/visual-style.md` "Shared controls", usage in
+`website/src/content/docs/dev/ui.md`;
 every message and confirmation popup is `MessageWindow.ConfirmAsync` / `ShowMessageAsync`, used by the host dialog service
 and plugin dialogs) and the theme resources (styles, colors, `Icon.*` geometries) of the host application. Plugins never
 talk to devices from the client; payloads go to the server. gRPC errors reach the dialog as `RpcException` (Status.Detail
@@ -324,6 +475,25 @@ into a file in `ICorePluginContext.DataDirectory`), enforces its own size limit 
 token (the timeout covers the headers only); the 16 MB limit of buffered answers is unchanged. Used by the System report
 for server reports.
 
+## Test helpers (Oadm.Sdk.Testing)
+
+`src/Oadm.Sdk.Testing` (NuGet `Oadm.Sdk.Testing`): the fakes plugin tests run on, no server and no device. Guide:
+`website/src/content/docs/dev/testing.md`.
+
+- Running and waiting: `StepRun` (runs a task plugin with the engine's end rules), `Eventually` (waits for what another
+  thread does, instead of a fixed delay).
+- Devices: `FakeCamera` (an `IVapixClient`: parameters, basic device information, the API list, restart, every request
+  recorded), `FakeDevice` (an `IDeviceInfo`, every value settable).
+- Contexts: `FakeTaskContext` (one task), `FakeActionContext` (one action run), `FakeCoreContext` (a core plugin: devices,
+  a camera per device, settings, tasks, events), `FakeCallContext` (a user's call, with all devices or a device group),
+  `FakeComplianceContext` and `FakeComplianceQueryContext` (one compliance check), `FakeSettings`, `FakeProLicense`.
+- Host services: `FakeEventPublisher` (the events a source fires or switches), `FakeDeviceScopes` (device groups),
+  `FakeSites`, `FakeSite`, `FakeDeviceNetwork` and `FakePluginNetwork` with the in-memory relays (sites and sockets),
+  `FakePluginJobs`, `FakePluginServices`, `FakeProtectedTags`, `FakeStreamProbes` (the server's measuring video streams),
+  `FakeAxisDownloads` (files from axis.com); `FakeHostRules` (internal) holds the server's rules for a user's call.
+- Device groups: `PluginCanary` calls every method of a core plugin with a device outside the caller's group and fails
+  on a leak; `TaskPluginCanaryHost` puts task plugins and actions under it.
+
 ## SDK versions
 
 `SdkInfo.Version` (0.12.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
@@ -334,9 +504,13 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
   packages keep their own hand-written `plugin.json`: 0.4.0, or the version of the newest member a package uses at run time
-  (0.12.0: PKI `IRecipientCertificates` and `IRecipientCertificateUse`, Modbus, MQTT and OPC UA `RecipientType.Sessions`; 0.11.0: Notifications `ActionField.Recipient`; 0.10.0: Upgrade AXIS OS `AxisOsTexts.Version`, Text recognition the rail group `CorePluginGroup.Vision` and `EventTypeInfo.FixedDeviceId`, `SplitField`, Dashboards `EventTypeInfo.Path`, `FixedDeviceId`, `SplitField`,
-  `IEventPublisher.IsUsedByRule`, `ICorePlugin.AuditDetail`, Device triggers `EventTypeInfo.Path`; constants such as `AxisOsTexts.Name` are
-  compiled in and need none). Earlier: 0.5.0 for Upgrade AXIS OS (`ShowForDevicesAsync`).
+  (0.12.0: `PluginJson` or `ByteSize` in Action Rule Editor, Applications (ACAP), Application management, the
+  configuration tasks, Dashboards, Device triggers, DHCP server, Edge recording export, Edge storage, Hardening scan,
+  Image Health, I/O monitor, Live view, Load test, Metadata monitor, Network, NTP server, PKI with the EST and 802.1X
+  servers, Snapshot report, System report, Text recognition, Upgrade AXIS OS, Users and VAPIX commander; PKI also
+  `IRecipientCertificates` and `IRecipientCertificateUse`; Modbus, MQTT and OPC UA `RecipientType.Sessions`; 0.11.0:
+  Notifications `ActionField.Recipient`; constants such as `AxisOsTexts.Name` are compiled in and need none; 0.4.0:
+  Date and time, Outputs, Restart, Web View).
 - Defaults a plugin built for an older SDK notices: `ui:FileRow.IsSingleButton` is true (the button alone, without the
   "No file chosen" line; false for the older row); `ui:ToolbarButton.IsPrimary` adds the class `main` and never fills the
   button (toolbars have no filled buttons); `IPluginEvents.Publish(topic, payload)` without an audience reaches only
@@ -350,7 +524,9 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
   (`PluginPaths.Development`) on startup, loads each `*.Server.dll` in its own collectible `AssemblyLoadContext`, resolves
   `ITaskPlugin` and `ICorePlugin` implementations via reflection, then registers the core plugins' `TaskPlugins` too.
   Client does the same for `*.Client.dll` (only one that references `Oadm.Sdk.Client`: `ClientPluginLoader.IsClientPart`) with `ITaskPluginDialog`, `ICorePluginPage` and `IToolbarPlugin` over the same
-  three roots (`ClientPluginLoader.DefaultRoots`).
+  three roots (`ClientPluginLoader.DefaultRoots`). The installed service does not load a plugin folder of
+  `<datafolder>/plugins` that users other than administrators could change until this start: it is moved aside, all of
+  them when the data folder or the plugins folder itself was loose (`docs/spec/security.md` "Folders").
 - Plugin development without installing (developer guide `website/src/content/docs/dev/plugin-sdk.md`: NuGet packages,
   templates, the `oadm` tool): server `--Oadm:PluginDir=<folder>` (several separated by ";", `OadmServerHost.PluginDirKey`)
   and client `--plugin-dir <folder>` (repeatable, `AppOptions.PluginDirs`) load a plugin package straight from a build
@@ -385,11 +561,11 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
   settings, records, data folder, events, permissions and services belong to the core plugin id, on/off and licenses to
   the package.
 - **Merged packages** (`Oadm.Core.Plugins.MergedPlugins`, the client's `ClientPluginLoader.MergedPackages`): a plugin
-  folder `oadm.est` or `oadm.radius` (the EST and 802.1X servers of OADM 4.1, now parts of PKI) is never loaded by the
-  server or the client, with one log line "... skipped: Merged into PKI" (not a load error; the installers remove such
-  folders). On every start, before the stored choices apply, `MergedPlugins.TakeOverAsync` moves an entry of either id in
-  `Plugins.Enabled` to the server's own choice (`Plugin:<id>:serverOn`, unless one is stored) and removes it from
-  `Plugins.Enabled` (idempotent).
+  folder `oadm.est` (the EST server of OADM 4.1, now a part of PKI) is never loaded by the server or the client, with one
+  log line "... skipped: Merged into PKI" (not a load error; the installers remove such a folder). On every start, before
+  the stored choices apply, `MergedPlugins.TakeOverAsync` moves its entry in `Plugins.Enabled` to the server's own choice
+  (`Plugin:oadm.est:serverOn`, unless one is stored) and removes it from `Plugins.Enabled` (idempotent). The 802.1X
+  server (`oadm.radius`) never shipped as a package of its own, so it is not in the list.
 
 ### Plugins on and off
 
@@ -549,3 +725,8 @@ task names, device API and verified device behavior, settings, tests. `docs/spec
 per plugin: id, what it does, rail or menu group, on or off by default, the rules that must never break (device safety,
 secrets, roles, limits) and a pointer to the README. A new plugin gets both in the same change; a changed decision updates
 both.
+
+A change of the SDK updates, in the same change: the doc comment of the member (the SDK reference is generated from it),
+the guide page of its topic with a short example, the SDK history in `website/src/content/docs/dev/compatibility.md`, and
+this file when it is a rule, a limit or a new member of the surface. `plugins/README.md` changes only when something about
+building a plugin inside the repository changes.

@@ -30,7 +30,8 @@ public interface IAddOnPartLoader
 /// came, so the pages follow the add-on as they follow Turn on: on every connect and after an install. Add-ons the server
 /// no longer has are marked; their files go at the client's next start. A newer version while the older one is loaded is
 /// stored and loads at the next start (<see cref="RestartNeeded"/>). Errors are logged, never thrown: the client runs
-/// without the add-on's pages.
+/// without the add-on's pages. Without a pinned server certificate (<c>serverKey</c> answers nothing: an http address,
+/// fake mode) nothing is asked for or loaded.
 /// </summary>
 public sealed partial class AddOnClientSync(
     IOadmApi api,
@@ -42,10 +43,8 @@ public sealed partial class AddOnClientSync(
     /// <summary>The longest one sync may take (a large client part on a slow link).</summary>
     internal static readonly TimeSpan Timeout = TimeSpan.FromMinutes(2);
 
-    /// <summary>The cache folder of a server without a pinned certificate (fake mode, plain HTTP in development).</summary>
-    internal const string UnpinnedServer = "unpinned";
-
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private bool _skipLogged;
     private readonly Dictionary<string, string> _loadedVersions = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _restartNeeded = new(StringComparer.OrdinalIgnoreCase);
     private int _running;
@@ -75,6 +74,22 @@ public sealed partial class AddOnClientSync(
         StateChanged?.Invoke(this, EventArgs.Empty);
         try
         {
+            // The parts are code this client runs. They are taken only from a server whose certificate is pinned (TLS):
+            // over plain http, or without a pin, anyone on the way could hand the client other code.
+            string? fingerprint = serverKey?.Invoke();
+            if (string.IsNullOrEmpty(fingerprint))
+            {
+                AnyInstalling = false;
+                if (!_skipLogged)
+                {
+                    _skipLogged = true;
+                    LogNotPinned(logger);
+                }
+
+                return 0;
+            }
+
+            _skipLogged = false;
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(Timeout);
             AddOnList list;
@@ -94,7 +109,7 @@ public sealed partial class AddOnClientSync(
             }
 
             AnyInstalling = list.AddOns.Any(a => a.State == AddOnState.AddOnInstalling);
-            string server = ServerKey();
+            string server = CacheKey(fingerprint);
             int loaded = 0;
             try
             {
@@ -118,14 +133,8 @@ public sealed partial class AddOnClientSync(
         }
     }
 
-    private string ServerKey() => CacheKey(serverKey?.Invoke());
-
     /// <summary>The cache folder of a pinned fingerprint ("3F:A2:..."): its hex digits in lower case, no colons (never in a folder name).</summary>
-    internal static string CacheKey(string? fingerprint)
-    {
-        string key = (fingerprint ?? string.Empty).Replace(":", string.Empty, StringComparison.Ordinal);
-        return key.Length == 0 ? UnpinnedServer : key.ToLowerInvariant();
-    }
+    internal static string CacheKey(string fingerprint) => fingerprint.Replace(":", string.Empty, StringComparison.Ordinal).ToLowerInvariant();
 
     private async Task<int> SyncOneAsync(string server, AddOnInfo addOn, CancellationToken ct)
     {
@@ -202,6 +211,9 @@ public sealed partial class AddOnClientSync(
 
         return await Task.Run(() => cache.Store(server, addOn.Id, part), ct).ConfigureAwait(true);
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The client parts of the optional plugins are not loaded: the connection to the server has no pinned certificate (plain http)")]
+    private static partial void LogNotPinned(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The optional plugins could not be read: {Message}")]
     private static partial void LogListFailed(ILogger logger, string message);

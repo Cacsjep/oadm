@@ -229,6 +229,53 @@ public sealed class ViewModelTests
     }
 
     [Fact]
+    public void Ok_in_manual_mode_sends_the_moment_on_the_server_clock()
+    {
+        // The server's clock is read with the device time; this computer's clock only measures the time in the dialog.
+        var clientNow = ClientNow;
+        var vm = new DateTimeDialogViewModel([new FakeDevice(Guid.NewGuid(), "10.0.0.48") { Apis = Fixture.Modern }], () => clientNow);
+        vm.ApplyCurrent(Current10048);
+        vm.IsManual = true;
+        vm.ManualDate = "2026-10-07";
+        vm.ManualTime = "18:00";
+
+        Assert.Null(vm.BuildPayload()!.ManualSetAt); // only OK fixes the time
+        clientNow += TimeSpan.FromSeconds(40);
+        vm.ApplyCommand.Execute(null);
+
+        var payload = DateTimePayload.Parse(vm.ResultJson);
+        Assert.Equal("2026-10-07T18:00:00", payload.ManualDateTime);
+        Assert.Equal(Current10048.ServerUtc!.Value.AddSeconds(40), payload.ManualSetAt);
+    }
+
+    [Fact]
+    public void Ok_in_manual_mode_without_the_server_time_sends_no_moment()
+    {
+        var vm = Create();
+        vm.ShowLoadError("the device sent nothing.");
+        vm.SelectedZone = Zone("Europe/Vienna");
+        vm.IsManual = true;
+        vm.ManualDate = "2026-10-07";
+        vm.ManualTime = "18:00";
+
+        vm.ApplyCommand.Execute(null);
+
+        Assert.Null(DateTimePayload.Parse(vm.ResultJson).ManualSetAt);
+    }
+
+    [Fact]
+    public void Ok_in_another_mode_sends_no_moment()
+    {
+        var vm = Create();
+        vm.ApplyCurrent(Current10048);
+        vm.IsServerTime = true;
+
+        vm.ApplyCommand.Execute(null);
+
+        Assert.Null(DateTimePayload.Parse(vm.ResultJson).ManualSetAt);
+    }
+
+    [Fact]
     public void Server_time_uses_the_server_zone()
     {
         var vm = Create();

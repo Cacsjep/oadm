@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Plugins.DhcpServer.Protocol;
 using Oadm.Plugins.Network.Model;
+using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Validation;
 
 namespace Oadm.Plugins.DhcpServer.Client;
@@ -81,7 +82,7 @@ public sealed partial class StaticLeaseDialogViewModel : ValidatingViewModel
         }
 
         IsSaving = true;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var request = new StaticLeaseRequest(Mac.Trim(), Address.Trim(), string.IsNullOrWhiteSpace(Name) ? null : Name.Trim(), _originalMac);
             var json = await _invoke(DhcpServerMethods.SaveStatic, DhcpJson.Serialize(request), CancellationToken.None).ConfigureAwait(true);
@@ -98,17 +99,13 @@ public sealed partial class StaticLeaseDialogViewModel : ValidatingViewModel
 
             Saved = true;
             CloseRequested?.Invoke(this, true);
-        }
-#pragma warning disable CA1031 // Shown under the MAC field (the dialog stays open).
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            Validation.SetServerError(nameof(Mac), DhcpServerViewModel.Message(ex));
+            Validation.SetServerError(nameof(Mac), error);
         }
-        finally
-        {
-            IsSaving = false;
-        }
+
+        IsSaving = false;
     }
 
     [RelayCommand]

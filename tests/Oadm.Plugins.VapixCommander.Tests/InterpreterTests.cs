@@ -257,7 +257,7 @@ public sealed class InterpreterTests
         var image = await CommandExecutor.ExecuteAsync(vapix, raw, CommandRenderer.Render(raw, Samples.Values()), CancellationToken.None);
 
         Assert.True(image.Success);
-        Assert.Equal("image/jpeg, 2.0 KB", image.Summary);
+        Assert.Equal("image/jpeg, 2 KB", image.Summary);
     }
 
     [Fact]

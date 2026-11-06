@@ -254,7 +254,7 @@ public sealed class AcapDialogViewModelTests : IDisposable
         Assert.Equal(3, vm.Compatibility.Count);
         Assert.True(vm.HasPackageFile);
         Assert.Equal(Path.GetFileName(path), vm.PackageFileName);
-        Assert.EndsWith("KB", vm.PackageFileDetails, StringComparison.Ordinal);
+        Assert.EndsWith(" bytes", vm.PackageFileDetails, StringComparison.Ordinal);
         Assert.True(vm.Compatibility[0].IsOk);
         Assert.False(vm.Compatibility[0].IsWarning);
         Assert.Equal("Upgrade from 1.0.0", vm.Compatibility[0].Result);

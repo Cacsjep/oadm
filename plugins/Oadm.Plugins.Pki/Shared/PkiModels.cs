@@ -1,7 +1,7 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 using Oadm.Sdk.Network;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Pki;
 
@@ -634,47 +634,44 @@ public static class PkiFields
 
 public static class PkiJson
 {
-    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
+    public static readonly JsonSerializerOptions Options = PluginJson.CreateOptions();
+
+    public static string Serialize<T>(T value) => PluginJson.Serialize(value, Options);
+
+    /// <summary>A missing or broken payload is an <see cref="ArgumentException"/> (<see cref="PluginJson.Parse{T}"/>).</summary>
+    public static T Deserialize<T>(string? json) => PluginJson.Parse<T>(json, Options);
+
+    /// <summary>
+    /// <see cref="Deserialize{T}"/> once per payload string, for task payloads with an entry per device: the engine hands the
+    /// same string to every task of a run, so 5,000 devices parse it once, not 5,000 times. The result is shared between the
+    /// tasks: never change it.
+    /// </summary>
+    public static T DeserializeShared<T>(string? json)
+        where T : class
     {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+        if (json is null)
+        {
+            return Deserialize<T>(json);
+        }
 
-    public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+        if (Shared<T>.Parsed.TryGetValue(json, out var cached))
+        {
+            return cached;
+        }
 
-    /// <summary>Throws <see cref="ArgumentException"/> (INVALID_ARGUMENT) for missing or unreadable JSON.</summary>
-    public static T Deserialize<T>(string? json)
+        var value = Deserialize<T>(json);
+        Shared<T>.Parsed.AddOrUpdate(json, value);
+        return value;
+    }
+
+    private static class Shared<T>
+        where T : class
     {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            throw new ArgumentException("The request is empty.", nameof(json));
-        }
-
-        try
-        {
-            return JsonSerializer.Deserialize<T>(json, Options) ?? throw new ArgumentException("The request is empty.", nameof(json));
-        }
-        catch (JsonException ex)
-        {
-            throw new ArgumentException("The request cannot be read: " + ex.Message, nameof(json), ex);
-        }
+        public static readonly System.Runtime.CompilerServices.ConditionalWeakTable<string, T> Parsed = new();
     }
 
     /// <summary>Like <see cref="Deserialize{T}"/> but null for empty or unreadable JSON (stored settings).</summary>
     public static T? TryDeserialize<T>(string? json)
-        where T : class
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return null;
-        }
-
-        try
-        {
-            return JsonSerializer.Deserialize<T>(json, Options);
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
+        where T : class =>
+        PluginJson.TryParse<T>(json, Options);
 }

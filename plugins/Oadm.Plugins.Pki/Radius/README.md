@@ -17,8 +17,7 @@ Apache-2.0), also for `plugins/Oadm.Plugins.Pki.Client/Radius`.
     `ServerIdentityKeeper` (the server certificate PKI's 802.1X server policy picks from the Certificates list, ECC, loaded
     with its key and again when the policies change; never renewed by itself), `SessionBoard`, `RadiusLog`,
     `RadiusPolicies` and `RadiusRuleSet` (the rules from PKI's policies: trusted CAs, `PolicyPlan`, the server policy's
-    TLS, packet size and reauthentication; the default 802.1X policies and the conversion of the settings of development
-    builds), `RadiusStore`.
+    TLS, packet size and reauthentication; the default 802.1X policies), `RadiusStore`.
   - `Protocol/` (no sockets, no host, no UI): `Radius/` the own RADIUS codec (RFC 2865, 2869, 3579, 5080, 5997, 8044):
     packets with their attributes in order and raw, malformed packets as a result value, the Access-Request reader, the
     Response Authenticator and the Message-Authenticator (always the first attribute of an answer), the duplicate cache,
@@ -30,8 +29,7 @@ Apache-2.0), also for `plugins/Oadm.Plugins.Pki.Client/Radius`.
     timeouts) and the session state machine with the spec's states; `Text/` MAC address normalizer, NAS-Port-Type names,
     text sanitizing.
 - Settings: `config` (Listen on, Port, Log entries kept), `switches` (secrets encrypted with the master key, at least 8
-  characters), `serverCertificate` (the certificate of before 4.5, key encrypted, read once to import it); read once for the
-  conversion and kept: the Advanced fields of `config`, `trustedCas`, `policies`, `vlans`. Records: `log`,
+  characters), `serverCertificate` (the certificate of before 4.5, key encrypted, read once to import it). Records: `log`,
   `logCertificates`. All in the encrypted backup.
 - The Axis device ID CAs are shared with EST (`plugins/Shared/DeviceId`, linked with their PEM files).
 - BouncyCastle (`BouncyCastle.Cryptography` 2.7.0) is compiled against and never copied into the plugin folder: the server
@@ -46,9 +44,9 @@ Apache-2.0), also for `plugins/Oadm.Plugins.Pki.Client/Radius`.
 - Tests: `tests/Oadm.Plugins.Radius.Tests` (a BouncyCastle client as the camera through an in-memory switch, RFC vectors,
   parsing rules, fuzzing, fragmentation, alerts, timeouts; the plugin end to end through its in-memory UDP listener and site
   relays, `ServerTests`; `HardeningTests`; the device-group canary and filtering, `PluginTests`; PKI's policies,
-  `AllowCaTests`, `PolicyTests`, `ConversionTests` (fixtures in `Fixtures/Conversion`); `Category=Perf` for many parallel
-  sessions and 30,000 authentications through the plugin). Client: `tests/Oadm.Plugins.Radius.Tests/Client` against
+  `AllowCaTests`, `PolicyTests`, `ConversionTests` (the default policies, added once); `Category=Perf` for many parallel
+  sessions and 1,000 authentications through the plugin among managed devices at the device limit). Client: `tests/Oadm.Plugins.Radius.Tests/Client` against
   `FakeRadiusBackend` (view models, headless rendering and screenshots with `OADM_SCREENSHOT_DIR`, `ServerLayoutTests`,
-  `PkiTabHeadlessTests`, `Category=Perf` for 10,000 sessions and 30,000 devices).
+  `PkiTabHeadlessTests`, `Category=Perf` for 10,000 sessions and the device limit).
 - Not built yet: recorded conversations of real switches (Cisco, Aruba, ...): none could be recorded here; the tests replay
   the RFC examples. A new switch quirk becomes a fixture first.

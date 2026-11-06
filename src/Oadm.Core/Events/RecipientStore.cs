@@ -111,6 +111,12 @@ public sealed class RecipientStore(IDbContextFactory<OadmDbContext> dbFactory, I
             throw new RecipientValidationException(RecipientValidationException.NameField, string.Create(CultureInfo.InvariantCulture, $"At most {MaxNameLength} characters."));
         }
 
+        if (trimmed.Any(char.IsControl))
+        {
+            // The server log writes the name as it is: a line break in it would forge a line.
+            throw new RecipientValidationException(RecipientValidationException.NameField, RecipientType.NameInvalidText);
+        }
+
         (StoredRecipient Recipient, bool Created) result;
         await _write.WaitAsync(ct).ConfigureAwait(false);
         try

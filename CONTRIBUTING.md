@@ -9,8 +9,9 @@ Thanks for helping. Bug reports, fixes, plugins, docs and tests of any size are 
   parts you touch. A change of behavior updates the spec in the same pull request.
 - For a bigger change, open an issue first and describe it as a user story, so we agree on the behavior before you
   write code.
-- Plugins (tasks, pages, toolbar buttons, event rule actions) are the easiest way to add features: see
-  [`plugins/README.md`](plugins/README.md) and the [developer guide](https://oadm.app/dev/overview/).
+- Plugins (tasks, pages, toolbar buttons, event rule actions) are the easiest way to add features: the
+  [developer guide](https://oadm.app/dev/overview/) explains the SDK (its source: `website/src/content/docs/dev/`),
+  [`plugins/README.md`](plugins/README.md) what a plugin inside this repository needs.
 
 ## Build, run and test
 
@@ -45,7 +46,7 @@ passwords) and skip themselves without it: [Testing](https://oadm.app/dev/testin
 | `src/Oadm.Core`, `src/Oadm.Server` | Domain, VAPIX client, discovery, tasks, persistence; the server host |
 | `src/Oadm.Client`, `src/Oadm.Theme` | The Avalonia client; the theme shared with the OADM Site Node app |
 | `src/Oadm.Sites`, `src/Oadm.SiteNode*` | The link between server and site node; the OADM Site Node service, command line and app |
-| `plugins/` | Bundled plugins, see [`plugins/README.md`](plugins/README.md) |
+| `plugins/` | Bundled plugins, see [`plugins/README.md`](plugins/README.md) (folders, build, tests; the SDK guide is the website's developer pages) |
 | `samples/`, `templates/` | The plugins of the developer tutorials with their tests; the `dotnet new` templates made from them |
 | `tests/` | xUnit tests |
 | `tools/` | The `oadm` tool, `manage new`, the SDK reference and notices generators |
@@ -72,6 +73,9 @@ passwords) and skip themselves without it: [Testing](https://oadm.app/dev/testin
   no checkout: `dotnet new oadm-task` and the `oadm` command ([Develop with the .NET SDK](https://oadm.app/dev/plugin-sdk/)).
 - **SDK comments:** every public type and member of `Oadm.Sdk` and `Oadm.Sdk.Client` has a doc comment for plugin
   authors; the website's SDK reference is generated from them (`manage build docs`) and a test fails without one.
+- **SDK guide:** the developer pages of the website (`website/src/content/docs/dev/`) are the one place that explains
+  the SDK. A new or changed member gets its explanation and a short example there, and its rule in
+  `docs/spec/plugins.md`; never a second how-to in `plugins/README.md`.
 - **No own sockets to devices:** `src/` and `plugins/` reach devices only through the host (`IVapixClient`, event
   streams, `IDeviceNetwork`), so devices at a site work too. The banned APIs (`Socket`, `TcpClient`, `UdpClient`,
   `Ping`, `Dns`, own HTTP handlers, `src/Oadm.Plugin.Sdk/targets/BannedSymbols.txt`) are build errors there (RS0030); an
@@ -86,8 +90,9 @@ OADM is developed together with Claude, and the repository is set up for it:
 - Claude Code reads `CLAUDE.md` on its own (it points to the spec file of each feature); give it to other assistants
   first.
 - Describe the feature like a user story and let the assistant ask before it writes code, for example: *"Read
-  CLAUDE.md and plugins/README.md. I want a task plugin 'Set host name' in the Network group, with a dialog for one or
-  many devices. Ask me what is unclear, write the spec, then build it with tests and headless screenshots."*
+  CLAUDE.md, plugins/README.md and the guide pages it names. I want a task plugin 'Set host name' in the Network group,
+  with a dialog for one or many devices. Ask me what is unclear, write the spec, then build it with tests and headless
+  screenshots."*
 - The assistant checks UI work only with headless screenshots, never by clicking on your desktop. It may run the
   read-only hardware tests; tests that change a device run only when you ask, and only against a test device.
 - Ask for small, focused commits and `manage test unit` before each commit. Review its work like any other contribution.

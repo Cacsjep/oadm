@@ -51,42 +51,21 @@ public sealed partial class FirmwareOverviewViewModel : ObservableObject, IDispo
     /// <summary>Starts once, when the view is shown first.</summary>
     public void Start() => _run ??= RunAsync();
 
-    /// <summary>Subscribe, read the whole state, apply the events; after a dropped connection wait and do it again.</summary>
-    private async Task RunAsync()
-    {
-        while (!_stop.IsCancellationRequested)
+    /// <summary>
+    /// Subscribe, read the whole state, apply the events; after a dropped connection wait 2 s and do it again. The SDK
+    /// runs the loop (<see cref="PluginEventWatch"/>) until the page is disposed.
+    /// </summary>
+    private Task RunAsync() => _ctx.RunAsync(
+        async ct => Apply(await _ctx.InvokeAsync(FirmwareOverview.GetState, null, ct)),
+        item =>
         {
-            try
+            if (item.Topic == FirmwareOverview.StateTopic)
             {
-                var events = _ctx.WatchEventsAsync(_stop.Token);
-                Apply(await _ctx.InvokeAsync(FirmwareOverview.GetState, null, _stop.Token));
-                await foreach (var item in events)
-                {
-                    if (item.Topic == FirmwareOverview.StateTopic)
-                    {
-                        Apply(item.PayloadJson);
-                    }
-                }
+                Apply(item.PayloadJson);
             }
-            catch (OperationCanceledException) when (_stop.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                ErrorText = ServerErrors.Message(ex);
-            }
-
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(2), _stop.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-        }
-    }
+        },
+        new PluginEventWatchOptions { Failed = ex => ErrorText = ServerErrors.Message(ex) },
+        _stop.Token);
 
     /// <summary>The purple button: choose the devices, then read them.</summary>
     [RelayCommand]
@@ -101,19 +80,19 @@ public sealed partial class FirmwareOverviewViewModel : ObservableObject, IDispo
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task RefreshAsync()
     {
-        try
-        {
-            ErrorText = null;
-            // All devices go as "all", not as every id: one short request also with 30,000 devices.
-            var request = Devices.Choice.Kind == DeviceChoiceKind.All
-                ? new RefreshRequest(true, [])
-                : new RefreshRequest(false, [.. Devices.Resolve().Select(d => d.Id)]);
-            await _ctx.InvokeAsync(FirmwareOverview.Refresh, JsonSerializer.Serialize(request, FirmwareOverview.Json), _stop.Token);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            ErrorText = ServerErrors.Message(ex);
-        }
+        ErrorText = null;
+
+        // Whatever goes wrong comes back as the text to show (the server's reason), never as a crash of the page.
+        ErrorText = await GuardedRun.RunAsync(
+            () =>
+            {
+                // All devices go as "all", not as every id: one short request also at the device limit.
+                var request = Devices.Choice.Kind == DeviceChoiceKind.All
+                    ? new RefreshRequest(true, [])
+                    : new RefreshRequest(false, [.. Devices.Resolve().Select(d => d.Id)]);
+                return _ctx.InvokeAsync(FirmwareOverview.Refresh, JsonSerializer.Serialize(request, FirmwareOverview.Json), _stop.Token);
+            },
+            GuardedCancel.Throw);
     }
 
     private bool CanRefresh() => !IsReading && !Devices.IsEmpty;

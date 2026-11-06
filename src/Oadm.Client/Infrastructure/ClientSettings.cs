@@ -11,9 +11,6 @@ public sealed class ClientSettings
     /// <summary>Server of a new client; without a scheme the client connects over TLS (https).</summary>
     public const string DefaultServerAddress = "localhost:5080";
 
-    /// <summary>The client's address before TLS; read as <see cref="DefaultServerAddress"/>.</summary>
-    public const string LegacyDefaultServerAddress = "http://localhost:5080";
-
     /// <summary>Most entries of <see cref="RecentServers"/>.</summary>
     public const int MaxRecentServers = 10;
 
@@ -181,11 +178,19 @@ public sealed partial class JsonClientSettingsStore : IClientSettingsStore
     private readonly string _path;
     private readonly ILogger<JsonClientSettingsStore> _logger;
     private readonly Lock _gate = new();
+    private readonly TimeProvider _time;
 
-    public JsonClientSettingsStore(AppOptions options, ILogger<JsonClientSettingsStore> logger)
+    /// <summary>
+    /// A temporary file younger than this may belong to another client that saves right now (two clients share the
+    /// data folder): it stays at the start.
+    /// </summary>
+    internal static readonly TimeSpan LeftoverAge = TimeSpan.FromMinutes(1);
+
+    public JsonClientSettingsStore(AppOptions options, ILogger<JsonClientSettingsStore> logger, TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         _logger = logger;
+        _time = time ?? TimeProvider.System;
         _path = Path.Combine(options.DataFolder, "client-settings.json");
         Current = Load();
     }
@@ -218,8 +223,8 @@ public sealed partial class JsonClientSettingsStore : IClientSettingsStore
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-                string json = JsonSerializer.Serialize(Current, ClientSettingsJsonContext.Default.ClientSettings);
-                File.WriteAllText(_path, json);
+                byte[] json = JsonSerializer.SerializeToUtf8Bytes(Current, ClientSettingsJsonContext.Default.ClientSettings);
+                Replace(_path, stream => stream.Write(json));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -228,20 +233,61 @@ public sealed partial class JsonClientSettingsStore : IClientSettingsStore
         }
     }
 
+    private const UnixFileMode OwnerReadWrite = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+
+    /// <summary>The files an interrupted <see cref="Replace"/> leaves next to <paramref name="path"/>.</summary>
+    private static string TempPattern(string path) => Path.GetFileName(path) + ".*.tmp";
+
+    /// <summary>
+    /// Writes the file as a whole or not at all: into a temporary file in the same folder, which then takes the place of
+    /// <paramref name="path"/> (a crash or a full disk while writing leaves the old file, never half of the new one). The
+    /// file holds session tokens and the server pins: on Linux and macOS it is created for its owner only (0600); on
+    /// Windows it has the rights of the user's data folder.
+    /// </summary>
+    internal static void Replace(string path, Action<Stream> write)
+    {
+        string temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            var options = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
+            if (!OperatingSystem.IsWindows())
+            {
+                options.UnixCreateMode = OwnerReadWrite;
+            }
+
+            using (var stream = new FileStream(temp, options))
+            {
+                write(stream);
+                stream.Flush(flushToDisk: true);
+            }
+
+            File.Move(temp, path, overwrite: true);
+        }
+        catch
+        {
+            try
+            {
+                File.Delete(temp);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Removed at a later start (Load).
+            }
+
+            throw;
+        }
+    }
+
     private ClientSettings Load()
     {
         try
         {
+            RemoveLeftovers();
             if (File.Exists(_path))
             {
-                ClientSettings loaded = JsonSerializer.Deserialize(File.ReadAllText(_path), ClientSettingsJsonContext.Default.ClientSettings)
+                OwnerOnly(_path);
+                return JsonSerializer.Deserialize(File.ReadAllText(_path), ClientSettingsJsonContext.Default.ClientSettings)
                     ?? new ClientSettings();
-                if (string.Equals(loaded.ServerAddress, ClientSettings.LegacyDefaultServerAddress, StringComparison.OrdinalIgnoreCase))
-                {
-                    loaded.ServerAddress = ClientSettings.DefaultServerAddress;
-                }
-
-                return loaded;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
@@ -252,8 +298,74 @@ public sealed partial class JsonClientSettingsStore : IClientSettingsStore
         return new ClientSettings();
     }
 
+    /// <summary>
+    /// Linux and macOS: a settings file written by an older version (readable by others) becomes its owner's only, once at
+    /// the start. A file that cannot be changed is still read.
+    /// </summary>
+    private void OwnerOnly(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            if (File.GetUnixFileMode(path) != OwnerReadWrite)
+            {
+                File.SetUnixFileMode(path, OwnerReadWrite);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LogRightsFailed(_logger, ex, path);
+        }
+    }
+
+    /// <summary>
+    /// The temporary files of saves that never finished (the client was ended meanwhile): they hold the tokens too. Only
+    /// those older than <see cref="LeftoverAge"/>: a younger one may be the save of another client, which would fail.
+    /// </summary>
+    private void RemoveLeftovers()
+    {
+        string? folder = Path.GetDirectoryName(_path);
+        if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+        {
+            return;
+        }
+
+        string[] leftovers;
+        try
+        {
+            leftovers = Directory.GetFiles(folder, TempPattern(_path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return; // the settings are still read
+        }
+
+        DateTime oldest = _time.GetUtcNow().UtcDateTime - LeftoverAge;
+        foreach (string leftover in leftovers)
+        {
+            try
+            {
+                if (File.GetLastWriteTimeUtc(leftover) < oldest)
+                {
+                    File.Delete(leftover);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // In use by another client that saves right now.
+            }
+        }
+    }
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not save client settings to {Path}")]
     private static partial void LogSaveFailed(ILogger logger, Exception ex, string path);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not limit {Path} to its owner")]
+    private static partial void LogRightsFailed(ILogger logger, Exception ex, string path);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not load client settings from {Path}, using defaults")]
     private static partial void LogLoadFailed(ILogger logger, Exception ex, string path);

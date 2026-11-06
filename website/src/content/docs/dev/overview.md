@@ -84,13 +84,15 @@ Start with `src/Oadm.Sdk/Plugins/Plugins.cs` and `src/Oadm.Sdk.Client/ClientPlug
    under your name, ready to build and run.
 4. [Build from source](../build/): OADM itself from a checkout.
 5. The topic pages: [Devices and VAPIX](../devices/), [Task plugins](../tasks/), [Core plugins and pages](../core-plugins/),
-   [Event rules](../event-rules/), [Compliance checks](../compliance-checks/), [Sites](../sites/),
+   [Host services](../host-services/), [Event rules](../event-rules/), [Compliance checks](../compliance-checks/), [Sites](../sites/),
    [Device groups](../device-groups/), [UI kit](../ui/), [Testing](../testing/), [Debug a plugin](../debugging/),
    [SDK versions](../compatibility/), [Sell a plugin with a license](../licenses/).
 6. [Build a plugin with AI](../ai-plugins/): write a plugin together with an AI coding assistant.
 
-Every public type and member, with its signature and comment, is in the [SDK reference](../../api/). The
-rules and edge cases are in
-[plugins/README.md](https://github.com/Cacsjep/oadm/blob/main/plugins/README.md) and the spec,
+Every public type and member, with its signature and comment, is in the [SDK reference](../../api/). These
+pages are the guide to the SDK. The rules and decisions behind it are the spec:
 [CLAUDE.md](https://github.com/Cacsjep/oadm/blob/main/CLAUDE.md) and
-[docs/spec/](https://github.com/Cacsjep/oadm/tree/main/docs/spec).
+[docs/spec/](https://github.com/Cacsjep/oadm/tree/main/docs/spec)
+([plugins.md](https://github.com/Cacsjep/oadm/blob/main/docs/spec/plugins.md) for the plugin system). What only a plugin
+inside the repository needs is in
+[plugins/README.md](https://github.com/Cacsjep/oadm/blob/main/plugins/README.md).

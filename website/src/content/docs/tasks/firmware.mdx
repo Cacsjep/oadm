@@ -96,12 +96,15 @@ count.
 Check compatibility, Read device info, Validate file, Download AXIS OS from axis.com, Read the AXIS OS status, Upload AXIS OS to the device, Install
 AXIS OS, Wait for the device to come back, Verify version, Read commit state, Commit AXIS OS.
 
-**Download AXIS OS from axis.com** shows the progress, for example "68 of 225 MB". It is skipped for a file you chose. When your
+**Download AXIS OS from axis.com** shows the progress, for example "68.0 of 225.5 MB". It is skipped for a file you chose. When your
 MyAxis sign-in has expired, the task ends before the device changes: sign in again and run it again.
 
 The device waits up to 30 minutes for the commit. If OADM never confirms the new version, the device rolls back to the
 old version by itself. After a factory default the device commits by itself and the task ends with a warning: set a
 password or check the address.
+
+**Cancel** after the upload does not stop the device. It still starts the new version, rolls back to the old version by
+itself 30 minutes later and restarts. With a factory default it installs the new version and resets.
 
 <Aside>
 At most 4 devices upgrade at the same time, because every upload sends 100 to 250 MB from the server. The other tasks

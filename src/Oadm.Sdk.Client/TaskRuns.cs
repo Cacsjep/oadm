@@ -18,7 +18,10 @@ public enum TaskRunStatus
     /// <summary>Ended with the error in <see cref="TaskRunState.Message"/>.</summary>
     Failed = 4,
 
-    /// <summary>Cancelled by a user before it ended.</summary>
+    /// <summary>
+    /// Cancelled by a user before it ended. Also a task that left the client's task list while it still ran (deleted): its
+    /// result is not known, <see cref="TaskRunState.Message"/> is empty.
+    /// </summary>
     Cancelled = 5,
 }
 

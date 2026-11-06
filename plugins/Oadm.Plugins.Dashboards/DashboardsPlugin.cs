@@ -1550,17 +1550,7 @@ public sealed class DashboardsPlugin : ICorePlugin, IDynamicEventSource, IDispos
 
     private static string Serialize<T>(T value) => JsonSerializer.Serialize(value, DashboardsPluginInfo.Json);
 
-    private static T Read<T>(string? json)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<T>(json ?? "null", DashboardsPluginInfo.Json) ?? throw new ArgumentException("The request is empty.");
-        }
-        catch (JsonException ex)
-        {
-            throw new ArgumentException("The request could not be read: " + ex.Message, ex);
-        }
-    }
+    private static T Read<T>(string? json) => PluginJson.Parse<T>(json, DashboardsPluginInfo.Json);
 
     private sealed record Watcher(HashSet<ValueKey> Keys, DateTimeOffset LastSeen, string SessionId, string ScopeKey, bool HasAllDevices);
 

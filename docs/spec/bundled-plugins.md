@@ -49,7 +49,11 @@ the version and commits it.
   the decision table runs in the dialog and again on the server before the upload; downgrades need "Allow downgrade" and
   a factory default; a device with an uncommitted earlier upgrade is not touched; tasks start only for devices that
   install a file (none for up to date, no file for their model or refused); the device rolls back by itself unless OADM
-  verified and committed (Commit AXIS OS waits up to 5 minutes while AXIS OS has not finished booting); at most 4
+  verified and committed (Commit AXIS OS waits up to 5 minutes while AXIS OS has not finished booting); an answer with
+  the old version after the upload is never a rollback by itself (the wait goes on, at the timeout the device's status
+  decides); an image of the version the device already runs is done only with a proof that it was installed (an upgrade
+  that waits for the commit, or the device was away for more than one probe where the status cannot say), else the task
+  fails at the timeout; a cancel after the upload says that the device rolls back by itself and restarts; at most 4
   devices at a time.
 - Upgrade path (README "Upgrade path"): advice only, never refused; "Not recommended" only when an upgrade jumps over
   an LTS track, leaving the device's LTS track is a note in Details (OADM does not know the latest version of a track). A
@@ -79,7 +83,10 @@ behavior: plugin `README.md`.
   ("The devices may become unreachable"); conflicts block Apply / Finish; a new static address is probed before the first
   write; the address family OADM connects with is written last; after a new static address OADM follows the device (90 s,
   serial verified, `UpdateDeviceAddressAsync`; otherwise a Warning and the record stays); with DHCP the periodic re-find
-  moves the record.
+  moves the record. A write the device never answered is never "Nothing was changed.": the address write is followed to
+  the new address the same way (found there: the record moves; still at the old address: Failed, not changed; at neither:
+  Failed, "The change may have been applied", with the address to look at), any other fails with "The change may have
+  been applied.".
 - Device groups: `checkAddresses` of a user with a device group names only the group's devices; an address another
   managed device on the route has comes back "In use" (`AddressStatus.UsedByDevice`, from
   `ITaskQueryContext.ManagedAddressesAsync`), never with its name or id. The tasks refuse such an address before the
@@ -92,8 +99,9 @@ behavior: plugin `README.md`.
 Reporting, icon `snapshot`), off by default. The yearly maintenance check: current snapshots of every video source of the
 chosen cameras, exported as a PDF report (PDFsharp + MigraDoc, MIT).
 
-- Devices: the "Selected cameras" command button in the page toolbar (`PageDeviceChoice`, `plugins/README.md` "Choose
-  devices first"); the page reads only the cameras of the choice and nothing before one.
+- Devices: the "Selected cameras" command button in the page toolbar (`PageDeviceChoice`,
+  `website/src/content/docs/dev/core-plugins.md` "Choose devices first"); the page reads only the cameras of the choice
+  and nothing before one.
 - Rules that must hold: read-only for devices (param.cgi reads and image.cgi snapshots with the stored credentials,
   server side); opening the page contacts no device (**Create snapshots** starts the first load); at most 4 device
   requests at a time, 3 s each; devices with Credentials required, Password not set or Certificate changed are one error
@@ -120,9 +128,19 @@ command**. Command format: `Schema/command-format.md` + `command.schema.json` (t
   checks every command first (nothing starts on an error), writes need a confirmation, dangerous commands a second one,
   and each device re-checks a fresh API list before a write ("Missing API x. Nothing was sent."). The response kind
   decides how success, errors and values are read (Axis devices answer errors with HTTP 200).
+- What a request does is decided on the server from the request itself (`RequestSafety`, one class for the server and
+  the page): an unknown request counts as changing. A read is a request whose every sign is known to read: a GET
+  without a body, or a POST with a JSON read method or one SOAP `Get*`; every `action` of the query and of a form or
+  text body; a path that changes nothing; only parameters that choose what is read. The paths that restart, reset,
+  upgrade, change accounts or the network are always dangerous. The path is judged as the device could read it (cut
+  at `#`, decoded, lower case, `..` resolved, no `;` parameters), and `CommandValidator.IsDevicePath` refuses a path
+  that is not sent as it is written (`#`, `;`, encoded `/` or `.`). A command's `writes` and `dangerous` only add to
+  it. `tryRequest`, `rollout`, the rollout task (from its own payload) and Run VAPIX command
+  refuse a change without the user's confirmation and a dangerous request without the second one, both carried in the
+  request ("... were not confirmed. Nothing was changed."); the page sends only the answers the user gave.
 - Saved commands: plugin setting `savedCommands`, at most 500, shared by all clients, export / import as library files.
-- Roles: methods are Operator; `tryRequest` and `rollout` are audited. Scale: 30,000 target devices, every list action
-  under 200 ms (test).
+- Roles: methods are Operator; `tryRequest` and `rollout` are audited. Scale: target devices at the device limit, every list action
+  under 1 s (Perf test).
 - Device groups: devices, clients and tasks only through the call (`tryRequest`, `checkCompatibility`, `rollout`: an id
   outside the user's view refuses the request like an unknown one); `save`, `delete` and `import` only for users with
   all devices (`RequiresAllDevices`; the page hides New command, Import, Edit, Delete and Save with values); a saved
@@ -323,13 +341,17 @@ one row per camera stream. Details: [Load test](load-test.md) and the plugin's R
 
 - Devices: the "Selected cameras" command button (`PageDeviceChoice`); nothing streams before **Start**.
 - Rules that must hold: the exposure value in Low light is the only write, read and kept in memory before it and always
-  written back (after the phase, on Cancel, when a stream drops out, on the plugin's stop; a failed restore is a run
-  warning); one check at a time per server (a second Start names the running check's user and progress); at most 1,000
+  written back (after the phase, on Cancel, when a stream drops out or its camera leaves the starter's group, on the
+  plugin's stop, when the host ends the check's job; a failed restore is a run warning); one check at a time per server
+  (a second Start names the running check's user and progress only to users who see that check); at most 1,000
   camera streams per check and 200 at once; RTP over UDP on 50000-50799 with the firewall rule open only while a check runs; the last 5 runs kept
   (the 6th deletes the oldest), a run that was running at a server stop kept as Failed. Methods `plan`, `listRuns`,
   `getRun`, `getStream` need "show" (Viewer), `start`, `cancel`, `deleteRun` the plugin's "run" permission (Operator).
 - Device groups: a group user checks only the group's cameras (chosen ids outside it refused whole, NOT_FOUND); runs
-  belong to the device scope that ran them.
+  belong to the device scope that ran them. A check is a shared host job of that scope: streams and the exposure raise
+  only on the starter's devices as they are now, a camera that leaves the group is dropped, live rows only of cameras
+  the group still has, ended by the host when the group's rules change ("The check stopped when its device group
+  changed").
 
 ## I/O Monitor (core plugin)
 
@@ -440,8 +462,11 @@ Without the OS browser runtime (WebView2, WebKitGTK) the page says what to insta
   loopback address `127.1.x.y`, so the devices' login cookies never mix; macOS 127.0.0.1,
   `Oadm.Client/DeviceWeb/DeviceWebRelay`), the server sends every request and WebSocket to the device with the stored
   login and the pinned certificate (`DeviceWebService`); only the browser that opened the relay's one-time start address
-  gets its session cookie (others 403, another Host 400); requests stay on the device; refused statuses are not
-  contacted; every open is audited. Permissions "oadm.web-view:show" and "oadm.web-view:open" (full device control), both
+  gets its session cookie (others 403, another Host 400; on the shared 127.0.0.1 of macOS only requests of the relay's
+  own page pass: `Origin`, `Sec-Fetch-Site`, else `Referer` or a page load); requests stay on the device; a tab shows
+  only its device (an address outside its relay is cancelled, a website opens in the system browser, at most one per
+  tab in 5 s); the logs name
+  paths without their query; refused statuses are not contacted; every open is audited. Permissions "oadm.web-view:show" and "oadm.web-view:open" (full device control), both
   off for the built-in Operator by default; without "open" the page says "Your role does not allow opening devices."
 - Device groups: no page methods; the tree lists only the user's devices and `DeviceWebService` takes the device from the
   user's view, so a tab's requests end when its device leaves the view (its tab closes like a removed device's).
@@ -576,7 +601,8 @@ zone from the 313 IANA zones of AXIS OS, daylight saving, time mode: server time
 - Rules that must hold: behaves exactly like ADM (no "Keep unchanged": OK writes the time zone and the chosen time mode
   to every selected device); values the device already has are skipped; every write is verified by reading again;
   devices without the Time API fail setting the clock with "Nothing was changed" (no `date.cgi`); task names say what
-  changes ("Set NTP servers ...", "Sync with server time", else "Change date and time").
+  changes ("Set NTP servers ...", "Sync with server time", else "Change date and time"); a manual time holds at OK, a
+  device whose task runs later gets the time since then on top (payload `manualSetAt`, on the server's clock).
 
 ## Device configuration
 
@@ -588,7 +614,11 @@ import, `/config/rest/$export`, `$import`, like its web interface), **Configure 
 
 - Rules that must hold: merge only; the network identity (host name, addresses, router, DHCP, device names, the multicast
   addresses) and read-only values are never imported; "Connection settings" (HTTPS, ports, login method, 802.1X, IPv6,
-  web interface) are their own area, off by default, with a warning, written last when chosen; the same model only
+  DNS, network link, web interface) are their own area, off by default, with a warning, written last when chosen; which
+  parameters they are comes from the one table of Configure devices (`DangerousParameters`), so a parameter that needs
+  the `dangerous` right there needs the `connection` right here; of `user-management.v2` only the password policy is
+  imported, never accounts (no lock-out); only the seven areas OADM knows are imported, any other
+  area of a file and the left-out part of the password policy area are shown as not imported and never sent; the same model only
   ("Nothing was changed" otherwise); no backup by OADM (export first); the device validates and OADM shows its answer per
   area, one failed area does not stop the others; a ZIP entry must carry the device's MAC address; Export is a dialog,
   never a task.
@@ -644,7 +674,8 @@ Server only, always on, no page. Spec: `docs/spec/event-rules.md`.
   HTTP request**, **Send TCP message** and **Log entry**, without devices, and the recipient types HTTP, Email and TCP
   ([recipients.md](recipients.md)). Rules that must hold: a recipient holds the target and its login, the action the message; no
   placeholders in a target; placeholder values are escaped for where
-  they go, never the text around them; passwords and tokens are stored encrypted; untrusted certificates only with
+  they go, never the text around them; a value of the event never adds a line to a TCP message; Send HTTP request never
+  follows a redirect; passwords and tokens are stored encrypted; untrusted certificates only with
   "Allow untrusted certificates" (off by default).
 - **Modbus** (`plugins/Oadm.Plugins.Modbus`, id `oadm.modbus`, our own client): the action **Write Modbus value** without devices, and the recipient
   type Modbus, one connection per recipient ([recipient-sessions.md](recipient-sessions.md)). Rules that must hold: functions 05, 06 and 16 only, no

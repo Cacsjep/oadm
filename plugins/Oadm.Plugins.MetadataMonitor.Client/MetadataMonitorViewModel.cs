@@ -46,8 +46,8 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
         RefreshCameras();
     }
 
-    /// <summary>Wait before watching again after the event stream ended or failed.</summary>
-    public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
+    /// <summary>The waits of the event watch (again after the stream ended or broke); a test passes its own.</summary>
+    public PluginEventWatchOptions EventWatch { get; init; } = new();
 
     /// <summary>How often a running stream is confirmed to the server.</summary>
     public static TimeSpan KeepAliveInterval { get; set; } = TimeSpan.FromSeconds(5);
@@ -413,7 +413,7 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
         Clear();
         _streamId = null;
         SetStatus("accent", "Connecting", null);
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var json = await _ctx.InvokeAsync(MetadataMethods.Start, MetadataJson.Serialize(new StartRequest(camera.Id)), CancellationToken.None).ConfigureAwait(true);
             var reply = MetadataJson.Deserialize<StartReply>(json);
@@ -435,19 +435,15 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
             {
                 HandleEvent(early);
             }
-        }
-#pragma warning disable CA1031 // Shown to the user.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            SetStatus("error", Message(ex), null);
+            SetStatus("error", error, null);
         }
-        finally
-        {
-            _starting = false;
-            _early.Clear();
-            IsBusy = false;
-        }
+
+        _starting = false;
+        _early.Clear();
+        IsBusy = false;
     }
 
     private async Task StopStreamAsync()
@@ -627,42 +623,7 @@ public sealed partial class MetadataMonitorViewModel : ObservableObject, IDispos
         }
     }
 
-    private async Task WatchAsync(CancellationToken ct)
-    {
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                var events = _ctx.WatchEventsAsync(ct).GetAsyncEnumerator(ct);
-                try
-                {
-                    while (await events.MoveNextAsync().ConfigureAwait(true))
-                    {
-                        HandleEvent(events.Current);
-                    }
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    return;
-                }
-#pragma warning disable CA1031 // The connection dropped: watch again after a short delay.
-                catch (Exception)
-#pragma warning restore CA1031
-                {
-                }
-                finally
-                {
-                    await events.DisposeAsync().ConfigureAwait(true);
-                }
-
-                await Task.Delay(ReconnectDelay, ct).ConfigureAwait(true);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // page hidden
-        }
-    }
+    private Task WatchAsync(CancellationToken ct) => _ctx.RunAsync(null, HandleEvent, EventWatch, ct);
 
     /// <summary>gRPC errors carry the user message in Status.Detail; read it without a Grpc reference.</summary>
     private static string Message(Exception ex)

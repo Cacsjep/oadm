@@ -36,27 +36,13 @@ public sealed record StoredServerCertificate
 /// <summary>
 /// The plugin settings of the 802.1X server (<see cref="IPluginSettings"/>): <c>config</c> (the Server card),
 /// <c>switches</c> (at most 500, secrets encrypted) and <c>serverCertificate</c>. Each a small JSON value written on Save; the
-/// log lives in the plugin records (<see cref="RadiusLog"/>). The rules are PKI's policies since OADM 4.5: the Advanced
-/// fields of <c>config</c>, <c>trustedCas</c>, <c>policies</c> and the older <c>vlans</c> are only read once, when PKI makes
-/// policies of them (<see cref="RadiusPolicies.ConvertAsync"/>), and are kept as they are.
+/// log lives in the plugin records (<see cref="RadiusLog"/>). The rules are PKI's policies.
 /// </summary>
 public sealed class RadiusStore(IPluginSettings settings)
 {
     public const string ConfigKey = "config";
     public const string SwitchesKey = "switches";
-    public const string VlansKey = "vlans";
     public const string ServerCertificateKey = "serverCertificate";
-    public const string PoliciesKey = "policies";
-    public const string TrustedCasKey = "trustedCas";
-
-    /// <summary>The policies of development builds (read once for the conversion).</summary>
-    public async Task<LegacyPolicySettings?> PoliciesAsync(CancellationToken ct) => Read<LegacyPolicySettings>(await settings.GetAsync(PoliciesKey, ct).ConfigureAwait(false));
-
-    /// <summary>The Trusted CAs of development builds (read once for the conversion).</summary>
-    public async Task<TrustedCaSettings?> TrustedCasAsync(CancellationToken ct) => Read<TrustedCaSettings>(await settings.GetAsync(TrustedCasKey, ct).ConfigureAwait(false));
-
-    /// <summary>The Advanced fields of <c>config</c> (read once for the conversion).</summary>
-    public async Task<LegacyAdvanced?> LegacyAdvancedAsync(CancellationToken ct) => Read<LegacyAdvanced>(await settings.GetAsync(ConfigKey, ct).ConfigureAwait(false));
 
     public async Task<RadiusSettings?> ConfigAsync(CancellationToken ct) => Read<RadiusSettings>(await settings.GetAsync(ConfigKey, ct).ConfigureAwait(false));
 
@@ -66,10 +52,6 @@ public sealed class RadiusStore(IPluginSettings settings)
         Read<List<StoredSwitch>>(await settings.GetAsync(SwitchesKey, ct).ConfigureAwait(false)) ?? [];
 
     public Task SaveSwitchesAsync(IReadOnlyList<StoredSwitch> switches, CancellationToken ct) => settings.SetAsync(SwitchesKey, RadiusJson.Serialize(switches), ct);
-
-    /// <summary>The VLAN rules of the development builds before 4.5 (read once for the conversion).</summary>
-    public async Task<VlanSettings?> VlansAsync(CancellationToken ct) => Read<VlanSettings>(await settings.GetAsync(VlansKey, ct).ConfigureAwait(false));
-
 
     public async Task<StoredServerCertificate?> ServerCertificateAsync(CancellationToken ct) =>
         Read<StoredServerCertificate>(await settings.GetAsync(ServerCertificateKey, ct).ConfigureAwait(false));

@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Network;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Est;
 
@@ -359,13 +360,12 @@ public sealed record SetupPayload(bool ReplaceDot1x = false)
 /// <summary>JSON of the page calls and the stored settings.</summary>
 public static class EstJson
 {
-    public static JsonSerializerOptions Options { get; } = new(JsonSerializerDefaults.Web);
+    public static JsonSerializerOptions Options { get; } = PluginJson.CreateOptions(writeNulls: true);
 
-    public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+    public static string Serialize<T>(T value) => PluginJson.Serialize(value, Options);
 
-    public static T Deserialize<T>(string? json) =>
-        (string.IsNullOrWhiteSpace(json) ? default : JsonSerializer.Deserialize<T>(json, Options))
-        ?? throw new ArgumentException("The request is empty.", nameof(json));
+    /// <summary>A missing or broken payload is an <see cref="ArgumentException"/> (<see cref="PluginJson.Parse{T}"/>).</summary>
+    public static T Deserialize<T>(string? json) => PluginJson.Parse<T>(json, Options);
 }
 
 /// <summary>What a run of "Certificate enrollment" does.</summary>

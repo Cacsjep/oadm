@@ -55,15 +55,21 @@ public sealed class FakeStreamProbesTests
     }
 
     [Fact]
-    public async Task The_context_refuses_the_probes_in_a_group_users_call()
+    public async Task In_a_group_users_call_the_context_probes_only_the_groups_devices_like_the_server()
     {
         var ctx = new FakeCoreContext();
         var device = ctx.Add(new FakeDevice());
+        var other = ctx.Add(new FakeDevice());
         ctx.FakeStreamProbes.Add(device.Id);
         var plugin = new ProbePlugin(ctx);
 
-        await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => ctx.InvokeAsync(plugin, ctx.CallAsGroup([device.Id]), "list", null));
+        Assert.Equal("1", await ctx.InvokeAsync(plugin, ctx.CallAsGroup([device.Id]), "list", null));
+        Assert.Empty(ctx.RefusedAccesses);
+
+        // A device outside the group answers like an unknown one and is never asked.
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => ctx.InvokeAsync(plugin, ctx.CallAsGroup([other.Id]), "list", null));
         Assert.Contains("StreamProbes", ctx.RefusedAccesses);
+        Assert.Equal(1, ctx.FakeStreamProbes.ListCallsFor(device.Id));
         Assert.Equal("1", await ctx.InvokeAsync(plugin, ctx.CallAsAllDevices(), "list", null));
     }
 

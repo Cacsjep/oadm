@@ -69,6 +69,17 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `Login`, `CreateFirstAdmin`) and PERMISSION_DENIED with what the role lacks ("Your role does not allow: Delete tasks.",
   `AccessPolicy.DeniedMessage`); it sets `CallerContext` (user, role, the role's `PermissionSet`), so a task's Owner is
   "<user>@<client machine>". `Logout` revokes. Failed logins: 5 per user in 5 minutes, then 5 minutes locked, logged.
+  Per client address (IPv6: per /64): 50 failed logins in 5 minutes, then every login from that address is refused until
+  the 5 minutes end (`LoginAddressLimit` on the `AddressRateLimiter` of the site port, asked before the request is looked
+  at; 50 because users behind one NAT share an address and a single name locks after 5; audited once as "Login locked"
+  with the address; signed-in users go on). Before authentication nothing long is kept: a user name over 64 or a
+  password over 256 characters (the limits of the users) is a wrong login with the same answer, never looked up or
+  hashed (the dummy hash still runs, so the time says nothing); the throttle, the audit and the server log take at most
+  the first 64 characters of a name, and every audit text has its control characters replaced by spaces
+  (`AuditLog.Clean`: a line break in a name never starts a made-up log line). Failed logins with unknown user names are
+  one audit entry per client address and minute ("Unknown user", then its detail counts: "12 failed logins with unknown
+  user names", `AuthManager.AuditUnknownAsync`), so made-up names never push the history out; a wrong password of a
+  user keeps one entry each. A setup code over 64 characters is wrong.
   `AuthMaintenanceHostedService` removes expired sessions and old audit entries hourly. A new password or a disabled user
   ends the sessions; a new role applies to the next call (`AuthTokenStore.SetRole`). An expired session ends like a
   logout (`SessionsEnded` for its token, when its next use finds it expired or in the hourly cleanup): its streams, plugin
@@ -127,11 +138,22 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `RequiredRole` itself). Anything else, and a plugin that throws, is Administrator only. `PluginService.Watch` needs
   "show"; `ListCorePlugins` leaves out pages the role may not show. Calls where `ICorePlugin.IsAudited(method)` (DIM: the
   Admin methods) are audited as "Plugin action" (target the plugin, detail the method, or `ICorePlugin.AuditDetail`
-  when the plugin names what the call did, SDK 0.10.0); VAPIX Commander `tryRequest`
+  when the plugin names what the call did, SDK 0.10.0). The entry is written when the call ends, however it ends, and
+  never with the call's own cancellation token: a call that failed adds " (failed)" to the detail, one the client gave up
+  " (cancelled)" (it may have changed something already; `PluginGrpcService.AuditCallAsync`, Invoke and Download; tests
+  `PluginCallAuditTests`, `PluginDownloadTests`); a call that ended well keeps its detail. A download is different: its
+  entry is written when it opens (a long download has it while it runs, and when the server stops), and one that failed
+  or was cancelled gets a second entry with the suffix (the only one when the plugin never opened it). VAPIX Commander `tryRequest`
   and `rollout` are audited; "Install in trusted root store" on the server asks with the CA's SHA-256 fingerprint and is
   audited. `TaskService.Run` needs every key `PermissionCatalog.RunKeys` names for the payload (refused before any task
   starts), and so does a run a core plugin starts through `call.Tasks` of the user's call or job (`TaskRunPermissions`, the
-  one check of both: PERMISSION_DENIED with the same "Your role does not allow: ..." text), `Query` any key of the task; `ListTaskPlugins` leaves out tasks without a key. Users with a device group
+  one check of both: PERMISSION_DENIED with the same "Your role does not allow: ..." text). **Page tasks** (hidden from
+  the menus, no permissions of their own: Edge storage tools, Action Rule Editor runs, VAPIX Commander rollouts) have no
+  key a role could hold (`TaskRunPermissions.IsPageTask`): through `call.Tasks` of a page method or job of their own
+  package they start without run keys, the method's permission (checked by the host before the plugin ran) is the check;
+  from another package they need the key like any task (Administrator only), and `TaskService.Run` refuses them for every
+  caller with PERMISSION_DENIED "This task starts only from its page." (a payload sent there would skip the page's finer
+  rights; tests `RoleTests`, `PermissionCatalogTests`). `Query` needs any key of the task; `ListTaskPlugins` leaves out tasks without a key. Users with a device group
   (docs/spec/device-scope.md "Plugins"): only packages with `minSdkVersion` 0.4.0 or later, never the methods a plugin
   declares with `RequiresAllDevices`, and the plugin's `ctx.Devices` / `Vapix` / `Tasks` / `EventStreams` / `System`
   refuse during their calls, in work started from the call and in their jobs (PERMISSION_DENIED); jobs, job ids and
@@ -161,7 +183,20 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   <server>.", **Try again** repeats the start without restarting the client), the two certificate boxes of "TLS" (amber;
   the changed one with **Forget server**); below the password "Login locked" with the server's text. Fake mode signs in
   as "admin" without the window.
-- The title bar shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out; a
+- **Nothing of a session outlives its logout** (the next login may be another user or another server; the main window is
+  a new one per login, its view model lives on). `MainWindowViewModel.Stop`: the streams stop and what they filled is
+  emptied (`ServerConnection.SignOut`: devices, tasks, tags, the waiting list, compliance, sites; a batch a stopped
+  stream still had on its way to the UI thread is dropped; the Devices page shows its ring until the first list of the
+  next login), the Devices page is opened, every plugin page and tab is removed and disposed (the next connect creates
+  them again, so a page's form is always its own server's), plugin windows and Help close; a plugin list still being read
+  for the old session brings no pages. `AppShell` then clears the closed window's `DataContext`: its views let go of the
+  view model, and no plugin view stays in a window that is gone (a control has one parent; the next main window could
+  not show it). Host pages (Settings, Permissions, Credentials, About) read again on every connect.
+- The client settings file (`client-settings.json`: session tokens of Remember me, the pinned servers) is written as a
+  whole into a temporary file in the same folder that then replaces it (`JsonClientSettingsStore.Replace`; what an
+  interrupted save left is removed at a start once it is older than a minute: a younger temporary file may be the save
+  of another client of the same user). On Linux and macOS it is created with mode 0600 and an older file
+  is limited to its owner once at the start; on Windows it has the rights of the user's data folder.- The title bar shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out; a
   click on the user opens **Your role** (`Shell/MyRoleWindow`, `MyRoleViewModel`, `RoleService.Mine`): the role's name
   and what it allows, grouped like the matrix, read-only. `UserSession` keeps role name and permission keys
   (`Has(key)`, `PermissionsChanged`), fed by Login / Me and the session stream (`ServerConnection`); a server without
@@ -276,9 +311,12 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   a single upload may be up to `Uploads.MaxMegabytes`. Free space unknown (network share): only the quota applies.
 - Requests stay on the device: `VapixClient.SendAsync` refuses (before sending) an absolute URI with another scheme, host
   or port or with user info, and a relative URI with "\". VAPIX Commander paths must pass `CommandValidator.IsDevicePath`
-  (one leading "/", no "\", "//", "..", "@" before the query, spaces or control characters; "The path must start with /
-  and stay on the device: no "..", "//", "\" or host name.", `CommandValidator.PathProblem`), checked again after the
-  fields are filled in. Tests `DeviceLimitsTests`, `RendererTests` (`/\/host`, `//host/x`, an absolute URL).
+  (one leading "/", no "\", "//", "..", "@" before the query, spaces or control characters, and nothing that makes the
+  request sent differ from the one written: no "#", no ";", no "." segment or trailing dot, no encoded "/", "\", ".",
+  "%", "#", "?", ";" or control character; "The path must start with / and stay on the device: no "..", "//", "\", "#",
+  ";", encoded "/" or ".", or host name.", `CommandValidator.PathProblem`), checked again after the fields are filled in
+  (`IsFilledDevicePath`: the escapes of the values are allowed, `RequestSafety` reads them decoded). Tests
+  `DeviceLimitsTests`, `RendererTests` (`/\/host`, `//host/x`, an absolute URL), `RequestSafetyTests` (the disguises).
 
 ## Crash handling (client)
 
@@ -315,8 +353,32 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   by `chown -R 0:0`, `chmod -R go-w`). An unfixable data folder stops the start, an unfixable plugin folder is skipped
   with a load error (`PluginLoader.FolderCheck`). The development plugin folder
   (`artifacts/plugins`) is used only outside service mode. Optional plugins (`<datafolder>/addons/<id>/`,
-  `docs/spec/add-ons.md`) are plugin folders too: checked like them before they load, and a folder put in by hand is not
-  taken up when the data folder had to be fixed at this start (until then others could write it).
+  `docs/spec/add-ons.md`) are plugin folders too: checked like them before they load. The installed plugins
+  (`<datafolder>/plugins`) and the optional plugins (`<datafolder>/addons`) are each judged by what was loose and
+  where, read before the fix wipes it (`FolderGuard.EnsureServerFoldersAsync` returns a `LoosePlugins` for each,
+  `ServerFoldersCheck.Plugins` and `.AddOns`, from one function;
+  `IFolderPermissions.FindOwnProblemAsync` asks about one folder or file itself, Unix `find <entry> -maxdepth 0 ...`).
+  The installed plugins:
+  - The data folder itself or the plugins folder itself was loose (others could create, replace or remove entries in
+    it, the case of a plugin planted before OADM was installed), or the facts could not be read: nothing in it is
+    trusted, the whole plugins folder is moved to `<datafolder>/plugins-not-loaded-<UTC time>` before the loader runs,
+    outside the plugin roots. The same for a plugins folder that is one plugin itself and holds something loose.
+  - Else each entry directly in the plugins folder that was loose or held something loose (a plugin moved in with its
+    old owner: `sudo mv`, `tar x` as root, a move on the same Windows volume) is moved into that folder, and only it:
+    the other plugins load. The moved folder is already fixed, so moving it back loads it at the next start.
+  - Something loose elsewhere (backups, logs, the database, the extraction folder) is fixed and changes nothing for the
+    installed plugins.
+
+  One warning per moved folder in the server log (an administrator checks the plugin and moves it back). While something
+  cannot be moved, the plugins folder is left out of the roots, and the file `<datafolder>/plugins-not-trusted` keeps it
+  out at the next starts until the move works (after its first line it names the entries still to move; no names: the
+  whole folder). A start that fixed nothing changes nothing (`InstalledPluginsTrust`). Tests: `ServiceSecurityTests`.
+
+  The optional plugins follow the same rule, but a loose one is deleted (its genuine ZIP installs it again): all of them
+  only when the data folder or `addons` itself was loose or the facts could not be read, else only the add-on whose
+  `addons/<id>` held something loose, or only a loose waiting update (`addons/.update-<id>`, never swapped in).
+  Something loose elsewhere, `plugins/` included, changes nothing for them. Details: `docs/spec/add-ons.md` "Server",
+  Loose folders.
 
 ## Optional plugins: trust
 
@@ -332,7 +394,8 @@ server.
 ## Tests
 
 `tests/Oadm.Server.Tests`: `AuthTests` (every service per role, the role table against the contracts, plugin method
-roles, first administrator, sessions, throttling, audit), `TlsPinningTests` (real Kestrel with TLS), `MasterKeyCheckTests`,
+roles, first administrator, sessions, throttling, audit), `LoginLimitsTests` (long names and passwords, the audit entry
+of unknown names, the limit per address), `TlsPinningTests` (real Kestrel with TLS), `MasterKeyCheckTests`,
 `MasterKeyFileTests`, `KeyReplacedNoticeTests`, `DeviceLimitsTests`, `UploadStoreTests`; `MethodRoleTests` in the DHCP,
 NTP, PKI and VAPIX Commander test projects; `tests/Oadm.Client.Tests`: `LoginTests`, `CrashHandlingTests`.
 `TestServerHost` calls as the administrator "admin" (`InvokerFor(token)` / `InvokerForUserAsync(name, role)` for others,

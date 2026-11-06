@@ -130,6 +130,52 @@ public sealed class RunCommandActionTests
     }
 
     [Fact]
+    public async Task A_command_that_says_it_reads_but_restarts_needs_the_check_box_too()
+    {
+        // The request decides (RequestSafety), not the command's flags: a saved "GET restart.cgi" marked as a read.
+        var (plugin, action, ctx, device) = await StartAsync();
+        var id = await SaveAsync(plugin, Samples.Parse("""
+            { "id": "", "version": 1, "name": "Read something", "category": "Custom", "requires": [ { "api": "param-cgi", "minVersion": "1.0" } ],
+              "writes": false, "fields": [], "request": { "method": "GET", "path": "/axis-cgi/restart.cgi" }, "response": { "kind": "text" } }
+            """));
+        using var refused = JsonDocument.Parse($$"""{"command":"saved:{{id}}","allowDangerous":false}""");
+        using var allowed = JsonDocument.Parse($$"""{"command":"saved:{{id}}","allowDangerous":true}""");
+        var vapix = ctx.VapixFactory.For(device.Id);
+
+        Assert.Equal("This command is dangerous. Turn on \"Allow dangerous commands\" to use it.", action.Validate(refused.RootElement, true)["command"]);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(action, vapix, device, refused.RootElement.GetRawText(), ActionEdge.Fired));
+        Assert.Equal("Read something is dangerous and \"Allow dangerous commands\" is off. Nothing was sent.", ex.Message);
+        Assert.Empty(vapix.Requests);
+        Assert.Equal(0, vapix.ApiListCalls);
+
+        Assert.Empty(action.Validate(allowed.RootElement, true));
+        await RunAsync(action, vapix, device, allowed.RootElement.GetRawText(), ActionEdge.Fired);
+        Assert.Equal(1, vapix.ApiListCalls); // it changes the device: the fresh API list first
+        Assert.Equal("axis-cgi/restart.cgi", Assert.Single(vapix.Requests).Uri);
+    }
+
+    [Fact]
+    public async Task A_network_change_in_a_text_body_needs_the_check_box_too()
+    {
+        // Saved before the rule read text bodies: a POST to param.cgi whose body changes the address.
+        var (plugin, action, ctx, device) = await StartAsync();
+        var id = await SaveAsync(plugin, Samples.Parse("""
+            { "id": "", "version": 1, "name": "Set a text", "category": "Custom", "requires": [ { "api": "param-cgi", "minVersion": "1.0" } ],
+              "writes": true, "fields": [],
+              "request": { "method": "POST", "path": "/axis-cgi/param.cgi", "bodyType": "text", "body": "action=update&root.Network.eth0.IPAddress=10.0.0.9" },
+              "response": { "kind": "text" } }
+            """));
+        using var saved = JsonDocument.Parse($$"""{"command":"saved:{{id}}"}""");
+        var vapix = ctx.VapixFactory.For(device.Id);
+
+        Assert.Equal("This command is dangerous. Turn on \"Allow dangerous commands\" to use it.", action.Validate(saved.RootElement, true)["command"]);
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => RunAsync(action, vapix, device, saved.RootElement.GetRawText(), ActionEdge.Fired));
+        Assert.Equal("Set a text is dangerous and \"Allow dangerous commands\" is off. Nothing was sent.", ex.Message);
+        Assert.Empty(vapix.Requests);
+        Assert.Equal(0, vapix.ApiListCalls);
+    }
+
+    [Fact]
     public void Text_fields_get_the_event_values_and_other_fields_stay()
     {
         var command = new CommandDefinition

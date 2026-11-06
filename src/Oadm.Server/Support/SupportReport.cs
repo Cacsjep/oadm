@@ -15,6 +15,7 @@ using Oadm.Core.Plugins;
 using Oadm.Core.Settings;
 using Oadm.Core.Sites;
 using Oadm.Core.Tasks;
+using Oadm.Sdk.Formatting;
 using Oadm.Sdk.Licensing;
 using Oadm.Server.Backup;
 using Oadm.Server.Hosting;
@@ -127,12 +128,12 @@ public sealed class SupportReport(
 
         Head("Folders");
         Line("Data folder", paths.DataDirectory);
-        Line("Database", Size(SizeOfFiles(paths.DatabasePath, paths.DatabasePath + "-wal", paths.DatabasePath + "-shm")));
-        Line("Plugin data", Size(SizeOfFolder(paths.PluginDataDirectory)));
-        Line("Uploads", Size(SizeOfFolder(Path.Combine(paths.DataDirectory, "uploads"))));
-        Line("Backups", Size(SizeOfFolder(backups.Folder)));
-        Line("Logs", Size(SizeOfFolder(paths.LogsDirectory)));
-        Line("Logs in this report", $"{logs.Included.Count} files, {Size(logs.Bytes)}");
+        Line("Database", ByteSize.Text(SizeOfFiles(paths.DatabasePath, paths.DatabasePath + "-wal", paths.DatabasePath + "-shm")));
+        Line("Plugin data", ByteSize.Text(SizeOfFolder(paths.PluginDataDirectory)));
+        Line("Uploads", ByteSize.Text(SizeOfFolder(Path.Combine(paths.DataDirectory, "uploads"))));
+        Line("Backups", ByteSize.Text(SizeOfFolder(backups.Folder)));
+        Line("Logs", ByteSize.Text(SizeOfFolder(paths.LogsDirectory)));
+        Line("Logs in this report", $"{logs.Included.Count} files, {ByteSize.Text(logs.Bytes)}");
         if (logs.LeftOut.Count > 0)
         {
             Line("Logs left out (size limit)", string.Join(", ", logs.LeftOut));
@@ -241,13 +242,6 @@ public sealed class SupportReport(
         var up = time.GetLocalNow() - new DateTimeOffset(process.StartTime);
         return up < TimeSpan.Zero ? "unknown" : $"{(int)up.TotalDays} d {up.Hours} h {up.Minutes} min";
     }
-
-    private static string Size(long bytes) => bytes switch
-    {
-        < 1024 * 1024 => string.Create(CultureInfo.InvariantCulture, $"{bytes / 1024.0:0.0} KB"),
-        < 1024L * 1024 * 1024 => string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024.0 * 1024):0.0} MB"),
-        _ => string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024.0 * 1024 * 1024):0.00} GB"),
-    };
 
     private static long SizeOfFiles(params string[] files) => files.Where(File.Exists).Sum(f => new FileInfo(f).Length);
 

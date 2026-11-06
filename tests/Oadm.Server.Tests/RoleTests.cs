@@ -38,6 +38,15 @@ public sealed class RoleTests
         await host.Get<CorePluginHost>().StartAllAsync(CancellationToken.None);
     }
 
+    /// <summary>The test plugins plus a page with a task only it starts, and the same kind of task of another package.</summary>
+    private static async Task AddToolsAsync(TestServerHost host)
+    {
+        var registry = host.Get<PluginRegistry>();
+        registry.RegisterCorePlugin(new ToolsPage(), new PluginOrigin(ToolsPage.PluginId, "1.0.0", null));
+        registry.RegisterTaskPlugin(new ToolsTask(ToolsTask.ForeignId), new PluginOrigin("tests.foreign", "1.0.0", null));
+        await AddPluginsAsync(host);
+    }
+
     private static Proto.RoleService.RoleServiceClient Roles(TestServerHost host) => new(host.Invoker);
 
     [Fact]
@@ -86,6 +95,52 @@ public sealed class RoleTests
 
         // The administrator runs everything.
         Assert.Equal(StatusCode.OK, await CodeOf(async () => await host.Tasks.RunAsync(Run("b"))));
+    }
+
+    /// <summary>
+    /// A task only its page starts (hidden from the menus, no permissions of its own) has no key a role could hold: the
+    /// page method's permission is the check, for the page's own package only.
+    /// </summary>
+    [Fact]
+    public async Task APageStartsItsHiddenTaskForARoleWithThePagesRight()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        await AddToolsAsync(host);
+        var op = new Proto.PluginService.PluginServiceClient(await host.InvokerForUserAsync("tech1", UserRole.Operator));
+        var device = (await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.1", 1)).Id.ToString();
+        Proto.InvokeRequest Tools(string method, string target) => new() { PluginId = ToolsPage.PluginId, Method = method, PayloadJson = target + "|" + device };
+
+        // The Operator has "Format" of the page: the page's hidden task starts.
+        var started = await op.InvokeAsync(Tools("format", ToolsTask.PluginId));
+        var taskId = Guid.Parse(started.PayloadJson);
+        var tasks = await host.Tasks.ListAsync(new Proto.ListTasksRequest());
+        Assert.Contains(tasks.Tasks, t => t.Id == taskId.ToString() && t.PluginId == ToolsTask.PluginId);
+
+        // The page's finer right still decides: no "Wipe", no task.
+        Assert.Equal(StatusCode.PermissionDenied, await CodeOf(async () => await op.InvokeAsync(Tools("wipe", ToolsTask.PluginId))));
+
+        // Every other task through the page keeps the run check: a menu task's keys, another package's hidden task.
+        var parts = await Assert.ThrowsAsync<RpcException>(async () => await op.InvokeAsync(Tools("format", PartsTask.PluginId)));
+        Assert.Equal((StatusCode.PermissionDenied, "Your role does not allow: Part B."), (parts.StatusCode, parts.Status.Detail));
+        Assert.Equal(StatusCode.PermissionDenied, await CodeOf(async () => await op.InvokeAsync(Tools("format", ToolsTask.ForeignId))));
+    }
+
+    /// <summary>The other door stays shut: a page task never starts through TaskService.Run, whatever the role.</summary>
+    [Fact]
+    public async Task RunRefusesATaskOnlyItsPageStartsForEveryCaller()
+    {
+        await using var host = await TestServerHost.StartAsync();
+        await AddToolsAsync(host);
+        var device = (await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.1", 1)).Id.ToString();
+        var run = new Proto.RunTaskRequest { PluginId = ToolsTask.PluginId, PayloadJson = "format", DeviceIds = { device } };
+        var op = new Proto.TaskService.TaskServiceClient(await host.InvokerForUserAsync("tech1", UserRole.Operator));
+
+        var asAdmin = await Assert.ThrowsAsync<RpcException>(async () => await host.Tasks.RunAsync(run));
+        var asOperator = await Assert.ThrowsAsync<RpcException>(async () => await op.RunAsync(run));
+
+        Assert.Equal((StatusCode.PermissionDenied, "This task starts only from its page."), (asAdmin.StatusCode, asAdmin.Status.Detail));
+        Assert.Equal((StatusCode.PermissionDenied, "This task starts only from its page."), (asOperator.StatusCode, asOperator.Status.Detail));
+        Assert.Empty((await host.Tasks.ListAsync(new Proto.ListTasksRequest())).Tasks);
     }
 
     [Fact]
@@ -441,5 +496,60 @@ public sealed class RoleTests
         public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
 
         public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => Task.FromResult<string?>(method);
+    }
+
+    /// <summary>A task only its page starts: hidden from the menus, no permissions of its own.</summary>
+    private sealed class ToolsTask(string id) : ITaskPlugin
+    {
+        public const string PluginId = "tests.tools.task";
+
+        /// <summary>The same kind of task in another package.</summary>
+        public const string ForeignId = "tests.foreign.task";
+
+        public string Id => id;
+        public string DisplayName => "Tools";
+        public string? IconKey => null;
+        public bool ShowInToolbar => false;
+        public bool ShowInMenus => false;
+        public bool RequiresDialog => false;
+
+        public bool CanRun(IDeviceInfo device) => true;
+
+        public Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct) => Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// A page with the rights "format" (Operator) and "wipe" (not); both methods start the task the payload names
+    /// ("task id|device id") through the user's call.
+    /// </summary>
+    private sealed class ToolsPage : ICorePlugin
+    {
+        public const string PluginId = "tests.tools";
+
+        public string Id => PluginId;
+        public string DisplayName => "Tools page";
+        public string? IconKey => null;
+        public IReadOnlyList<ITaskPlugin> TaskPlugins { get; } = [new ToolsTask(ToolsTask.PluginId)];
+
+        public IReadOnlyList<PermissionDefinition> Permissions { get; } =
+        [
+            new("format", "Format", "Format something."),
+            new("wipe", "Wipe", "Wipe something.") { OperatorDefault = false },
+        ];
+
+        public string? RequiredPermission(string method) => method;
+
+        public Task StartAsync(ICorePluginContext ctx, CancellationToken ct) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => throw new InvalidOperationException("old overload");
+
+        public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
+        {
+            var parts = payloadJson!.Split('|');
+            var ids = await caller.Tasks.RunAsync(parts[0], [Guid.Parse(parts[1])], "b", caller.UserName, ct);
+            return ids[0].ToString();
+        }
     }
 }

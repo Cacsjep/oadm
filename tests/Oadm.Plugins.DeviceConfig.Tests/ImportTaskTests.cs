@@ -22,6 +22,7 @@ public sealed class ImportTaskTests
         var data = (JsonObject)export["data"]!;
         data["time.v2"]!["timeZone"]!["posix"]!["timeZone"] = "CET-1CEST,M3.5.0,M10.5.0/3";
         data["param.v2"]!["Network"]!["DNSServer1"] = "10.0.0.1";
+        data["param.v2"]!["Network"]!["UPnP"]!["Enabled"] = "yes";
         data["param.v2"]!["Network"]!["HostName"] = "lobby-cam";
         data["param.v2"]!["Network"]!["IPAddress"] = "10.0.0.99";
         data["param.v2"]!["Network"]!["BootProto"] = "none";
@@ -109,12 +110,14 @@ public sealed class ImportTaskTests
         Assert.False(((JsonObject)s.Camera.Imports.Single(i => i.Key == "power-settings.v2").Data).ContainsKey("powerStatus"));
         Assert.Equal("axis-b8a44f631339", (string?)s.Camera.Data["param.v2"]!["Network"]!["HostName"]);
         Assert.Equal("dhcp", (string?)s.Camera.Data["param.v2"]!["Network"]!["BootProto"]);
-        Assert.Equal("10.0.0.1", (string?)s.Camera.Data["param.v2"]!["Network"]!["DNSServer1"]);
+        Assert.Equal("yes", (string?)s.Camera.Data["param.v2"]!["Network"]!["UPnP"]!["Enabled"]);
         Assert.Equal("CET-1CEST,M3.5.0,M10.5.0/3", (string?)s.Camera.Data["time.v2"]!["timeZone"]!["posix"]!["timeZone"]);
 
-        // Without "Connection settings" HTTPS and the HTTP port stay; the multicast addresses always do.
+        // Without "Connection settings" HTTPS, the HTTP port and DNS stay; the multicast addresses always do.
+        Assert.False(network.ContainsKey("DNSServer1"));
+        Assert.Equal("1.1.1.1", (string?)s.Camera.Data["param.v2"]!["Network"]!["DNSServer1"]);
         var param = (JsonObject)s.Camera.Imports.Single(i => i.Key == "param.v2").Data;
-        Assert.False(((JsonObject)param["HTTPS"]!).ContainsKey("Enabled"));
+        Assert.False(param.ContainsKey("HTTPS"));
         Assert.False(((JsonObject)param["System"]!).ContainsKey("BoaPort"));
         Assert.Equal("yes", (string?)s.Camera.Data["param.v2"]!["HTTPS"]!["Enabled"]);
         Assert.Equal("80", (string?)s.Camera.Data["param.v2"]!["System"]!["BoaPort"]);
@@ -143,11 +146,91 @@ public sealed class ImportTaskTests
         // The last request writes the connection values only, after everything else.
         var connection = (JsonObject)s.Camera.Imports[2].Data;
         Assert.Equal(["HTTPS", "Network", "System"], connection.Select(p => p.Key).Order());
-        Assert.False(((JsonObject)connection["Network"]!).ContainsKey("DNSServer1"));
-        Assert.Equal("10 values", StepRun.Detail(s.Ctx.Steps, "Import connection settings"));
+        Assert.False(((JsonObject)connection["Network"]!).ContainsKey("UPnP"));
+        Assert.False(((JsonObject)s.Camera.Imports[1].Data["Network"]!).ContainsKey("DNSServer1"));
+        Assert.Equal("30 values", StepRun.Detail(s.Ctx.Steps, "Import connection settings"));
+        Assert.Equal("10.0.0.1", (string?)s.Camera.Data["param.v2"]!["Network"]!["DNSServer1"]);
         Assert.Equal("no", (string?)s.Camera.Data["param.v2"]!["HTTPS"]!["Enabled"]);
         Assert.Equal("8080", (string?)s.Camera.Data["param.v2"]!["System"]!["BoaPort"]);
         Assert.Equal("All imported values match", StepRun.Detail(s.Ctx.Steps, "Verify configuration"));
+    }
+
+    [Fact]
+    public void The_payload_of_a_run_is_parsed_once_for_all_its_devices()
+    {
+        // 5,000 devices get the same payload string with 5,000 entries: read once, each device looks up its own entry.
+        var devices = Enumerable.Range(0, 5000).Select(_ => Guid.NewGuid()).ToList();
+        var json = new ImportPayload
+        {
+            FileId = "up1",
+            FileName = "site.zip",
+            IsZip = true,
+            Sections = ["time.v2"],
+            Files = devices.ToDictionary(id => id, id => id.ToString("N") + "_config.json"),
+        }.ToJson();
+
+        var first = ImportPayload.ParseShared(json);
+        Assert.Same(first, ImportPayload.ParseShared(json));
+        Assert.NotSame(first, ImportPayload.Parse(json));
+        Assert.NotSame(first, ImportPayload.ParseShared(new string(json.AsSpan()))); // another run: its own string
+        Assert.Equal(devices[4999].ToString("N") + "_config.json", first.Files[devices[4999]]);
+        Assert.Throws<ArgumentException>(() => ImportPayload.ParseShared(null));
+        Assert.Throws<ArgumentException>(() => ImportPayload.ParseShared("{}"));
+    }
+
+    [Fact]
+    public async Task Accounts_in_a_hand_made_file_are_never_sent()
+    {
+        // The recorded export has the password policy only. A file made by hand that demotes the account OADM uses.
+        var export = (JsonObject)JsonNode.Parse(ChangedFile())!;
+        var area = (JsonObject)export["data"]!["user-management.v2"]!;
+        area["users"] = new JsonArray(new JsonObject { ["name"] = "root", ["role"] = "viewer", ["password"] = "changed" });
+        area["settings"]!["passphraseComplexity"]!["policy"] = "strong";
+        area["settings"]!["anonymousAdmin"] = true;
+        var s = Setup(file: export.ToJsonString(), sections: ["user-management.v2"]);
+        await RunAsync(s);
+
+        Assert.Equal("Import password policy: Done", StepRun.Lines(s.Ctx.Steps)[2]);
+        Assert.Equal("1 value", StepRun.Detail(s.Ctx.Steps, "Import password policy"));
+        var sent = Assert.Single(s.Camera.Imports);
+        Assert.Equal("""{"settings":{"passphraseComplexity":{"policy":"strong"}}}""", sent.Data.ToJsonString());
+
+        // Accounts only: nothing of the area is sent.
+        area.Remove("settings");
+        var only = Setup(file: export.ToJsonString(), sections: ["user-management.v2", "time.v2"]);
+        await RunAsync(only);
+        Assert.Equal("Import password policy: Skipped", StepRun.Lines(only.Ctx.Steps)[2]);
+        Assert.Equal("Nothing to import", StepRun.Detail(only.Ctx.Steps, "Import password policy"));
+        Assert.Equal(["time.v2"], only.Camera.Imports.Select(i => i.Key));
+    }
+
+    [Fact]
+    public async Task An_area_OADM_does_not_know_is_never_sent()
+    {
+        // A file with an area OADM has no identity rules for, and a payload (an older client, or one made by hand) that asks for it.
+        var export = (JsonObject)JsonNode.Parse(ChangedFile())!;
+        export["data"]!["firewall.v1"] = new JsonObject { ["activated"] = true, ["defaultPolicy"] = "deny" };
+        var s = Setup(file: export.ToJsonString(), sections: ["firewall.v1", "time.v2"], camera: c => c.Data["firewall.v1"] = new JsonObject { ["activated"] = false });
+        await RunAsync(s);
+
+        Assert.Equal(
+        [
+            "Read configuration file: Done",
+            "Check compatibility: Done",
+            "Import firewall.v1: Skipped",
+            "Import time zone: Done",
+            "Verify configuration: Done",
+            "Completed: Done",
+        ], StepRun.Lines(s.Ctx.Steps));
+        Assert.Equal("OADM does not import these settings", StepRun.Detail(s.Ctx.Steps, "Import firewall.v1"));
+        Assert.Equal(["time.v2"], s.Camera.Imports.Select(i => i.Key));
+        Assert.False((bool)s.Camera.Data["firewall.v1"]!["activated"]!);
+
+        // Only unknown areas: nothing to import, nothing sent.
+        var only = Setup(file: export.ToJsonString(), sections: ["firewall.v1"], camera: c => c.Data["firewall.v1"] = new JsonObject { ["activated"] = false });
+        var ex = await Assert.ThrowsAsync<ConfigDeviceException>(() => RunAsync(only));
+        Assert.Equal("None of the settings in the file exist on this device. Nothing was changed.", ex.Message);
+        Assert.Empty(only.Camera.Imports);
     }
 
     [Fact]
@@ -348,13 +431,13 @@ public sealed class ImportTaskTests
             c.ImportAnswer = (key, _) => key == "user-management.v2"
                 ? (HttpStatusCode.OK, """{"status":"success","warnings":["a","b","c","d"],"information":["Restart to apply"]}""")
                 : null;
-            c.Ignores["param.v2"] = ["Network.DNSServer1"];
+            c.Ignores["param.v2"] = ["Network.UPnP.Enabled"];
         });
         await RunAsync(s);
 
         Assert.Equal("a; b; c (+1 more)", StepRun.Detail(s.Ctx.Steps, "Import password policy"));
         Assert.Equal("Import password policy: Warning", StepRun.Lines(s.Ctx.Steps)[8]);
-        Assert.Equal("1 setting differs after the import: Network.DNSServer1", StepRun.Detail(s.Ctx.Steps, "Verify configuration"));
+        Assert.Equal("1 setting differs after the import: Network.UPnP.Enabled", StepRun.Detail(s.Ctx.Steps, "Verify configuration"));
         Assert.Contains(s.Ctx.Logs, l => l.Level == TaskLogLevel.Info && l.Message == "Password policy: Restart to apply");
         Assert.Contains(s.Ctx.Logs, l => l.Level == TaskLogLevel.Warning && l.Message == "Password policy: d");
         Assert.Equal(2, s.Ctx.Warnings.Count);

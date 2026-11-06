@@ -120,7 +120,8 @@ public static class ParamRules
 /// <summary>
 /// The parameters Configure devices warns about (decision Q3): they can make the devices unreachable for OADM, or give every
 /// selected device the same value of something that must differ per device. One table for the dialog, the permission and
-/// the task (written last).
+/// the task (written last), and for Import configuration: what it names goes into the file's "Connection settings" area
+/// with its own right and warning (<see cref="ConfigIdentity.IsConnection"/>), never into "Network and system settings".
 /// </summary>
 public static class DangerousParameters
 {
@@ -180,12 +181,27 @@ public static class DangerousParameters
     public static string? Reason(string name)
     {
         ArgumentNullException.ThrowIfNull(name);
+        name = FirstInterface(name);
         if (Matches(Identity, name))
         {
             return IdentityReason;
         }
 
         return Matches(Connection, name) ? ConnectionReason : null;
+    }
+
+    private const string InterfacePrefix = "Network.Interface.";
+
+    /// <summary>Every network interface counts like the first: "Network.Interface.I1.dot1x.Enabled" as "...I0...".</summary>
+    private static string FirstInterface(string name)
+    {
+        if (!name.StartsWith(InterfacePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return name;
+        }
+
+        var end = name.IndexOf('.', InterfacePrefix.Length);
+        return end < 0 ? name : InterfacePrefix + "I0" + name[end..];
     }
 
     private static bool Matches(string[] table, string name) =>

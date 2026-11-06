@@ -17,7 +17,7 @@ sees each device as a read-only `IDeviceInfo` and talks to it through an `IVapix
 | `Status` | `Ok`, `Unreachable`, `CredentialsRequired`, `PasswordNotSet`, `CertificateChanged`, `Unknown`, `SiteOffline` (its site node is not connected) |
 | `Category`, `HasVideo`, `HasLiveVideo` | Camera, encoder, speaker, intercom, I/O module, ...; `HasVideo` for cameras, encoders and intercoms; `HasLiveVideo` adds security radars (live video only) |
 | `Apis` | The VAPIX API list of the last full refresh, see [API checks](#api-checks) |
-| `Tags` | The tags the user gave the device ("Building A") |
+| `Tags` | The tag names the user gave the device, sorted ("Building A", "PTZ"); empty without tags. Compare them without case. Colors are not in the SDK |
 | `SiteId`, `SiteName` | The site OADM reaches the device through ("Building B"); null on the server's own network. Two sites may use the same addresses: key devices by `Id` |
 | `CredentialUserName` | The account OADM logs in with. Never remove or demote it. Never the password |
 | `DhcpEnabled`, `HttpsEnabled`, `Dot1xEnabled` | Network facts from the last full refresh; null while unknown |
@@ -41,7 +41,10 @@ if (DeviceMessages.Refusal(device, refuseUnreachable: true) is { } refusal)
 ```
 
 `DeviceMessages` has every text OADM shows for a status or an HTTP error (`StatusText`, `ForHttpStatus`, `TimedOut`,
-`Unreachable(detail)`), so your plugin says it the same way as the rest of the app.
+`Unreachable(detail)`), so your plugin says it the same way as the rest of the app. Never refuse with a switch on
+`DeviceStatus` alone: `Refusal(device)` also says "Site offline: Building B" for a device whose site node is not
+connected. The host refuses such devices for task runs, queries and actions before it calls your plugin; a task plugin
+greys its entry with `TaskSupportReasons.ForStatus(device)`.
 
 ## Getting devices
 
@@ -152,8 +155,15 @@ var json = await response.Content.ReadAsStringAsync(ct); // JSON APIs answer err
 - **Values in the body.** Send arguments of writes in the POST body, never in the URL (URLs end up in logs).
 - **Timeouts.** 15 s by default. For an upload set `request.Options.Set(VapixRequestOptions.Timeout,
   TimeSpan.FromMinutes(20))` and send the file as `StreamContent`; bodies are streamed, never buffered.
-- **Answer size.** At most 16 MB is read. For large downloads set `VapixRequestOptions.StreamResponse` and copy
-  `response.Content.ReadAsStreamAsync(ct)` to a file with your own size limit and token.
+- **Answer size.** At most 16 MB is read; a larger answer throws "The device answer is larger than 16 MB".
+- **Large downloads** (server reports, logs, recordings). `request.Options.Set(VapixRequestOptions.StreamResponse, true)`
+  returns the answer after its headers, unbuffered. Copy `response.Content.ReadAsStreamAsync(ct)` straight to a file (a
+  core plugin: in `ctx.DataDirectory`), stop at your own size limit and bound the read with your own token: the timeout
+  covers the headers only. Dispose the response. Through a site such an answer holds one of the site's 2 large transfer
+  slots until it is disposed.
+- **Streams that run for hours** (an MJPEG stream of pictures). Also set `VapixRequestOptions.LiveStream` (SDK 0.10.0),
+  so the stream holds no large transfer slot of a site: AXIS OS upgrades and exports need them. Limit your streams per
+  site yourself; Text recognition allows 4.
 - **XML.** Parse device XML only with `DeviceXml.Parse` / `DeviceXml.ParseElement` (1 MB, no DTD), never
   `XDocument.Parse`.
 - **Errors.** Axis devices often answer errors with HTTP 200 and the error in the body (`# Error`, `"error"`,
@@ -181,8 +191,10 @@ The API list is read in the full refresh. A device that was just added may have 
 using var socket = await vapix.ConnectWebSocketAsync("/vapix/ws-data-stream?sources=events", TimeSpan.FromSeconds(15), ct);
 ```
 
-ws for HTTP devices, wss with the pinned certificate for HTTPS devices. The socket pings at the interval and aborts
-when the device stops answering. Dispose it, and reconnect with a backoff when it breaks. Used by Device triggers.
+ws for HTTP devices, wss with the pinned certificate for HTTPS devices. The host logs in with a one-time session token,
+so the stored login never reaches your plugin. The socket pings at the interval and aborts when the device stops
+answering (a device sends nothing on a quiet stream). Dispose it, and reconnect with a backoff when it breaks. Used by
+Device triggers.
 
 ### Event streams (RTSP)
 
@@ -194,14 +206,23 @@ await foreach (var document in source.ReadAsync(ct))
 }
 ```
 
-The server opens the RTSP event stream with the stored login and the device's RTSP port. Failures are
-`DeviceStreamException` with `Error` (unreachable: retry; unauthorized, not supported: give up). Used by the Metadata
-Monitor.
+The server opens the device's RTSP event stream with the stored login, which never reaches your plugin, on the
+device's RTSP port (554 unless the user set another with **OADM > RTSP port**).
+
+- `ReadAsync` yields one complete `tt:MetadataStream` document per RTP marker, as a `DeviceMetadataDocument` with the
+  time the server received it. `LostDocuments` counts documents dropped for packet loss or size (over 1 MB).
+- Disposing the source ends the stream on the device. The host sends the keep-alives and notices a silent connection.
+- Failures are `DeviceStreamException` with `Error` (`Unreachable`: retry with a backoff; `Unauthorized`,
+  `NotSupported`: give up) and a text for the user ("The device has no event stream").
+- Check `DeviceMessages.Refusal(device)` first. `ctx.EventStreams` is null on a host without it.
+
+Used by the Metadata Monitor.
 
 ### Video
 
-`GetVideoSourcesAsync` returns the channels (view areas, sensors, encoder inputs) with their resolutions. A page that
-shows live video uses the host's live video component (`ICorePluginClientContext.LiveVideo`), see
+`GetVideoSourcesAsync` returns the channels (view areas, sensors, encoder inputs) as `VideoSource`: camera number,
+name, sensor and resolutions. `VideoResolutions.Choose` picks the largest resolution that fits a box with the sensor's
+aspect. A page that shows live video uses the host's live video component (`ICorePluginClientContext.LiveVideo`), see
 [Core plugins and pages](../core-plugins/#live-video-and-web-interfaces).
 
 ### Network checks: `IDeviceNetwork`
@@ -225,6 +246,16 @@ A task that changes how OADM reaches the device tells the server, which checks t
 
 The server checks the serial number at the new address or with the new certificate. If it does not match, it throws
 `DeviceIdentityException` and keeps the record as it was.
+
+- **A new address.** `CreateClientForAsync` gives a client for the device at that address, with the same login, scheme
+  and pinned certificate: wait for the device there, compare its serial number and dispose the client. Then
+  `UpdateDeviceAddressAsync` moves the record (login and pin kept) and swaps `ctx.Vapix`. It returns false when OADM
+  reaches the device by its host name.
+- **A new certificate or HTTPS off.** `UpdateDeviceTlsAsync` connects that way and, for HTTPS, checks that the device
+  presents exactly that certificate. It then stores scheme and pin, so the device never shows Certificate changed, and
+  swaps `ctx.Vapix`. While the device does not answer that way yet it throws `DeviceIdentityException`: retry while the
+  web server restarts.
+- Another host may throw `NotSupportedException` for both.
 
 ## Device safety
 

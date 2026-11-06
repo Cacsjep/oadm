@@ -87,8 +87,22 @@ public sealed class DeviceStore
     /// <summary>True once the first device list arrived; until then the Devices page says it is loading (30,000 devices: seconds).</summary>
     public bool IsLoaded { get; private set; }
 
-    /// <summary>Raised once when the first device list arrived.</summary>
+    /// <summary>Raised when <see cref="IsLoaded"/> changes: the first device list arrived, or a logout emptied the store (<see cref="Clear"/>).</summary>
     public event EventHandler? Loaded;
+
+    /// <summary>
+    /// Logout: no devices, and the list of the next login is the first one again (the Devices page shows its ring until it
+    /// arrives, never the last user's devices).
+    /// </summary>
+    public void Clear()
+    {
+        ResetCore(new PreparedDeviceSnapshot([]));
+        if (IsLoaded)
+        {
+            IsLoaded = false;
+            Loaded?.Invoke(this, EventArgs.Empty);
+        }
+    }
 
     /// <summary>
     /// Builds the rows of a snapshot; any thread, touches no store. The work that does not need the UI thread (30,000

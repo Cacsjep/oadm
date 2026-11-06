@@ -1,10 +1,6 @@
-using System.Globalization;
-
 using Oadm.Plugins.Pki.Policies;
-using Oadm.Plugins.Radius.Api;
 using Oadm.Plugins.Radius.Protocol.Tls;
 using Oadm.Sdk.Certificates;
-using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Radius.Server;
 
@@ -89,109 +85,12 @@ public static class RadiusPolicies
     /// <summary>The 802.1X policies that apply (the page's "6 policies apply"): 802.1X server, 802.1X trusted CA, VLAN and Block.</summary>
     public static int CountApplying(PolicyStore? store) => store?.All.Count(p => PolicyKinds.IsDot1x(p.Kind)) ?? 0;
 
-    // ------------------------------------------------------------------ the settings of the development builds before 4.5
-
     /// <summary>
-    /// The 802.1X server's settings from before the policies, made into policies once (docs/spec/pki.md "Converting existing
-    /// settings"): Advanced (setting <c>config</c>) -> the 802.1X server policy; Trusted CAs (<c>trustedCas</c>; none stored =
-    /// the first-start root CA and the Axis device ID, only managed) -> one Allow CA per checked CA, named after the CA; the policies (<c>policies</c>) or
-    /// the older VLAN rules (<c>vlans</c>, only when Assign VLANs was on) -> VLAN, Block and Revoke policies with the same names,
-    /// devices and order; a Default VLAN that applied -> a last VLAN policy "All devices" (every device, also of sites added
-    /// later and devices OADM does not manage), so no device changes its VLAN. Nothing stored: the defaults of the kinds. Nothing is dropped; the old settings stay as they are.
+    /// The policies of the 802.1X kinds a new server gets (docs/spec/pki.md "Converting existing settings", owner
+    /// <c>oadm.radius</c>): the 802.1X server policy and the default 802.1X trusted CA policies.
     /// </summary>
-    public static async Task<IReadOnlyList<PkiPolicy>> ConvertAsync(IPluginSettings settings, IReadOnlyList<CertificateAuthorityInfo> authorities, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(settings);
-        ArgumentNullException.ThrowIfNull(authorities);
-        var store = new RadiusStore(settings);
-        var list = new List<PkiPolicy> { ServerPolicyOf(await store.LegacyAdvancedAsync(ct).ConfigureAwait(false)) };
-
-        var trusted = await store.TrustedCasAsync(ct).ConfigureAwait(false) ?? CaTrust.DefaultSelection;
-        foreach (var choice in (trusted.Cas ?? []).Where(c => c is not null && !string.IsNullOrWhiteSpace(c.Id)).DistinctBy(c => c.Id, StringComparer.Ordinal))
-        {
-            list.Add(new PkiPolicy { Name = CaPolicyName(choice.Id, authorities), Kind = PolicyKinds.AllowCa, CaId = choice.Id, OnlyManaged = choice.OnlyManaged });
-        }
-
-        var allDevices = PolicyDevices.Everything; // also sites added later and devices OADM does not manage, as the Default VLAN gave them
-        if (await store.PoliciesAsync(ct).ConfigureAwait(false) is { } stored)
-        {
-            foreach (var policy in stored.Policies ?? [])
-            {
-                if (policy is null || policy.Kind is not (LegacyPolicyKinds.Vlan or LegacyPolicyKinds.Block or LegacyPolicyKinds.Revoke))
-                {
-                    continue;
-                }
-
-                list.Add(new PkiPolicy
-                {
-                    Id = policy.Id,
-                    Name = policy.Name,
-                    Kind = policy.Kind is LegacyPolicyKinds.Block or LegacyPolicyKinds.Revoke ? PolicyKinds.Block : PolicyKinds.Vlan,
-                    AlsoRevoke = policy.Kind switch { LegacyPolicyKinds.Revoke => true, LegacyPolicyKinds.Block => false, _ => null }, // Revoke is Block with Also revoke
-                    Vlan = policy.Vlan,
-                    Devices = policy.Devices ?? new PolicyDevices(),
-                    SavedBy = policy.SavedBy,
-                });
-            }
-
-            if (stored.DefaultVlan is { } everyone && (stored.Policies ?? []).Any(p => p?.Kind == LegacyPolicyKinds.Vlan))
-            {
-                list.Add(new PkiPolicy { Name = PolicyLimits.AllDevicesName, Kind = PolicyKinds.Vlan, Vlan = everyone, Devices = allDevices });
-            }
-        }
-        else if (await store.VlansAsync(ct).ConfigureAwait(false) is { Enabled: true } vlans)
-        {
-            foreach (var rule in vlans.Rules ?? [])
-            {
-                PolicyDevices devices;
-                if (rule.Kind == VlanRuleKinds.Site && Guid.TryParse(rule.RefId, out var site))
-                {
-                    devices = site == Guid.Empty ? new PolicyDevices { ThisServer = true } : new PolicyDevices { SiteIds = [site] };
-                }
-                else if (rule.Kind == VlanRuleKinds.Tag && !string.IsNullOrWhiteSpace(rule.RefId))
-                {
-                    devices = new PolicyDevices { Tags = [rule.RefId.Trim()] };
-                }
-                else
-                {
-                    continue;
-                }
-
-                var name = (rule.RefName ?? rule.RefId ?? string.Empty).Trim();
-                list.Add(new PkiPolicy
-                {
-                    Name = name.Length == 0 ? "VLAN " + rule.Vlan.ToString(CultureInfo.InvariantCulture) : name,
-                    Kind = PolicyKinds.Vlan,
-                    Vlan = rule.Vlan,
-                    Devices = devices,
-                });
-            }
-
-            if (vlans.DefaultVlan is { } everyone)
-            {
-                list.Add(new PkiPolicy { Name = PolicyLimits.AllDevicesName, Kind = PolicyKinds.Vlan, Vlan = everyone, Devices = allDevices });
-            }
-        }
-
-        return list;
-    }
-
-    /// <summary>The 802.1X server policy of the stored Advanced settings (unreadable or missing parts: the kind's defaults).</summary>
-    private static PkiPolicy ServerPolicyOf(LegacyAdvanced? advanced)
-    {
-        var policy = DefaultServerPolicy();
-        if (advanced is null)
-        {
-            return policy;
-        }
-
-        var minimum = VersionOf(advanced.MinimumTls) is not null ? advanced.MinimumTls! : PolicyRules.DefaultMinimumTls;
-        return policy with
-        {
-            MinimumTls = minimum,
-            LargestEapPacket = advanced.LargestFragment is { } fragment ? Math.Clamp(fragment, PolicyRules.MinEapPacket, PolicyRules.MaxEapPacket) : PolicyRules.DefaultEapPacket,
-        };
-    }
+    public static IReadOnlyList<PkiPolicy> DefaultPolicies(IReadOnlyList<CertificateAuthorityInfo> authorities) =>
+        [DefaultServerPolicy(), .. DefaultAllowCaPolicies(authorities)];
 
     /// <summary>
     /// The CA's real name in PKI, like EST's sign-in CA policies ("OADM Root CA SERVER01", "Axis device ID", an imported CA by
@@ -289,68 +188,4 @@ public sealed class RadiusRuleSet
 
     /// <summary>Still the rules of <paramref name="store"/> now.</summary>
     public bool IsCurrent(PolicyStore? store) => ReferenceEquals(store, Store) && (store is null || store.Version == Version);
-}
-
-// ------------------------------------------------------------------ stored forms of the development builds before 4.5
-
-/// <summary>The kinds of the policies of development builds (setting <c>policies</c>).</summary>
-public static class LegacyPolicyKinds
-{
-    public const string Vlan = "vlan";
-    public const string Block = "block";
-    public const string Revoke = "revoke";
-}
-
-/// <summary>A policy of the 802.1X page of development builds (setting <c>policies</c>).</summary>
-public sealed record LegacyRadiusPolicy
-{
-    public Guid Id { get; init; }
-
-    public string Name { get; init; } = string.Empty;
-
-    public string Kind { get; init; } = LegacyPolicyKinds.Vlan;
-
-    public int? Vlan { get; init; }
-
-    public PolicyDevices? Devices { get; init; }
-
-    public string? SavedBy { get; init; }
-}
-
-/// <summary>The policies of development builds and their Default VLAN (applied only while a VLAN policy existed).</summary>
-public sealed record LegacyPolicySettings
-{
-    public IReadOnlyList<LegacyRadiusPolicy> Policies { get; init; } = [];
-
-    public int? DefaultVlan { get; init; }
-}
-
-/// <summary>Kinds of a VLAN rule of the development builds before 4.5.</summary>
-public static class VlanRuleKinds
-{
-    public const string Site = "site";
-    public const string Tag = "tag";
-}
-
-/// <summary>A VLAN rule of the development builds before 4.5: a site (<see cref="Guid.Empty"/> = This server) or a tag gets a VLAN; the first match won.</summary>
-public sealed record VlanRule(string Kind, string RefId, string? RefName, int Vlan);
-
-/// <summary>The VLAN rules of the development builds before 4.5 (setting <c>vlans</c>).</summary>
-public sealed record VlanSettings
-{
-    public bool Enabled { get; init; }
-
-    public IReadOnlyList<VlanRule> Rules { get; init; } = [];
-
-    public int? DefaultVlan { get; init; }
-}
-
-/// <summary>The Advanced settings stored in <c>config</c> by the development builds before 4.5 (read once for the conversion).</summary>
-public sealed record LegacyAdvanced
-{
-    public string? MinimumTls { get; init; }
-
-    public IReadOnlyList<int>? CipherSuites { get; init; }
-
-    public int? LargestFragment { get; init; }
 }

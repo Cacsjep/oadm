@@ -81,7 +81,7 @@ public sealed class DialogTests : IDisposable
         Assert.True(vm.ShowDowngrade); // the role may downgrade: always shown
         Assert.True(vm.InstallCommand.CanExecute(null));
         Assert.Null(vm.InstallBlockedReason);
-        Assert.Equal("Hello World 1.2.0  ·  aarch64  ·  " + Oadm.Sdk.Client.FileSizeText.Format(new FileInfo(Path.Combine(_dir, "hello_aarch64.eap")).Length), vm.FileDetails);
+        Assert.Equal("Hello World 1.2.0  ·  aarch64  ·  " + Oadm.Sdk.Formatting.ByteSize.Text(new FileInfo(Path.Combine(_dir, "hello_aarch64.eap")).Length), vm.FileDetails);
     }
 
     [Fact]

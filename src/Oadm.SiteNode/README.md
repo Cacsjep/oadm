@@ -147,6 +147,7 @@ behind each. Read-only towards the camera.
 9. **Reset**: Reset in the app (confirmed) while the node is connected: within a few seconds the old site shows **Not
    bound** on the Sites page (audit "Site node was reset", user system), its devices Site offline; the node connects
    again with a new identity and waits to be bound; bind it again with the new code and Replace the old site with it.
+   A copy of the node's data folder from before the Reset gets no session (server log "Refused a site node from ...").
    Reset again with the server stopped: the node resets at once (no hang), the old site stays Offline. Then stop the
    service (and Ctrl+C a console run): it ends within seconds, exit code 0, no crash dump.
 10. **Server identity lost**: replace the server's key (test server only); the app shows "... presents a new identity";

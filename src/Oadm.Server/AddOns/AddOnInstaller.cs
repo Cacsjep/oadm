@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Oadm.Contracts;
 using Oadm.Contracts.Updates;
 using Oadm.Core.Plugins;
+using Oadm.Server.Hosting;
 using Oadm.Server.Updates;
 
 namespace Oadm.Server.AddOns;
@@ -54,9 +55,10 @@ public sealed record AddOnInstallerOptions(string DataDirectory, string ServerVe
 /// (<see cref="IAddOnActivation.PackageFollowedAsync"/>). Remove turns the add-on off at once and deletes its folder at the
 /// next start. One install or remove at a time, none while a self update runs; any failure leaves the state as it was.
 /// <para>
-/// Server start (wiring in <c>OadmServerHost</c>): <see cref="LoadInstalledAsync(bool, CancellationToken)"/> right after the
-/// bundled plugins are loaded. An add-on of an older version keeps running; one that may not, does not load or has no folder
-/// (after a restore) stays unloaded and its row asks to install it again; OADM runs as usual.
+/// Server start (wiring in <c>OadmServerHost</c>): <see cref="LoadInstalledAsync(LoosePlugins, CancellationToken)"/> right
+/// after the bundled plugins are loaded. An add-on of an older version keeps running; one that may not, does not load, has no
+/// folder (after a restore) or whose folder others could change stays unloaded and its row asks to install it again; OADM
+/// runs as usual.
 /// </para>
 /// </summary>
 public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
@@ -118,8 +120,8 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
 
     // ----- Server start -----
 
-    /// <summary>The start of a server whose data folder was not fixed at this start (tests, a console run).</summary>
-    public Task LoadInstalledAsync(CancellationToken ct) => LoadInstalledAsync(foldersTrusted: true, ct);
+    /// <summary>The start of a server whose folder check found nothing loose (tests, a console run).</summary>
+    public Task LoadInstalledAsync(CancellationToken ct) => LoadInstalledAsync(LoosePlugins.None, ct);
 
     /// <summary>
     /// Server start, right after the bundled plugins are loaded: deletes the folders of removed add-ons, of ids this version
@@ -128,13 +130,18 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
     /// afterwards). A waiting update of this version takes the folder's place first; the old folder comes back when the new one
     /// does not load. An id a bundled plugin has is not loaded (log line). An older add-on that does not load, a newer one and a
     /// folder without a version stay unloaded with <see cref="AddOnTexts.InstallAgain"/>.
-    /// Without <paramref name="foldersTrusted"/> (the service had to fix the data folder's permissions at this start, a folder
-    /// there could come from anyone) no add-on folder is used: each is deleted, a listed add-on is installed again.
+    /// <paramref name="loose"/> is what the service's folder check found about <c>addons/</c> before it fixed the data folder
+    /// (<see cref="FolderGuard.EnsureServerFoldersAsync(IEnumerable{string}, string, string, CancellationToken)"/>): a folder
+    /// others could change until now could come from anyone. Such an add-on folder is not used and goes, with its waiting
+    /// update (a listed add-on shows <see cref="AddOnTexts.FolderWasLoose"/>), a loose waiting update goes alone; all of them
+    /// when the data folder or <c>addons/</c> itself was loose (<see cref="LoosePlugins.All"/>). One that cannot go keeps
+    /// the add-on stored as Removed. A loose file elsewhere in the data folder changes nothing here.
     /// </summary>
-    public async Task LoadInstalledAsync(bool foldersTrusted, CancellationToken ct)
+    public async Task LoadInstalledAsync(LoosePlugins loose, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(loose);
         Directory.CreateDirectory(Root);
-        AddOnFolders.CleanTemporary(Root, keep: foldersTrusted ? WaitingPrefix : null);
+        AddOnFolders.CleanTemporary(Root, keep: loose.All ? null : WaitingPrefix);
         var list = (await _list.ReadAsync(ct).ConfigureAwait(false)).ToList();
         var changed = list.RemoveAll(a => !AddOnCatalog.Contains(a.Id)) > 0;
 
@@ -157,10 +164,14 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             }
         }
 
-        // Removed: the folder goes now (no load context holds it yet).
+        // Removed: the folder goes now (no load context holds it yet), and a waiting update with it (a removed add-on has
+        // none to keep; one that stayed because others could change it must never start).
         foreach (var removed in list.Where(a => a.Removed).ToList())
         {
-            if (AddOnCatalog.Find(removed.Id) is not { } entry || AddOnFolders.TryDelete(FolderOf(entry)))
+            var entry = AddOnCatalog.Find(removed.Id);
+            var folderGone = entry is null || AddOnFolders.TryDelete(FolderOf(entry));
+            var updateGone = entry is null || AddOnFolders.TryDelete(WaitingFolderOf(entry));
+            if (folderGone && updateGone)
             {
                 list.Remove(removed);
                 changed = true;
@@ -172,23 +183,74 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
             }
         }
 
+        // What others could change until this start could come from anyone and would run as SYSTEM / root: an add-on folder
+        // that was loose goes with its waiting update, a loose waiting update goes alone, the other add-ons load as usual.
+        // One that cannot go keeps the add-on stored as Removed: never loaded or taken up, deleted at a later start.
+        var looseNames = new HashSet<string>(
+            loose.Entries.Select(e => Path.GetFileName(Path.TrimEndingDirectorySeparator(e))),
+            OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        var updateNotTrusted = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // ids whose waiting update is never used
+        var wentLoose = new HashSet<string>(StringComparer.OrdinalIgnoreCase); // listed add-ons whose folder went
+        foreach (var entry in AddOnCatalog.Entries)
+        {
+            var folderLoose = loose.All || looseNames.Contains(entry.Id);
+            if (!folderLoose && !looseNames.Contains(WaitingPrefix + entry.Id))
+            {
+                continue;
+            }
+
+            updateNotTrusted.Add(entry.Id);
+            var installed = list.Find(a => Same(a.Id, entry.Id));
+            if (installed is { Removed: true })
+            {
+                continue; // its folders were tried above; it is never loaded
+            }
+
+            var gone = true;
+            if (Directory.Exists(WaitingFolderOf(entry)))
+            {
+                LogUpdateNotApplied(_logger, entry.Id, "other users could change its folder until this start");
+                gone &= _options.DeleteFolder(WaitingFolderOf(entry));
+            }
+
+            if (folderLoose && Directory.Exists(FolderOf(entry)))
+            {
+                if (installed is null)
+                {
+                    LogNotTakenUp(_logger, entry.Id);
+                }
+                else
+                {
+                    LogNotTrusted(_logger, entry.Id);
+                    wentLoose.Add(entry.Id);
+                }
+
+                gone &= _options.DeleteFolder(FolderOf(entry));
+            }
+
+            if (gone)
+            {
+                continue;
+            }
+
+            LogLooseKept(_logger, entry.Id);
+            if (installed is null)
+            {
+                list.Add(new InstalledAddOn(entry.Id, string.Empty, Removed: true));
+            }
+            else
+            {
+                list[list.IndexOf(installed)] = installed with { Removed = true };
+            }
+
+            changed = true;
+        }
+
         // Put in by hand from the release ZIP: on the list with the version its file names, loaded only when that is this one.
         foreach (var entry in AddOnCatalog.Entries)
         {
             if (list.Exists(a => Same(a.Id, entry.Id)) || !File.Exists(Path.Combine(FolderOf(entry), PluginLoader.ManifestFileName)))
             {
-                continue;
-            }
-
-            if (!foldersTrusted)
-            {
-                LogNotTakenUp(_logger, entry.Id);
-                if (!_options.DeleteFolder(FolderOf(entry)))
-                {
-                    list.Add(new InstalledAddOn(entry.Id, string.Empty, Removed: true)); // gone at a later start, never taken up
-                    changed = true;
-                }
-
                 continue;
             }
 
@@ -223,19 +285,20 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 continue;
             }
 
-            if (!foldersTrusted && Directory.Exists(FolderOf(entry)))
+            if (wentLoose.Contains(entry.Id))
             {
-                LogNotTrusted(_logger, entry.Id);
-                if (!_options.DeleteFolder(FolderOf(entry)))
+                // Its folder went above: the row says why until the next start.
+                lock (_sync)
                 {
-                    list[list.IndexOf(installed)] = installed with { Removed = true };
-                    changed = true;
-                    continue;
+                    slot.Version = installed.Version;
+                    slot.Failed = AddOnTexts.FolderWasLoose;
                 }
+
+                continue;
             }
 
-            // A waiting update first: the old folder stays until the new one has loaded.
-            var old = foldersTrusted ? ApplyWaitingUpdate(entry) : null;
+            // A waiting update first: the old folder stays until the new one has loaded. Never one others could change.
+            var old = updateNotTrusted.Contains(entry.Id) ? null : ApplyWaitingUpdate(entry);
             changed |= LoadByVersion(entry, slot, list, installed);
             if (old is not null)
             {
@@ -482,6 +545,14 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
                 progress.Report(new AddOnProgress(AddOnStep.Install, 100));
                 LogInstalled(_logger, entry.Id, version);
                 return StatusOf(entry) with { InstalledVersion = version };
+            }
+
+            // Not loaded, so no update of it can be waiting: a leftover (one that could not be deleted when others could
+            // change it) goes first and never starts in place of this install.
+            if (Directory.Exists(WaitingFolderOf(entry)) && !_options.DeleteFolder(WaitingFolderOf(entry)))
+            {
+                LogInstallFailed(_logger, entry.Id, AddOnTexts.CouldNotInstall, "a waiting update left in the folder of the optional plugins could not be deleted");
+                throw new AddOnException(AddOnTexts.CouldNotInstall);
             }
 
             // A first install starts off; Install again after an update keeps the administrator's choice.
@@ -1078,11 +1149,14 @@ public sealed partial class AddOnInstaller : IAddOnInstaller, IDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} found in the folder of the optional plugins: installed ({Version})")]
     private static partial void LogTakenUp(ILogger logger, string id, string version);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Optional plugin {Id} found in the folder of the optional plugins is not loaded: the data folder's permissions were reset at this start. Install it on the Plugins page")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Optional plugin {Id} found in the folder of the optional plugins is not loaded and its folder goes: users other than administrators could change it until this start. Install it on the Plugins page")]
     private static partial void LogNotTakenUp(ILogger logger, string id);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Optional plugin {Id} is not loaded and its folder goes: the data folder's permissions were fixed at this start. Install it again")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Optional plugin {Id} is not loaded and its folder goes: users other than administrators could change it until this start. Install it again")]
     private static partial void LogNotTrusted(ILogger logger, string id);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Optional plugin {Id}: a folder users other than administrators could change could not be deleted. The plugin is not loaded and counts as removed; its folders go at a later start. Install it again then")]
+    private static partial void LogLooseKept(ILogger logger, string id);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Optional plugin {Id} is not loaded: a plugin that came with the server has the same id")]
     private static partial void LogBundledWins(ILogger logger, string id);

@@ -230,27 +230,20 @@ public sealed partial class AppSettingsViewModel : ObservableObject
     public async Task LoadAsync(CancellationToken ct)
     {
         IsLoading = true;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var json = await _ctx.InvokeAsync(AppManagementMethods.GetSettings,
                 AppManagementJson.Serialize(new SettingsRequest { Application = _application, DeviceIds = _deviceIds }), ct).ConfigureAwait(true);
             Apply(AppManagementJson.Deserialize<SettingsReply>(json));
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        }, GuardedCancel.Ignore, ct).ConfigureAwait(true);
+        if (error is not null)
         {
+            ErrorText = error;
         }
-#pragma warning disable CA1031 // Shown in the window.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            ErrorText = ServerErrors.Message(ex);
-        }
-        finally
-        {
-            IsLoading = false;
-            OnPropertyChanged(nameof(ShowValueNote));
-            OnPropertyChanged(nameof(ShowNoSettings));
-        }
+
+        IsLoading = false;
+        OnPropertyChanged(nameof(ShowValueNote));
+        OnPropertyChanged(nameof(ShowNoSettings));
     }
 
     /// <summary>One row per setting over the read devices: the value of most devices and on how many it differs.</summary>
@@ -320,7 +313,7 @@ public sealed partial class AppSettingsViewModel : ObservableObject
         }
 
         var values = Rows.Where(r => r.IsChanged).ToDictionary(r => r.Name, r => r.Normalized!, StringComparer.Ordinal);
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var request = new RunRequest
             {
@@ -331,12 +324,10 @@ public sealed partial class AppSettingsViewModel : ObservableObject
             };
             await _ctx.InvokeAsync(AppManagementMethods.Run, AppManagementJson.Serialize(request), CancellationToken.None).ConfigureAwait(true);
             CloseRequested?.Invoke(this, EventArgs.Empty);
-        }
-#pragma warning disable CA1031 // Shown in the window.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            ErrorText = ServerErrors.Message(ex);
+            ErrorText = error;
         }
     }
 

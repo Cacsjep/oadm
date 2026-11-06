@@ -380,14 +380,28 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>Logout: stops the streams, closes the live view, the plugin windows and Help.</summary>
+    /// <summary>
+    /// Logout: stops the streams and empties the device and task lists, closes the live view, the plugin windows and Help,
+    /// goes to the Devices page and removes every plugin page (disposed; the next login creates them again for its server
+    /// and user). The view model lives on, the window does not: a plugin view left in the closed window could not be shown
+    /// in the next one (a control has one parent), and a page kept would show the last session's values.
+    /// </summary>
     public void Stop()
     {
-        Connection.Stop();
+        _session++; // a connect of this session that still reads its plugin list brings no pages
+        Connection.SignOut();
         Devices.LiveView.CloseCommand.Execute(null);
         ClosePluginWindowsRequested?.Invoke(this, null);
         CloseHelp();
+        ApplyKeyNotice(null); // the banners are the last server's, for the last user's role
+        ApplyRolesNotice(null);
+        _pendingStartPage = null;
+        OpenItem(_devicesItem);
+        SyncCorePluginPages([]);
     }
+
+    /// <summary>Counts the logouts: work started in one session (reading the plugin list on connect) stops in the next.</summary>
+    private int _session;
 
     /// <summary>The Help window that is open, null when none is.</summary>
     public HelpWindowViewModel? Help { get; private set; }
@@ -563,6 +577,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     private async Task OnConnectedAsync()
     {
+        int session = _session;
         _ = RefreshMyDevicesAsync();
         if (_packages is not null)
         {
@@ -581,11 +596,21 @@ public sealed partial class MainWindowViewModel : ObservableObject
         try
         {
             IReadOnlyList<CorePluginInfo> corePlugins = await _api.ListCorePluginsAsync(CancellationToken.None).ConfigureAwait(true);
+            if (session != _session)
+            {
+                return; // logged out meanwhile: the next login reads its own list
+            }
+
             await SyncCorePluginPagesAsync(corePlugins).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
             LogCorePluginsFailed(_logger, ex.Message);
+        }
+
+        if (session != _session)
+        {
+            return;
         }
 
         // Every page this connect brings is there now: a start page that did not come is not waited for.
@@ -595,6 +620,11 @@ public sealed partial class MainWindowViewModel : ObservableObject
         try
         {
             ServerSettings settings = await _api.GetSettingsAsync(CancellationToken.None).ConfigureAwait(true);
+            if (session != _session)
+            {
+                return;
+            }
+
             ApplyKeyNotice(settings.KeyReplaced);
             ApplyRolesNotice(settings.RolesNotice);
         }
@@ -636,10 +666,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <summary>A plugin package was turned on or off: rail pages and task menus follow the server.</summary>
     private async Task ReloadPluginsAsync()
     {
+        int session = _session;
         try
         {
             await _catalog.RefreshAsync(CancellationToken.None).ConfigureAwait(true);
-            await SyncCorePluginPagesAsync(await _api.ListCorePluginsAsync(CancellationToken.None).ConfigureAwait(true)).ConfigureAwait(true);
+            IReadOnlyList<CorePluginInfo> corePlugins = await _api.ListCorePluginsAsync(CancellationToken.None).ConfigureAwait(true);
+            if (session == _session)
+            {
+                await SyncCorePluginPagesAsync(corePlugins).ConfigureAwait(true);
+            }
         }
         catch (Exception ex)
         {

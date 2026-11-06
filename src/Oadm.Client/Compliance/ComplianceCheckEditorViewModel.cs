@@ -15,6 +15,7 @@ using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Events;
+using Oadm.Sdk.Formatting;
 
 namespace Oadm.Client.Compliance;
 
@@ -224,7 +225,7 @@ public sealed partial class ComplianceCheckEditorViewModel : ValidatingViewModel
 
         if (file.IsTooLarge)
         {
-            field.LoadError = string.Create(CultureInfo.CurrentCulture, $"The file is larger than {field.Field.MaxLength / 1024:N0} KB.");
+            field.LoadError = $"The file is larger than {ByteSize.Text(field.Field.MaxLength)}.";
             field.ShowError = true;
             Revalidate();
             return;

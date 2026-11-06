@@ -60,56 +60,102 @@ public sealed class TaskDialogContext : ITaskDialogContext
 
     /// <summary>
     /// Runs the plugin on the devices and follows the tasks in the task mirror, on the UI thread (the mirror changes
-    /// there). A task the mirror has not received yet counts as queued.
+    /// there). A task the mirror has not received yet counts as queued. The mirror keeps at most
+    /// <see cref="TaskStore.MaxTasks"/> tasks: a task of the run that left it (<see cref="TaskStore.Forgotten"/>) has ended
+    /// for the run, with the last state the mirror had of it (its result when it had ended; one that left while it still
+    /// ran, e.g. deleted, is reported as cancelled without a message). The server has no call for one task's result.
     /// </summary>
     public async Task<IReadOnlyList<TaskRunState>> RunTaskAsync(IReadOnlyList<Guid> deviceIds, string? payloadJson, IProgress<IReadOnlyList<TaskRunState>>? progress, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(deviceIds);
         var tasks = _tasks ?? throw new NotSupportedException("This dialog cannot run tasks.");
-        var taskIds = await _api.RunTaskAsync(PluginId, [.. deviceIds.Select(d => d.ToString())], payloadJson, TaskPluginRunner.OwnerName, ct).ConfigureAwait(true);
-        var watched = taskIds.ToHashSet(StringComparer.Ordinal);
-        var done = new TaskCompletionSource<IReadOnlyList<TaskRunState>>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        IReadOnlyList<TaskRunState> States() => [.. taskIds.Select((id, i) => StateOf(tasks.Find(id), id, i < deviceIds.Count ? deviceIds[i] : Guid.Empty))];
-
-        void Report()
+        // The tasks of this run that left the mirror, by id. Followed from before the call: with a mirror at its limit a
+        // task can arrive, end and leave before the call's answer names it (until then every task that leaves is kept).
+        var gone = new Dictionary<string, TaskRowViewModel>(StringComparer.Ordinal);
+        HashSet<string>? watched = null;
+        var left = false;
+        void OnForgotten(object? sender, TaskRowViewModel row)
         {
-            var states = States();
-            progress?.Report(states);
-            if (states.All(s => !s.IsActive))
+            if (watched is null || watched.Contains(row.Id))
             {
-                done.TrySetResult(states);
+                gone[row.Id] = row;
+                left = watched is not null;
             }
         }
 
-        // A change of one watched task (or a batch / reset: null) reports again; other tasks are ignored.
-        void OnChanged(object? sender, TaskRowViewModel? row)
-        {
-            if (row is null || watched.Contains(row.Id))
-            {
-                Report();
-            }
-        }
-
-        tasks.Changed += OnChanged;
+        tasks.Forgotten += OnForgotten;
         try
         {
-            using var registration = ct.Register(() => done.TrySetCanceled(ct));
-            Report();
-            return await done.Task.ConfigureAwait(true);
+            var taskIds = await _api.RunTaskAsync(PluginId, [.. deviceIds.Select(d => d.ToString())], payloadJson, TaskPluginRunner.OwnerName, ct).ConfigureAwait(true);
+            watched = taskIds.ToHashSet(StringComparer.Ordinal);
+            foreach (string other in gone.Keys.Where(id => !watched.Contains(id)).ToList())
+            {
+                gone.Remove(other);
+            }
+
+            var done = new TaskCompletionSource<IReadOnlyList<TaskRunState>>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            TaskRunState State(string id, Guid deviceId) =>
+                tasks.Find(id) is { } row ? StateOf(row, id, deviceId)
+                : gone.TryGetValue(id, out TaskRowViewModel? last) ? StateOf(last, id, deviceId, gone: true)
+                : StateOf(null, id, deviceId);
+
+            IReadOnlyList<TaskRunState> States() => [.. taskIds.Select((id, i) => State(id, i < deviceIds.Count ? deviceIds[i] : Guid.Empty))];
+
+            void Report()
+            {
+                left = false;
+                var states = States();
+                progress?.Report(states);
+                if (states.All(s => !s.IsActive))
+                {
+                    done.TrySetResult(states);
+                }
+            }
+
+            // A change of one watched task (or a batch / reset: null) reports again, also when a watched task left the
+            // mirror with the change of another one; other tasks are ignored.
+            void OnChanged(object? sender, TaskRowViewModel? row)
+            {
+                if (row is null || left || watched.Contains(row.Id))
+                {
+                    Report();
+                }
+            }
+
+            tasks.Changed += OnChanged;
+            try
+            {
+                using var registration = ct.Register(() => done.TrySetCanceled(ct));
+                Report();
+                return await done.Task.ConfigureAwait(true);
+            }
+            finally
+            {
+                tasks.Changed -= OnChanged;
+            }
         }
         finally
         {
-            tasks.Changed -= OnChanged;
+            tasks.Forgotten -= OnForgotten;
         }
     }
 
-    /// <summary>A task row as the SDK reports it; no row yet: queued.</summary>
-    internal static TaskRunState StateOf(TaskRowViewModel? row, string taskId, Guid deviceId)
+    /// <summary>
+    /// A task row as the SDK reports it; no row yet: queued. <paramref name="gone"/>: the row left the mirror, so the task
+    /// has ended for the run: its result when the mirror had it, else cancelled without a message.
+    /// </summary>
+    internal static TaskRunState StateOf(TaskRowViewModel? row, string taskId, Guid deviceId, bool gone = false)
     {
         if (row is null)
         {
             return new TaskRunState(deviceId, taskId, TaskRunStatus.Queued, string.Empty, string.Empty);
+        }
+
+        if (gone && row.IsActive)
+        {
+            return new TaskRunState(Guid.TryParse(row.DeviceId, out var known) ? known : deviceId, taskId, TaskRunStatus.Cancelled, string.Empty, string.Empty);
         }
 
         var status = row.State switch

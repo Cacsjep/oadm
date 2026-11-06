@@ -143,8 +143,8 @@ revocation").
   `Dot1xPolicyChoiceTaskTests`, `IssueDialogTests` (headless `pki-enable-https.png`, `pki-enable-dot1x.png`, `pki-renew.png`,
   `pki-install-dot1x.png`, `pki-policy-https.png`, `pki-policy-dot1x-certificate.png`, `pki-policy-est-server.png`,
   `pki-policy-dot1x-server.png`), `PolicyTabHeadlessTests` (`pki-policies-1700.png`, `pki-policies-1000.png` and their
-  `-end` captures: nothing clipped, no sideways scroll), `SeveralCasTests` (the conversion of the kinds, Used in), Perf
-  `PolicyPerfTests` (30,000 devices).
+  `-end` captures: nothing clipped, no sideways scroll), `SeveralCasTests` (Used in), Perf
+  `PolicyPerfTests` (the device limit).
 
 ## PKI Security tasks
 
@@ -220,7 +220,7 @@ confirmed (then a Warning log line). Tests: `ClockTests`.
   Address, Name, Issued by, Issued to, Valid to, In use (HTTPS, 802.1X), Source OADM / Other; SearchBox; Refresh), read
   through the query `listCertificates` (read-only, at most 4 devices at a time, progress row, rows appear progressively, list
   replaced as a whole at most every 300 ms). At most 5,000 devices per window (`CertificatesViewModel.MaxDevices`: every
-  device is read, 4 at a time, about 190,000 rows at 5,000; 30,000 would take hours): a larger selection gets "Choose at most
+  device is read, 4 at a time, about 190,000 rows at 5,000; 100,000 would take hours): a larger selection gets "Choose at most
   5,000 devices." before anything is read. Delete mode: check boxes; in use and Axis factory (802.1AR) certificates greyed
   with a tooltip; Select all / none (O(n)); confirmation popup; payload = aliases per device. Task steps: Check
   compatibility, Read certificates (validates every choice before the first delete: exists, not in use, not factory; a web
@@ -230,8 +230,14 @@ confirmed (then a Warning log line). Tests: `ClockTests`.
   only), .pfx / .p12 files (one password for all, `CertificateFiles`: wrong password under the field), table File,
   Certificate, Device, Status chip; a file must match exactly one selected device by MAC (serial in any notation, also
   `axis-<serial>`), IP or host name / FQDN in CN or SAN, one file per device; problems block Install. Install confirms,
-  uploads (`UploadAsync`) and sends `{purpose, password, files[{deviceId, fileId, fileName}], policyId}` (CA only: deviceId
-  empty = every device). IEEE 802.1X shows the IEEE 802.1X policy below Use for (`IssuingPolicyField`, read once through the
+  uploads (`UploadAsync`) and sends `{purpose, password, files[{deviceId, fileId, fileName}], policyId, sendKeysOverHttp}`
+  (CA only: deviceId empty = every device). The file check (`CertificateFiles.Read`, the dialog's row and "Read
+  certificate file" alike, before any write): password, one certificate with a key, not expired, not valid only later
+  (`NotValidYetProblem`: the server's clock, for 802.1X also the device's in "Check device clock"; 5 minutes ahead pass,
+  `EarlyStart`), and for 802.1X an extended key usage that allows client authentication (`Dot1xProblem`; none passes).
+  `sendKeysOverHttp` is the user's answer to "Send the keys anyway": without it the task refuses a device its client
+  reaches over HTTP in Check compatibility, before any request (`InstallPayload.KeysOverHttpRefused`; an older payload
+  without the field is not answered). IEEE 802.1X shows the IEEE 802.1X policy below Use for (`IssuingPolicyField`, read once through the
   task's query `listIssuingPolicies` when the purpose is first chosen, `ui:LoadingOverlay` over the card); the run sets that
   policy's identity, EAPOL version and RADIUS server CA (without `policyId` the first policy; a deleted one fails in Check
   compatibility, nothing written). Steps: Check compatibility, Read certificate file, then HTTPS: Read web server settings,
@@ -262,8 +268,8 @@ confirmed (then a Warning log line). Tests: `ClockTests`.
   network_settings.cgi, time.cgi) incl. compatibility failures with no writes, clock, chain, cleanup, renew, delete refusals,
   manual install, Install CA certificates (`InstallCaTests`: PEM bundles, DER, non-CA, expired, garbage, installs / skips
   existing / no writes on an old device or an invalid payload); registry batching; dialog view models (the certificate
-  window at its 5,000 devices: unit check plus a Perf test with 190,000 certificates; Install CA certificates with 30,000
-  devices); headless screenshots `pki-view-certificates.png`, `pki-delete-certificates.png`, `pki-install-manual.png`,
+  window at its 5,000 devices: unit check plus a Perf test with 190,000 certificates; Install CA certificates at the device
+  limit); headless screenshots `pki-view-certificates.png`, `pki-delete-certificates.png`, `pki-install-manual.png`,
   `pki-install-ca.png`, `pki-dot1x-confirm.png`; `tests/Oadm.Client.Tests/SecurityMenuTests` (`pki-security-menu.png`);
   `tests/Oadm.Server.Tests/DeviceTlsTests` (UpdateDeviceTlsAsync with the fake network presenting real certificates). Older
   AXIS OS: `LegacyDeviceApiTests`, `CompatibilityMatrixTests`, `LegacyTaskTests` (parsers and request bodies against
@@ -336,7 +342,7 @@ certificate" (`Ca/NotAcceptedTexts`) and never listed.
 - Tests: `IssuedRegistryTests`, `ExistingCertificateImportTests`, `CurrentCertificateTests`,
   `CertificateConfirmationTaskTests`, `CertificatesTabTests` (`pki-certificates.png`, `pki-certificate-window.png`),
   `CertificateListTests`, `CertificateGroupTests`, `CertificateCardHeadlessTests`, `BackupTests` (a restore on another server
-  over the real database, a created key restored), Perf `IssuedScaleTests` (30,000 devices x 4 certificates),
+  over the real database, a created key restored), Perf `IssuedScaleTests` (the device limit x 4 certificates),
   `CertificateListPerfTests`.
 
 ## Device groups

@@ -73,9 +73,12 @@ The settings in the file replace the current ones. Export the devices first if y
 - **Host name, IP address, subnet, router, DHCP on or off and the device names** are never imported, so many devices
   can share one file.
 - **Settings that are not in the file** stay as they are.
-- **Connection settings** (HTTPS, ports, login method, IEEE 802.1X, IPv6, web interface) are their own area, off by
-  default and marked with a warning: they can make the devices unreachable. When you tick it, OADM writes them last. It
-  needs the permission "Import connection settings", off for operators by default.
+- **Connection settings** (HTTPS, ports, login method, IEEE 802.1X, IPv6, DNS, network link, web interface) are their
+  own area, off by default and marked with a warning: they can make the devices unreachable. When you tick it, OADM
+  writes them last. It needs the permission "Import connection settings", off for operators by default. They are the
+  same parameters **Configure devices** warns about.
+- **Settings OADM does not know** are not imported. The dialog names them below the settings areas. The same goes for
+  users in a file: only the password policy is imported.
 - **Passwords** are not in a file. Event recipients that need one, for example an FTP server, must get it again.
 
 ## Steps of an import

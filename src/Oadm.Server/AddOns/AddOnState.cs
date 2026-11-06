@@ -108,6 +108,12 @@ public static class AddOnTexts
     /// <summary>Installed before, not loaded now: a version that may not run here, after a restore, or it does not load.</summary>
     public const string InstallAgain = "Not loaded. Install it again for this OADM version.";
 
+    /// <summary>
+    /// Installed before, deleted at this start: until now users other than administrators could change its folder
+    /// (docs/spec/security.md, Folders). The row says so until the next start, then <see cref="InstallAgain"/>.
+    /// </summary>
+    public const string FolderWasLoose = "Removed: other users could change its folder. Install it again.";
+
     /// <summary>The ZIP of this version is in place while the older add-on still runs (a running plugin is never swapped).</summary>
     public const string UpdateWaits = "The new version starts at the next restart of the server.";
 

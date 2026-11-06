@@ -304,6 +304,12 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject, IDi
                 continue;
             }
 
+            if (IsDot1x && CertificateFiles.Dot1xProblem(contents) is { } notClient)
+            {
+                SetRow(row, "Cannot be used", error: true, notClient);
+                continue;
+            }
+
             var matches = _devices.Where(d => CertificateFiles.Matches(contents.Names, d.Serial, d.Address, d.HostName)).Take(2).ToList();
             if (matches.Count == 0)
             {
@@ -361,7 +367,7 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject, IDi
         }
 
         IsBusy = true;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var files = new List<InstallFile>();
             for (var i = 0; i < rows.Count; i++)
@@ -380,18 +386,15 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject, IDi
                 Password = Password,
                 Files = files,
                 PolicyId = IsDot1x ? Policy.PolicyId : null,
+                SendKeysOverHttp = HttpWarning is not null && SendKeysOverHttp, // the user's answer; the task refuses without it
             }));
-        }
-#pragma warning disable CA1031 // Shown in the dialog; the user can retry.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            FilesError = "Upload failed: " + PkiDialogViewModel.Message(ex);
+            FilesError = "Upload failed: " + error;
         }
-        finally
-        {
-            IsBusy = false;
-        }
+
+        IsBusy = false;
     }
 
     [RelayCommand]

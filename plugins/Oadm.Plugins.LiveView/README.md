@@ -49,5 +49,5 @@ Every view belongs to the device scope of the user who made it (`SavedView.owner
 owner, cameras that left the group, a deleted group); storage, versions and every refusal of the server part; the drop placement and
 moves of `ViewLayout` (the cameras of a view on the shared `TileLayout`; the grid itself is the shared `ui:TileGrid`, its
 rules tested in `tests/Oadm.Core.Tests/Layout/TileLayoutTests`); the page (new view, drop, channel, save, other users, Cancel, close with changes, roles, removed
-devices; Perf: the camera tree of 5,000 devices); a headless screenshot with fake-mode video (`plugin-live-view.png`,
+devices; Perf: the camera tree at the device limit); a headless screenshot with fake-mode video (`plugin-live-view.png`,
 `plugin-live-view-edit.png`). Fake mode (`FakeOadmApi.LiveView.cs`): the view "Entrance" with four cameras.

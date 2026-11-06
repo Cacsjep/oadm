@@ -342,7 +342,7 @@ public sealed partial class InstallAppsViewModel : ObservableObject, IDisposable
             }
         }
 
-        return string.Join("  ·  ", $"{first.DisplayName} {first.Version}", arch, FileSizeText.Format(size));
+        return string.Join("  ·  ", $"{first.DisplayName} {first.Version}", arch, Oadm.Sdk.Formatting.ByteSize.Text(size));
     }
 
     /// <summary>Checks every device off the UI thread (one pass, the shared rules), then replaces the rows once.</summary>

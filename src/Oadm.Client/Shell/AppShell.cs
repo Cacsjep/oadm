@@ -289,7 +289,13 @@ public sealed partial class AppShell(
         session.SignOut();
         var old = _desktop?.MainWindow;
         ShowLogin(message);
-        old?.Close();
+        if (old is not null)
+        {
+            old.Close();
+            // The closed window lets go of the view model, which lives on: its views (the device grid) no longer listen to
+            // it, and no page view stays in a window that is gone.
+            old.DataContext = null;
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Start: first window after {Milliseconds} ms")]

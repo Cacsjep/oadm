@@ -71,7 +71,8 @@ internal sealed class HostCallContext : ICallContext
 {
     /// <param name="viewWatcher">Ends a group user's event streams when their device leaves the view; without it a group user gets no event streams (fail closed).</param>
     /// <param name="registry">The task plugins for the role check of a run through another runner than the engine (null: no check there; the engine checks itself).</param>
-    public HostCallContext(PluginCaller caller, IVapixClientFactory vapix, ITaskRunner tasks, IDeviceEventStreams? eventStreams, DeviceViewWatcher? viewWatcher, CallTaskOwners taskOwners, PluginRegistry? registry = null)
+    /// <param name="packageId">The package of the core plugin whose method gets the call: its own page tasks start on the method's permission (<see cref="Oadm.Core.Tasks.TaskRunPermissions.StartsOwnPageTask"/>); null: every run needs its keys.</param>
+    public HostCallContext(PluginCaller caller, IVapixClientFactory vapix, ITaskRunner tasks, IDeviceEventStreams? eventStreams, DeviceViewWatcher? viewWatcher, CallTaskOwners taskOwners, PluginRegistry? registry = null, string? packageId = null)
     {
         Caller = caller;
         var view = caller.View;
@@ -81,8 +82,8 @@ internal sealed class HostCallContext : ICallContext
         // The engine's runner of the view: the tasks belong to the caller (owner shown, queue check of the caller's view,
         // ITaskExecutionContext.Caller), also when a job starts them after the call ended.
         Tasks = tasks is Oadm.Core.Tasks.TaskEngine engine
-            ? engine.ForView(view, Oadm.Core.Tasks.TaskCaller.Of(caller.Caller))
-            : new ViewTasks(this, tasks, taskOwners, registry);
+            ? engine.ForPage(view, Oadm.Core.Tasks.TaskCaller.Of(caller.Caller), packageId)
+            : new ViewTasks(this, tasks, taskOwners, registry, packageId);
         EventStreams = eventStreams is null ? null
             : caller.HasAllDevices ? eventStreams
             : viewWatcher is null ? null
@@ -148,16 +149,17 @@ internal sealed class HostCallContext : ICallContext
     }
 
     /// <summary>The call's runner over another <see cref="ITaskRunner"/> than the engine (tests, tools).</summary>
-    private sealed class ViewTasks(HostCallContext call, ITaskRunner inner, CallTaskOwners owners, PluginRegistry? registry) : ITaskRunner
+    private sealed class ViewTasks(HostCallContext call, ITaskRunner inner, CallTaskOwners owners, PluginRegistry? registry, string? packageId) : ITaskRunner
     {
         public async Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(deviceIds);
 
-            // The role's permissions for the run first, like gRPC Run (a plugin the registry does not know is left to the runner).
+            // The role's permissions for the run first, like gRPC Run (a plugin the registry does not know is left to the
+            // runner); a page task of the calling plugin's own package starts on the method's permission.
             if (registry is not null)
             {
-                Oadm.Core.Tasks.TaskRunPermissions.Require(registry, pluginId, payloadJson, call.Caller.Caller.Permissions, refuseUnknown: false);
+                Oadm.Core.Tasks.TaskRunPermissions.Require(registry, pluginId, payloadJson, call.Caller.Caller.Permissions, refuseUnknown: false, packageId);
             }
 
 

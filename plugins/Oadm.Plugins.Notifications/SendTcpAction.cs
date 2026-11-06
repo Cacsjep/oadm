@@ -175,11 +175,13 @@ public sealed class SendTcpAction : IActionPlugin
             return Hex(message) ?? throw new InvalidOperationException("The message is not valid hex bytes. Nothing was sent.");
         }
 
+        // A value of the event never adds a line at the receiver, where a line is often a command: JSON escapes line
+        // breaks, Text and XML lose them (and every other control character). The typed message keeps its own.
         var text = format switch
         {
             "json" => ctx.Text(message, PlaceholderEscape.Json),
-            "xml" => ctx.Text(message, PlaceholderEscape.Xml),
-            _ => ctx.Text(message),
+            "xml" => ActionPlaceholders.Fill(message, name => OneLineValue(ctx, name), PlaceholderEscape.Xml),
+            _ => ctx.Text(message, PlaceholderEscape.SingleLine),
         };
         text += invocation.Get("lineEnd") switch
         {
@@ -189,6 +191,14 @@ public sealed class SendTcpAction : IActionPlugin
             _ => string.Empty,
         };
         return Encoding.UTF8.GetBytes(text);
+    }
+
+    /// <summary>The value of one placeholder without control characters; null for a name the run does not fill (it stays as typed).</summary>
+    private static string? OneLineValue(IActionContext ctx, string name)
+    {
+        var placeholder = "{" + name + "}";
+        var value = ctx.Text(placeholder, PlaceholderEscape.SingleLine);
+        return string.Equals(value, placeholder, StringComparison.Ordinal) ? null : value;
     }
 
     /// <summary>The bytes of "02 41 0A", "0241 0a" or "0x02 0x41"; null for anything else or nothing.</summary>

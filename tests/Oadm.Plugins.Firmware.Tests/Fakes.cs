@@ -153,6 +153,16 @@ internal sealed class FakeAxisDevice : IVapixClient
     public AfterUpgrade After { get; set; } = AfterUpgrade.Restart;
     public int DownProbes { get; set; } = 3;
 
+    /// <summary>
+    /// Probes that get lost right after the upgrade while the device still installs (a timeout, a site link): it then
+    /// answers <see cref="InstallingProbes"/> times with the old version before <see cref="After"/> applies.
+    /// </summary>
+    public int LostProbes { get; set; }
+    public int InstallingProbes { get; set; } = 2;
+
+    /// <summary>The device refuses the status request once the image is in (the stored credentials no longer work).</summary>
+    public bool StatusFailsAfterUpgrade { get; set; }
+
     public List<string> Methods { get; } = [];
     public string? UpgradeJson { get; private set; }
     public string? UploadedFileName { get; private set; }
@@ -163,7 +173,10 @@ internal sealed class FakeAxisDevice : IVapixClient
     public bool Committed { get; private set; } = true;
 
     private bool _upgraded;
+    private bool _restarted;
     private int _downCount;
+    private int _lostCount;
+    private int _installingCount;
 
     public Uri BaseAddress { get; } = new("https://10.0.0.48/");
 
@@ -186,6 +199,7 @@ internal sealed class FakeAxisDevice : IVapixClient
 
     public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         var path = request.RequestUri!.OriginalString;
         if (path.EndsWith("basicdeviceinfo.cgi", StringComparison.Ordinal))
         {
@@ -215,7 +229,7 @@ internal sealed class FakeAxisDevice : IVapixClient
         Methods.Add(method);
         return method switch
         {
-            "status" => Json(Committed ? StatusJson : UncommittedStatus()),
+            "status" => Status(),
             "commit" => Commit(),
             _ => Json($$"""{"apiVersion":"1.10","method":"{{method}}","error":{"code":405,"message":"Unknown method in request."} }"""),
         };
@@ -238,6 +252,29 @@ internal sealed class FakeAxisDevice : IVapixClient
 
         Committed = true;
         return Json($$"""{"apiVersion":"1.10","method":"commit","data":{"firmwareVersion":"{{Version}}"} }""");
+    }
+
+    private HttpResponseMessage Status()
+    {
+        if (Committed)
+        {
+            return Json(StatusJson);
+        }
+
+        if (StatusFailsAfterUpgrade)
+        {
+            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+        }
+
+        // The new image runs only after the restart (an image of the version the device already runs: the same version before and after).
+        if (_restarted)
+        {
+            return Json(UncommittedStatus());
+        }
+
+        // The old version runs: after a rollback the new image is the inactive one, while the device installs there is none.
+        var inactive = After == AfterUpgrade.RollBack && _downCount >= DownProbes ? $$""","inactiveFirmwareVersion":"{{NewVersion}}" """ : string.Empty;
+        return Json($$"""{"apiVersion":"1.10","method":"status","data":{"activeFirmwareVersion":"{{Version}}"{{inactive}},"isCommited":true} }""");
     }
 
     private string UncommittedStatus() =>
@@ -273,7 +310,24 @@ internal sealed class FakeAxisDevice : IVapixClient
     private HttpResponseMessage Probe()
     {
         Probes++;
-        if (!_upgraded || After == AfterUpgrade.NeverDown)
+        if (!_upgraded)
+        {
+            return Unrestricted(Version);
+        }
+
+        if (_lostCount < LostProbes)
+        {
+            _lostCount++;
+            throw new HttpRequestException("The request timed out");
+        }
+
+        if (LostProbes > 0 && _installingCount < InstallingProbes)
+        {
+            _installingCount++;
+            return Unrestricted(Version);
+        }
+
+        if (After == AfterUpgrade.NeverDown)
         {
             return Unrestricted(Version);
         }
@@ -287,6 +341,7 @@ internal sealed class FakeAxisDevice : IVapixClient
         if (After == AfterUpgrade.Restart)
         {
             Version = NewVersion;
+            _restarted = true;
         }
 
         return Unrestricted(Version);
@@ -299,6 +354,43 @@ internal sealed class FakeAxisDevice : IVapixClient
     {
         Content = new StringContent(json, Encoding.UTF8, "application/json"),
     };
+}
+
+/// <summary>
+/// A clock that stands still until someone waits on it: every timer moves it forward by its due time and fires at
+/// once (on the thread pool). Timeouts measured with it count waits, not real time.
+/// </summary>
+internal sealed class SteppingClock : TimeProvider
+{
+    private long _ticks;
+
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+
+    public override long GetTimestamp() => Interlocked.Read(ref _ticks);
+
+    public override DateTimeOffset GetUtcNow() => DateTimeOffset.UnixEpoch.AddTicks(Interlocked.Read(ref _ticks));
+
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        if (dueTime != Timeout.InfiniteTimeSpan)
+        {
+            Interlocked.Add(ref _ticks, dueTime.Ticks);
+            ThreadPool.QueueUserWorkItem(_ => callback(state));
+        }
+
+        return new NoTimer();
+    }
+
+    private sealed class NoTimer : ITimer
+    {
+        public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+
+        public void Dispose()
+        {
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
 }
 
 /// <summary>Minimal multipart/form-data parser for assertions (reads the serialized request body).</summary>

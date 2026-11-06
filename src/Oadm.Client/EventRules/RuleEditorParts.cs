@@ -12,6 +12,7 @@ using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Events;
+using Oadm.Sdk.Formatting;
 
 namespace Oadm.Client.EventRules;
 
@@ -519,16 +520,12 @@ public sealed partial class ActionFieldViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(content);
         FileName = name;
         FileData = Convert.ToBase64String(content);
-        FileDetails = SizeText(content.Length);
+        FileDetails = ByteSize.Text(content.Length);
         Edited();
     }
 
     /// <summary>The file setting as stored: {"name", "data"}; null without a file.</summary>
     public JsonObject? FileJson() => FileData is null ? null : new JsonObject { ["name"] = FileName ?? string.Empty, ["data"] = FileData };
-
-    private static string SizeText(long bytes) => bytes < 1024
-        ? string.Create(CultureInfo.CurrentCulture, $"{bytes:N0} bytes")
-        : string.Create(CultureInfo.CurrentCulture, $"{bytes / 1024d:N0} KB");
 
     [RelayCommand]
     private Task ChooseFileAsync() => FilePicker is { } pick ? pick(this) : Task.CompletedTask;
@@ -627,7 +624,7 @@ public sealed partial class ActionFieldViewModel : ObservableObject
                 {
                     FileName = file["name"]?.GetValue<string>() ?? string.Empty;
                     FileData = data;
-                    FileDetails = SizeText(data.Length * 3L / 4);
+                    FileDetails = ByteSize.Text(data.Length * 3L / 4);
                 }
             }
             catch (Exception ex) when (ex is System.Text.Json.JsonException or InvalidOperationException or FormatException)

@@ -21,6 +21,7 @@ public sealed class AssignIpTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     private readonly NetworkTaskRunner _runner;
     private readonly IAddressProbe? _probe;
+    private readonly NetworkRunCache _runs;
 
     public AssignIpTaskPlugin()
         : this(ReachabilityOptions.Default, TimeProvider.System, null)
@@ -36,7 +37,11 @@ public sealed class AssignIpTaskPlugin : ITaskPlugin, ITaskPluginQuery
         ArgumentNullException.ThrowIfNull(timeProvider);
         _probe = probe;
         _runner = new NetworkTaskRunner(options, timeProvider, probe);
+        _runs = new NetworkRunCache(timeProvider, payload => Validate(payload));
     }
+
+    /// <summary>The payloads of the runs, parsed and validated once each (tests).</summary>
+    internal NetworkRunCache Runs => _runs;
 
     public string Id => PluginId;
 
@@ -68,7 +73,7 @@ public sealed class AssignIpTaskPlugin : ITaskPlugin, ITaskPluginQuery
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
-        var payload = Validate(NetworkPayload.Parse(payloadJson));
+        var payload = _runs.For(payloadJson); // parsed and validated once per run, not once per device
         await _runner.RunAsync(ctx, device, payload, Sections, ct).ConfigureAwait(false);
     }
 

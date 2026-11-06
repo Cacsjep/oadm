@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Oadm.Sdk.Plugins;
+
 namespace Oadm.Plugins.Users;
 
 /// <summary>What the "Users..." task does on every selected device.</summary>
@@ -97,10 +99,7 @@ public static class UsersJson
 {
     public const string ListUsersMethod = "listUsers";
 
-    public static JsonSerializerOptions Options { get; } = new(JsonSerializerDefaults.Web)
-    {
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
-    };
+    public static JsonSerializerOptions Options { get; } = PluginJson.CreateOptions(PluginJsonEnums.CamelCase, writeNulls: true);
 
     public static string Serialize(UsersPayload payload) => JsonSerializer.Serialize(payload, Options);
 

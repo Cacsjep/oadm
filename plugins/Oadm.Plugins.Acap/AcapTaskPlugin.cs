@@ -2,6 +2,7 @@ using System.Globalization;
 
 using Oadm.Plugins.Shared;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Formatting;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
 
@@ -339,7 +340,6 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
             var upload = await ctx.Files.OpenReadAsync(file.Id, ct).ConfigureAwait(false);
             await using (upload.ConfigureAwait(false))
             {
-                var totalMb = file.Size / (1024.0 * 1024);
                 var lastPercent = -1;
                 var progress = new SyncProgress<long>(bytes =>
                 {
@@ -349,13 +349,13 @@ public sealed class AcapTaskPlugin : ITaskPlugin, ITaskPluginQuery
                         lastPercent = percent;
                         step.ReportProgress(percent, percent >= 100
                             ? "The device installs the package"
-                            : string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024.0 * 1024):0.0} of {totalMb:0.0} MB"));
+                            : ByteSize.Progress(bytes, file.Size));
                     }
                 });
                 try
                 {
                     await client.UploadAsync(upload, file.Name, progress, ct).ConfigureAwait(false);
-                    step.Complete(string.Create(CultureInfo.InvariantCulture, $"{totalMb:0.0} MB, installed by the device"));
+                    step.Complete(ByteSize.Text(file.Size) + ", installed by the device");
                 }
                 catch (Exception ex) when (!ct.IsCancellationRequested && (ex is TaskCanceledException or TimeoutException or HttpRequestException || ex is AcapDeviceException { OutcomeUnknown: true }))
                 {

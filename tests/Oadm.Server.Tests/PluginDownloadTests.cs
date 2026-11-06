@@ -90,6 +90,53 @@ public sealed class PluginDownloadTests
         await plugin.Disposed.Task.WaitAsync(TimeSpan.FromSeconds(30));
     }
 
+    [Fact]
+    public async Task ADownloadThatFailsOrThatTheClientGivesUpIsAuditedWithItsOutcome()
+    {
+        var plugin = new DownloadPlugin { AuditEverything = true };
+        await using var host = await StartAsync(plugin);
+        async Task<List<string>> DetailsAsync() =>
+            [.. (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries.Where(e => e.Action == AuditActions.PluginCall).Select(e => e.Detail).Reverse()];
+
+        // The plugin refuses to open it: an entry all the same, with the method (no download gave its own words).
+        await Assert.ThrowsAsync<RpcException>(() => ReadAllAsync(host.Plugins, "refuse", null));
+        Assert.Equal(["refuse (failed)"], await DetailsAsync());
+
+        // The client goes away in the middle: a second entry, written although the call's token is cancelled.
+        using (var cts = new CancellationTokenSource())
+        {
+            using var call = host.Plugins.Download(new Proto.InvokeRequest { PluginId = PluginId, Method = "endless" }, cancellationToken: cts.Token);
+            Assert.True(await call.ResponseStream.MoveNext());
+            Assert.True(await call.ResponseStream.MoveNext());
+            await cts.CancelAsync();
+        }
+
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(async () => (await DetailsAsync()).Count == 3, "the cancelled download is audited");
+        Assert.Equal(["refuse (failed)", "Exported without end", "Exported without end (cancelled)"], await DetailsAsync());
+
+        // A download that ends well has one entry, with the words it always had.
+        await ReadAllAsync(host.Plugins, "file", "{\"size\":10}");
+        Assert.Equal(["refuse (failed)", "Exported without end", "Exported without end (cancelled)", "Exported 10 bytes"], await DetailsAsync());
+    }
+
+    [Fact]
+    public async Task ADownloadIsAuditedWhenItOpensNotWhenItEnds()
+    {
+        var plugin = new DownloadPlugin { AuditEverything = true };
+        await using var host = await StartAsync(plugin);
+        using var cts = new CancellationTokenSource();
+        using var call = host.Plugins.Download(new Proto.InvokeRequest { PluginId = PluginId, Method = "endless" }, cancellationToken: cts.Token);
+
+        // The header goes out after the entry is written: a download that still runs (or a server that stops) has it.
+        Assert.True(await call.ResponseStream.MoveNext());
+        var entry = Assert.Single((await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries, e => e.Action == AuditActions.PluginCall);
+        Assert.Equal("Exported without end", entry.Detail);
+        Assert.False(plugin.Disposed.Task.IsCompleted);
+
+        await cts.CancelAsync();
+        await plugin.Disposed.Task.WaitAsync(TimeSpan.FromSeconds(30));
+    }
+
     private static async Task<TestServerHost> StartAsync(DownloadPlugin plugin, bool withoutDownloads = false)
     {
         var host = await TestServerHost.StartAsync();
@@ -125,6 +172,9 @@ public sealed class PluginDownloadTests
     {
         public int Opened;
 
+        /// <summary>Every download is audited, not only "file".</summary>
+        public bool AuditEverything { get; init; }
+
         public TaskCompletionSource Disposed { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public string Id => PluginId;
@@ -139,7 +189,7 @@ public sealed class PluginDownloadTests
 
         public string? RequiredPermission(string method) => method == "file" ? "export" : PermissionKeys.Show;
 
-        public bool IsAudited(string method) => method == "file";
+        public bool IsAudited(string method) => AuditEverything || method == "file";
 
         public static byte[] Bytes(int size) => [.. Enumerable.Range(0, size).Select(i => (byte)(i * 7))];
 
@@ -164,7 +214,7 @@ public sealed class PluginDownloadTests
                         AuditDetail = $"Exported {size} bytes",
                     });
                 case "endless":
-                    return Task.FromResult(new PluginDownload(new EndlessStream(), "endless.bin", null, owner));
+                    return Task.FromResult(new PluginDownload(new EndlessStream(), "endless.bin", null, owner) { AuditDetail = "Exported without end" });
                 case "refuse":
                     throw new InvalidOperationException("The camera did not send the recording.");
                 default:

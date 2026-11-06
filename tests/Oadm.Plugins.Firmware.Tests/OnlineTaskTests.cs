@@ -53,9 +53,9 @@ public sealed class OnlineTaskTests : IDisposable
         Assert.Equal(new Uri("https://www.axis.com/ftp/pub_soft/MPQT/P3265-V/12_11_147/P3265-V_12_11_147.bin"), call.Uri);
         Assert.Equal("abb2d5179defc9c13be2ae68aa1f6ae747942b3ad9c509dbc1a31be8026e2888", call.Sha256);
         Assert.Equal(236_453_888, call.Size);
-        // Progress in MB of the listed size while it downloads (the fake file is 2 MB), then the result.
-        Assert.Equal("0 of 225 MB", details[0]);
-        Assert.Equal("2 MB from axis.com, checksum matches", StepRun.Detail(ctx.Steps, FirmwareTaskPlugin.Steps.Download));
+        // Progress in the unit of the listed size while it downloads (the fake file is 2 MB, reported in thirds), then the result.
+        Assert.Equal("0.7 of 225.5 MB", details[0]);
+        Assert.Equal("2.0 MB from axis.com, checksum matches", StepRun.Detail(ctx.Steps, FirmwareTaskPlugin.Steps.Download));
 
         // The device got exactly the downloaded file, under the name from axis.com; the handle was released after the upload.
         Assert.Equal(_downloads.Content, device.UploadedBytes);
@@ -253,7 +253,7 @@ public sealed class OnlineTaskTests : IDisposable
 
         Assert.Equal(236_453_888, Assert.Single(_downloads.Calls).Size); // the listed size goes to the host only
         Assert.Equal(_downloads.Content, device.UploadedBytes); // all of it, nothing announced that was not sent
-        Assert.StartsWith("2 MB, device accepted", StepRun.Detail(ctx.Steps, FirmwareTaskPlugin.Steps.Upload), StringComparison.Ordinal);
+        Assert.StartsWith("2.0 MB, device accepted", StepRun.Detail(ctx.Steps, FirmwareTaskPlugin.Steps.Upload), StringComparison.Ordinal);
     }
 
     [Theory]

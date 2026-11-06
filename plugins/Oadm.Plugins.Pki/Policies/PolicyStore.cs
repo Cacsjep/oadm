@@ -170,8 +170,8 @@ public sealed partial class PolicyStore : IDisposable
     }
 
     /// <summary>
-    /// Once per <paramref name="owner"/>: the stored list becomes what <paramref name="rewrite"/> makes of it (a change of the
-    /// kinds, e.g. <see cref="ConvertKinds"/>). Never on a list that cannot be read; later calls do nothing.
+    /// Once per <paramref name="owner"/>: the stored list becomes what <paramref name="rewrite"/> makes of it (e.g.
+    /// <see cref="ConvertPreviousCas"/>). Never on a list that cannot be read; later calls do nothing.
     /// </summary>
     /// <returns>True when it rewrote now.</returns>
     public async Task<bool> RewriteOnceAsync(string owner, Func<IReadOnlyList<PkiPolicy>, IReadOnlyList<PkiPolicy>> rewrite, CancellationToken ct)
@@ -206,11 +206,11 @@ public sealed partial class PolicyStore : IDisposable
     /// <summary>The owner of the conversion of 2026-10-26: the previous OADM CAs became ordinary CAs (<see cref="ConvertPreviousCas"/>).</summary>
     public const string PreviousCasOwner = "oadm.pki:previous-cas-2026-10-26";
 
-    /// <summary>The owner of the 802.1X server's conversion, which makes its trusted CAs 802.1X trusted CA policies.</summary>
+    /// <summary>The owner of the 802.1X server's default policies (the 802.1X server policy and its 802.1X trusted CA policies).</summary>
     public const string RadiusOwner = "oadm.radius";
 
     /// <summary>
-    /// Once (decision 2026-10-26), after the 802.1X server's trusted CAs became policies (<see cref="RadiusOwner"/>; before
+    /// Once (decision 2026-10-26), after the 802.1X server's default policies were added (<see cref="RadiusOwner"/>; before
     /// that nothing is done and nothing is marked): <see cref="ConvertPreviousCas"/> with the CAs PKI lists now. Never on a
     /// list that cannot be read. True when it converted now.
     /// </summary>
@@ -259,79 +259,6 @@ public sealed partial class PolicyStore : IDisposable
         }
 
         return list;
-    }
-
-    /// <summary>
-    /// The kinds of 2026-10-25 (docs/spec/pki.md "Converting existing settings"), nothing the user set lost: the Server
-    /// certificate policy of the 802.1X server goes into the 802.1X server policy (its CA, days and key; without an 802.1X
-    /// server policy one with the kind's TLS defaults takes them), the one of the EST server becomes the EST server policy
-    /// in its place; a Revoke policy becomes a Block policy with Also revoke, a Block policy keeps it off; names stay,
-    /// made unique per kind ("Stolen (2)"). Without an EST server policy one with the defaults (90 days, ECC, the OADM CA)
-    /// is added. Idempotent: a converted list stays as it is.
-    /// </summary>
-    public static IReadOnlyList<PkiPolicy> ConvertKinds(IReadOnlyList<PkiPolicy> stored, Func<PkiPolicy> defaultDot1xServer)
-    {
-        ArgumentNullException.ThrowIfNull(stored);
-        ArgumentNullException.ThrowIfNull(defaultDot1xServer);
-        var servers = stored.Where(p => p.Kind == PolicyKinds.LegacyServerCertificate).ToList();
-        var dot1xCertificate = servers.FirstOrDefault(p => p.Server == PolicyServers.Dot1x);
-        var estCertificate = servers.FirstOrDefault(p => p.Server == PolicyServers.Est);
-        var hasDot1xServer = stored.Any(p => p.Kind == PolicyKinds.Dot1xServer);
-        var hasEstServer = stored.Any(p => p.Kind == PolicyKinds.EstServer);
-        var list = new List<PkiPolicy>(stored.Count);
-        foreach (var policy in stored)
-        {
-            switch (policy.Kind)
-            {
-                case PolicyKinds.LegacyServerCertificate when ReferenceEquals(policy, estCertificate) && !hasEstServer:
-                    list.Add(policy with { Kind = PolicyKinds.EstServer, Server = null, CaId = policy.CaId ?? CertificateAuthorityInfo.OadmId });
-                    break;
-                case PolicyKinds.LegacyServerCertificate when ReferenceEquals(policy, dot1xCertificate) && !hasDot1xServer:
-                    // No 802.1X server policy (deleted on a build before the system policies): one with the TLS defaults.
-                    list.Add(WithCertificate(defaultDot1xServer() with { Id = policy.Id, SavedBy = policy.SavedBy }, policy));
-                    break;
-                case PolicyKinds.LegacyServerCertificate:
-                    break; // its values went into the server policy
-                case PolicyKinds.Dot1xServer:
-                    list.Add(WithCertificate(policy, dot1xCertificate));
-                    break;
-                case PolicyKinds.LegacyRevoke:
-                    list.Add(policy with { Kind = PolicyKinds.Block, AlsoRevoke = true });
-                    break;
-                case PolicyKinds.Block:
-                    list.Add(policy with { AlsoRevoke = policy.AlsoRevoke ?? false });
-                    break;
-                default:
-                    list.Add(policy);
-                    break;
-            }
-        }
-
-        if (!list.Any(p => p.Kind == PolicyKinds.EstServer))
-        {
-            list.Add(new PkiPolicy { Name = PolicyLimits.EstServerCertificateName, Kind = PolicyKinds.EstServer });
-        }
-
-        // Names are unique per kind: a Revoke and a Block policy of the same name are both Block policies now.
-        for (var i = 0; i < list.Count; i++)
-        {
-            var policy = list[i];
-            if (list.Take(i).Any(p => p.Kind == policy.Kind && string.Equals(p.Name.Trim(), policy.Name.Trim(), StringComparison.OrdinalIgnoreCase)))
-            {
-                list[i] = policy with { Name = UniqueName(list.Take(i).ToList(), policy) };
-            }
-        }
-
-        return list;
-
-        // The 802.1X server policy with the certificate values (those of the Server certificate policy win: the user set
-        // them there; without one the policy's own or the kind's defaults).
-        static PkiPolicy WithCertificate(PkiPolicy server, PkiPolicy? certificate) => server with
-        {
-            CaId = certificate?.CaId ?? server.CaId ?? CertificateAuthorityInfo.OadmId,
-            ValidDays = certificate?.ValidDays ?? server.ValidDays ?? PolicyLimits.DefaultValidDays,
-            Key = certificate?.Key ?? server.Key ?? PolicyKeys.Ecc,
-        };
     }
 
     /// <summary>

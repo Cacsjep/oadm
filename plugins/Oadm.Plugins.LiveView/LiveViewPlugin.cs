@@ -287,17 +287,7 @@ public sealed class LiveViewPlugin : ICorePlugin, IDisposable
 
     private static string Serialize(ViewList list) => JsonSerializer.Serialize(list, LiveViewPluginInfo.Json);
 
-    private static T Read<T>(string? json)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<T>(json ?? "null", LiveViewPluginInfo.Json) ?? throw new ArgumentException("The request is empty.");
-        }
-        catch (JsonException ex)
-        {
-            throw new ArgumentException("The request could not be read: " + ex.Message, ex);
-        }
-    }
+    private static T Read<T>(string? json) => PluginJson.Parse<T>(json, LiveViewPluginInfo.Json);
 }
 
 internal static partial class LiveViewLog

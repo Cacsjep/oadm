@@ -20,7 +20,8 @@ used again.
 
 - **`AuthService`** (`auth.proto`): `Status` (server name, version, `needs_first_admin`, `updating_to` from Install now until the update's result, `setup_code_required` when the
   caller is not loopback), `Login(user, password, remember)` -> {token, UserInfo} (UNAUTHENTICATED one message for wrong
-  password, unknown and disabled user; RESOURCE_EXHAUSTED while locked), `CreateFirstAdmin(user, password, setup_code,
+  password, unknown and disabled user, and for a name over 64 or a password over 256 characters; RESOURCE_EXHAUSTED while
+  the user name or the client address is locked, `docs/spec/security.md` "Tokens"), `CreateFirstAdmin(user, password, setup_code,
   remember)` (FAILED_PRECONDITION users exist, PERMISSION_DENIED setup code, INVALID_ARGUMENT), `Logout` (revokes the
   call's token), `Me`, `WatchSession` (the caller's user with role and permissions now and after every change).
   `UserInfo`: `role` (the two-value role of older clients: ADMIN for Administrator), `role_id`, `role_name`, for the
@@ -161,7 +162,8 @@ used again.
     NOT_FOUND, UNIMPLEMENTED, FAILED_PRECONDITION for an incompatible device, changed certificate or rejected
     credentials, UNAVAILABLE, DEADLINE_EXCEEDED, INVALID_ARGUMENT; the status detail is the user message.
   - `Run` and `Query` answer a task plugin their permission lookup does not find with NOT_FOUND "Unknown task plugin 'x'."
-    at once (one turned on meanwhile never runs unchecked).
+    at once (one turned on meanwhile never runs unchecked). `Run` refuses a page task (hidden from the menus, no
+    permissions of its own) for every caller: PERMISSION_DENIED "This task starts only from its page."
 - **`FileService`** (`files.proto`): `Upload` (client stream: header {name, size}, then 256 KB data chunks; returns id,
   name, size, SHA-256; INVALID_ARGUMENT; RESOURCE_EXHAUSTED over `Uploads.MaxMegabytes`, over the 10 GB of all uploads
   together or when less than 1 GB of disk would stay free, `docs/spec/security.md` "Limits"), `Delete(fileId)`. Uploads
@@ -175,14 +177,16 @@ used again.
   - `Invoke(pluginId, method, payloadJson)`: the generic call of core plugin pages (NOT_FOUND unknown plugin or object,
     FAILED_PRECONDITION not running or turned off; a plugin the permission lookup does not find is answered there,
     never called later unchecked; INVALID_ARGUMENT for an `ArgumentException` of the plugin, INTERNAL otherwise; the
-    status detail is the message).
+    status detail is the message). An audited call gets its audit entry when it ends, also when it failed or was
+    cancelled (`docs/spec/security.md`).
   - `Watch(plugin_id)`: stream of `PluginEvent` {plugin_id, topic, payload_json} the plugin publishes through
     `ICorePluginContext.Events` from the call on; NOT_FOUND unknown plugin; `Oadm.Core.Plugins.PluginEventHub` fans out
     with 256 events buffered per watcher, oldest dropped; each event only to the watchers its audience covers.
   - `Download(InvokeRequest)`: stream of `DownloadChunk` {file_name, length (-1 unknown), data}, a file of a core plugin
     that implements `ICorePluginDownloads` (e.g. a recording passed on from a camera); the first message carries the name
     and length, every data message at most 256 KB, uncompressed, nothing stored on the server; the permission, the audit
-    (detail `PluginDownload.AuditDetail`) and the errors of Invoke; UNIMPLEMENTED for a plugin without downloads; the
+    (detail `PluginDownload.AuditDetail`, written when the download opens; a second entry with " (failed)" or
+    " (cancelled)" when it did not arrive whole) and the errors of Invoke; UNIMPLEMENTED for a plugin without downloads; the
     download is disposed at the end or when the client goes away (tests `PluginDownloadTests`).
   - Invoke, Watch and Download run with the caller's call (`PluginCaller`: user + device view,
     `docs/spec/device-scope.md` "Plugins"). For a user with a device group: PERMISSION_DENIED "Only users with all devices
@@ -284,7 +288,8 @@ used again.
   FAILED_PRECONDITION with the reason).
 - **`VulnerabilityService`** (`vulnerabilities.proto`, `docs/spec/vulnerabilities.md`): `Get` (signed in: the list as JSON,
   the setting, date, source, count), `Upload` (signed in, only while `Vulnerabilities.Update` is "clients", else
-  FAILED_PRECONDITION; INVALID_ARGUMENT for a list that does not parse; a newer list is kept and audited "Updated
+  FAILED_PRECONDITION; INVALID_ARGUMENT for a list that does not parse or is empty, never for its date: one dated after
+  the server's clock is kept as dated now; a newer list is kept and audited "Updated
   vulnerability list"), `Refresh` (Admin, only while the setting is "server"; UNAVAILABLE when the internet is not reached).
 - **`MyAxisService`** (`myaxis.proto`, `docs/spec/myaxis.md`; every signed-in user, always the caller's own sign-in, an
   Administrator included): `Get` (signed in, since when, expired), `SignIn` (INVALID_ARGUMENT for anything but one pair

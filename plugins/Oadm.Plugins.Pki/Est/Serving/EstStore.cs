@@ -19,15 +19,12 @@ public sealed partial class EstStore : IAsyncDisposable
 {
     public const string ConfigKey = "config";
     public const string EnrollmentsKey = "enrollments";
-    /// <summary>The records collection of the certificates (4.1.0-rc.2: a settings value under the same name).</summary>
+    /// <summary>The records collection of the certificates.</summary>
     public const string CertificatesKey = "certificates";
     public const string SitesKey = "sites";
 
     /// <summary>The records collection of the issued certificates (DER) of the listed enrollments, by serial number.</summary>
     public const string IssuedKey = "issued";
-
-    /// <summary>4.1.0-rc.2 only (revoked device and profile pairs): deleted when loaded.</summary>
-    public const string LegacyRevokedKey = "revoked";
 
     private static readonly TimeSpan KeepEnded = TimeSpan.FromDays(30);
 
@@ -36,7 +33,6 @@ public sealed partial class EstStore : IAsyncDisposable
     private readonly HashSet<string> _changedCertificates = new(StringComparer.OrdinalIgnoreCase); // serials to write or delete
     private readonly Dictionary<string, string?> _issuedChanges = new(StringComparer.OrdinalIgnoreCase); // serial -> record to write, null: delete
     private bool _clearIssued;
-    private bool _dropLegacyCertificates;
     private bool _stopped;
     private readonly TimeProvider _time;
     private readonly Lock _gate = new();
@@ -84,16 +80,6 @@ public sealed partial class EstStore : IAsyncDisposable
         var enrollments = Read<List<Enrollment>>(await _settings.GetAsync(EnrollmentsKey, ct).ConfigureAwait(false)) ?? [];
         var certificates = (await _records.ListAsync(CertificatesKey, ct).ConfigureAwait(false)).Values
             .Select(Read<IssuedCertificate>).OfType<IssuedCertificate>().ToList();
-        var legacy = await _settings.GetAsync(CertificatesKey, ct).ConfigureAwait(false);
-        if (legacy is not null)
-        {
-            // 4.1.0-rc.2: one settings value, moved to the records. A move cut short (the server stopped before the old
-            // value was deleted): the records already hold the newer state of those certificates.
-            var moved = certificates.Select(c => c.SerialNumber).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            certificates.AddRange(ReadLegacy(legacy).Where(c => !moved.Contains(c.SerialNumber)));
-        }
-
-        legacy ??= await _settings.GetAsync(LegacyRevokedKey, ct).ConfigureAwait(false);
         var sites = Read<Dictionary<Guid, List<string>>>(await _settings.GetAsync(SitesKey, ct).ConfigureAwait(false)) ?? [];
         lock (_gate)
         {
@@ -109,16 +95,10 @@ public sealed partial class EstStore : IAsyncDisposable
             _previous.Clear();
             _changedCertificates.Clear();
             _profilesOf.Clear();
-            foreach (var certificate in certificates.OrderBy(c => c.IssuedUtc)) // 4.1.0-rc.2 kept every certificate
+            foreach (var certificate in certificates.OrderBy(c => c.IssuedUtc))
             {
                 _certificates[certificate.SerialNumber] = certificate;
                 Index(certificate);
-            }
-
-            if (legacy is not null)
-            {
-                _changedCertificates.UnionWith(_certificates.Keys);
-                _dropLegacyCertificates = true;
             }
 
             _sites.Clear();
@@ -126,11 +106,6 @@ public sealed partial class EstStore : IAsyncDisposable
             {
                 _sites[site] = new SortedSet<string>(addresses, StringComparer.Ordinal);
             }
-        }
-
-        if (legacy is not null)
-        {
-            MarkDirty(); // the move to the records is written with the next flush
         }
     }
 
@@ -335,34 +310,6 @@ public sealed partial class EstStore : IAsyncDisposable
     private IEnumerable<DeviceProfile> KeysOf(Guid deviceId) =>
         _profilesOf.TryGetValue(deviceId, out var profiles) ? profiles.Select(p => new DeviceProfile(deviceId, p)) : [];
 
-    /// <summary>
-    /// 4.1.0-rc.2 kept revoked certificates (<c>revokedUtc</c>; Revoke is gone): they count as no longer renewed, never
-    /// as Not renewed.
-    /// </summary>
-    private static IEnumerable<IssuedCertificate> ReadLegacy(string json)
-    {
-        System.Text.Json.Nodes.JsonArray? list;
-        try
-        {
-            list = System.Text.Json.Nodes.JsonNode.Parse(json) as System.Text.Json.Nodes.JsonArray;
-        }
-        catch (System.Text.Json.JsonException)
-        {
-            yield break;
-        }
-
-        foreach (var node in list ?? [])
-        {
-            if (Read<IssuedCertificate>(node?.ToJsonString()) is not { } certificate)
-            {
-                continue;
-            }
-
-            var revoked = node?["revokedUtc"]?.GetValue<DateTime?>();
-            yield return revoked is { } at && certificate.RenewalStoppedUtc is null ? certificate with { RenewalStoppedUtc = at } : certificate;
-        }
-    }
-
     /// <summary>Removes a certificate and remembers to delete its record. Under the lock.</summary>
     private void Drop(string serialNumber)
     {
@@ -546,7 +493,6 @@ public sealed partial class EstStore : IAsyncDisposable
             List<KeyValuePair<string, string?>> issued;
             bool clearIssued;
             Dictionary<Guid, List<string>> sites;
-            bool dropLegacy;
             lock (_gate)
             {
                 _flushPending = false;
@@ -585,7 +531,6 @@ public sealed partial class EstStore : IAsyncDisposable
                 clearIssued = _clearIssued;
                 _clearIssued = false;
                 sites = _sites.ToDictionary(s => s.Key, s => s.Value.ToList());
-                dropLegacy = _dropLegacyCertificates;
             }
 
             try
@@ -601,15 +546,6 @@ public sealed partial class EstStore : IAsyncDisposable
                 await _records.SetManyAsync(IssuedKey, issued, ct).ConfigureAwait(false);
                 issued = [];
                 await _settings.SetAsync(SitesKey, EstJson.Serialize(sites), ct).ConfigureAwait(false);
-                if (dropLegacy)
-                {
-                    await _settings.SetAsync(CertificatesKey, null, ct).ConfigureAwait(false);
-                    await _settings.SetAsync(LegacyRevokedKey, null, ct).ConfigureAwait(false);
-                    lock (_gate)
-                    {
-                        _dropLegacyCertificates = false;
-                    }
-                }
             }
             catch
             {

@@ -1,6 +1,9 @@
 # Recipient sessions: MQTT, Modbus and OPC UA
 
-Built on 2026-11-05 (SDK 0.12.0): MQTT, Modbus TCP and OPC UA on one architecture. Libraries: MQTTnet, the OPC Foundation's .NET stack, Modbus
+Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
+
+The recipient types MQTT, Modbus TCP and OPC UA: each recipient keeps one open connection that all its rules share.
+Built on 2026-11-05 (SDK 0.12.0). Libraries: MQTTnet, the OPC Foundation's .NET stack, Modbus
 our own. **Client and output only**: OADM connects out and writes, it never runs a broker or server and never reads values.
 
 ## The rule
@@ -88,7 +91,9 @@ of scope.
 limit and on a session asked for again, so a reconnect or a change that keeps host, port and unit does not matter; a recipient that now leads to another PLC gets no write and the action fails ("The recipient changed during the pulse. The coil may still be on."); inside the 10 s a failed try is repeated
 every second, because a dropped connection comes back in that time. If it still fails the action fails with a text ending "The coil
 may still be on." During the wait the action asks for the session at least every 60 s, so that a pulse longer than 5 minutes is not closed
-as unused. The run may take the pulse plus 45 s: connect, queue and off write.
+as unused. The run may take the pulse plus 45 s: connect, queue and off write. A run that asks for more than 30 s takes a slot of the
+runner's lane for long runs, so a pulse never holds a slot of the other actions; the off write is part of the same run, and a "turns off"
+edge is never skipped for waiting ([event-rules.md](event-rules.md), Actions).
 
 **A write without an answer never fires later.** A write that gets no answer in 5 s (counted from its turn, not from the queue), or that is
 cancelled after sending, resets the connection (linger 0) and drops the session: a graceful close would still deliver what the kernel

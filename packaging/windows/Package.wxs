@@ -16,8 +16,8 @@
   - Every file below the published folders is harvested at build time (Files), so plugins added later are
     picked up without editing this file.
   - An upgrade removes the installed version first (MajorUpgrade, afterInstallValidate), so plugin folders the new
-    version no longer ships go with it (4.1's oadm.est and oadm.radius: the EST and 802.1X servers are parts of PKI since
-    4.5; server and client skip such a folder anyway, "Merged into PKI").
+    version no longer ships go with it (4.1's oadm.est: the EST server is a part of PKI since 4.5; server and client
+    skip such a folder anyway, "Merged into PKI").
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"

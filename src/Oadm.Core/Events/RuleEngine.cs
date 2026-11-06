@@ -87,6 +87,9 @@ public sealed partial class RuleEngine : IAsyncDisposable
     private Task? _loop;
     private Task? _ticker;
     private long _dropped;
+
+    // A device change was dropped on a full queue: the loop reads the devices again once the queue is empty.
+    private volatile bool _devicesMissed;
     private int _disposed;
     private volatile FrozenSet<string> _watched = FrozenSet<string>.Empty;
     private volatile Dictionary<Guid, RuleRuntimeStatus> _status = [];
@@ -280,6 +283,11 @@ public sealed partial class RuleEngine : IAsyncDisposable
         // The loop has stopped: write what is still pending, bounded, not tied to the stop token.
         if (_loop is not null)
         {
+            foreach (var runtime in _rules.Values)
+            {
+                WriteHeldBack(runtime);
+            }
+
             using var last = new CancellationTokenSource(FinalFlushTimeout);
             try
             {
@@ -312,7 +320,17 @@ public sealed partial class RuleEngine : IAsyncDisposable
 
     private void Enqueue(Command command)
     {
-        if (!_commands.Writer.TryWrite(command) && Interlocked.Increment(ref _dropped) % 1000 == 1)
+        if (_commands.Writer.TryWrite(command))
+        {
+            return;
+        }
+
+        if (command is DeviceCommand)
+        {
+            _devicesMissed = true;
+        }
+
+        if (Interlocked.Increment(ref _dropped) % 1000 == 1)
         {
             LogQueueFull();
         }
@@ -350,6 +368,11 @@ public sealed partial class RuleEngine : IAsyncDisposable
                             failed.Done.TrySetException(ex);
                         }
                     }
+                }
+
+                if (_devicesMissed && _commands.Reader.Count == 0)
+                {
+                    await ReloadDevicesAsync(ct).ConfigureAwait(false);
                 }
 
                 try
@@ -495,12 +518,12 @@ public sealed partial class RuleEngine : IAsyncDisposable
         {
             LogEvent(type, device, isOn);
             Publish(type.Id, device, isOn ? PublishedEventKind.On : PublishedEventKind.Off, isOn ? set[device] : null);
-            OnTypeChanged(type.Id, [device]);
+            OnTypeChanged(type.Id, [device], new Before(was ? oldData : null));
         }
         else if (isOn && data is not null && !SameData(oldData!, data))
         {
             Publish(type.Id, device, PublishedEventKind.On, data);
-            OnTypeChanged(type.Id, [device]); // e.g. another port: filters may match now
+            OnTypeChanged(type.Id, [device], new Before(oldData)); // e.g. another port: filters may match now
         }
     }
 
@@ -562,7 +585,11 @@ public sealed partial class RuleEngine : IAsyncDisposable
     private static bool SameData(IReadOnlyDictionary<string, string> a, IReadOnlyDictionary<string, string> b) =>
         a.Count == b.Count && a.All(e => b.TryGetValue(e.Key, out var value) && string.Equals(value, e.Value, StringComparison.Ordinal));
 
-    private void OnTypeChanged(string typeId, IReadOnlyCollection<Guid> devices)
+    /// <summary>
+    /// Re-evaluates the rules that use the type. <paramref name="before"/>: the change is the state of the one device in
+    /// <paramref name="devices"/>, with what it had before; null: a whole report, or a type that went away.
+    /// </summary>
+    private void OnTypeChanged(string typeId, IReadOnlyCollection<Guid> devices, Before? before = null)
     {
         foreach (var runtime in _rules.Values)
         {
@@ -577,10 +604,7 @@ public sealed partial class RuleEngine : IAsyncDisposable
                 continue;
             }
 
-            var full = runtime.Definition.Conditions.Skip(1).Any(c =>
-                c.Kind == RuleConditionKind.Event && string.Equals(c.EventTypeId, typeId, StringComparison.OrdinalIgnoreCase)
-                && c.Devices.Mode != DeviceSelectorMode.EventDevice);
-            if (full)
+            if (SharedCanFlip(runtime, typeId, devices, before))
             {
                 Reconcile(runtime, AllCandidates(runtime), typeId);
             }
@@ -588,8 +612,80 @@ public sealed partial class RuleEngine : IAsyncDisposable
             {
                 Reconcile(runtime, runtime.TriggerScope == EventScope.Server ? [Guid.Empty] : devices, typeId);
             }
-
         }
+    }
+
+    /// <summary>
+    /// Whether a change of <paramref name="typeId"/> can change a condition all subjects of the rule share (a server event,
+    /// or "on for any of these devices"): only then every subject is re-evaluated, else only the changed devices. The
+    /// change of one device counts when its own part changed and, for "any of", no other chosen device holds the condition
+    /// (a camera that flickers among thousands that are on re-evaluates nothing but itself).
+    /// </summary>
+    private bool SharedCanFlip(Runtime runtime, string typeId, IReadOnlyCollection<Guid> devices, Before? before)
+    {
+        foreach (var condition in runtime.Others)
+        {
+            if (condition.Condition.Kind != RuleConditionKind.Event || condition.PerSubject
+                || !string.Equals(condition.TypeId, typeId, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (before is not { } was || devices.Count != 1)
+            {
+                return true;
+            }
+
+            var device = devices.First();
+            var held = was.Data is { } old && condition.Checks.Pass(old);
+            if (held == IsOn(condition, device))
+            {
+                continue; // its part is as before (a new count that still passes)
+            }
+
+            if (condition.Type is { DeviceScope: false } || (Selects(condition, device) && !OtherHolds(condition, device)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether a change of one device (removed, other tags) can flip an "on for any of these devices" condition that
+    /// <paramref name="concerns"/> picks: only while no other chosen device holds it.
+    /// </summary>
+    private bool AnyOfCanFlip(Runtime runtime, Guid device, Func<ConditionRuntime, bool> concerns)
+    {
+        foreach (var condition in runtime.Others)
+        {
+            if (condition.AnyOf && concerns(condition) && !OtherHolds(condition, device))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Whether a chosen device other than <paramref name="device"/> holds the condition (stops at the first one).</summary>
+    private bool OtherHolds(ConditionRuntime condition, Guid device)
+    {
+        if (!_on.TryGetValue(condition.TypeId, out var set))
+        {
+            return false;
+        }
+
+        foreach (var (id, data) in set)
+        {
+            if (id != device && Selects(condition, id) && condition.Checks.Pass(data))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // ---------- rule evaluation ----------
@@ -686,12 +782,14 @@ public sealed partial class RuleEngine : IAsyncDisposable
     }
 
     /// <summary>Whether a selector picks a managed device (a late state of a removed device never counts).</summary>
-    private bool Selects(ConditionRuntime selector, Guid device) => selector.Condition.Devices.Mode switch
+    private bool Selects(ConditionRuntime selector, Guid device) => _devices.TryGetValue(device, out var info) && Picks(selector, device, info);
+
+    /// <summary>Whether a selector picks the device as <paramref name="info"/> describes it (its tags then or now).</summary>
+    private static bool Picks(ConditionRuntime selector, Guid device, DeviceRef info) => selector.Condition.Devices.Mode switch
     {
-        DeviceSelectorMode.All => _devices.ContainsKey(device),
+        DeviceSelectorMode.All => true,
         DeviceSelectorMode.Devices or DeviceSelectorMode.Tags =>
-            _devices.TryGetValue(device, out var info)
-            && (selector.DeviceIds.Contains(device) || (selector.Tags.Count > 0 && selector.Tags.Overlaps(info.Tags))),
+            selector.DeviceIds.Contains(device) || (selector.Tags.Count > 0 && selector.Tags.Overlaps(info.Tags)),
         _ => false,
     };
 
@@ -719,13 +817,14 @@ public sealed partial class RuleEngine : IAsyncDisposable
     {
         var now = _time.GetUtcNow().UtcDateTime;
         var suppressed = Limit(runtime, subject, now);
-        LogRule(runtime, subject, "Rule turned on", suppressed ?? EventName(causeTypeId), suppressed is null ? EventLogResult.Info : EventLogResult.Skipped);
         if (suppressed is not null)
         {
+            LogHeldBack(runtime, subject, "Rule turned on", suppressed, now);
             runtime.Suppressed.Add(subject);
             return;
         }
 
+        LogRule(runtime, subject, "Rule turned on", EventName(causeTypeId), EventLogResult.Info);
         var aggregate = runtime.Active.Count == 0;
         runtime.Active[subject] = now;
         runtime.LastOnEdge[subject] = now;
@@ -737,12 +836,12 @@ public sealed partial class RuleEngine : IAsyncDisposable
 
     private void TurnOff(Runtime runtime, Guid subject, string causeTypeId)
     {
-        LogRule(runtime, subject, "Rule turned off", EventName(causeTypeId), EventLogResult.Info);
         if (runtime.Suppressed.Remove(subject))
         {
-            return; // its "turns on" ran no actions
+            return; // its "turns on" was held back: no actions ran, and the log has it with the held-back runs
         }
 
+        LogRule(runtime, subject, "Rule turned off", EventName(causeTypeId), EventLogResult.Info);
         runtime.Active.Remove(subject);
         _stateOps[(runtime.Id, subject)] = (false, default);
         Dispatch(runtime, ActionEdge.TurnedOff, subject, runtime.Active.Count == 0, causeTypeId, false);
@@ -773,11 +872,13 @@ public sealed partial class RuleEngine : IAsyncDisposable
 
             var now = _time.GetUtcNow().UtcDateTime;
             var suppressed = Limit(runtime, device, now);
-            LogRule(runtime, device, "Rule fired", suppressed ?? type.Info.DisplayName, suppressed is null ? EventLogResult.Info : EventLogResult.Skipped);
             if (suppressed is not null)
             {
+                LogHeldBack(runtime, device, "Rule fired", suppressed, now);
                 continue;
             }
+
+            LogRule(runtime, device, "Rule fired", type.Info.DisplayName, EventLogResult.Info);
 
             runtime.LastOnEdge[device] = now;
             runtime.LastFiredUtc = now;
@@ -839,6 +940,8 @@ public sealed partial class RuleEngine : IAsyncDisposable
         var id = change.Current?.Definition.Id ?? change.Previous?.Definition.Id ?? Guid.Empty;
         if (_rules.Remove(id, out var old))
         {
+            WriteHeldBack(old);
+
             // Turning off, changing or deleting a rule that is on runs its off actions first.
             foreach (var subject in old.Active.Keys.ToList())
             {
@@ -966,45 +1069,128 @@ public sealed partial class RuleEngine : IAsyncDisposable
     // ---------- devices and built-in events ----------
     private void HandleDevice(DeviceChange change)
     {
-        if (change.Kind == DeviceChangeKind.Removed || change.Device is null)
+        // The feed raises its changes outside its lock: an older change of a device can arrive after a newer one.
+        if (_deviceFeed is not null && !_deviceFeed.IsLatest(change))
         {
-            _statusKnown.Remove(change.DeviceId);
-            _clockOff.Remove(change.DeviceId);
-            if (!_devices.Remove(change.DeviceId))
-            {
-                return;
-            }
-
-            var types = _on.Where(t => t.Value.Remove(change.DeviceId)).Select(t => t.Key).ToList();
-            foreach (var typeId in types)
-            {
-                Publish(typeId, change.DeviceId, PublishedEventKind.Off, null); // subscribers learn the device's events are off
-            }
-
-            RecomputeAny(); // a removed device no longer counts
-            foreach (var runtime in _rules.Values.Where(r => r.Stateful && IsEvaluable(r)))
-            {
-                if (runtime.Active.ContainsKey(change.DeviceId) || runtime.Suppressed.Contains(change.DeviceId) || types.Any(runtime.Types.Contains))
-                {
-                    Reconcile(runtime, AllCandidates(runtime).Append(change.DeviceId), types.FirstOrDefault() ?? runtime.TriggerTypeId);
-                }
-            }
-
             return;
         }
 
-        var previous = _devices.GetValueOrDefault(change.DeviceId);
-        var current = DeviceRef.From(change.Device);
-        _devices[change.DeviceId] = current;
+        if (change.Kind == DeviceChangeKind.Removed || change.Device is null)
+        {
+            RemoveDevice(change.DeviceId);
+        }
+        else
+        {
+            SetDevice(change.DeviceId, DeviceRef.From(change.Device));
+        }
+    }
+
+    /// <summary>
+    /// A device is gone: its events go off and its rules turn off. Only the device itself is re-evaluated, unless it alone
+    /// held an "on for any of these devices" condition (then every subject of that rule).
+    /// </summary>
+    private void RemoveDevice(Guid id)
+    {
+        _statusKnown.Remove(id);
+        _clockOff.Remove(id);
+        if (!_devices.Remove(id, out var removed))
+        {
+            return;
+        }
+
+        var types = _on.Where(t => t.Value.Remove(id)).Select(t => t.Key).ToList();
+        foreach (var typeId in types)
+        {
+            Publish(typeId, id, PublishedEventKind.Off, null); // subscribers learn the device's events are off
+        }
+
+        RecomputeAny(); // a removed device no longer counts
+        foreach (var runtime in _rules.Values.Where(r => r.Stateful && IsEvaluable(r)))
+        {
+            var cause = types.FirstOrDefault() ?? runtime.TriggerTypeId;
+            if (AnyOfCanFlip(runtime, id, c => types.Contains(c.TypeId, StringComparer.OrdinalIgnoreCase) && Picks(c, id, removed)))
+            {
+                Reconcile(runtime, AllCandidates(runtime).Append(id), cause);
+            }
+            else if (runtime.Active.ContainsKey(id) || runtime.Suppressed.Contains(id))
+            {
+                Reconcile(runtime, [id], cause);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A device is new or changed. Other tags re-evaluate only the device itself, unless it alone held an "on for any of
+    /// these devices" condition its tags move it into or out of (then every subject of that rule).
+    /// </summary>
+    private void SetDevice(Guid id, DeviceRef current)
+    {
+        var previous = _devices.GetValueOrDefault(id);
+        _devices[id] = current;
         if (previous is not null && !previous.Tags.SetEquals(current.Tags))
         {
             foreach (var runtime in _rules.Values.Where(r => r.Stateful && r.UsesTags && IsEvaluable(r)))
             {
-                Reconcile(runtime, AllCandidates(runtime).Append(change.DeviceId), runtime.TriggerTypeId);
+                if (AnyOfCanFlip(runtime, id, c => c.Tags.Count > 0 && IsOn(c, id) && Picks(c, id, previous) != Picks(c, id, current)))
+                {
+                    Reconcile(runtime, AllCandidates(runtime).Append(id), runtime.TriggerTypeId);
+                }
+                else
+                {
+                    Reconcile(runtime, [id], runtime.TriggerTypeId);
+                }
             }
         }
 
-        RecomputeBuiltIn([change.DeviceId]);
+        RecomputeBuiltIn([id]);
+    }
+
+    /// <summary>
+    /// Device changes were dropped on a full queue: reads the devices once more and applies what differs, so the engine's
+    /// devices never stay behind the device table. A change dropped meanwhile asks for the next read.
+    /// </summary>
+    private async Task ReloadDevicesAsync(CancellationToken ct)
+    {
+        _devicesMissed = false;
+        if (_deviceRepository is null)
+        {
+            return;
+        }
+
+        IReadOnlyList<Device> devices;
+        try
+        {
+            devices = await _deviceRepository.ListDevicesAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _devicesMissed = true; // read again after the next commands
+            LogCommandFailed(ex, nameof(ReloadDevicesAsync));
+            return;
+        }
+
+        var listed = new HashSet<Guid>(devices.Count);
+        foreach (var device in devices)
+        {
+            listed.Add(device.Id);
+            try
+            {
+                SetDevice(device.Id, DeviceRef.From(device));
+            }
+#pragma warning disable CA1031 // One bad device must not stop the others.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                LogCommandFailed(ex, nameof(ReloadDevicesAsync));
+            }
+        }
+
+        foreach (var gone in _devices.Keys.Where(id => !listed.Contains(id)).ToList())
+        {
+            RemoveDevice(gone);
+        }
+
+        LogDevicesReloaded(devices.Count);
     }
 
     private void RecomputeBuiltIn(IEnumerable<Guid> deviceIds)
@@ -1112,6 +1298,14 @@ public sealed partial class RuleEngine : IAsyncDisposable
         {
             Reconcile(runtime, AllCandidates(runtime), runtime.TriggerTypeId);
         }
+
+        foreach (var runtime in _rules.Values)
+        {
+            if (runtime.HeldBack > 0 && runtime.HeldBackLoggedUtc is { } logged && now - logged >= HeldBackWindow)
+            {
+                WriteHeldBack(runtime);
+            }
+        }
     }
 
     // ---------- persistence and status ----------
@@ -1183,6 +1377,51 @@ public sealed partial class RuleEngine : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// A limit held an edge back (dead time, max per minute). The first one of a minute is a line in the event log and in
+    /// the server log; the others of that minute are only counted and become one line (<see cref="WriteHeldBack"/>), so a
+    /// flickering camera never fills the logs.
+    /// </summary>
+    private void LogHeldBack(Runtime runtime, Guid subject, string what, string reason, DateTime now)
+    {
+        if (runtime.HeldBackLoggedUtc is { } logged && now - logged < HeldBackWindow)
+        {
+            runtime.HeldBack++;
+            if (!runtime.HeldBackReasons.Contains(reason))
+            {
+                runtime.HeldBackReasons.Add(reason);
+            }
+
+            return;
+        }
+
+        WriteHeldBack(runtime);
+        runtime.HeldBackLoggedUtc = now;
+        LogRule(runtime, subject, what, reason, EventLogResult.Skipped);
+    }
+
+    /// <summary>The held-back edges counted since the rule's last line about one, as one line ("312 more runs: Max per minute").</summary>
+    private void WriteHeldBack(Runtime runtime)
+    {
+        if (runtime.HeldBack == 0)
+        {
+            return;
+        }
+
+        var message = string.Create(CultureInfo.InvariantCulture,
+            $"{runtime.HeldBack:N0} more {(runtime.HeldBack == 1 ? "run" : "runs")}: {string.Join(", ", runtime.HeldBackReasons)}");
+        _log.Write(EventLogKind.Rule, EventLogResult.Skipped, HeldBackText, ruleId: runtime.Id, rule: runtime.Name, message: message);
+        LogRuleSkipped(runtime.Name, string.Empty, message);
+        runtime.HeldBack = 0;
+        runtime.HeldBackReasons.Clear();
+    }
+
+    /// <summary>The event log's "What" of the line that counts the held-back runs of a rule.</summary>
+    public const string HeldBackText = "Rule held back";
+
+    /// <summary>A rule writes one line per held-back edge at most this often; the edges in between are counted.</summary>
+    private static readonly TimeSpan HeldBackWindow = TimeSpan.FromMinutes(1);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Event rule {Rule}{For} held back: {Reason}")]
     private partial void LogRuleSkipped(string rule, string @for, string reason);
 
@@ -1213,6 +1452,9 @@ public sealed partial class RuleEngine : IAsyncDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "Event rules: {TypeId} did not report after start; counted as off")]
     private partial void LogSourceTimeout(string typeId);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Event rules: device changes were dropped, {Count} devices read again")]
+    private partial void LogDevicesReloaded(int count);
+
     // ---------- types ----------
     private abstract record Command;
 
@@ -1235,6 +1477,9 @@ public sealed partial class RuleEngine : IAsyncDisposable
     private sealed record UnsubscribeCommand(EventSubscription Subscription) : Command;
 
     private sealed record Barrier(TaskCompletionSource Done) : Command;
+
+    /// <summary>What a device had before a change of its state: its values while it was on, null while it was off.</summary>
+    private readonly record struct Before(IReadOnlyDictionary<string, string>? Data);
 
     private sealed class Runtime
     {
@@ -1288,6 +1533,14 @@ public sealed partial class RuleEngine : IAsyncDisposable
 
         public DateTime? LastPauseLog { get; set; }
 
+        /// <summary>When the rule last wrote a line about a held-back edge; the edges of the minute after it are counted.</summary>
+        public DateTime? HeldBackLoggedUtc { get; set; }
+
+        /// <summary>Held-back edges counted since that line, and why.</summary>
+        public int HeldBack { get; set; }
+
+        public List<string> HeldBackReasons { get; } = [];
+
         public DateTime? LastFiredUtc { get; set; }
 
         /// <summary>Kind and scope of the trigger, read again when the event types changed (a type declared late).</summary>
@@ -1334,6 +1587,9 @@ public sealed partial class RuleEngine : IAsyncDisposable
         /// <summary>An event condition on "the same device" as the trigger (a server event never is).</summary>
         public bool PerSubject =>
             Condition.Kind == RuleConditionKind.Event && Condition.Devices.Mode == DeviceSelectorMode.EventDevice && Type is not { DeviceScope: false };
+
+        /// <summary>An event condition that holds while the event is on for any of its devices (all, chosen, tags).</summary>
+        public bool AnyOf => Condition.Kind == RuleConditionKind.Event && !PerSubject && Type is not { DeviceScope: false };
     }
 
     private sealed class Publisher(RuleEngine engine, string sourceId) : IEventPublisher

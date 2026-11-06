@@ -115,6 +115,64 @@ public sealed class SendHttpActionTests
         Assert.Equal("HTTP 500 Error: database is down", error.Message);
     }
 
+    [Theory]
+    [InlineData(301)]
+    [InlineData(302)]
+    [InlineData(303)]
+    [InlineData(307)]
+    [InlineData(308)]
+    public async Task A_redirect_is_never_followed_and_fails_with_the_host_it_points_to(int status)
+    {
+        await using var inside = new MiniHttpServer(); // stands for an address inside the server's network
+        await using var server = new MiniHttpServer { Status = status, Location = "http://internal.example.com:8080/admin?next=1" };
+        var settings = Settings(server.BaseUrl + "/hook");
+        settings["headers"] = Run.Pairs(("X-Api-Key", "secret"));
+        settings["body"] = "{\"door\": \"{objectId}\"}";
+        var context = new TestContext(new Dictionary<string, string> { ["objectId"] = "7" });
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new SendHttpAction().ExecuteAsync(context, Run.Invocation(settings), CancellationToken.None));
+
+        Assert.Equal("The address redirects to internal.example.com. Enter the final address.", error.Message);
+        Assert.Single(server.Requests); // sent once, to the address of the recipient only
+        Assert.Empty(context.Lines);
+
+        // The same with a target that answers: the body and the headers never reach it.
+        server.Location = inside.BaseUrl + "/admin";
+        error = await Assert.ThrowsAsync<InvalidOperationException>(() => new SendHttpAction().ExecuteAsync(context, Run.Invocation(settings), CancellationToken.None));
+        Assert.Equal($"The address redirects to {inside.BaseUrl}. Enter the final address.", error.Message);
+        Assert.Equal(2, server.Requests.Count);
+        Assert.Empty(inside.Requests);
+    }
+
+    [Fact]
+    public async Task A_redirect_without_a_target_says_so_and_another_3xx_answer_keeps_its_status()
+    {
+        await using var server = new MiniHttpServer { Status = 302 };
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => new SendHttpAction().ExecuteAsync(new TestContext(), Run.Invocation(Settings(server.BaseUrl)), CancellationToken.None));
+        Assert.Equal("The address redirects. Enter the final address.", error.Message);
+
+        server.Status = 304;
+        server.ResponseBody = string.Empty;
+        error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => new SendHttpAction().ExecuteAsync(new TestContext(), Run.Invocation(Settings(server.BaseUrl)), CancellationToken.None));
+        Assert.Equal("HTTP 304 Error", error.Message);
+    }
+
+    [Theory]
+    [InlineData("http://10.0.0.5:8080/admin", "The address redirects to 10.0.0.5. Enter the final address.")]
+    [InlineData("https://other.example.com/in", "The address redirects to other.example.com. Enter the final address.")]
+    [InlineData("http://[fd00::1]/in", "The address redirects to [fd00::1]. Enter the final address.")]
+    [InlineData("http://bücher.example/in", "The address redirects to xn--bcher-kva.example. Enter the final address.")]
+    [InlineData("https://hooks.example.com/in", "The address redirects to https://hooks.example.com. Enter the final address.")]
+    [InlineData("http://hooks.example.com:8443/in", "The address redirects to http://hooks.example.com:8443. Enter the final address.")]
+    [InlineData("/in/", "The address redirects to http://hooks.example.com. Enter the final address.")]
+    [InlineData("file:///etc/passwd", "The address redirects. Enter the final address.")]
+    [InlineData("mailto:team@example.com", "The address redirects. Enter the final address.")]
+    [InlineData(null, "The address redirects. Enter the final address.")]
+    public void The_redirect_text_names_the_host_of_the_target(string? location, string expected) =>
+        Assert.Equal(expected, SendHttpAction.RedirectText(new Uri("http://hooks.example.com/in"), location is null ? null : new Uri(location, UriKind.RelativeOrAbsolute)));
+
     [Fact]
     public void Validation_checks_headers_and_json_with_placeholders()
     {

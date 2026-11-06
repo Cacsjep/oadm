@@ -30,7 +30,8 @@ that ships with OADM).
 - [`CLAUDE.md`](https://github.com/Cacsjep/oadm/blob/main/CLAUDE.md) and
   [`docs/spec/`](https://github.com/Cacsjep/oadm/tree/main/docs/spec): the spec and the rules for code, UI, wording,
   device safety and tests. Claude Code reads `CLAUDE.md` by itself; give it to other assistants first.
-- [`plugins/README.md`](https://github.com/Cacsjep/oadm/blob/main/plugins/README.md): the plugin SDK with examples.
+- [`plugins/README.md`](https://github.com/Cacsjep/oadm/blob/main/plugins/README.md): how a plugin is built inside
+  the repository, with a table that leads to the pages of this guide (`website/src/content/docs/dev/` in the checkout).
 - A working checkout that builds: see [Build from source](../build/).
 
 </TabItem>
@@ -80,9 +81,9 @@ that ships with OADM).
 2. Describe the plugin like a user story and ask the assistant to ask first:
 
    ```text
-   Read CLAUDE.md and plugins/README.md. I want a task plugin "Set host name" in the
-   Network group, with a dialog for one or many devices. Ask me what is unclear, write
-   the spec, then build it with tests and headless screenshots.
+   Read CLAUDE.md, plugins/README.md and the guide pages it names. I want a task plugin
+   "Set host name" in the Network group, with a dialog for one or many devices. Ask me
+   what is unclear, write the spec, then build it with tests and headless screenshots.
    ```
 
 3. Answer its questions. Decisions go into the spec, so the next session knows them too.

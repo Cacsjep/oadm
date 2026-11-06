@@ -28,7 +28,7 @@ actions. Spec: [Bundled plugins](../../docs/spec/bundled-plugins.md#io-monitor-c
 Subtitle "Inputs and outputs of a device, live.".
 
 - The device command button (the I/O device icon; "10.0.0.70 · A9210", else "Choose a device") opens the shared
-  `DevicePickerWindow.ShowOneAsync` (search, virtualized, 30,000 devices) with the devices above (others are not
+  `DevicePickerWindow.ShowOneAsync` (search, virtualized, tested at the device limit) with the devices above (others are not
   offered; the view hands it to the view model as `PickDevice`).
 - Status chip: Connecting, Live, Error + text.
 - The faceplate: an INPUTS and an OUTPUTS row of terminals, each with its contact drawn open or closed (green while
@@ -60,7 +60,7 @@ pages get "1 device is no longer available." and the reading ends. See [Device g
 `tests/Oadm.Plugins.IoMonitor.Tests`: recorded A9210 answer, pushes only on change, errors and recovery, stop and lease,
 refusals, device limit and concurrent starts, shared reading of one device, replaced clients, 1 s wait after a timeout
 (fake clock), keep-alive answers, page view model incl. keep-alive retry, restart after a forgotten stream, the device
-button (offered devices, the chosen one starts the reading, Perf 30,000 devices) and device list changes, headless
+button (offered devices, the chosen one starts the reading, Perf at the device limit) and device list changes, headless
 `io-monitor-page.png`; `CanaryTests`: the device-group canary, the page's session only, the end when the device leaves the
 view. Read-only hardware test `IoMonitorHardwareTests` (`OADM_IO_URL` / `_USER` / `_PASSWORD`). Fake mode: the A9188
 (10.0.0.30).

@@ -148,6 +148,50 @@ public sealed class RecipientTests
         await Assert.ThrowsAsync<KeyNotFoundException>(() => rig.Recipients.SaveAsync(Guid.NewGuid(), "Gone", TargetType, Values("https://c.example.com"), TargetFields, CancellationToken.None));
     }
 
+    [Theory]
+    [InlineData("line feed")]
+    [InlineData("log line")]
+    [InlineData("tab")]
+    [InlineData("nul")]
+    public async Task ARecipientNameWithAControlCharacterIsRefusedBelowTheName(string kind)
+    {
+        await using var rig = await RigAsync(new SendAction());
+
+        var refused = await Assert.ThrowsAsync<RecipientValidationException>(
+            () => rig.Recipients.SaveAsync(null, RuleStoreTests.ForgedName(kind), TargetType, Values("https://a.example.com"), TargetFields, CancellationToken.None));
+
+        Assert.Equal("Use letters, digits and punctuation only.", refused.Message);
+        Assert.Equal(RecipientValidationException.NameField, refused.Field);
+        Assert.Empty(await rig.Recipients.ListAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ARecipientStoredWithALineBreakInItsNameStillSendsAndOnlyASaveIsRefused()
+    {
+        var action = new SendAction();
+        await using var rig = await RigAsync(action);
+        var camera = await rig.AddDeviceAsync("10.0.0.1");
+        var id = Guid.NewGuid();
+        await using (var db = await rig.DbFactory.CreateDbContextAsync())
+        {
+            db.Recipients.Add(new RecipientEntity { Id = id, Name = "Gate\nteam", TypeId = TargetType, SettingsJson = Values("https://a.example.com").ToJsonString() });
+            await db.SaveChangesAsync();
+        }
+
+        var stored = (await rig.Recipients.GetAsync(id, CancellationToken.None))!;
+        Assert.Equal("Gate\nteam", stored.Name);
+        await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Pulse, Send(stored)));
+        rig.Publisher.Fire(EventRulesRig.Pulse, camera.Id);
+        await rig.SettleAsync();
+        Assert.Single(action.Runs);
+
+        var refused = await Assert.ThrowsAsync<RecipientValidationException>(
+            () => rig.Recipients.SaveAsync(id, stored.Name, TargetType, Values("https://a.example.com"), TargetFields, CancellationToken.None));
+        Assert.Equal(RecipientValidationException.NameField, refused.Field);
+        var (renamed, _) = await rig.Recipients.SaveAsync(id, "Gate team", TargetType, Values("https://a.example.com"), TargetFields, CancellationToken.None);
+        Assert.Equal("Gate team", renamed.Name);
+    }
+
     [Fact]
     public async Task ThereAreAtMost200Recipients()
     {
@@ -728,6 +772,54 @@ public sealed class RecipientTests
         var (mailOk, mailMessage) = await rig.Runner.TestAsync(SendEmailAction.ActionId, mailSettings, "Gate", null, null, null, null, CancellationToken.None);
         Assert.False(mailOk);
         Assert.Contains($"127.0.0.1:{port} cannot be reached", mailMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheTestOfAnHTTPRecipientThatRedirectsSaysWhereToAndSendsNothingThere()
+    {
+        await using var rig = await NotificationsRigAsync();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var requests = 0;
+        var serving = Task.Run(async () =>
+        {
+            // Answers every request with a redirect to another host, until the listener stops.
+            while (true)
+            {
+                TcpClient client;
+                try
+                {
+                    client = await listener.AcceptTcpClientAsync();
+                }
+                catch (Exception ex) when (ex is SocketException or ObjectDisposedException or InvalidOperationException)
+                {
+                    return;
+                }
+
+                using (client)
+                {
+                    var stream = client.GetStream();
+                    var head = new StringBuilder();
+                    var one = new byte[1];
+                    while (!head.ToString().EndsWith("\r\n\r\n", StringComparison.Ordinal) && await stream.ReadAsync(one) == 1)
+                    {
+                        head.Append((char)one[0]);
+                    }
+
+                    Interlocked.Increment(ref requests);
+                    await stream.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 302 Found\r\nLocation: http://internal.example.com/admin\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"));
+                }
+            }
+        });
+        var values = new JsonObject { ["url"] = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/in", ["auth"] = "none" };
+
+        var (ok, message) = await rig.Runner.TestRecipientAsync(NotificationRecipients.HttpType, null, values, CancellationToken.None);
+
+        Assert.False(ok);
+        Assert.Equal("The address redirects to internal.example.com. Enter the final address.", message);
+        Assert.Equal(1, Volatile.Read(ref requests));
+        listener.Stop();
+        await serving.WaitAsync(TimeSpan.FromSeconds(30));
     }
 
     [Fact]

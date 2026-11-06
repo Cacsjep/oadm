@@ -68,7 +68,12 @@ computer. A client loads the client part its server hands it: the user must trus
    client that cannot replace one that no longer matches loads nothing. A part that fails to load is tried again at the next
    sync. A
    removed add-on's client files, and the versions an add-on no longer uses, go at the client's next start. A client
-   never installs anything on its computer and needs no rights for it.
+   never installs anything on its computer and needs no rights for it. **Only from a pinned server:** the client part is
+   code the client runs, so the sync asks for nothing and loads nothing while the connection has no pinned certificate
+   (an `http://` server address, where `GrpcServerTrust.PinnedFingerprint` is null also when the same host and port were
+   pinned over TLS; fake mode): one log line, the Plugins page and the plugin list work as usual, the add-on's pages are
+   missing. What an older client fetched from such a server (`plugin-cache/unpinned`) is never loaded and goes at the
+   client's next start (`AddOnClientCache.DeleteRemoved`).
 7. **GPU when there is one, the CPU always works, no own service.** Vision plugins run inside the server's plugin; their
    native libraries (ONNX Runtime with its GPU providers) and model files are in the plugin's own folder for the server's
    platform and load through the plugin's load context (`PluginLoadContext.LoadUnmanagedDll`). A missing or failing GPU
@@ -118,8 +123,8 @@ computer. A client loads the client part its server hands it: the user must trus
   does not offer are deleted at the start (log line) and dropped from the list. The list of installed add-ons is the
   server setting `AddOns.Installed` (JSON array of {id, version, removed}, `SettingsAddOnListStore`); backups hold the
   list, not the files. A folder put in by hand is
-  taken into the list at the next start with the version of its `oadm-version.txt`, but not when the service had to fix
-  the data folder's permissions at this start (until then others could write it; log line). It is the way for a build
+  taken into the list at the next start with the version of its `oadm-version.txt`, but not when others could change it
+  until this start (see Start; log line, the folder is deleted). It is the way for a build
   without the hash and must pass the version rule like any other. As a service each
   `addons/<id>` is checked like every plugin folder (`FolderGuard.CheckPluginFoldersAsync`, `docs/spec/security.md`
   "Service: firewall and folders") before it loads. The loader reads it after the plugin folder next to the exe; an id in
@@ -129,9 +134,19 @@ computer. A client loads the client part its server hands it: the user must trus
   registry). A waiting update comes first: it must pass the folder check and name this exact version, and the old folder comes
   back when it does not load. Any other installed add-on (see rule 3) stays unloaded: state
   Failed with "Not loaded. Install it again for this OADM version." (`AddOnTexts.InstallAgain`, one phrase for all of them);
-  its old folder stays until the new one is in place or the add-on is removed. When the service had to fix the data
-  folder's permissions at this start no add-on folder is used, listed or not: each is deleted (log line) and a listed add-on
-  shows the same text; a folder that cannot go is stored as Removed.
+  its old folder stays until the new one is in place or the add-on is removed.
+- Loose folders (service only; `docs/spec/security.md` "Service: firewall and folders"): the folder check says what others
+  could change about `addons/` before it fixed the data folder (`ServerFoldersCheck.AddOns`, a `LoosePlugins` like the one
+  of `plugins/`), and `LoadInstalledAsync(LoosePlugins, ...)` acts on it. Something loose inside `addons/<id>`: only that
+  add-on is not used, listed or not; its folder and its waiting update are deleted (log line), a listed one stays on the
+  list as Failed with "Removed: other users could change its folder. Install it again." (`AddOnTexts.FolderWasLoose`,
+  until the next start, then the text above), the others load. A loose `addons/.update-<id>`: only the waiting update is
+  deleted, the add-on keeps running and offers the update again. The data folder or `addons/` itself loose, or facts that
+  could not be read: all of them. Something loose elsewhere (logs, backups, the database, `plugins/`, the extraction
+  folder) changes nothing for add-ons. A loose folder that cannot be deleted keeps the add-on stored as Removed (not
+  loaded, never taken up); a Removed add-on leaves the list once its folder and its waiting update are gone, and an
+  install is refused ("Could not install the optional plugin. ...") while a leftover waiting update cannot be deleted, so
+  a waiting update others could change never starts.
 - Wiring: `IAddOnListStore` = `SettingsAddOnListStore`, `IAddOnHashes` = `AssemblyAddOnHashes`, `IAddOnActivation` =
   `PluginActivationAddOns` (Turn off through
   `PluginActivation.SetEnabledAsync`; the stored choice through `PluginRegistry.ChoiceOf`; waits for
@@ -227,8 +242,9 @@ computer. A client loads the client part its server hands it: the user must trus
   loader's refusal brings the old folder back; the state after an update and a restore; the version rule for folders put in by
   hand; the stored choice survives Install again; the hash read back from assembly metadata; the audit with a caller that has
   gone; a caller that goes right after the upload; a Failed add-on whose folder stays; an older add-on that runs, is up to date,
-  registers nothing or lies below the floor; a waiting update (swap, fallback, another version, folder check, untrusted start,
-  Remove, the audit's version). Hashes are injected (`IAddOnHashes`). The scripts' fingerprint rules: `AddOnPackagingTests`.
+  registers nothing or lies below the floor; a waiting update (swap, fallback, another version, folder check, a loose one,
+  one that cannot be deleted, Remove, the audit's version); loose folders (everything, one add-on, something beside it, a
+  folder put in by hand; with the host and the folder check: `ServiceSecurityTests`). Hashes are injected (`IAddOnHashes`). The scripts' fingerprint rules: `AddOnPackagingTests`.
 - Client: the file picker, the steps, Cancel, a refusal, the link (only OADM's own release), the row after an update; the
   client part is checked against the server's SHA-256 and digest, cached per server and version and loaded
   after the plugin list; a wrong hash is refused; a changed cache is fetched again; the client asks again while the

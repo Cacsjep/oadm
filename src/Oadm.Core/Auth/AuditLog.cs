@@ -119,12 +119,18 @@ public sealed partial class AuditLog(IDbContextFactory<OadmDbContext> dbFactory,
     }
 
     /// <summary>Writes an entry for an explicit user (login attempts). Failures are logged, never thrown.</summary>
-    public async Task WriteAsync(string userName, string clientAddress, string action, string target, string? detail, CancellationToken ct = default)
+    public Task WriteAsync(string userName, string clientAddress, string action, string target, string? detail, CancellationToken ct = default) =>
+        AddAsync(userName, clientAddress, action, target, detail, ct);
+
+    /// <summary>
+    /// Writes an entry like <see cref="WriteAsync(string, string, string, string, string?, CancellationToken)"/> and returns
+    /// its id, or null when it could not be written.
+    /// </summary>
+    public async Task<long?> AddAsync(string userName, string clientAddress, string action, string target, string? detail, CancellationToken ct = default)
     {
         try
         {
-            await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-            db.AuditEntries.Add(new AuditEntryEntity
+            var entry = new AuditEntryEntity
             {
                 TimeUtc = time.GetUtcNow().UtcDateTime,
                 UserName = Cut(userName),
@@ -132,17 +138,47 @@ public sealed partial class AuditLog(IDbContextFactory<OadmDbContext> dbFactory,
                 Action = Cut(action),
                 Target = Cut(target),
                 Detail = Cut(detail),
-            });
+            };
+            await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            db.AuditEntries.Add(entry);
             await db.SaveChangesAsync(ct).ConfigureAwait(false);
-            LogWritten(userName, action, target);
+            LogWritten(entry.UserName, entry.Action, entry.Target);
+            return entry.Id;
         }
 #pragma warning disable CA1031 // The audit log must never fail the action it records.
         catch (Exception ex) when (ex is not OperationCanceledException)
 #pragma warning restore CA1031
         {
             LogWriteFailed(ex, action);
+            return null;
         }
     }
+
+    /// <summary>
+    /// A new detail for an entry that stands for several events of one kind (the failed logins with unknown user names of
+    /// one address: one entry a minute with their count). Failures are logged, never thrown.
+    /// </summary>
+    public async Task SetDetailAsync(long id, string detail, CancellationToken ct = default)
+    {
+        try
+        {
+            var text = Cut(detail);
+            await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            await db.AuditEntries.Where(e => e.Id == id).ExecuteUpdateAsync(e => e.SetProperty(x => x.Detail, text), ct).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // The audit log must never fail the action it records.
+        catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            LogWriteFailed(ex, AuditActions.LoginFailed);
+        }
+    }
+
+    /// <summary>
+    /// A text as the audit log and the server log may hold it: control characters as spaces (a line break in a user name
+    /// never starts a made-up log line), trimmed, at most <see cref="MaxTextLength"/> characters.
+    /// </summary>
+    public static string Clean(string? text) => Cut(text);
 
     /// <summary>Newest first; <paramref name="limit"/> 0 = <see cref="DefaultListLimit"/>.</summary>
     public async Task<(IReadOnlyList<AuditRecord> Entries, int TotalCount)> ListAsync(int limit, int offset, CancellationToken ct)
@@ -177,7 +213,24 @@ public sealed partial class AuditLog(IDbContextFactory<OadmDbContext> dbFactory,
     private static string Cut(string? text)
     {
         var value = (text ?? string.Empty).Trim();
-        return value.Length <= MaxTextLength ? value : value[..(MaxTextLength - 1)] + "…";
+        var cut = value.Length > MaxTextLength;
+        if (cut)
+        {
+            value = value[..(MaxTextLength - 1)];
+        }
+
+        if (value.Any(char.IsControl))
+        {
+            value = string.Create(value.Length, value, static (span, source) =>
+            {
+                for (var i = 0; i < span.Length; i++)
+                {
+                    span[i] = char.IsControl(source[i]) ? ' ' : source[i];
+                }
+            }).Trim();
+        }
+
+        return cut ? value + "…" : value;
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Audit: {UserName} {Action} {Target}")]

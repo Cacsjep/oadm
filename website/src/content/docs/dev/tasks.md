@@ -40,17 +40,17 @@ sequenceDiagram
 | Member | Purpose |
 |---|---|
 | `Id` | Stable id, e.g. `acme.upnp-name` |
-| `DisplayName` | The menu and toolbar name, at most 32 characters, never ending in "..." |
+| `DisplayName` | The menu and toolbar name, at most 32 characters (`TaskPluginNames.MaxDisplayNameLength`), never ending in "...", also for a task that opens a dialog. The server shortens a longer name with "…" and logs a warning |
 | `IconKey` | An icon of the [icon list](../ui/#icons), e.g. `restart` |
-| `Group` | The context menu submenu: a `TaskGroups` constant (`Applications`, `Maintenance`, `Network`, `Security`, `Users`, `Video`, `General`) or your own |
+| `Group` | The context menu submenu: a `TaskGroups` constant (`Applications`, `Maintenance`, `Network`, `Security`, `Users`, `Video`, `General`) or your own. Groups are always submenus, sorted by name, even with one task |
 | `RequiresDialog` | The client opens your `ITaskPluginDialog` first |
 | `ShowInToolbar` | Also a button in the Devices toolbar |
 | `CanRun(device)` | Whether the entry is enabled for this device. Cached data only, no requests |
 | `NotSupportedReason(device)` | Why `CanRun` is false; shown as the tooltip of the greyed entry |
 | `GetTaskName(payload)` | The task's name in the tasks pane |
 | `ExecuteAsync(ctx, device, payload, ct)` | The work, once per device |
-| `MaxParallelDevices` | Lowers how many devices run at once (Upgrade AXIS OS uses 4); null = the server setting (16) |
-| `ShowInMenus` | False: not in menus; a core plugin starts it from its page |
+| `MaxParallelDevices` | Lowers how many devices run at once (Upgrade AXIS OS uses 4); null = the server setting (16, **Settings** page). It can only lower that setting: the server uses the smaller value |
+| `ShowInMenus` | False: not in menus; a core plugin starts it from its page, see [Tasks from a page](../core-plugins/#tasks-from-a-page) |
 | `Permissions`, `RequiredPermissions(payload)` | Finer rights for choices of different risk, see [Permissions](#permissions) |
 | `SiteSupport` | Whether this task works for devices at a site; null = the package's `siteSupport`, see [Sites](../sites/) |
 
@@ -75,11 +75,19 @@ public string? NotSupportedReason(IDeviceInfo device) =>
 `TaskSupportReasons.ForSiteSupport(support, device)` says "Not available for devices at a site" for a package with
 `siteSupport` `none`; the host already greys such tasks.
 
+- `NotSupportedReason` is called only when `CanRun` is false, and reads cached data only.
+- Name an AXIS OS version only when your check really is a version check, or you verified the version the API first
+  came in. Otherwise name the missing function ("Needs the Time API").
+- Null, an empty text or an exception shows "Not supported on this device"; the host logs the exception once.
+- The toolbar button of the task is greyed with the same text.
+
 ### Task names
 
 The tasks pane shows what each task does, not the menu name: "Add user joe", "Set static IP 10.0.0.60", "Upgrade
-AXIS OS to 12.11.77". At most 48 characters, no secrets (names are stored and shown to every user). It is called once
-per run, so put everything the name needs into the payload.
+AXIS OS to 12.11.77". At most 48 characters (`TaskPluginNames.MaxTaskNameLength`; the server shortens a longer name
+with "…" and logs a warning), no secrets (names are stored and shown to every user). `GetTaskName` is called once per
+run, so all devices of a run share the name: put everything the name needs (the application's name, upgrade or
+downgrade) into the payload. An empty name or an exception falls back to `DisplayName`.
 
 ## Steps
 
@@ -95,7 +103,7 @@ await ctx.StepAsync("Check compatibility", async _ =>
 using (var step = ctx.BeginStep("Upload AXIS OS to the device"))
 {
     // ...
-    step.ReportProgress(45, "37 of 82 MB");
+    step.ReportProgress(45, ByteSize.Progress(sent, size)); // "37.0 of 82.4 MB"
 }                                                 // returns: Done; throws: Failed with the message
 
 ctx.SkipStep("Factory default", "Keep settings"); // a step that does not apply
@@ -105,8 +113,12 @@ ctx.SkipStep("Factory default", "Keep settings"); // a step that does not apply
 - A step ends with `Complete(detail)`, `Warn(message)` (the task ends Done with warnings), `Skip(reason)` or
   `Fail(message)`. Disposing it without an end means Done; an exception escaping it means Failed.
 - Beginning the next step ends the running one. Planned steps never reached end Skipped.
-- When the task succeeds, OADM adds the final step **Completed** itself.
-- Names are short imperatives with the article: "Read users", "Set the name", "Wait for the device to come back".
+- When the task succeeds (Done or Done with warnings), OADM adds the final step **Completed** itself. A failed or
+  cancelled task gets none: the failed step stays the current one. Never add it yourself.
+- Names are short imperatives with the article: "Read users", "Set the name", "Wait for the device to come back". No
+  secrets in names or details.
+- A size in a detail comes from `ByteSize` (`Oadm.Sdk.Formatting`): `ByteSize.Progress(sent, size)` writes "37.0 of 82.4 MB",
+  `ByteSize.Text(size)` "82.4 MB".
 
 Progress comes from the steps by themselves. `ctx.ReportProgress(percent, message)` overrides it, and `ctx.Log(level,
 message)` writes to the task log in the task details. Never log a secret.
@@ -129,18 +141,22 @@ public sealed class MyDialog : ITaskPluginDialog
 
 A dialog that leaves out some of the selected devices (already up to date, no file for them) implements
 `ShowForDevicesAsync` instead and returns a `TaskDialogResult` with the payload and the ids of the devices the task runs
-on. The host calls `ShowForDevicesAsync`; its default runs `ShowAsync` on every selected device. The Upgrade AXIS OS dialog
-works this way. It needs SDK 0.5.0.
+on. The host calls `ShowForDevicesAsync` and ignores ids that were not selected; its default runs `ShowAsync` on every
+selected device. The Upgrade AXIS OS dialog works this way. It needs SDK 0.5.0.
+
+A task that only needs a yes has a dialog that shows `MessageWindow.ConfirmAsync` and returns `"{}"` (or null for
+Cancel). The PKI tasks work this way.
 
 `ITaskDialogContext` gives the dialog:
 
 | Member | Use |
 |---|---|
 | `QueryAsync(deviceId, method, payload, ct)` | Read the device's current state through your `ITaskPluginQuery` on the server |
-| `UploadAsync(path, progress, ct)` | Upload a local file (an AXIS OS file, a package); put the returned id into the payload |
+| `UploadAsync(path, progress, ct)` | Upload a local file (an AXIS OS file, a package); `progress` gets the part sent, from 0.0 to 1.0; put the returned id into the payload |
 | `Has(permission)`, `HasAllDevices` | Hide choices the user's role does not allow, or that only users with all devices may make |
 | `AllDevices` | Every device, e.g. to copy settings from a device that is not selected |
-| `CanRunTasks`, `RunTaskAsync(deviceIds, payload, progress, ct)` | Keep the dialog open: start the task from it and show each device's step and result there; then return null from `ShowAsync` |
+| `CanRunTasks`, `RunTaskAsync(deviceIds, payload, progress, ct)` | Keep the dialog open: start the task from it and show each device's step and result there (`progress` gets every task's `TaskRunState`, the call returns once all ended); then return null from `ShowAsync`, so nothing runs twice. Without `CanRunTasks` (an older host) return the payload. A task deleted while it ran is reported as `Cancelled` with an empty message |
+| `MyAxis` | SDK 0.9.0: the user's MyAxis sign-in (`IsSignedIn`, `Changed`, `SignInAsync(owner)`), e.g. to ask for it before a task downloads from axis.com; null on an older host |
 | `StartView` | SDK 0.7.0: the part of the dialog a core plugin page asked for (`ICorePluginClientContext.RunTaskAsync(..., startView, ct)`), a name your dialog defines; null or a name you do not know: open as usual |
 
 Failed calls throw `RpcException`; show `Status.Detail`, or use `ServerErrors.Message(ex)`.
@@ -165,7 +181,8 @@ public sealed class MyTask : ITaskPlugin, ITaskPluginQuery
 
 A query must never change the device. It runs on the server with the stored login and a 30 s limit. It reads devices
 other than the queried one only through `caller` (the devices of the user who asks, see
-[Device groups](../device-groups/)); an address-in-use check asks `ctx.ManagedAddressesAsync(addresses, ct)`.
+[Device groups](../device-groups/)); `ctx.Devices` lists the same devices and may be null on another host. An
+address-in-use check asks `ctx.ManagedAddressesAsync(addresses, ct)`.
 
 ### Uploaded files
 
@@ -195,8 +212,24 @@ public IReadOnlyList<string>? RequiredPermissions(string? payloadJson) =>
     Read(payloadJson)?.Mode == "remove" ? ["remove"] : ["add"];
 ```
 
-The server refuses the run before any task starts when the role lacks a key. The dialog hides what the role lacks with
-`ctx.Has(PermissionKeys.Task(PluginId, "remove"))`. Keys are stored in roles: never rename one.
+The server refuses the run before any task starts when the role lacks a key; without an answer from
+`RequiredPermissions` a run needs every declared key. The dialog hides what the role lacks with
+`ctx.Has(PermissionKeys.Task(PluginId, "remove"))`. Keys are stored in roles: never rename one. The rules for keys and
+defaults are the same as for [core plugins](../core-plugins/#permissions).
+
+## Files from axis.com
+
+`ctx.AxisDownloads` (SDK 0.9.0, `IAxisDownloads`) downloads a file from axis.com with the MyAxis sign-in of the user who
+started the task. It is null for a task the system started and on an older host.
+
+```csharp
+await using var file = await ctx.AxisDownloads!.DownloadAsync(uri, sha256, size, progress, ct);
+await using var stream = file.OpenRead();
+```
+
+The host downloads, checks the size and the SHA-256 and keeps the file for the other devices of the run. Your plugin
+never gets the session. A failure is an `AxisDownloadException` with a text for the user. Upgrade AXIS OS uses it. In
+tests: `FakeAxisDownloads`.
 
 ## Device safety
 

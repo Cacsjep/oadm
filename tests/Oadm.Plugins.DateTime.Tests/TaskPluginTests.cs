@@ -152,6 +152,55 @@ public sealed class TaskPluginTests
     }
 
     [Fact]
+    public async Task Manual_time_of_a_device_whose_turn_comes_later_moves_on_with_the_time_since_ok()
+    {
+        // The dialog fixed 18:00:00 at 16:24:00 on the server's clock; this device waited 4 min 10 s in the queue.
+        var payload = new DateTimePayload("Europe/Vienna", TimeMode.Manual, ManualDateTime: "2026-12-24T18:00:00", ManualSetAt: _time.GetUtcNow());
+        _time.Advance(TimeSpan.FromSeconds(250));
+
+        await RunAsync(payload);
+
+        Assert.Equal("2026-12-24T17:04:10Z", _vapix.Writes[2].Params!["dateTime"]!.GetValue<string>());
+        Assert.Equal("2026-12-24T17:04:10Z (the entered time plus 250 s since OK)", Detail("Set date and time"));
+        Assert.Equal("Verify time settings: Done", Lines[7]);
+        Assert.Equal(new DateTimeOffset(2026, 12, 24, 17, 4, 10, TimeSpan.Zero), _vapix.DeviceUtc);
+        Assert.Empty(_ctx.Warnings);
+    }
+
+    [Fact]
+    public async Task Manual_time_without_the_moment_of_an_older_client_is_set_as_entered()
+    {
+        var json = """{"timeZone":"Europe/Vienna","mode":"Manual","manualDateTime":"2026-12-24T18:00:00"}""";
+        _time.Advance(TimeSpan.FromSeconds(250));
+
+        await StepRun.RunAsync(_ctx.Steps, () => _plugin.ExecuteAsync(_ctx, new FakeDevice(Guid.NewGuid()), json, CancellationToken.None));
+
+        Assert.Equal("2026-12-24T17:00:00Z", _vapix.Writes[2].Params!["dateTime"]!.GetValue<string>());
+        Assert.Equal("2026-12-24T17:00:00Z", Detail("Set date and time"));
+    }
+
+    [Fact]
+    public async Task Manual_time_with_a_moment_ahead_of_the_server_clock_adds_nothing()
+    {
+        var payload = new DateTimePayload("Europe/Vienna", TimeMode.Manual, ManualDateTime: "2026-12-24T18:00:00", ManualSetAt: _time.GetUtcNow().AddMinutes(3));
+
+        await RunAsync(payload);
+
+        Assert.Equal("2026-12-24T17:00:00Z", _vapix.Writes[2].Params!["dateTime"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void The_moment_of_a_manual_time_survives_the_payload_json()
+    {
+        var at = new DateTimeOffset(2026, 10, 7, 16, 24, 0, 250, TimeSpan.Zero);
+        var json = new DateTimePayload("Europe/Vienna", TimeMode.Manual, ManualDateTime: "2026-12-24T18:00:00", ManualSetAt: at).ToJson();
+
+        Assert.Contains("\"manualSetAt\":", json, StringComparison.Ordinal);
+        Assert.Equal(at, DateTimePayload.Parse(json).ManualSetAt);
+        Assert.DoesNotContain("manualSetAt", new DateTimePayload("Europe/Vienna", TimeMode.Ntp, new NtpSettings(NtpSource.Dhcp, [])).ToJson(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Legacy_param_cgi_device()
     {
         _vapix.ApiList = Fixture.LegacyOnly;

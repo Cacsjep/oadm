@@ -271,7 +271,7 @@ internal abstract class SiteRelay : IRelay
     }
 
     /// <summary>A datagram, connection or data from the node.</summary>
-    protected abstract void OnPacket(RelayPacket packet);
+    internal abstract void OnPacket(RelayPacket packet);
 
     /// <summary>The call ended: every connection through it is gone.</summary>
     protected virtual void OnCallEnded()
@@ -420,8 +420,17 @@ internal sealed class SiteUdpRelay(SiteManager manager, string siteName, Guid si
         await SendAsync(new RelayPacket { RemoteAddress = remote.ToString(), Data = ByteString.CopyFrom(data.Span) }, ct).ConfigureAwait(false);
     }
 
-    protected override void OnPacket(RelayPacket packet) =>
-        _received.Writer.TryWrite(new Datagram(packet.Data.Memory, EndPointOf(packet.RemoteAddress)));
+    /// <summary>The longest UDP datagram.</summary>
+    public const int MaxDatagram = 65535;
+
+    internal override void OnPacket(RelayPacket packet)
+    {
+        // More than a datagram holds is not one (the link's limit is a message, not a datagram): it is not kept.
+        if (packet.Data.Length <= MaxDatagram)
+        {
+            _received.Writer.TryWrite(new Datagram(packet.Data.Memory, EndPointOf(packet.RemoteAddress)));
+        }
+    }
 
     protected override void OnDisposed() => _received.Writer.TryComplete();
 }
@@ -436,21 +445,42 @@ internal sealed class SiteTcpRelay(SiteManager manager, string siteName, Guid si
         SingleWriter = true,
     });
 
+    /// <summary>
+    /// Connections of one relay the server keeps at most. The node holds 256 (<c>RelayHost.MaxTcpConnections</c>); twice
+    /// that covers a close and a new connection that cross on the link. A node that names more gets no place for them.
+    /// </summary>
+    public const int MaxConnections = 512;
+
     private readonly ConcurrentDictionary<ulong, RelayConnection> _connections = new();
+    private int _refusing;
 
     public ValueTask<IIncomingConnection> AcceptAsync(CancellationToken ct) => _accepted.Reader.ReadAsync(ct);
 
-    protected override void OnPacket(RelayPacket packet)
+    /// <summary>Connections the server keeps now (tests).</summary>
+    internal int Connections => _connections.Count;
+
+    internal override void OnPacket(RelayPacket packet)
     {
         if (packet.Accepted)
         {
+            // Over the limit, or an id that is in use: not a node that keeps the rules. Nothing is kept and nothing is
+            // answered, so a flood of such messages costs the server nothing.
+            if (_connections.Count >= MaxConnections)
+            {
+                return;
+            }
+
             var connection = new RelayConnection(this, packet.ConnectionId, EndPointOf(packet.RemoteAddress), SiteId!.Value);
-            _connections[packet.ConnectionId] = connection;
+            if (!_connections.TryAdd(packet.ConnectionId, connection))
+            {
+                return;
+            }
+
             if (!_accepted.Writer.TryWrite(connection))
             {
                 // Nobody accepts (the plugin is behind): the device's connection is closed.
                 Close(packet.ConnectionId);
-                _ = SendAsync(new RelayPacket { ConnectionId = packet.ConnectionId, End = true, Closed = true }, CancellationToken.None).AsTask();
+                Refuse(packet.ConnectionId);
             }
 
             return;
@@ -465,7 +495,7 @@ internal sealed class SiteTcpRelay(SiteManager manager, string siteName, Guid si
         {
             // The plugin is more than RelayConnection.MaxBuffered behind on this device: only this connection ends.
             Close(packet.ConnectionId);
-            _ = SendAsync(new RelayPacket { ConnectionId = packet.ConnectionId, End = true, Closed = true }, CancellationToken.None).AsTask();
+            Refuse(packet.ConnectionId);
             return;
         }
 
@@ -502,6 +532,33 @@ internal sealed class SiteTcpRelay(SiteManager manager, string siteName, Guid si
         if (_connections.TryRemove(id, out var connection))
         {
             connection.EndInput(new IOException("The connection through the site ended."));
+        }
+    }
+
+    /// <summary>
+    /// Tells the node to close a connection the server does not take. At most <see cref="MaxConnections"/> of these wait
+    /// for the link at once: a node that sends new connections faster than it reads the answers gets no more of them.
+    /// </summary>
+    private void Refuse(ulong id)
+    {
+        if (Interlocked.Increment(ref _refusing) > MaxConnections)
+        {
+            Interlocked.Decrement(ref _refusing);
+            return;
+        }
+
+        _ = RefuseAsync(id);
+    }
+
+    private async Task RefuseAsync(ulong id)
+    {
+        try
+        {
+            await SendAsync(new RelayPacket { ConnectionId = id, End = true, Closed = true }, CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _refusing);
         }
     }
 

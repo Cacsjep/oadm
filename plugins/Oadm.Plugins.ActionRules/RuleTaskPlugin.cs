@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 
 using Oadm.Plugins.ActionRules.Device;
 using Oadm.Plugins.ActionRules.Rules;
@@ -62,7 +61,7 @@ public sealed partial class RuleTaskPlugin : ITaskPlugin
         {
             return ActionRulesJson.Deserialize<RuleTaskPayload>(payloadJson).Description;
         }
-        catch (JsonException)
+        catch (ArgumentException)
         {
             return ActionRulesInfo.DisplayName;
         }
@@ -72,7 +71,8 @@ public sealed partial class RuleTaskPlugin : ITaskPlugin
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
-        var payload = Validate(ActionRulesJson.Deserialize<RuleTaskPayload>(payloadJson));
+        var parsed = ParsedRun.Of(payloadJson); // one entry per device: parsed, checked and indexed once per run
+        var payload = parsed.Payload;
         var gate = _owner?.DeviceGate(device.Id);
         var held = false;
         var bound = false; // the run let this task in: only then does its end count for the run
@@ -101,7 +101,7 @@ public sealed partial class RuleTaskPlugin : ITaskPlugin
                 return (read, rest);
             }).ConfigureAwait(false);
 
-            run = new Run(ctx, device, payload, set, new RuleWriter(ctx.Vapix, set, caps.Rules, caps.Schedules), _owner?.Undo, ct);
+            run = new Run(ctx, device, parsed, set, new RuleWriter(ctx.Vapix, set, caps.Rules, caps.Schedules), _owner?.Undo, ct);
             switch (payload.Action)
             {
                 case RuleTaskActions.Undo:
@@ -149,9 +149,62 @@ public sealed partial class RuleTaskPlugin : ITaskPlugin
         }
     }
 
-    /// <summary>Everything one task works with; the lists collect what it changed for undo.</summary>
-    private sealed class Run(ITaskExecutionContext ctx, IDeviceInfo device, RuleTaskPayload payload, DeviceRuleSet set, RuleWriter writer, UndoStore? store, CancellationToken ct)
+    /// <summary>
+    /// The payload of a run, read once per payload string: the engine hands the same string to every task of a run, so
+    /// thousands of devices do not parse it, check it and search their entry in it thousands of times. Shared between the
+    /// tasks and never changed (the models are immutable).
+    /// </summary>
+    internal sealed class ParsedRun
     {
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<string, ParsedRun> Parsed = new();
+        private readonly Dictionary<Guid, IReadOnlyList<RuleRef>> _targets = [];
+        private readonly Dictionary<Guid, IReadOnlyList<RuleRef>> _rules = [];
+
+        private ParsedRun(RuleTaskPayload payload)
+        {
+            Payload = payload;
+            foreach (var target in payload.Targets)
+            {
+                _targets.TryAdd(target.DeviceId, target.Rules); // the first entry of a device counts, as before
+            }
+
+            foreach (var target in payload.Rules ?? [])
+            {
+                _rules.TryAdd(target.DeviceId, target.Rules);
+            }
+        }
+
+        public RuleTaskPayload Payload { get; }
+
+        /// <summary>The ids this device has in the run (rules, recipients or schedules).</summary>
+        public IReadOnlyList<RuleRef> TargetsOf(Guid deviceId) => _targets.GetValueOrDefault(deviceId) ?? [];
+
+        /// <summary>Schedule delete: the rules of this device that are deleted with the schedules.</summary>
+        public IReadOnlyList<RuleRef> RulesOf(Guid deviceId) => _rules.GetValueOrDefault(deviceId) ?? [];
+
+        /// <summary>Reads and checks the payload (<see cref="Validate"/>); a bad one throws for every task and is not kept.</summary>
+        public static ParsedRun Of(string? json)
+        {
+            if (json is not null && Parsed.TryGetValue(json, out var cached))
+            {
+                return cached;
+            }
+
+            var run = new ParsedRun(Validate(ActionRulesJson.Deserialize<RuleTaskPayload>(json)));
+            if (json is not null)
+            {
+                Parsed.AddOrUpdate(json, run);
+            }
+
+            return run;
+        }
+    }
+
+    /// <summary>Everything one task works with; the lists collect what it changed for undo.</summary>
+    private sealed class Run(ITaskExecutionContext ctx, IDeviceInfo device, ParsedRun parsed, DeviceRuleSet set, RuleWriter writer, UndoStore? store, CancellationToken ct)
+    {
+        private readonly RuleTaskPayload payload = parsed.Payload;
+
         public ITaskExecutionContext Ctx => ctx;
 
         public IDeviceInfo Device => device;
@@ -180,7 +233,10 @@ public sealed partial class RuleTaskPlugin : ITaskPlugin
         public string? LastError { get; private set; }
 
         /// <summary>The ids this device has in the run (rules, recipients or schedules).</summary>
-        public IReadOnlyList<RuleRef> Targets => payload.Targets.FirstOrDefault(t => t.DeviceId == device.Id)?.Rules ?? [];
+        public IReadOnlyList<RuleRef> Targets { get; } = parsed.TargetsOf(device.Id);
+
+        /// <summary>Schedule delete: the rules of this device the page showed, deleted with the schedules.</summary>
+        public IReadOnlyList<RuleRef> ChosenRules { get; } = parsed.RulesOf(device.Id);
 
         /// <summary>Saves what was collected before the first write (the save step; a failure stops the task).</summary>
         public async Task SaveFirstAsync()

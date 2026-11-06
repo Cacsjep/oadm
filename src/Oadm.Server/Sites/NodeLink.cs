@@ -46,7 +46,7 @@ public sealed class NodeLink : IAsyncDisposable
                 : ValueTask.FromException<Stream>(new IOException("The link to the site node is closed.")),
         };
         // One HTTP/2 connection, two channels over it: a stranger's answers (Hello, PairStart, Bind) are read with a limit
-        // of a few KB; once the link is known to be a bound site's (Trust), every call may receive 32 MB.
+        // of a few KB; once the link is known to be a bound site's (Trust), an answer may be TrustedReceiveBytes.
         _handler = handler;
         _strangerChannel = GrpcChannel.ForAddress("http://site-node", new GrpcChannelOptions
         {
@@ -59,7 +59,7 @@ public sealed class NodeLink : IAsyncDisposable
         {
             HttpHandler = handler,
             DisposeHttpClient = false,
-            MaxReceiveMessageSize = 32 * 1024 * 1024,
+            MaxReceiveMessageSize = TrustedReceiveBytes,
             MaxSendMessageSize = 32 * 1024 * 1024,
         });
         _strangerClient = new SiteNodeService.SiteNodeServiceClient(_strangerChannel);
@@ -69,13 +69,24 @@ public sealed class NodeLink : IAsyncDisposable
     /// <summary>What the server reads from a node in one answer until the link is a bound site's.</summary>
     public const int StrangerReceiveBytes = 16 * 1024;
 
-    /// <summary>The client for calls; answers are limited to <see cref="StrangerReceiveBytes"/> until <see cref="Trust"/>.</summary>
+    /// <summary>
+    /// What the server reads from a bound site's node in one message. The largest message a node sends is one chunk of a
+    /// connection (a Dial's data, 64 KB; a relay's datagram, 64 KB, or TCP data, 32 KB): uploads, downloads and live video
+    /// through a site are streams of such chunks, never one message. A node's status stays far below it (NodeStatusRules).
+    /// 16 times the largest chunk, so a node someone took over cannot make the server hold 32 MB per answer.
+    /// </summary>
+    public const int TrustedReceiveBytes = 1024 * 1024;
+
+    /// <summary>
+    /// The client for calls; answers are limited to <see cref="StrangerReceiveBytes"/> until <see cref="Trust"/>, then to
+    /// <see cref="TrustedReceiveBytes"/>.
+    /// </summary>
     public SiteNodeService.SiteNodeServiceClient Client => Volatile.Read(ref _trusted) ? _trustedClient : _strangerClient;
 
     /// <summary>True once <see cref="Trust"/> was called.</summary>
     public bool IsTrusted => Volatile.Read(ref _trusted);
 
-    /// <summary>The link carries a bound site's key (checked by the caller): its answers may be as large as any call needs.</summary>
+    /// <summary>The link carries a bound site's key (checked by the caller): its answers may be <see cref="TrustedReceiveBytes"/>.</summary>
     public void Trust() => Volatile.Write(ref _trusted, true);
 
     /// <summary>SHA-256 of the node's certificate on this connection.</summary>

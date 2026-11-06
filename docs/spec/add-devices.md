@@ -51,7 +51,7 @@ range, Add manually, Import from file and Import from ADM open the same dialog w
   checked", neutral), then "Import finished|stopped, N devices found" (+ ", M already added"); no Scan again.
   Summary adds "N not added". Credentials of the file stay in client memory until their probe, go to the server
   only, are never logged and never saved to the credential list (the inline login editor keeps its own "Save to
-  credential list"). Then the technician reviews and clicks Add as usual. Scale: 30,000 lines are listed,
+  credential list"). Then the technician reviews and clicks Add as usual. Scale: a file at the device limit is listed,
   filtered and selected in one reset each (test). The first contact of an imported line waits only `Scan.TimeoutMs`
   (1.5 s, like the range scan; `ProbeAddressRequest.import_line = 5`), Add manually keeps 3 s: 30,000 lines with 10 % off
   take about 12 to 15 minutes on a LAN.
@@ -96,8 +96,8 @@ failed login); read in pages of 5,000, read again after each round; Try now and 
 the search shows; the export is the import's format without passwords; rows being checked show the spinning "Checking..."
 chip and the line above the list "Checking: 120 left"; the list is read again after Try now, when a round starts and when
 it ends). Fake mode keeps the list in memory
-(`FakeOadmApi.Waiting.cs`, nothing ever answers). Tests: `WaitingDeviceStoreTests` (+ Perf 30,000), server
-`WaitingDeviceTests`, client `WaitingDevicesTests` (+ Perf 30,000, screenshots), `AddDevicesPageTests`.
+(`FakeOadmApi.Waiting.cs`, nothing ever answers). Tests: `WaitingDeviceStoreTests` (+ Perf at the device limit), server
+`WaitingDeviceTests`, client `WaitingDevicesTests` (+ Perf at the device limit, screenshots), `AddDevicesPageTests`.
 
 **Import from ADM** (Add menu, `HostPages.AddImportAdm`): the same help dialog in its ADM mode (`ImportHelpViewModel.ForAdm`:
 addresses, logins, tags, everything else read from the devices, OADM is one server, an amber warning that the export holds
@@ -220,14 +220,14 @@ round tries again; routes,
 no credential list for a group, inside the group, tags any group uses left out), an entry whose user cannot add there any
 more is not tried and nothing is sent ("Not added: the user who kept it cannot add devices here.", held until Try now);
 an entry without a user id (kept before device groups existed) is tried as a user with all devices. Tests `AddDevicesScopeTests`, `CanaryTests`,
-`WaitingDeviceStoreTests` (+ Perf 30,000 entries per scope), `DeviceGroupMembershipTests` (+ Perf 30,000 devices x 200
+`WaitingDeviceStoreTests` (+ Perf a full list per scope), `DeviceGroupMembershipTests` (+ Perf the device limit x 200
 groups), `DiscoverySitesTests`.
 
 **Device limit**: one server manages at most 100,000 devices (`Oadm.Sdk.Devices.DeviceLimits.MaxDevices`, text
 `TooManyDevicesText`). `DeviceRepository.AddAsync` refuses an add over it (`DeviceLimitException`; adds are serialized), so
 every way in is covered; `Commit` checks the whole add first and answers RESOURCE_EXHAUSTED, nothing is stored (Prepare
 and Commit read the managed serials once for "managed already" and the limit, and look the session's devices up in one
-step, `IDiscoveryBackend.FindDiscovered(session, ids)`: linear at 30,000, Perf test `AddCommitScaleTests`); the add page
+step, `IDiscoveryBackend.FindDiscovered(session, ids)`: linear at the device limit, Perf test `AddCommitScaleTests`); the add page
 shows it in `ui:MessageWindow` and stays open; the automatic add returns `DeviceAutoAddResult.LimitReached` and logs a
 warning at most once an hour. Plugins keep their own caps below it (System report: 50 devices per report, Device triggers: 10,000 watched
 devices). Tests `DeviceLimitTests`.

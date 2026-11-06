@@ -195,78 +195,8 @@ public sealed class SeveralCasTests
     }
 
     [Fact]
-    public void The_kinds_convert_server_certificates_into_the_server_policies_and_revoke_into_block()
+    public async Task A_stored_list_that_cannot_be_read_is_never_rewritten()
     {
-        var dot1xServer = new PkiPolicy { Id = Guid.NewGuid(), Name = "802.1X server", Kind = PolicyKinds.Dot1xServer, MinimumTls = "1.3", LargestEapPacket = 1200 };
-        var stored = new List<PkiPolicy>
-        {
-            new() { Id = Guid.NewGuid(), Name = "HTTPS", Kind = PolicyKinds.HttpsCertificate, CaId = "oadm", ValidDays = 365, Key = PolicyKeys.Ecc },
-            new() { Id = Guid.NewGuid(), Name = "802.1X server", Kind = PolicyKinds.LegacyServerCertificate, CaId = "oadm", ValidDays = 200, Key = PolicyKeys.Ecc, Server = PolicyServers.Dot1x },
-            new() { Id = Guid.NewGuid(), Name = "EST server", Kind = PolicyKinds.LegacyServerCertificate, CaId = "oadm", ValidDays = 60, Key = PolicyKeys.Rsa, Server = PolicyServers.Est },
-            dot1xServer,
-            new() { Id = Guid.NewGuid(), Name = "Storage room", Kind = PolicyKinds.Block, Devices = new PolicyDevices { Tags = ["Storage"] } },
-            new() { Id = Guid.NewGuid(), Name = "Stolen", Kind = PolicyKinds.LegacyRevoke, Devices = new PolicyDevices { Serials = ["ACCC8E000001"] }, SavedBy = "admin" },
-            new() { Id = Guid.NewGuid(), Name = "Storage room", Kind = PolicyKinds.LegacyRevoke, Devices = new PolicyDevices { Serials = ["ACCC8E000002"] } },
-        };
-
-        var converted = PolicyStore.ConvertKinds(stored, Radius.Server.RadiusPolicies.DefaultServerPolicy);
-
-        Assert.Equal(
-            [("HTTPS", PolicyKinds.HttpsCertificate), ("EST server", PolicyKinds.EstServer), ("802.1X server", PolicyKinds.Dot1xServer),
-             ("Storage room", PolicyKinds.Block), ("Stolen", PolicyKinds.Block), ("Storage room (2)", PolicyKinds.Block)],
-            converted.Select(p => (p.Name, p.Kind)));
-        var est = converted[1];
-        Assert.Equal((stored[2].Id, "oadm", 60, PolicyKeys.Rsa), (est.Id, est.CaId!, est.ValidDays!.Value, est.Key!)); // the user's values stay
-        var server = converted[2];
-        Assert.Equal((dot1xServer.Id, "1.3", 1200, 200, PolicyKeys.Ecc), (server.Id, server.MinimumTls!, server.LargestEapPacket!.Value, server.ValidDays!.Value, server.Key!));
-        Assert.Equal([false, true, true], converted.Where(p => p.Kind == PolicyKinds.Block).Select(p => p.AlsoRevoke!.Value));
-        Assert.Equal("admin", converted[4].SavedBy);
-        Assert.Equal(["ACCC8E000001"], converted[4].Devices!.Serials);
-        Assert.All(converted, p => Assert.True(PolicyKinds.IsKnown(p.Kind)));
-
-        // Converted again: nothing changes (idempotent).
-        Assert.Equal(converted, PolicyStore.ConvertKinds(converted, Radius.Server.RadiusPolicies.DefaultServerPolicy));
-
-        // An 802.1X server policy deleted on an older build: one with the TLS defaults takes the certificate's values.
-        var without = PolicyStore.ConvertKinds([stored[1]], Radius.Server.RadiusPolicies.DefaultServerPolicy);
-        Assert.Equal([PolicyKinds.Dot1xServer, PolicyKinds.EstServer], without.Select(p => p.Kind));
-        Assert.Equal((stored[1].Id, 200, PolicyRules.DefaultMinimumTls), (without[0].Id, without[0].ValidDays!.Value, without[0].MinimumTls!));
-    }
-
-    [Fact]
-    public async Task The_kinds_convert_once_on_start_and_never_a_list_that_cannot_be_read()
-    {
-        var stored = new StoredPolicies
-        {
-            Policies =
-            [
-                new() { Id = Guid.NewGuid(), Name = "EST server", Kind = PolicyKinds.LegacyServerCertificate, CaId = "oadm", ValidDays = 45, Key = PolicyKeys.Ecc, Server = PolicyServers.Est },
-                new() { Id = Guid.NewGuid(), Name = "Stolen", Kind = PolicyKinds.LegacyRevoke, Devices = new PolicyDevices { Serials = ["ACCC8E000001"] } },
-            ],
-            Converted = [PkiPluginInfo.PluginId, PkiService.IssuingOwner],
-        };
-        var settings = new InMemoryPluginSettingsProvider();
-        var own = settings.GetSettings(PkiPluginInfo.PluginId);
-        await own.SetAsync(PolicyStore.SettingsKey, PkiJson.Serialize(stored), CancellationToken.None);
-
-        await using (var pki = await PkiHarness.StartAsync(settings))
-        {
-            Assert.Equal([(PolicyKinds.EstServer, 45), (PolicyKinds.Block, 0)], pki.Policies.All.Select(p => (p.Kind, p.ValidDays ?? 0)));
-            Assert.Equal("Stolen", pki.Policies.FirstOf(PolicyKinds.Block)!.Name); // a Revoke policy became a Block (decision 2026-10-26: Block only refuses)
-            Assert.Contains(PkiService.KindsOwner, pki.Policies.Converted);
-
-            // A change made since stays: the conversion runs once.
-            Assert.Null((await pki.Policies.SaveAsync(pki.Policies.FirstOf(PolicyKinds.Block)! with { Name = "Lost" }, "admin", Suites, CancellationToken.None)).Error);
-        }
-
-        await using (var again = await PkiHarness.StartAsync(settings))
-        {
-            var block = again.Policies.FirstOf(PolicyKinds.Block)!;
-            Assert.Equal(("Lost", (bool?)null), (block.Name, block.AlsoRevoke)); // saved: the old flag is gone
-            Assert.Equal(2, again.Policies.All.Count);
-        }
-
-        // A stored list that cannot be read is never rewritten.
         var damaged = new InMemoryPluginSettingsProvider();
         await damaged.GetSettings(PkiPluginInfo.PluginId).SetAsync(PolicyStore.SettingsKey, "{\"policies\":5}", CancellationToken.None);
         await using var broken = await PkiHarness.StartAsync(damaged);

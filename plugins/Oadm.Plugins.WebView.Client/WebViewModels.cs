@@ -31,15 +31,35 @@ public sealed record WebPagePreset(string Name, string Path)
     ];
 }
 
+/// <summary>Where an address the page of a tab asks for opens.</summary>
+internal enum WebLinkTarget
+{
+    /// <summary>A page of the tab's device (its relay): the tab.</summary>
+    Tab,
+
+    /// <summary>No web address (about:, data:, blob:): the browser's own.</summary>
+    Browser,
+
+    /// <summary>Another website, a mail link: the system browser.</summary>
+    Outside,
+
+    /// <summary>Another address on this computer (another tab's relay): not opened.</summary>
+    Nowhere,
+}
+
 /// <summary>
 /// One browser tab: one device through its relay. Changing the device (Next, Previous) opens a new relay; the address
 /// the browser shows is <see cref="Address"/>. A refused device shows <see cref="Error"/> instead of the page.
 /// </summary>
 public sealed partial class WebTab : ObservableObject, IDisposable
 {
+    /// <summary>A tab hands the system browser at most one address in this time (<see cref="Open"/>).</summary>
+    internal static readonly TimeSpan OutsidePause = TimeSpan.FromSeconds(5);
+
     private readonly WebViewPageViewModel _owner;
     private IDeviceWebSession? _session;
     private int _generation;
+    private long? _lastOutside;
 
     internal WebTab(WebViewPageViewModel owner, IDeviceInfo device, string groupKey, WebPagePreset preset, string path)
     {
@@ -95,6 +115,45 @@ public sealed partial class WebTab : ObservableObject, IDisposable
         _session is { } session && page.IsAbsoluteUri && Uri.Compare(page, session.Origin, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0
             ? session.StartAddress(page.PathAndQuery + page.Fragment)
             : null;
+
+    /// <summary>
+    /// Where <paramref name="address"/> opens when the tab's page asks for it (a link, a script, a redirect): the tab shows
+    /// only its device. Everything else leaves the tab, so no other website appears under the device's tab title.
+    /// </summary>
+    internal WebLinkTarget TargetOf(Uri? address)
+    {
+        if (!EmbeddedBrowserLinks.Leaves(address, _session?.Origin))
+        {
+            return address is { IsAbsoluteUri: true } && (address.Scheme == Uri.UriSchemeHttp || address.Scheme == Uri.UriSchemeHttps)
+                ? WebLinkTarget.Tab
+                : WebLinkTarget.Browser;
+        }
+
+        return address!.IsLoopback ? WebLinkTarget.Nowhere : WebLinkTarget.Outside;
+    }
+
+    /// <summary>
+    /// <see cref="TargetOf"/> for an address the page asks for now. The system browser opens without a click (a script, a
+    /// redirect), so a tab hands it one address in <see cref="OutsidePause"/>; the others in that time are dropped
+    /// (<see cref="WebLinkTarget.Nowhere"/>): a page that asks again and again cannot open window after window.
+    /// </summary>
+    internal WebLinkTarget Open(Uri? address)
+    {
+        var target = TargetOf(address);
+        if (target != WebLinkTarget.Outside)
+        {
+            return target;
+        }
+
+        var now = _owner.Time.GetTimestamp();
+        if (_lastOutside is { } last && _owner.Time.GetElapsedTime(last, now) < OutsidePause)
+        {
+            return WebLinkTarget.Nowhere;
+        }
+
+        _lastOutside = now;
+        return WebLinkTarget.Outside;
+    }
 
     [RelayCommand]
     private void Close() => _owner.CloseTab(this);

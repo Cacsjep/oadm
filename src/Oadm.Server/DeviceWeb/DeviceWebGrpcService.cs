@@ -247,8 +247,9 @@ public sealed partial class DeviceWebGrpcService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
-            LogRequestFailed(head.PathAndQuery, ex.Message);
-            await WriteErrorPageAsync(responseStream, ErrorText(ex), ct).ConfigureAwait(false);
+            var (path, reason) = (PathOnly(head.PathAndQuery), ErrorText(ex));
+            LogRequestFailed(path, reason);
+            await WriteErrorPageAsync(responseStream, reason, ct).ConfigureAwait(false);
             return;
         }
 
@@ -511,8 +512,9 @@ public sealed partial class DeviceWebGrpcService(
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
-            LogRequestFailed(head.PathAndQuery, ex.Message);
-            await WriteErrorPageAsync(responseStream, ErrorText(ex), ct).ConfigureAwait(false);
+            var (path, reason) = (PathOnly(head.PathAndQuery), ErrorText(ex));
+            LogRequestFailed(path, reason);
+            await WriteErrorPageAsync(responseStream, reason, ct).ConfigureAwait(false);
             return;
         }
 
@@ -675,6 +677,13 @@ public sealed partial class DeviceWebGrpcService(
         WebSocketException ws => DeviceMessages.Unreachable(ws.Message),
         _ => ex.Message,
     };
+
+    /// <summary>The path without its query, for the log: VAPIX queries carry passwords (pwdgrp.cgi?...&amp;pwd=).</summary>
+    internal static string PathOnly(string pathAndQuery)
+    {
+        var end = pathAndQuery.IndexOfAny(['?', '#']);
+        return end < 0 ? pathAndQuery : pathAndQuery[..end];
+    }
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Web interface request {Path} failed: {Reason}")]
     private partial void LogRequestFailed(string path, string reason);

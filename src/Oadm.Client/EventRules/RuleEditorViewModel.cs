@@ -596,7 +596,8 @@ public sealed partial class RuleEditorViewModel : ValidatingViewModel
         }
 
         Validation.Rule(nameof(Name), () => Name.Trim().Length == 0 ? "Enter a name."
-            : Name.Trim().Length > RuleDefinition.MaxNameLength ? string.Create(CultureInfo.InvariantCulture, $"At most {RuleDefinition.MaxNameLength} characters.") : null);
+            : Name.Trim().Length > RuleDefinition.MaxNameLength ? string.Create(CultureInfo.InvariantCulture, $"At most {RuleDefinition.MaxNameLength} characters.")
+            : Name.Trim().Any(char.IsControl) ? RuleDefinition.NameInvalidText : null);
         Validation.Rule(nameof(Cooldown), () => int.TryParse(Cooldown, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) && n is >= 0 and <= 3600 ? null : "Must be 0 to 3600.");
         Validation.Rule(nameof(MaxRuns), () => int.TryParse(MaxRuns, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) && n is >= 1 and <= 1000 ? null : "Must be 1 to 1000.");
         Validation.Validate();

@@ -26,6 +26,16 @@ public sealed class ActionPlaceholderTests
     }
 
     [Fact]
+    public void SingleLineRemovesControlCharactersFromTheValuesOnly()
+    {
+        const string Value = "7\r\nOPEN\tgate\0 é\u0085";
+
+        Assert.Equal("ALARM\n7OPENgate é\tend", ActionPlaceholders.Fill("ALARM\n{v}\tend", _ => Value, PlaceholderEscape.SingleLine));
+        Assert.Equal("7OPENgate é", ActionPlaceholders.Escape(Value, PlaceholderEscape.SingleLine));
+        Assert.Equal("plain", ActionPlaceholders.Escape("plain", PlaceholderEscape.SingleLine));
+    }
+
+    [Fact]
     public void EveryFixedPlaceholderHasAValueAndEventValuesComeAfterThem()
     {
         var device = new Device();

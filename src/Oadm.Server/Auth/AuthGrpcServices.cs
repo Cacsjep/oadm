@@ -109,7 +109,7 @@ internal static class AuthMapping
 }
 
 /// <summary>gRPC AuthService: status, login, logout and the first administrator.</summary>
-public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore roles, AuthTokenStore tokens, AuditLog audit, ServerSettingsStore settings, DeviceGroupStore groups, Updates.UpdateGate gate) : Proto.AuthService.AuthServiceBase
+public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore roles, AuthTokenStore tokens, AuditLog audit, ServerSettingsStore settings, DeviceGroupStore groups, Updates.UpdateGate gate, LoginAddressLimit addressLimit) : Proto.AuthService.AuthServiceBase
 {
     private static readonly string Version =
         typeof(AuthGrpcService).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "?";
@@ -130,13 +130,28 @@ public sealed class AuthGrpcService(AuthManager auth, UserStore users, RoleStore
 
     public override async Task<Proto.LoginReply> Login(Proto.LoginRequest request, ServerCallContext context)
     {
+        // Before anything is done with the request: an address with too many failed logins gets no further try.
+        var address = AuthInterceptor.ClientAddressOf(context);
+        if (addressLimit.IsLimited(address))
+        {
+            throw new RpcException(new Status(StatusCode.ResourceExhausted, LoginAddressLimit.Message));
+        }
+
         try
         {
-            var result = await auth.LoginAsync(request.UserName, request.Password, request.Remember, AuthInterceptor.ClientAddressOf(context), context.CancellationToken).ConfigureAwait(false);
+            // Over-long names and passwords are wrong logins (AuthManager.LoginAsync): the same answer, nothing kept.
+            var result = await auth.LoginAsync(request.UserName, request.Password, request.Remember, address, context.CancellationToken).ConfigureAwait(false);
             return new Proto.LoginReply { Token = result.Token, User = await AuthMapping.SelfAsync(result.User, roles, groups, context.CancellationToken).ConfigureAwait(false) };
         }
         catch (AuthException ex)
         {
+            if (ex.Error == AuthError.NotAuthenticated && addressLimit.RecordFailure(address))
+            {
+                // The user is left empty: the entry stands for the address, whatever names it tried.
+                await audit.WriteAsync(string.Empty, address, AuditActions.LoginLocked, address, string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                    $"{LoginAddressLimit.MaxFailures} failed logins from this address in {LoginAddressLimit.Window.TotalMinutes:0} minutes"), CancellationToken.None).ConfigureAwait(false);
+            }
+
             throw AuthMapping.ToRpc(ex);
         }
     }

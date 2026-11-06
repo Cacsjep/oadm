@@ -5,6 +5,7 @@ using System.Text.Json;
 using Oadm.Plugins.Firmware.Online;
 using Oadm.Plugins.Shared;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Formatting;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
 
@@ -310,7 +311,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 pathAdvice = note;
             }
 
-            step.Complete(Invariant($"{image.FileName}, {size / (1024 * 1024)} MB: {check.Message}"));
+            step.Complete($"{image.FileName}, {ByteSize.Text(size)}: {check.Message}");
         }
 
         // The version from axis.com, downloaded by the host with the user's MyAxis sign-in; disposed after the upload.
@@ -357,7 +358,6 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
     {
         using var step = ctx.BeginStep(Steps.Download);
         var downloads = ctx.AxisDownloads ?? throw new InvalidOperationException(OnlineFirmware.SignInText + " Nothing was changed.");
-        var totalMb = online.Size / (1024 * 1024);
         var lastPercent = -1;
         var progress = new SyncProgress(received =>
         {
@@ -365,7 +365,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             if (percent != lastPercent)
             {
                 lastPercent = percent;
-                step.ReportProgress(percent, Invariant($"{received / (1024 * 1024)} of {totalMb} MB"));
+                step.ReportProgress(percent, ByteSize.Progress(received, online.Size));
             }
         });
 
@@ -386,7 +386,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
         step.Complete(result.FromCache
             ? "From the cache, checksum matches axis.com"
-            : Invariant($"{result.Length / (1024 * 1024)} MB from axis.com, checksum matches"));
+            : ByteSize.Text(result.Length) + " from axis.com, checksum matches");
         return result;
     }
 
@@ -413,7 +413,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             if (before.HasUncommittedUpgrade)
             {
                 throw new InvalidOperationException(
-                    $"A previous AXIS OS upgrade on this device is not committed yet (active {before.ActiveFirmwareVersion}, previous {before.InactiveFirmwareVersion ?? "unknown"}). Wait for it to finish or commit it first. Nothing was changed.");
+                    $"A previous AXIS OS upgrade on this device is not committed yet (active {before.ActiveFirmwareVersion}, previous {before.InactiveFirmwareVersion ?? "unknown"}). {FwmgrClient.UncommittedAdvice} Nothing was changed.");
             }
 
             step.Complete(AxisOsTexts.Version(before.ActiveFirmwareVersion ?? info.Version) + ", committed");
@@ -427,8 +427,33 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         var expected = AxisOsVersion.TryParse(newVersionText) ?? image.Version;
         var old = AxisOsVersion.TryParse(info.Version);
 
+        // A Cancel from here on does not stop the device: the step it stops and the task log say what the device does now.
+        var cancelled = "Cancelled. " + AfterCancel(payload.FactoryDefaultMode, info.Version);
+        try
+        {
+            await FinishAsync(ctx, fwmgr, payload, info, expected, old, cancelled, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            ctx.Log(TaskLogLevel.Warning, AfterCancel(payload.FactoryDefaultMode, info.Version));
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// What the device does when the task is cancelled after it accepted the image: OADM never commits, so an upgrade that
+    /// keeps the settings rolls back; a factory default upgrade commits itself.
+    /// </summary>
+    private string AfterCancel(FactoryDefaultMode mode, string oldVersion) => mode == FactoryDefaultMode.None
+        ? Invariant($"The upgrade was not committed: the device rolls back to {oldVersion} by itself {_timings.AutoRollbackMinutes} minutes after booting and restarts.")
+        : "The device still installs the new AXIS OS version and resets to factory default.";
+
+    /// <summary>After the device accepted the image: the restart, the version and the commit.</summary>
+    private async Task FinishAsync(ITaskExecutionContext ctx, FwmgrClient fwmgr, FirmwarePayload payload, BasicDeviceInfo info, AxisOsVersion? expected,
+        AxisOsVersion? old, string cancelled, CancellationToken ct)
+    {
         // 3. Wait for the restart and verify the version.
-        var backVersionText = await WaitForRestartAsync(ctx, info.Version, payload.FactoryDefaultMode, ct).ConfigureAwait(false);
+        var backVersionText = await WaitForRestartAsync(ctx, fwmgr, info.Version, expected, payload.FactoryDefaultMode, cancelled, ct).ConfigureAwait(false);
         AxisOsVersion actual;
         using (var step = ctx.BeginStep(Steps.VerifyVersion))
         {
@@ -452,7 +477,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         // 4. Commit (only for upgrades that keep the settings; factory default upgrades commit themselves).
         if (payload.FactoryDefaultMode == FactoryDefaultMode.None)
         {
-            await CommitAsync(ctx, fwmgr, actual, info.Version, ct).ConfigureAwait(false);
+            await CommitAsync(ctx, fwmgr, actual, info.Version, cancelled, ct).ConfigureAwait(false);
         }
         else
         {
@@ -578,7 +603,6 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             : new FwmgrUpgradeOptions(mode, "started", "never");
 
         using var step = ctx.BeginStep(Steps.Upload);
-        var totalMb = size / (1024 * 1024);
         var lastPercent = -1;
         using var content = new FirmwareStreamContent(
             open,
@@ -589,7 +613,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 if (percent != lastPercent)
                 {
                     lastPercent = percent;
-                    step.ReportProgress(percent, Invariant($"{sent / (1024 * 1024)} of {totalMb} MB"));
+                    step.ReportProgress(percent, ByteSize.Progress(sent, size));
                 }
             });
 
@@ -598,7 +622,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         {
             var version = await fwmgr.UpgradeAsync(content, image.FileName, options, _timings.UploadTimeout, ct).ConfigureAwait(false);
             ctx.Log(TaskLogLevel.Info, $"Device accepted the image (version {version ?? "not reported"}).");
-            step.Complete(Invariant($"{totalMb} MB, device accepted AXIS OS {version ?? "(version not reported)"}"));
+            step.Complete($"{ByteSize.Text(size)}, device accepted AXIS OS {version ?? "(version not reported)"}");
             return version;
         }
         catch (FwmgrException ex) when (ex.NothingInstalled)
@@ -621,7 +645,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             // The plain reason for the task; the exception with its .NET texts only in the server log.
             LogUploadError(ctx.Logger, ex);
             throw new InvalidOperationException(
-                Invariant($"The upload was interrupted after {content.BytesSent / (1024 * 1024)} of {totalMb} MB: {UploadFailure(ex)}. The device still runs {oldVersion}."), ex);
+                $"The upload was interrupted after {ByteSize.Progress(content.BytesSent, size)}: {UploadFailure(ex)}. The device still runs {oldVersion}.", ex);
         }
     }
 
@@ -652,14 +676,18 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
     /// <summary>
     /// Two steps sharing one timeout: "Install AXIS OS" waits until the device goes offline to restart
-    /// (or already answers with another version), "Wait for the device to come back" until it answers again.
+    /// (or already answers with another version), "Wait for the device to come back" until it answers with another
+    /// version. One missed probe (a timeout, a site link) looks like a restart while the device still installs, so an
+    /// answer with the old version keeps waiting; at the timeout the firmware manager says whether the device rolled back.
+    /// An image of the version the device already runs keeps waiting too, until the install is proven
+    /// (<see cref="InstalledAgainAsync"/>); without a proof at the timeout the task fails, never Done.
     /// </summary>
-    private async Task<string?> WaitForRestartAsync(ITaskExecutionContext ctx, string oldVersion, FactoryDefaultMode mode, CancellationToken ct)
+    private async Task<string?> WaitForRestartAsync(ITaskExecutionContext ctx, FwmgrClient fwmgr, string oldVersion, AxisOsVersion? expected,
+        FactoryDefaultMode mode, string cancelled, CancellationToken ct)
     {
         var start = _time.GetTimestamp();
         var minutes = _timings.RestartTimeout.TotalMinutes.ToString("0.#", CultureInfo.InvariantCulture);
-        string? changedVersion = null;
-        using (var step = ctx.BeginStep(Steps.Install))
+        var changedVersion = await StepAfterUploadAsync(ctx, Steps.Install, cancelled, async step =>
         {
             while (true)
             {
@@ -669,26 +697,29 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 if (version is null)
                 {
                     step.Complete("The device restarts");
-                    break;
+                    return null;
                 }
 
                 if (!string.Equals(version, oldVersion, StringComparison.Ordinal))
                 {
-                    changedVersion = version;
                     step.Complete("The device restarted");
-                    break;
+                    return version;
                 }
 
                 if (elapsed >= _timings.RestartTimeout)
                 {
-                    throw new TimeoutException($"The device did not restart within {minutes} minutes after the upload and still runs {oldVersion}.");
+                    throw new TimeoutException(NotRestarted(minutes, oldVersion));
                 }
 
-                step.ReportProgress(Percent(elapsed), "The device installs AXIS OS");
+                step.ReportProgress(Percent(elapsed), InstallsText);
             }
-        }
+        }, ct).ConfigureAwait(false);
 
-        using (var step = ctx.BeginStep(Steps.WaitForDevice))
+        // An image of the version the device already runs comes back with it, so its answer needs a proof that the
+        // install happened (InstalledAgainAsync); any other answers with the old version only while it installs or
+        // after a rollback.
+        var sameVersion = expected is not null && expected == AxisOsVersion.TryParse(oldVersion);
+        return await StepAfterUploadAsync(ctx, Steps.WaitForDevice, cancelled, async step =>
         {
             if (changedVersion is not null)
             {
@@ -696,12 +727,25 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 return changedVersion;
             }
 
+            var missedProbes = 1; // in a row; the one that ended "Install AXIS OS"
+            var wasAway = false;
             while (true)
             {
                 await Task.Delay(_timings.PollInterval, _time, ct).ConfigureAwait(false);
                 var elapsed = _time.GetElapsedTime(start);
                 var version = await TryReadVersionAsync(ctx, ct).ConfigureAwait(false);
-                if (version is not null)
+                var oldAgain = version is not null && string.Equals(version, oldVersion, StringComparison.Ordinal);
+                var stillOld = oldAgain && !sameVersion;
+                var unproven = false;
+                if (oldAgain && sameVersion)
+                {
+                    var away = missedProbes > 1;
+                    wasAway |= away;
+                    unproven = !await InstalledAgainAsync(fwmgr, mode, away, ct).ConfigureAwait(false);
+                }
+
+                missedProbes = version is null ? missedProbes + 1 : 0;
+                if (version is not null && !stillOld && !unproven)
                 {
                     step.Complete($"Answers with AXIS OS {version}");
                     return version;
@@ -709,6 +753,29 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
                 if (elapsed >= _timings.RestartTimeout)
                 {
+                    if (unproven)
+                    {
+                        // Never Done: nothing was committed, and an uncommitted install rolls back by itself.
+                        throw new TimeoutException(wasAway
+                            ? $"The device did not install the upload within {minutes} minutes: nothing waits to be committed. It still runs {oldVersion}."
+                            : NotRestarted(minutes, oldVersion));
+                    }
+
+                    if (stillOld)
+                    {
+                        // Rolled back: the version check says so. Else the device never restarted.
+                        var rolledBack = await RolledBackAsync(fwmgr, oldVersion, expected, ct).ConfigureAwait(false);
+                        if (rolledBack == true)
+                        {
+                            step.Complete($"Answers with AXIS OS {version}");
+                            return version;
+                        }
+
+                        throw new TimeoutException(rolledBack == false
+                            ? NotRestarted(minutes, oldVersion)
+                            : $"The device still runs {oldVersion} {minutes} minutes after the upload: the new version is not running.");
+                    }
+
                     var hint = mode switch
                     {
                         FactoryDefaultMode.Hard => " A hard factory default resets the IP configuration, so the device may be at another address.",
@@ -718,8 +785,87 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                     throw new TimeoutException($"The device did not come back within {minutes} minutes after the AXIS OS upload.{hint}");
                 }
 
-                step.ReportProgress(Percent(elapsed), "Not answering yet");
+                step.ReportProgress(Percent(elapsed), stillOld || unproven ? InstallsText : "Not answering yet");
             }
+        }, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// An image of the version the device already runs: the device answers the same before and after its restart, and
+    /// one missed probe looks like the restart. Whether the install happened: with the settings kept, the firmware
+    /// manager holds an upgrade that waits for the commit (the state "Commit AXIS OS" acts on); a status that says
+    /// nothing waits means the device still installs. Where the status cannot say (a factory default commits by
+    /// itself and removes OADM's login, a status that cannot be read): the device was away for more than one probe
+    /// (<paramref name="wasAway"/>).
+    /// </summary>
+    private static async Task<bool> InstalledAgainAsync(FwmgrClient fwmgr, FactoryDefaultMode mode, bool wasAway, CancellationToken ct)
+    {
+        if (mode != FactoryDefaultMode.None)
+        {
+            return wasAway;
+        }
+
+        try
+        {
+            return (await fwmgr.GetStatusAsync(ct).ConfigureAwait(false)).HasUncommittedUpgrade;
+        }
+#pragma warning disable CA1031 // No answer, a refusal or another answer: the status says nothing.
+        catch (Exception) when (!ct.IsCancellationRequested)
+#pragma warning restore CA1031
+        {
+            return wasAway;
+        }
+    }
+
+    private const string InstallsText = "The device installs AXIS OS";
+
+    private static string NotRestarted(string minutes, string oldVersion) =>
+        $"The device did not restart within {minutes} minutes after the upload and still runs {oldVersion}.";
+
+    /// <summary>
+    /// The device still answers with its old version at the timeout: true when the firmware manager holds the new image
+    /// as the inactive one (it started the image and rolled back), false when not (it never restarted), null when the
+    /// status cannot be read.
+    /// </summary>
+    private static async Task<bool?> RolledBackAsync(FwmgrClient fwmgr, string oldVersion, AxisOsVersion? expected, CancellationToken ct)
+    {
+        try
+        {
+            var status = await fwmgr.GetStatusAsync(ct).ConfigureAwait(false);
+            var inactive = AxisOsVersion.TryParse(status.InactiveFirmwareVersion);
+            return inactive is not null && inactive != AxisOsVersion.TryParse(oldVersion) && (expected is null || inactive == expected);
+        }
+#pragma warning disable CA1031 // No answer, a refusal or another answer: the status says nothing.
+        catch (Exception) when (!ct.IsCancellationRequested)
+#pragma warning restore CA1031
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// One step after the device accepted the image, like <see cref="TaskStepExtensions.StepAsync{T}"/>. A Cancel no
+    /// longer stops the device, so the step ends with <paramref name="cancelled"/> (what the device does now) instead of
+    /// only "Cancelled.".
+    /// </summary>
+    private static async Task<T> StepAfterUploadAsync<T>(ITaskExecutionContext ctx, string name, string cancelled, Func<ITaskStep, Task<T>> body, CancellationToken ct)
+    {
+        using var step = ctx.BeginStep(name);
+        try
+        {
+            var result = await body(step).ConfigureAwait(false);
+            step.Complete();
+            return result;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            step.Fail(cancelled);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            step.Fail(ex.Message);
+            throw;
         }
     }
 
@@ -764,7 +910,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
     /// Per attempt one "Read commit state" and one "Commit AXIS OS" step (retries are suffixed
     /// "(attempt n)"), with a "Wait before retrying the commit" step in between.
     /// </summary>
-    private async Task CommitAsync(ITaskExecutionContext ctx, FwmgrClient fwmgr, AxisOsVersion actual, string oldVersion, CancellationToken ct)
+    private async Task CommitAsync(ITaskExecutionContext ctx, FwmgrClient fwmgr, AxisOsVersion actual, string oldVersion, string cancelled, CancellationToken ct)
     {
         Exception? last = null;
         var commitBegun = false;
@@ -773,12 +919,12 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             var suffix = attempt == 1 ? string.Empty : Invariant($" (attempt {attempt})");
             try
             {
-                var status = await ctx.StepAsync(Steps.ReadCommitState + suffix, async step =>
+                var status = await StepAfterUploadAsync(ctx, Steps.ReadCommitState + suffix, cancelled, async step =>
                 {
                     var s = await fwmgr.GetStatusAsync(ct).ConfigureAwait(false);
                     step.Complete(s.IsCommitted == true && s.PendingCommit is null && s.TimeToRollback is null ? "Already committed" : "Not committed yet");
                     return s;
-                }).ConfigureAwait(false);
+                }, ct).ConfigureAwait(false);
 
                 var commitName = commitBegun ? Steps.Commit + suffix : Steps.Commit;
                 if (status.IsCommitted == true && status.PendingCommit is null && status.TimeToRollback is null)
@@ -789,12 +935,12 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 }
 
                 commitBegun = true;
-                var committed = await ctx.StepAsync(commitName, async step =>
+                var committed = await StepAfterUploadAsync(ctx, commitName, cancelled, async step =>
                 {
                     var version = await CommitWhenBootedAsync(ctx, fwmgr, ct).ConfigureAwait(false);
                     step.Complete($"AXIS OS {version ?? actual.Text}");
                     return version;
-                }).ConfigureAwait(false);
+                }, ct).ConfigureAwait(false);
                 ctx.Log(TaskLogLevel.Info, $"Committed AXIS OS {committed ?? actual.Text}.");
                 return;
             }
@@ -804,8 +950,11 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 ctx.Log(TaskLogLevel.Warning, Invariant($"Commit attempt {attempt} failed: {ex.Message}"));
                 if (attempt < _timings.CommitAttempts)
                 {
-                    using var wait = ctx.BeginStep(Steps.WaitBeforeRetry);
-                    await Task.Delay(_timings.CommitRetryDelay, _time, ct).ConfigureAwait(false);
+                    await StepAfterUploadAsync(ctx, Steps.WaitBeforeRetry, cancelled, async _ =>
+                    {
+                        await Task.Delay(_timings.CommitRetryDelay, _time, ct).ConfigureAwait(false);
+                        return true;
+                    }, ct).ConfigureAwait(false);
                 }
             }
         }

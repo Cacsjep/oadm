@@ -166,7 +166,9 @@ public interface ICorePlugin : IPlugin
 
     /// <summary>
     /// SDK 0.10.0: what the audit entry of an audited call (<see cref="IsAudited"/>) says instead of the method name, read
-    /// after the call succeeded ("Pressed Open gate on Gate house"); null (the default) = the method. Never a secret.
+    /// after the call ended ("Pressed Open gate on Gate house"); null (the default) = the method. Never a secret. The host
+    /// adds " (failed)" for a call that threw and " (cancelled)" for one the client gave up, so the text must not rely on
+    /// the call having worked.
     /// </summary>
     string? AuditDetail(string method, string? payloadJson) => null;
 

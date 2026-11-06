@@ -528,6 +528,8 @@ public sealed class DiscoveryService : IAsyncDisposable
         var route = DeviceRoute.ViaSite(site);
         using var limit = new SemaphoreSlim(SiteProbeParallelism);
         var probes = new List<Task>();
+        var answered = new HashSet<IPAddress>();
+        var prune = 64;
         try
         {
             await foreach (var found in _sites!.RangeScanAsync(site, range.From, range.To, options.Parallelism, options.Timeout, scan).ConfigureAwait(false))
@@ -535,12 +537,20 @@ public sealed class DiscoveryService : IAsyncDisposable
                 if (found.Total > 0)
                 {
                     // The probes of the answers belong to the progress too: the site's part ends at 95 % until they finished.
-                    progress((int)((long)found.Tried * 95 / found.Total));
+                    progress((int)Math.Clamp((long)found.Tried * 95 / found.Total, 0, 95));
                 }
 
-                if (found.Address is { } address)
+                // Each address of the range is probed once, whatever the node sends: an address outside the range or one
+                // it named before starts nothing, so the probes waiting here are never more than the range has addresses.
+                if (found.Address is { } named && (named.IsIPv4MappedToIPv6 ? named.MapToIPv4() : named) is var address
+                    && range.Contains(address) && answered.Add(address))
                 {
-                    probes.RemoveAll(t => t.IsCompleted);
+                    if (probes.Count >= prune)
+                    {
+                        probes.RemoveAll(t => t.IsCompleted);
+                        prune = Math.Max(64, probes.Count * 2);
+                    }
+
                     probes.Add(ProbeFoundAsync(session, route, address, options.Timeout, limit, scan));
                 }
             }

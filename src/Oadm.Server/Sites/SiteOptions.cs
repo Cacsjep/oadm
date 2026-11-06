@@ -33,8 +33,15 @@ public sealed class SiteOptions
     /// <summary>New connections a minute from one address of nodes the server does not know.</summary>
     public int NewConnectionsPerMinute { get; init; } = 10;
 
-    /// <summary>TLS handshakes in progress at most.</summary>
-    public int MaxHandshakes { get; init; } = 64;
+    /// <summary>TLS handshakes in progress from any address at most (one that waits for a silent connection costs little).</summary>
+    public int MaxHandshakes { get; init; } = 192;
+
+    /// <summary>
+    /// TLS handshakes in progress on top of <see cref="MaxHandshakes"/>, only for connections from the address a bound
+    /// site's node last connected from (<c>Site.Address</c>, IPv6 per /64), which take one of these first: silent
+    /// connections from other addresses never hold every handshake, so the sites' own nodes connect again.
+    /// </summary>
+    public int ReservedHandshakes { get; init; } = 64;
 
     /// <summary>TLS handshakes in progress from one address (IPv6 per /64) at most: one address never holds them all.</summary>
     public int MaxHandshakesPerAddress { get; init; } = 8;

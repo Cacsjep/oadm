@@ -47,8 +47,8 @@ public sealed class RequestRowViewModel(RequestEntry entry, string device)
 /// </summary>
 public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataErrorInfo, IDisposable
 {
-    /// <summary>Wait before watching again after the event stream ended or failed.</summary>
-    public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
+    /// <summary>The waits of the event watch (again after the stream ended or broke); a test passes its own.</summary>
+    public PluginEventWatchOptions EventWatch { get; init; } = new();
 
     /// <summary>
     /// How often the page of a user with a device group reads the state again while shown (<see cref="NtpState.Renew"/>):
@@ -203,7 +203,7 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
     /// <summary>Reads the whole state; the form is filled the first time (later reads keep what the user typed).</summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var json = await _ctx.InvokeAsync(NtpServerMethods.GetState, null, ct).ConfigureAwait(true);
             if (json is null)
@@ -220,16 +220,10 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
             {
                 ApplyForm(state.Config);
             }
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        }, GuardedCancel.Throw, ct).ConfigureAwait(true);
+        if (error is not null)
         {
-            throw;
-        }
-#pragma warning disable CA1031 // Any server error is shown in the status line.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            SetStatus("error", "Cannot read the NTP server state", Message(ex));
+            SetStatus("error", "Cannot read the NTP server state", error); // any server error shows in the status line
         }
     }
 
@@ -265,7 +259,7 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
         IsSaving = true;
         OnPropertyChanged(nameof(CheckingText));
         UpstreamResult = null;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var request = new SaveRequest(IsEnabled, SelectedInterface?.Id ?? NtpServerPluginInfo.AllInterfaces, string.IsNullOrWhiteSpace(Upstream) ? null : Upstream.Trim(),
                 ServeAtSites, [.. SiteChoices.ChosenValues.OfType<Guid>()]);
@@ -283,18 +277,14 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
             }
 
             ApplyStatus(reply.State);
-        }
-#pragma warning disable CA1031 // Shown to the user.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            SetStatus(ServiceStatus.Error, "Saving failed", Message(ex));
+            SetStatus(ServiceStatus.Error, "Saving failed", error);
         }
-        finally
-        {
-            IsSaving = false;
-            OnPropertyChanged(nameof(HasUpstreamResult));
-        }
+
+        IsSaving = false;
+        OnPropertyChanged(nameof(HasUpstreamResult));
     }
 
     private bool CanSave() => !IsSaving && MayManage;
@@ -346,46 +336,9 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
         }
     }
 
-    private async Task RunAsync(CancellationToken ct)
-    {
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                var events = _ctx.WatchEventsAsync(ct).GetAsyncEnumerator(ct);
-                try
-                {
-                    // Subscribe first, then read the state: nothing published in between is lost (entries deduplicated by seq).
-                    var next = events.MoveNextAsync();
-                    await LoadAsync(ct).ConfigureAwait(true);
-                    while (await next.ConfigureAwait(true))
-                    {
-                        HandleEvent(events.Current);
-                        next = events.MoveNextAsync();
-                    }
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    return;
-                }
-#pragma warning disable CA1031 // The connection dropped: read again and watch again after a short delay.
-                catch (Exception)
-#pragma warning restore CA1031
-                {
-                }
-                finally
-                {
-                    await events.DisposeAsync().ConfigureAwait(true);
-                }
-
-                await Task.Delay(ReconnectDelay, ct).ConfigureAwait(true);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // page hidden
-        }
-    }
+    // Subscribe first, then read the state: nothing published in between is lost (entries deduplicated by seq). After a
+    // drop the page waits, reads again and watches again.
+    private Task RunAsync(CancellationToken ct) => _ctx.RunAsync(LoadAsync, HandleEvent, EventWatch, ct);
 
     private void ApplyForm(NtpConfig config)
     {
@@ -531,13 +484,4 @@ public sealed partial class NtpServerViewModel : ObservableObject, INotifyDataEr
         false => $"{upstream.Host} does not answer, the cameras get this computer's time",
         null => $"Checking {upstream.Host}, the cameras get this computer's time meanwhile",
     };
-
-    /// <summary>gRPC errors carry the user message in Status.Detail; read it without a Grpc reference.</summary>
-    private static string Message(Exception ex)
-    {
-        var detail = ex.GetType().GetProperty("Status")?.GetValue(ex) is { } status
-            ? status.GetType().GetProperty("Detail")?.GetValue(status) as string
-            : null;
-        return string.IsNullOrEmpty(detail) ? ex.Message : detail;
-    }
 }

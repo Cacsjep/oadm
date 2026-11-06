@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 
 using Oadm.Sdk.Actions;
+using Oadm.Sdk.Formatting;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.VapixCommander;
@@ -90,7 +91,7 @@ public sealed class RenderedRequest
         {
             return string.Join("\n", Parts.Select(p => p.FileName is null
                 ? $"--- {p.Name}{(p.ContentType is null ? string.Empty : " (" + p.ContentType + ")")}\n{Mask(p.Text ?? string.Empty)}"
-                : $"--- {p.Name}: file \"{p.FileName}\", {SizeText(p.Content.Length)}{(p.ContentType is null ? string.Empty : " (" + p.ContentType + ")")}"));
+                : $"--- {p.Name}: file \"{p.FileName}\", {ByteSize.Text(p.Content.Length)}{(p.ContentType is null ? string.Empty : " (" + p.ContentType + ")")}"));
         }
 
         if (Form is not null)
@@ -139,10 +140,6 @@ public sealed class RenderedRequest
         multipart.Headers.ContentType = MediaTypeHeaderValue.Parse("multipart/form-data; boundary=" + Boundary);
         return multipart;
     }
-
-    private static string SizeText(int bytes) => bytes < 1024
-        ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{bytes} bytes")
-        : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{bytes / 1024d:0.#} KB");
 }
 
 /// <summary>One part of a multipart body: its name, content and, for a file, the file name sent.</summary>
@@ -178,7 +175,7 @@ public static class CommandRenderer
             });
 
         var renderedPath = Text(request.Path, Uri.EscapeDataString);
-        if (!CommandValidator.IsDevicePath(renderedPath))
+        if (!CommandValidator.IsFilledDevicePath(renderedPath))
         {
             throw new CommandValidationException(CommandValidator.PathProblem); // every request goes to the device itself
         }

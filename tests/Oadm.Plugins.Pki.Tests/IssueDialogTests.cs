@@ -210,7 +210,7 @@ public sealed class IssueDialogTests
         var page = new PoliciesViewModel(PolicyPageTests.Page(pki));
         await page.LoadAsync(CancellationToken.None);
         // One 802.1X server and one EST server policy, both there: Create offers neither.
-        Assert.DoesNotContain(page.KindChoices, k => k.Kind is PolicyKinds.Dot1xServer or PolicyKinds.EstServer or PolicyKinds.LegacyServerCertificate);
+        Assert.DoesNotContain(page.KindChoices, k => k.Kind is PolicyKinds.Dot1xServer or PolicyKinds.EstServer);
 
         var https = page.NewEditor(PolicyKinds.HttpsCertificate);
         https.Name = "HTTPS 2 years";

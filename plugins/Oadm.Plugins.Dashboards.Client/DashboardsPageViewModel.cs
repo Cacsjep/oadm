@@ -609,64 +609,51 @@ public sealed partial class DashboardsPageViewModel : ObservableObject, IDisposa
 
     // ------------------------------------------------------------------ server
 
-    private async Task LoadAndWatchAsync(CancellationToken ct)
-    {
-        var delay = TimeSpan.FromSeconds(1);
-        while (!ct.IsCancellationRequested)
+    // Subscribe first: nothing between the reads and the watch is lost. A failed read or a dropped watch is retried (after
+    // 1 s, then twice as long each time up to 15 s); the reason shows below the list.
+    private Task LoadAndWatchAsync(CancellationToken ct) => _ctx.RunAsync(
+        ReadAllAsync,
+        HandleEvent,
+        new PluginEventWatchOptions
         {
-            try
-            {
-                var events = _ctx.WatchEventsAsync(ct); // subscribe first: nothing between the reads and the watch is lost
-                Apply(JsonSerializer.Deserialize<DashboardList>(await _ctx.InvokeAsync(DashboardsMethods.List, null, ct).ConfigureAwait(true) ?? "null", DashboardsPluginInfo.Json));
-                ApplyCatalog(JsonSerializer.Deserialize<CatalogReply>(await _ctx.InvokeAsync(DashboardsMethods.Catalog, null, ct).ConfigureAwait(true) ?? "null", DashboardsPluginInfo.Json));
-                LoadError = null;
-                IsLoaded = true;
-                delay = TimeSpan.FromSeconds(1);
-                _sentKeys = []; // a reconnected server knows no watch of this page
-                WatchChanged();
-                await foreach (var item in events.ConfigureAwait(true))
-                {
-                    if (item.PayloadJson is not { } payload)
-                    {
-                        continue;
-                    }
-
-                    switch (item.Topic)
-                    {
-                        case DashboardsMethods.DashboardsTopic:
-                            Apply(JsonSerializer.Deserialize<DashboardList>(payload, DashboardsPluginInfo.Json));
-                            break;
-                        case DashboardsMethods.CatalogTopic:
-                            ApplyCatalog(JsonSerializer.Deserialize<CatalogReply>(payload, DashboardsPluginInfo.Json));
-                            break;
-                        case DashboardsMethods.ValuesTopic:
-                            ApplyValues(JsonSerializer.Deserialize<ValuesReply>(payload, DashboardsPluginInfo.Json));
-                            break;
-                    }
-                }
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                return;
-            }
-#pragma warning disable CA1031 // A failed read or a dropped watch is retried; the reason shows below the list.
-            catch (Exception ex)
-#pragma warning restore CA1031
+            RetryDelay = TimeSpan.FromSeconds(1),
+            MaxRetryDelay = TimeSpan.FromSeconds(15),
+            Failed = ex =>
             {
                 LoadError = DashboardTexts.LoadFailed(ServerErrors.Message(ex));
                 IsLoaded = true;
-            }
+            },
+        },
+        ct);
 
-            try
-            {
-                await Task.Delay(delay, ct).ConfigureAwait(true);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
+    private async Task ReadAllAsync(CancellationToken ct)
+    {
+        Apply(JsonSerializer.Deserialize<DashboardList>(await _ctx.InvokeAsync(DashboardsMethods.List, null, ct).ConfigureAwait(true) ?? "null", DashboardsPluginInfo.Json));
+        ApplyCatalog(JsonSerializer.Deserialize<CatalogReply>(await _ctx.InvokeAsync(DashboardsMethods.Catalog, null, ct).ConfigureAwait(true) ?? "null", DashboardsPluginInfo.Json));
+        LoadError = null;
+        IsLoaded = true;
+        _sentKeys = []; // a reconnected server knows no watch of this page
+        WatchChanged();
+    }
 
-            delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 15));
+    private void HandleEvent(PluginEvent item)
+    {
+        if (item.PayloadJson is not { } payload)
+        {
+            return;
+        }
+
+        switch (item.Topic)
+        {
+            case DashboardsMethods.DashboardsTopic:
+                Apply(JsonSerializer.Deserialize<DashboardList>(payload, DashboardsPluginInfo.Json));
+                break;
+            case DashboardsMethods.CatalogTopic:
+                ApplyCatalog(JsonSerializer.Deserialize<CatalogReply>(payload, DashboardsPluginInfo.Json));
+                break;
+            case DashboardsMethods.ValuesTopic:
+                ApplyValues(JsonSerializer.Deserialize<ValuesReply>(payload, DashboardsPluginInfo.Json));
+                break;
         }
     }
 

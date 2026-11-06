@@ -175,7 +175,7 @@ The website gets a user page (Tools > AI agents) and a developer page (plugin MC
 
 ## Tests
 
-- 30,000 fake devices: summary, search and preview stay within a Perf budget; no answer is larger than 32 KB (about 8,000
+- Fake devices at the device limit: summary, search and preview stay within a Perf budget; no answer is larger than 32 KB (about 8,000
   tokens), checked for every tool.
 - Every listed tool has annotations, an input schema with `additionalProperties: false` and an output schema; every write
   tool has a preview; a Read only key lists no write tool; a role without a permission does not list its tools.

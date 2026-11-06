@@ -94,7 +94,8 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
 
     public static TimeSpan KeepAliveInterval { get; set; } = TimeSpan.FromSeconds(5);
 
-    public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
+    /// <summary>The waits of the event watch (again after the stream ended or broke); a test passes its own.</summary>
+    public PluginEventWatchOptions EventWatch { get; init; } = new();
 
     /// <summary>
     /// Opens the shared picker for one device (set by the view): the devices the page offers and the chosen one; returns the
@@ -403,37 +404,7 @@ public sealed partial class IoMonitorViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task WatchAsync(CancellationToken ct)
-    {
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
-                await foreach (var item in _ctx.WatchEventsAsync(ct).ConfigureAwait(true))
-                {
-                    HandleEvent(item);
-                }
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                return;
-            }
-#pragma warning disable CA1031 // The connection dropped: watch again after a short delay.
-            catch (Exception)
-#pragma warning restore CA1031
-            {
-            }
-
-            try
-            {
-                await Task.Delay(ReconnectDelay, ct).ConfigureAwait(true);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-        }
-    }
+    private Task WatchAsync(CancellationToken ct) => _ctx.RunAsync(null, HandleEvent, EventWatch, ct);
 
     /// <summary>The device list changed (one pass): the chosen device keeps its reading unless it was removed.</summary>
     private void RefreshDevices()

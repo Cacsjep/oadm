@@ -227,18 +227,16 @@ public sealed partial class DeviceTriggersViewModel : ObservableObject, IDisposa
     /// <summary>Reads the triggers and the selected trigger's devices.</summary>
     public async Task ReloadAsync()
     {
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var list = TriggerJson.Deserialize<ListReply>(await _ctx.InvokeAsync(DeviceTriggersMethods.List, null, CancellationToken.None).ConfigureAwait(true));
             ApplyList(list.Triggers);
             await ReloadDevicesAsync().ConfigureAwait(true);
             ErrorText = null;
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            ErrorText = Message(ex);
+            ErrorText = error;
         }
     }
 
@@ -277,19 +275,17 @@ public sealed partial class DeviceTriggersViewModel : ObservableObject, IDisposa
             return;
         }
 
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var reply = TriggerJson.Deserialize<GetReply>(await _ctx.InvokeAsync(DeviceTriggersMethods.Get, TriggerJson.Serialize(new IdRequest(row.Id)), CancellationToken.None).ConfigureAwait(true));
             if (reply.Trigger is { } trigger)
             {
                 await OpenEditorAsync(trigger).ConfigureAwait(true);
             }
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            ErrorText = Message(ex);
+            ErrorText = error;
         }
     }
 

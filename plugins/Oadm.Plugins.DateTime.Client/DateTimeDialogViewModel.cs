@@ -385,6 +385,13 @@ public sealed partial class DateTimeDialogViewModel : ValidatingViewModel
             return;
         }
 
+        // Set manually: the entered time holds now. The moment goes along on the server's clock (this computer's may
+        // differ), so a device whose turn comes later is not set behind; without the server's time the payload has none.
+        if (payload.Mode == TimeMode.Manual && Current?.ServerUtc is { } serverUtc)
+        {
+            payload = payload with { ManualSetAt = serverUtc + (_now() - _readAt) };
+        }
+
         ResultJson = payload.ToJson();
         CloseRequested?.Invoke(this, true);
     }

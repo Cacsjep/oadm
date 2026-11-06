@@ -48,7 +48,10 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
     internal const string KeepUnchanged = "Keep unchanged";
     internal const string DhcpReason = "OADM finds the device again at its new address.";
 
-    /// <summary>Runs the task. <paramref name="sections"/> limits the planned write steps (Assign IP address: DNS and IPv4 only).</summary>
+    /// <summary>
+    /// Runs the task. <paramref name="payload"/> is validated (once per run, <see cref="NetworkRunCache"/>);
+    /// <paramref name="sections"/> limits the planned write steps (Assign IP address: DNS and IPv4 only).
+    /// </summary>
     public async Task RunAsync(ITaskExecutionContext ctx, IDeviceInfo device, NetworkPayload payload, IReadOnlyList<StepKind> sections, CancellationToken ct)
     {
         var readIpv6Mode = sections.Contains(StepKind.Ipv6);
@@ -110,7 +113,7 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
         // Plan: Require(...) per method happens here, so an unsupported method fails before any write.
         var plan = await ctx.StepAsync(StepValidate, step =>
         {
-            var built = NetworkPlanner.Build(payload, device.Id, apis, current, device.Address);
+            var built = NetworkPlanner.BuildValidated(payload, device.Id, apis, current, device.Address);
             step.Complete(built.Steps.Count == 0
                 ? "Nothing to change"
                 : built.Steps.Count == 1 ? "1 section to change" : $"{built.Steps.Count} sections to change");
@@ -127,6 +130,7 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
 
         // Write in order, one step per request; the connection-relevant section is last.
         var done = new List<string>();
+        LostAnswer? lost = null;
         foreach (var kind in SectionOrder(plan, sections))
         {
             var index = plan.Steps.ToList().FindIndex(s => s.Kind == kind);
@@ -152,18 +156,39 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
                 {
                     await NetworkSettingsClient.SendAsync(ctx.Vapix, section.Requests[r], ct).ConfigureAwait(false);
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                catch (NetworkApiException ex)
                 {
-                    var applied = done.Count == 0 ? "Nothing was changed." : "Already applied: " + string.Join("; ", done) + ".";
+                    // The device refused the request: nothing of it was applied.
+                    var applied = done.Count == 0 && r == 0 ? "Nothing was changed." : AlreadyApplied(done, section, r).TrimStart();
                     ctx.Log(TaskLogLevel.Error, $"{section.Description} failed: {ex.Message}");
                     throw new InvalidOperationException($"{section.Description} failed: {ex.Message} {applied}", ex);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                {
+                    // No answer (a timeout, a lost connection): the device may have applied the request. The request that
+                    // moves the device to a known address is followed there; any other ends without a claim.
+                    var last = index == plan.Steps.Count - 1 && r == section.Requests.Count - 1;
+                    if (last && plan.Impact is { Readdressed: true, NewAddress: { } target })
+                    {
+                        lost = new LostAnswer(section.Description, AlreadyApplied(done, section, r));
+                        ctx.Log(TaskLogLevel.Warning, $"{section.Description}: the device did not answer. Looking for it at {target}.");
+                        step.Complete($"No answer; the device is checked at {target}");
+                        break;
+                    }
+
+                    ctx.Log(TaskLogLevel.Error, $"{section.Description} failed: {ex.Message}");
+                    throw new InvalidOperationException(
+                        $"{section.Description} failed: {ex.Message.TrimEnd('.')}. {MayBeApplied}{AlreadyApplied(done, section, r)}", ex);
                 }
 
                 step.Complete(r == 0 ? section.Description : null);
             }
 
-            done.Add(section.Description);
-            ctx.Log(TaskLogLevel.Info, section.Description + ": applied.");
+            if (lost is null)
+            {
+                done.Add(section.Description);
+                ctx.Log(TaskLogLevel.Info, section.Description + ": applied.");
+            }
         }
 
         // What the change did to OADM's connection, and OADM following the device.
@@ -185,7 +210,7 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
         if (impact is { Readdressed: true, NewAddress: { } newAddress })
         {
             ctx.SkipStep(StepCheckReachability, $"The device moves to {newAddress}.");
-            await FollowAsync(ctx, device, impact.OldAddress, newAddress, ct).ConfigureAwait(false);
+            await FollowAsync(ctx, device, impact.OldAddress, newAddress, lost, ct).ConfigureAwait(false);
             return;
         }
 
@@ -309,8 +334,24 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
             : $"{SectionStepName(section.Kind)} ({index + 1} of {section.Requests.Count})";
     }
 
-    /// <summary>Wait for the device at its new static address, verify its serial number, move the OADM record.</summary>
-    private async Task FollowAsync(ITaskExecutionContext ctx, IDeviceInfo device, string oldAddress, string newAddress, CancellationToken ct)
+    internal const string MayBeApplied = "The change may have been applied.";
+
+    /// <summary>The write whose answer never came (the device may have moved before it answered) and what was applied before it.</summary>
+    private sealed record LostAnswer(string Description, string Applied);
+
+    /// <summary>" Already applied: ..." for a failure after earlier writes; empty when there were none.</summary>
+    private static string AlreadyApplied(List<string> done, PlannedStep section, int request)
+    {
+        List<string> applied = request > 0 ? [.. done, section.Description + " (in part)"] : done;
+        return applied.Count == 0 ? string.Empty : " Already applied: " + string.Join("; ", applied) + ".";
+    }
+
+    /// <summary>
+    /// Wait for the device at its new static address, verify its serial number, move the OADM record. With
+    /// <paramref name="lost"/> the write was never answered: only the device at the new address proves the change, the
+    /// device at the old one disproves it, and without either the task fails and says where to look.
+    /// </summary>
+    private async Task FollowAsync(ITaskExecutionContext ctx, IDeviceInfo device, string oldAddress, string newAddress, LostAnswer? lost, CancellationToken ct)
     {
         BasicDeviceInfo? info;
         using (var step = ctx.BeginStep(StepWaitNewAddress))
@@ -319,6 +360,10 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
             try
             {
                 client = await ctx.CreateClientForAsync(newAddress, ct).ConfigureAwait(false);
+            }
+            catch (NotSupportedException) when (lost is not null)
+            {
+                throw Unanswered(ctx, lost, $"{MayBeApplied} Look for the device at {newAddress}.");
             }
             catch (NotSupportedException)
             {
@@ -338,8 +383,16 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
 
             if (info is null)
             {
-                var stillOld = await TryPingAsync(ctx.Vapix, ct).ConfigureAwait(false) is not null;
+                var atOld = await TryPingAsync(ctx.Vapix, ct).ConfigureAwait(false);
+                var stillOld = atOld is not null;
                 var seconds = options.NewAddressTimeout.TotalSeconds.ToString("0", CultureInfo.InvariantCulture);
+                if (lost is not null)
+                {
+                    throw Unanswered(ctx, lost, atOld is not null && SameSerial(atOld.SerialNumber, device.Serial)
+                        ? $"It still answers at {oldAddress}: the address was not changed."
+                        : $"It answers at neither {oldAddress} nor {newAddress} within {seconds} s. {MayBeApplied} Look for the device at {newAddress}; OADM keeps {oldAddress}.");
+                }
+
                 step.Warn(stillOld
                     ? $"No answer at {newAddress} within {seconds} s; the device still answers at {oldAddress}. Check its system log. OADM keeps {oldAddress}."
                     : $"No answer at {newAddress} within {seconds} s. Check the subnet mask and default router. OADM keeps {oldAddress}.");
@@ -354,6 +407,12 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
         {
             if (!SameSerial(info.SerialNumber, device.Serial))
             {
+                if (lost is not null)
+                {
+                    throw Unanswered(ctx, lost, $"Another device answers at {newAddress} (serial number {info.SerialNumber}, expected {device.Serial}). " +
+                        $"{MayBeApplied} OADM keeps {oldAddress}.");
+                }
+
                 verify.Warn($"Another device answers at {newAddress} (serial number {info.SerialNumber}, expected {device.Serial}). " +
                     $"The address may be in use. OADM keeps {oldAddress}.");
                 ctx.SkipStep(StepUpdateAddress, "The device at the new address is not this device.");
@@ -361,6 +420,10 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
             }
 
             verify.Complete($"Serial number {device.Serial}");
+            if (lost is not null)
+            {
+                ctx.Log(TaskLogLevel.Info, $"{lost.Description}: applied, the device answers at {newAddress}.");
+            }
         }
 
         if (!IPAddress.TryParse(device.Address.Trim('[', ']'), out _))
@@ -383,6 +446,14 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
         {
             update.Warn($"This server cannot change the device address. Remove the device and add it again with {newAddress}.");
         }
+    }
+
+    /// <summary>The failure of a write without an answer: what OADM found instead, and what was applied before it.</summary>
+    private static InvalidOperationException Unanswered(ITaskExecutionContext ctx, LostAnswer lost, string found)
+    {
+        var message = $"{lost.Description}: the device did not answer. {found}{lost.Applied}";
+        ctx.Log(TaskLogLevel.Error, message);
+        return new InvalidOperationException(message);
     }
 
     private async Task<BasicDeviceInfo?> WaitForAsync(ITaskStep step, IVapixClient client, string address, CancellationToken ct)

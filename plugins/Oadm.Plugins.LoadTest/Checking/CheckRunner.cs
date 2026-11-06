@@ -13,8 +13,10 @@ namespace Oadm.Plugins.LoadTest.Checking;
 /// <see cref="LoadTestOptions.Time"/> it reads every open probe, takes the difference to the last read and adds one
 /// point to the graphs; a stream that sends nothing for <see cref="LoadTestInfo.StallTimeout"/> or does not start
 /// within <see cref="LoadTestInfo.StartTimeout"/> is Interrupted for the rest of its phase. At a phase's end each
-/// stream passes or fails against the limits of <see cref="LoadTestInfo"/>. Cancel and the plugin's stop end the
-/// run at once: the exposure goes back, the probes close and the measured part is kept.
+/// stream passes or fails against the limits of <see cref="LoadTestInfo"/>. Cancel, the plugin's stop and the end of the
+/// check's job (the host: the rules of its device group changed) end the run at once: the exposure goes back, the probes
+/// close and the measured part is kept. A check of a device group asks every second whether each camera of the batch is
+/// still one of the group's devices: one that left is closed for the rest of the check and its exposure goes back at once.
 /// </summary>
 internal sealed partial class CheckRunner : IAsyncDisposable
 {
@@ -24,18 +26,22 @@ internal sealed partial class CheckRunner : IAsyncDisposable
     private readonly RunStore _store;
     private readonly ILogger _logger;
     private readonly Action<CheckRun> _publish;
+    private readonly Func<Guid, bool>? _inView;
+    private readonly TaskCompletionSource _done = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly PeriodicTimer _timer;
     private readonly TimeProvider _time;
     private readonly CancellationTokenSource _cts = new();
     private CancellationTokenSource? _batchCts;
     private RunState _endAs = RunState.Cancelled;
     private string? _endVerdict;
+    private bool _endedByHost;
     private int _ticks;
     private int _waitingAfter = -1;
     private int _secondInPhase;
     private int _savedBatch;
 
-    public CheckRunner(CheckRun run, IDeviceStreamProbes probes, ExposureKeeper exposure, RunStore store, LoadTestOptions options, ILogger logger, Action<CheckRun> publish)
+    /// <param name="inView">Whether a device is still one of the devices of the group that runs the check; null: a check of a user with all devices.</param>
+    public CheckRunner(CheckRun run, IDeviceStreamProbes probes, ExposureKeeper exposure, RunStore store, LoadTestOptions options, ILogger logger, Action<CheckRun> publish, Func<Guid, bool>? inView = null)
     {
         _run = run;
         _probes = probes;
@@ -43,6 +49,7 @@ internal sealed partial class CheckRunner : IAsyncDisposable
         _store = store;
         _logger = logger;
         _publish = publish;
+        _inView = inView;
         _time = options.Time;
 
         // Created before Start returns: a second of the clock that passes before the loop waits is not lost.
@@ -73,12 +80,32 @@ internal sealed partial class CheckRunner : IAsyncDisposable
     }
 
     /// <summary>Completes when the run ended and was saved.</summary>
-    public Task Completion { get; private set; } = Task.CompletedTask;
+    public Task Completion => _done.Task;
 
-    public void Start() => Completion = Detached.Run(LoopAsync);
+    /// <summary>Runs the check as background work of the plugin (a caller without a user: in-process calls).</summary>
+    public void Start() => _ = Detached.Run(RunAsync);
 
-    /// <summary>Ends the run: <paramref name="endAs"/> Cancelled (the user) or Failed with <paramref name="verdict"/> (plugin stop).</summary>
-    public void Stop(RunState endAs, string? verdict = null)
+    /// <summary>
+    /// Runs the check to its end; never throws. As the work of the check's job it keeps the job's call, so the host checks
+    /// every stream it opens against the devices of the user who started it.
+    /// </summary>
+    public async Task RunAsync()
+    {
+        try
+        {
+            await LoopAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _done.TrySetResult();
+        }
+    }
+
+    /// <summary>
+    /// Ends the run: <paramref name="endAs"/> Cancelled (the user) or Failed with <paramref name="verdict"/> (plugin stop, or
+    /// <paramref name="byHost"/>: the host ended the check's job). The first stop wins.
+    /// </summary>
+    public void Stop(RunState endAs, string? verdict = null, bool byHost = false)
     {
         lock (_run.Gate)
         {
@@ -89,9 +116,40 @@ internal sealed partial class CheckRunner : IAsyncDisposable
 
             _endAs = endAs;
             _endVerdict = verdict;
+            _endedByHost = byHost;
         }
 
-        _cts.Cancel();
+        try
+        {
+            _cts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The run ended a moment ago (the host ends a job whose work just returned).
+        }
+    }
+
+    /// <summary>
+    /// The plugin stops while the run the host ended is still ending: the host ends a stopping plugin's jobs first, so that
+    /// run stopped because the plugin stopped. True when the run now says so.
+    /// </summary>
+    public bool EndedWithThePlugin()
+    {
+        lock (_run.Gate)
+        {
+            if (!_endedByHost)
+            {
+                return false;
+            }
+
+            _endVerdict = Verdicts.PluginStopped;
+            if (_run.State == RunState.Failed)
+            {
+                _run.FailedVerdict = Verdicts.PluginStopped;
+            }
+
+            return true;
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -168,7 +226,7 @@ internal sealed partial class CheckRunner : IAsyncDisposable
         }
         catch (OperationCanceledException) when (_cts.IsCancellationRequested)
         {
-            End(batches, batchIndex, _endAs, _endVerdict);
+            End(batches, batchIndex, null, null);
         }
 #pragma warning disable CA1031 // Whatever broke the run, the exposure goes back and the measured part is kept.
         catch (Exception ex)
@@ -211,11 +269,16 @@ internal sealed partial class CheckRunner : IAsyncDisposable
         }
     }
 
-    /// <summary>The run ended early: the phase in progress keeps what it measured.</summary>
-    private void End(IReadOnlyList<IReadOnlyList<PlannedStream>> batches, int batchIndex, RunState state, string? verdict)
+    /// <summary>
+    /// The run ended early: the phase in progress keeps what it measured. Without <paramref name="broke"/> it ends as
+    /// <see cref="Stop"/> said.
+    /// </summary>
+    private void End(IReadOnlyList<IReadOnlyList<PlannedStream>> batches, int batchIndex, RunState? broke, string? brokeVerdict)
     {
         lock (_run.Gate)
         {
+            var state = broke ?? _endAs;
+            var verdict = broke is null ? _endVerdict : brokeVerdict;
             if (batchIndex < batches.Count)
             {
                 var streams = batches[batchIndex].Select(p => _run.ById[p.StreamId]).ToList();
@@ -229,6 +292,14 @@ internal sealed partial class CheckRunner : IAsyncDisposable
 
     private async Task BeginPhaseAsync(List<StreamState> streams, CheckPhase phase, CancellationToken ct)
     {
+        // A camera that left the group since the last second joins no phase: not opened, not written.
+        var left = new List<StreamState>();
+        lock (_run.Gate)
+        {
+            DropLeft(streams, _run.Phase, left);
+        }
+
+        await RestoreDroppedAsync(left).ConfigureAwait(false);
         IReadOnlySet<string>? raised = null;
         if (phase == CheckPhase.LowLight)
         {
@@ -237,7 +308,7 @@ internal sealed partial class CheckRunner : IAsyncDisposable
                 _run.Phase = phase;
             }
 
-            raised = await _exposure.RaiseAsync([.. streams.Select(s => s.Planned)], ct).ConfigureAwait(false);
+            raised = await _exposure.RaiseAsync([.. streams.Where(s => !s.Left).Select(s => s.Planned)], ct).ConfigureAwait(false);
         }
 
         var count = phase switch
@@ -254,7 +325,7 @@ internal sealed partial class CheckRunner : IAsyncDisposable
             for (var i = 0; i < streams.Count; i++)
             {
                 var stream = streams[i];
-                var active = i < count;
+                var active = i < count && !stream.Left;
                 stream.Active = active;
                 stream.WaitingSeconds = 0;
                 stream.SilentSeconds = 0;
@@ -278,13 +349,69 @@ internal sealed partial class CheckRunner : IAsyncDisposable
     {
         var planned = stream.Planned;
         var request = new StreamProbeRequest(planned.Source.Camera, planned.Source.Width, planned.Source.Height, planned.Source.MaxFps, planned.Codec, PreferUdp: true);
-        stream.Opening = Detached.Run(() => _probes.OpenAsync(planned.Device.Id, request, ct));
+
+        // With the call of the check's job (never detached): the host opens only streams of the starter's devices.
+        stream.Opening = Task.Run(() => _probes.OpenAsync(planned.Device.Id, request, ct), CancellationToken.None);
     }
+
+    /// <summary>
+    /// The streams of the batch whose camera is no longer one of the group's devices (a tag, a site, the group's devices
+    /// changed): closed and left out for the rest of the check, the phase in progress N/A (no failure of the network). The
+    /// caller writes their exposure back (<paramref name="dropped"/>).
+    /// </summary>
+    private void DropLeft(IReadOnlyList<StreamState> streams, CheckPhase phase, List<StreamState> dropped)
+    {
+        if (_inView is null)
+        {
+            return;
+        }
+
+        foreach (var stream in streams)
+        {
+            if (stream.Left || _inView(stream.Planned.Device.Id))
+            {
+                continue;
+            }
+
+            stream.Left = true;
+            stream.Active = false;
+            var acc = stream.Phases[(int)phase];
+            if (acc.Result == PhaseResult.Running)
+            {
+                acc.Result = PhaseResult.NotApplicable;
+                acc.Problem = null;
+            }
+
+            if (stream.Probe is { } probe)
+            {
+                stream.Probe = null;
+                _ = Detached.Run(async () => await probe.DisposeAsync().ConfigureAwait(false));
+            }
+
+            if (stream.Opening is { } opening)
+            {
+                stream.Opening = null;
+                CloseWhenOpened(opening);
+            }
+
+            dropped.Add(stream);
+            _run.MarkChanged(stream);
+        }
+    }
+
+    /// <summary>An open nobody waits for any more: a stream that opens anyway is closed as soon as it does.</summary>
+    private static void CloseWhenOpened(Task<IDeviceStreamProbe> opening) =>
+        _ = opening.ContinueWith(
+            t => t.Result.DisposeAsync().AsTask(),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnRanToCompletion,
+            TaskScheduler.Default).Unwrap();
 
     /// <summary>One second: reads every stream of the phase, adds its values and one graph point; the streams that dropped out.</summary>
     private List<StreamState> Sample(IReadOnlyList<StreamState> streams, CheckPhase phase)
     {
         var dropped = new List<StreamState>();
+        DropLeft(streams, phase, dropped);
         double total = 0, lossSum = 0, worst = 0, jitterSum = 0;
         var measured = 0;
         var startLimit = (int)LoadTestInfo.StartTimeout.TotalSeconds;
@@ -537,11 +664,7 @@ internal sealed partial class CheckRunner : IAsyncDisposable
             if (stream.Opening is { } opening)
             {
                 stream.Opening = null;
-                _ = opening.ContinueWith(
-                    t => t.Result.DisposeAsync().AsTask(),
-                    CancellationToken.None,
-                    TaskContinuationOptions.OnlyOnRanToCompletion,
-                    TaskScheduler.Default).Unwrap();
+                CloseWhenOpened(opening);
             }
         }
 
@@ -626,9 +749,9 @@ internal sealed partial class CheckRunner : IAsyncDisposable
 }
 
 /// <summary>
-/// Background work started from a user's call: it runs without the call's context (the host refuses the plugin's full
-/// device access in the call of a user with a device group, and work started from the call keeps the call). The check's
-/// devices were checked against the caller's devices before.
+/// Background work without a user's call: it runs without the call's context (work started from a call keeps the call).
+/// The plan's read of the video sources (the devices were checked against the caller's devices before), saving, closing
+/// and the check of an in-process call without a user; a user's check is a job of that user (<see cref="CheckService"/>).
 /// </summary>
 internal static class Detached
 {

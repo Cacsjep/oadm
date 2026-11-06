@@ -242,7 +242,7 @@ public sealed partial class LoadTestViewModel : ValidatingViewModel, IDisposable
         ProgressValue = 0;
         ProgressText = "Starting the check";
         IsStarting = true;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var (ids, all) = ChosenIds();
             var json = await _ctx.InvokeAsync(LoadTestMethods.Start,
@@ -250,26 +250,19 @@ public sealed partial class LoadTestViewModel : ValidatingViewModel, IDisposable
             var summary = LoadTestJson.Deserialize<RunSummary>(json);
             ErrorText = null;
             ShowNewRun(summary);
-        }
-        catch (OperationCanceledException)
+        }, GuardedCancel.Ignore).ConfigureAwait(true);
+        if (error is not null)
         {
+            ErrorText = error;
         }
-#pragma warning disable CA1031 // Shown on the page (e.g. another check runs).
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            ErrorText = ServerErrors.Message(ex);
-        }
-        finally
-        {
-            IsStarting = false;
-        }
+
+        IsStarting = false;
     }
 
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private async Task CancelAsync()
     {
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var json = await _ctx.InvokeAsync(LoadTestMethods.Cancel, "{}", _active?.Token ?? CancellationToken.None).ConfigureAwait(true);
             if (!string.IsNullOrWhiteSpace(json) && json != "null")
@@ -278,15 +271,10 @@ public sealed partial class LoadTestViewModel : ValidatingViewModel, IDisposable
             }
 
             ErrorText = null;
-        }
-        catch (OperationCanceledException)
+        }, GuardedCancel.Ignore).ConfigureAwait(true);
+        if (error is not null)
         {
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            ErrorText = ServerErrors.Message(ex);
+            ErrorText = error;
         }
     }
 
@@ -516,7 +504,7 @@ public sealed partial class LoadTestViewModel : ValidatingViewModel, IDisposable
         IsRunLoading = true;
         RunLoadValue = 0;
         RunLoadText = ReadingRun;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var json = await _ctx.InvokeAsync(LoadTestMethods.GetRun, LoadTestJson.Serialize(new RunRequest(runId)), ct).ConfigureAwait(true);
             var detail = LoadTestJson.Deserialize<RunDetail>(json);
@@ -538,21 +526,14 @@ public sealed partial class LoadTestViewModel : ValidatingViewModel, IDisposable
                 AppendRows(page.Streams);
                 loaded += page.Streams.Count;
             }
-        }
-        catch (OperationCanceledException)
+        }, GuardedCancel.Ignore).ConfigureAwait(true);
+        if (error is not null)
         {
+            ErrorText = error;
         }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            ErrorText = ServerErrors.Message(ex);
-        }
-        finally
-        {
-            _loadingRun = false;
-            IsRunLoading = false;
-        }
+
+        _loadingRun = false;
+        IsRunLoading = false;
     }
 
     /// <summary>A further page of an opened run: new rows at the end in one range (the server sends them worst first).</summary>
@@ -672,19 +653,14 @@ public sealed partial class LoadTestViewModel : ValidatingViewModel, IDisposable
         Detail = detail;
         _stream = new CancellationTokenSource();
         var ct = _stream.Token;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var json = await _ctx.InvokeAsync(LoadTestMethods.GetStream, LoadTestJson.Serialize(new StreamRequest(runId, row.StreamId)), ct).ConfigureAwait(true);
             detail.Apply(LoadTestJson.Deserialize<StreamDetail>(json));
-        }
-        catch (OperationCanceledException)
+        }, GuardedCancel.Ignore).ConfigureAwait(true);
+        if (error is not null)
         {
-        }
-#pragma warning disable CA1031 // Shown in the panel.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            detail.Fail(ServerErrors.Message(ex));
+            detail.Fail(error);
         }
     }
 

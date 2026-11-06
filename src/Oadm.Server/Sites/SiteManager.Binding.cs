@@ -280,6 +280,8 @@ public sealed partial class SiteManager
             {
                 _sites[row.Id] = new SiteEntry(Copy(row), _options.MaxLargeTransfers) { State = SiteState.Online, LastAnswer = Time.GetTimestamp() };
             }
+
+            SiteAddressesChanged();
         }
 
         return row;
@@ -401,6 +403,7 @@ public sealed partial class SiteManager
             session = entry.Session;
             entry.Session = null;
             _sites.Remove(siteId);
+            SiteAddressesChanged();
         }
 
         await Point("forgetting", ct).ConfigureAwait(false);

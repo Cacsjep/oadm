@@ -320,7 +320,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
     /// Packages of OADM 4.1 that are parts of PKI now (docs/spec/pki.md "One plugin", the server's
     /// <c>Oadm.Core.Plugins.MergedPlugins.Ids</c>): a folder of one is never loaded.
     /// </summary>
-    internal static readonly IReadOnlySet<string> MergedPackages = new HashSet<string>(["oadm.est", "oadm.radius"], StringComparer.OrdinalIgnoreCase);
+    internal static readonly IReadOnlySet<string> MergedPackages = new HashSet<string>(["oadm.est"], StringComparer.OrdinalIgnoreCase);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Client plugin {PackageId} in {Path} skipped: Merged into PKI")]
     private static partial void LogMerged(ILogger logger, string packageId, string path);

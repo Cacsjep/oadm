@@ -53,6 +53,13 @@ public sealed class TaskStore
     /// <summary>Raised after any change, with the task that changed (null for a reset or a batch of several tasks).</summary>
     public event EventHandler<TaskRowViewModel?>? Changed;
 
+    /// <summary>
+    /// Raised before <see cref="Changed"/> for every task that left the mirror: deleted on the server, an ended one beyond
+    /// the capacity, or not in a new snapshot. The row keeps the last state the client saw (an ended task dropped for the
+    /// capacity has its result). For followers of single tasks (a dialog's run): to them the task is over.
+    /// </summary>
+    public event EventHandler<TaskRowViewModel>? Forgotten;
+
     public TaskRowViewModel? Find(string id) => _byId.GetValueOrDefault(id);
 
     /// <summary>Builds the rows of a snapshot; any thread, touches no store (the device labels follow on the UI thread).</summary>
@@ -257,6 +264,7 @@ public sealed class TaskStore
         {
             _activeCount -= row.IsActive ? 1 : 0;
             Unindex(row.DeviceId, row);
+            Forgotten?.Invoke(this, row);
         }
     }
 

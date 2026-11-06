@@ -111,7 +111,7 @@ public sealed partial class AppLogViewModel : ObservableObject, IDisposable
         _loading?.Dispose();
         var loading = _loading = new CancellationTokenSource();
         IsLoading = true;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var json = await _ctx.InvokeAsync(AppManagementMethods.GetLog,
                 AppManagementJson.Serialize(new LogRequest { DeviceId = _deviceId, Application = _application }), loading.Token).ConfigureAwait(true);
@@ -120,22 +120,15 @@ public sealed partial class AppLogViewModel : ObservableObject, IDisposable
             IsTruncated = reply.Truncated;
             ErrorText = reply.Error;
             Show();
-        }
-        catch (OperationCanceledException) when (loading.IsCancellationRequested)
+        }, GuardedCancel.Ignore, loading.Token).ConfigureAwait(true);
+        if (error is not null)
         {
+            ErrorText = error;
         }
-#pragma warning disable CA1031 // Shown in the window.
-        catch (Exception ex)
-#pragma warning restore CA1031
+
+        if (ReferenceEquals(loading, _loading))
         {
-            ErrorText = ServerErrors.Message(ex);
-        }
-        finally
-        {
-            if (ReferenceEquals(loading, _loading))
-            {
-                IsLoading = false;
-            }
+            IsLoading = false;
         }
     }
 

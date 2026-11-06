@@ -110,6 +110,9 @@ internal sealed class MiniHttpServer : IAsyncDisposable
 
     public string? DigestRealm { get; set; }
 
+    /// <summary>Sent as the Location header (with a 3xx <see cref="Status"/>: a redirect).</summary>
+    public string? Location { get; set; }
+
     private async Task LoopAsync()
     {
         while (!_stop.IsCancellationRequested)
@@ -160,7 +163,9 @@ internal sealed class MiniHttpServer : IAsyncDisposable
                     var challenge = DigestRealm is not null && !(headers.TryGetValue("Authorization", out var auth) && auth.StartsWith("Digest ", StringComparison.Ordinal));
                     var status = challenge ? 401 : Status;
                     var text = challenge ? "login" : ResponseBody;
-                    var extra = challenge ? $"WWW-Authenticate: Digest realm=\"{DigestRealm}\", nonce=\"abc123\", qop=\"auth\", algorithm=MD5\r\n" : string.Empty;
+                    var extra = challenge ? $"WWW-Authenticate: Digest realm=\"{DigestRealm}\", nonce=\"abc123\", qop=\"auth\", algorithm=MD5\r\n"
+                        : Location is not null ? $"Location: {Location}\r\n"
+                        : string.Empty;
                     var bytes = Encoding.UTF8.GetBytes(text);
                     var response = $"HTTP/1.1 {status} {(status == 200 ? "OK" : status == 401 ? "Unauthorized" : "Error")}\r\n{extra}Content-Type: text/plain\r\nContent-Length: {bytes.Length}\r\nConnection: close\r\n\r\n";
                     await stream.WriteAsync(Encoding.ASCII.GetBytes(response));

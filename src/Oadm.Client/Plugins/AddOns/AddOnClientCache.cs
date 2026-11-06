@@ -29,6 +29,12 @@ public sealed partial class AddOnClientCache
     /// <summary>The file that names the version an add-on uses; the other versions go at the next start.</summary>
     internal const string CurrentMark = ".current";
 
+    /// <summary>
+    /// The folder older clients kept the parts of a server without a pinned certificate in (plain HTTP). Nothing is
+    /// fetched or loaded from such a server any more: the folder goes at the next start.
+    /// </summary>
+    internal const string OldUnpinnedFolder = "unpinned";
+
     private readonly ILogger<AddOnClientCache> _logger;
 
     public AddOnClientCache(string root, ILogger<AddOnClientCache> logger)
@@ -196,7 +202,7 @@ public sealed partial class AddOnClientCache
 
     /// <summary>
     /// At the client's start, before any add-on loads: deletes the folders of removed add-ons, the versions an add-on no
-    /// longer uses and half-written downloads.
+    /// longer uses, half-written downloads and the parts older clients fetched without a pinned certificate.
     /// </summary>
     public void DeleteRemoved()
     {
@@ -205,6 +211,7 @@ public sealed partial class AddOnClientCache
             return;
         }
 
+        DeleteQuietly(Path.Combine(Root, OldUnpinnedFolder)); // best effort: nothing loads from it either way
         try
         {
             foreach (string server in Directory.EnumerateDirectories(Root))

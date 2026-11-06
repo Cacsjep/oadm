@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 using Oadm.Plugins.Acap;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.AppManagement;
 
@@ -371,25 +371,10 @@ public static class AppLicenses
 
 public static class AppManagementJson
 {
-    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
-    };
+    public static readonly JsonSerializerOptions Options = PluginJson.CreateOptions(PluginJsonEnums.CamelCase);
 
-    public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+    public static string Serialize<T>(T value) => PluginJson.Serialize(value, Options);
 
-    /// <summary>Parses a request or event; an unreadable one is an <see cref="ArgumentException"/> (nothing runs).</summary>
-    public static T Deserialize<T>(string? json)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<T>(string.IsNullOrWhiteSpace(json) ? "{}" : json, Options)
-                ?? throw new ArgumentException("The request is empty.", nameof(json));
-        }
-        catch (JsonException ex)
-        {
-            throw new ArgumentException("The request is not valid.", nameof(json), ex);
-        }
-    }
+    /// <summary>A call without a payload reads as an empty one; broken JSON is an <see cref="ArgumentException"/> (<see cref="PluginJson.ParseOrEmpty{T}"/>).</summary>
+    public static T Deserialize<T>(string? json) => PluginJson.ParseOrEmpty<T>(json, Options);
 }

@@ -80,6 +80,9 @@ internal sealed class EventRulesRig : IAsyncDisposable
     /// <summary>Set before start: actions wait for <see cref="ActionRunner.PluginsStarted"/> like on a server start.</summary>
     public bool HoldActions { get; set; }
 
+    /// <summary>Set before start: the limits of the action runner (null: the defaults).</summary>
+    public ActionRunnerOptions? RunnerOptions { get; set; }
+
     /// <summary>Set before start: the engine queue size.</summary>
     public int QueueCapacity { get; set; } = 100_000;
 
@@ -112,6 +115,9 @@ internal sealed class EventRulesRig : IAsyncDisposable
     /// <summary>What the runner wrote to the server log (level and text).</summary>
     public CapturingLoggerFactory ServerLog { get; } = new();
 
+    /// <summary>What the engine wrote to the server log.</summary>
+    public CapturingLoggerFactory EngineLog { get; } = new();
+
     public async Task StartEngineAsync()
     {
         var dbFactory = _db.Get<IDbContextFactory<OadmDbContext>>();
@@ -125,11 +131,13 @@ internal sealed class EventRulesRig : IAsyncDisposable
         Store = new RuleStore(dbFactory, new PluginSecretProtector(_db.Get<CredentialProtector>()), Time);
         Recipients = new RecipientStore(dbFactory, new PluginSecretProtector(_db.Get<CredentialProtector>()), Time);
         Log = new EventLog(dbFactory, Time);
-        Runner = new ActionRunner(Catalog, Store, Recipients, Log, Devices, new FakeVapixFactory(), _db.Get<IPluginSettingsProvider>(), ServerLog);
+        Runner = new ActionRunner(Catalog, Store, Recipients, Log, Devices, new FakeVapixFactory(), _db.Get<IPluginSettingsProvider>(), ServerLog,
+            RunnerOptions, Time, _db.Get<IDeviceChangeFeed>());
         Clock = new ClockTolerance(_db.Get<Oadm.Core.Settings.ServerSettingsStore>(), Devices);
         await Clock.LoadAsync(CancellationToken.None);
         Engine = new RuleEngine(Catalog, Store, Log, Runner, Devices, _db.Get<IDeviceChangeFeed>(), Time,
-            new RuleEngineOptions { TickInterval = TimeSpan.FromHours(10), QueueCapacity = QueueCapacity }, clock: Clock);
+            new RuleEngineOptions { TickInterval = TimeSpan.FromHours(10), QueueCapacity = QueueCapacity },
+            new Microsoft.Extensions.Logging.Logger<RuleEngine>(EngineLog), Clock);
         Rules = new EventRulesService(Catalog, Store, Recipients, Engine, Devices);
         await Engine.StartAsync(CancellationToken.None);
         if (SiteEvents is { } siteEvents)

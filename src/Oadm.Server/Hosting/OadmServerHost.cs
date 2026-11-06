@@ -185,6 +185,7 @@ public static partial class OadmServerHost
         // Access: TLS certificate of the gRPC endpoint, audit and session cleanup
         services.AddSingleton<ServerTlsCertificate>();
         services.AddSingleton<CallerStreams>();
+        services.AddSingleton<LoginAddressLimit>();
         services.AddHostedService<AuthMaintenanceHostedService>();
 
         // Installed service (SYSTEM / root): admin-only folders, firewall rules of the NTP and DHCP plugins (Windows).
@@ -293,7 +294,7 @@ public static partial class OadmServerHost
         services.AddSingleton<Updates.ServerUpdateCoordinator>();
         // Vulnerabilities (docs/spec/vulnerabilities.md): the list of Axis CVEs; fetched online only when the setting allows.
         services.AddSingleton(sp => new Vulnerabilities.VulnerabilityStore(
-            sp.GetRequiredService<OadmPaths>(), sp.GetRequiredService<ILogger<Vulnerabilities.VulnerabilityStore>>()));
+            sp.GetRequiredService<OadmPaths>(), sp.GetRequiredService<ILogger<Vulnerabilities.VulnerabilityStore>>(), sp.GetRequiredService<TimeProvider>()));
         services.TryAddSingleton<Vulnerabilities.IVulnerabilitySource>(sp => new Vulnerabilities.InternetVulnerabilitySource(sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<Vulnerabilities.VulnerabilityUpdater>();
         services.AddHostedService(sp => sp.GetRequiredService<Vulnerabilities.VulnerabilityUpdater>());
@@ -563,7 +564,10 @@ public static partial class OadmServerHost
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
             sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
             sp.GetRequiredService<IPluginSettingsProvider>(),
-            sp.GetRequiredService<ILoggerFactory>()));
+            sp.GetRequiredService<ILoggerFactory>(),
+            sp.GetService<ActionRunnerOptions>(), // null: the defaults
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<IDeviceChangeFeed>()));
         services.AddSingleton(sp => new RecipientSessionPool(
             sp.GetRequiredService<EventCatalog>(),
             sp.GetRequiredService<RecipientStore>(),
@@ -635,10 +639,12 @@ public static partial class OadmServerHost
 
         // 0. Installed service: the data and extraction folders must be admin-only (fixed, else the server does not start).
         var folderGuard = sp.GetService<FolderGuard>();
-        var dataFolderFixed = false;
+        var folders = ServerFoldersCheck.Untouched;
         if (folderGuard is not null)
         {
-            dataFolderFixed = await folderGuard.EnsureServerFoldersAsync(ServiceHosting.ServerFolders(paths.DataDirectory), ct).ConfigureAwait(false);
+            folders = await folderGuard.EnsureServerFoldersAsync(
+                ServiceHosting.ServerFolders(paths.DataDirectory), PluginPaths.Installed(paths.DataDirectory),
+                AddOns.AddOnFolders.Root(paths.DataDirectory), ct).ConfigureAwait(false);
         }
 
         // 0b. A restore staged before the restart: its database, key and plugin data replace the server's (the replaced files
@@ -661,6 +667,15 @@ public static partial class OadmServerHost
         var addOns = sp.GetRequiredService<AddOns.AddOnInstaller>();
         if (folderGuard is not null)
         {
+            // Installed plugins that others could change until this start may come from anyone: they are moved aside before
+            // anything looks at them, all of them only when the data folder or the plugins folder itself was loose. A loose
+            // file elsewhere in the data folder, and a normal start, change nothing.
+            if (!InstalledPluginsTrust.Check(paths.DataDirectory, folders.Plugins, sp.GetRequiredService<TimeProvider>(), logger))
+            {
+                var installed = Path.GetFullPath(PluginPaths.Installed(paths.DataDirectory));
+                roots = [.. roots.Where(r => !string.Equals(Path.GetFullPath(r), installed, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))];
+            }
+
             // The add-on folders too (docs/spec/add-ons.md "Server"): each addons/<id> is a plugin folder the service loads.
             var refused = await folderGuard.CheckPluginFoldersAsync([.. roots, addOns.Root], ct).ConfigureAwait(false);
             loader.FolderCheck = folder => refused.GetValueOrDefault(Path.GetFullPath(folder));
@@ -682,9 +697,10 @@ public static partial class OadmServerHost
 
         loader.LoadFromRoots(roots);
         // Add-ons after the bundled and installed plugins (an id in both: the bundled one wins). Removed ones are deleted now;
-        // an older one keeps running, one that cannot waits for Install again. No add-on folder is used when the
-        // service had to fix the data folder at this start (until now others could write it).
-        await addOns.LoadInstalledAsync(foldersTrusted: !dataFolderFixed, ct).ConfigureAwait(false);
+        // an older one keeps running, one that cannot waits for Install again. An add-on folder others could change until
+        // this start is not used and goes: all of them only when the data folder or the addons folder itself was loose. A
+        // loose file elsewhere in the data folder changes nothing.
+        await addOns.LoadInstalledAsync(folders.AddOns, ct).ConfigureAwait(false);
         foreach (var plugin in registry.TaskPlugins)
         {
             LogTaskPlugin(logger, plugin.Id, plugin.Origin.Directory ?? "built-in");

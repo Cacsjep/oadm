@@ -180,51 +180,6 @@ public static partial class EstPolicies
         return true;
     }
 
-    /// <summary>The owner of the clean-up of the issuing policies the EST conversion made before 2026-10-25.</summary>
-    public const string CleanUpOwner = EstPluginInfo.PluginId + ":issuing-2026-10-25";
-
-    /// <summary>
-    /// Once (decision 2026-10-25: EST profiles use the built-in issuing policies): a profile that names a policy the EST
-    /// conversion made ("EST HTTPS", "EST 802.1X", "EST " + the profile's name; also the spellings before the rename) names
-    /// the built-in policy of its kind instead; then those policies are deleted where nothing else names them (another
-    /// profile). Never on settings or a store that cannot be read. True when it ran now.
-    /// </summary>
-    public static async Task<bool> CleanUpAsync(IPluginSettings settings, PolicyStore store, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(settings);
-        ArgumentNullException.ThrowIfNull(store);
-        if (store.IsUnreadable || store.Converted.Contains(CleanUpOwner, StringComparer.Ordinal))
-        {
-            return false;
-        }
-
-        var json = await settings.GetAsync(EstStore.ConfigKey, ct).ConfigureAwait(false);
-        if ((string.IsNullOrWhiteSpace(json) ? new EstConfig() : Read(json)) is not { } config)
-        {
-            return false;
-        }
-
-        var names = new HashSet<string>(["EST HTTPS", "EST 802.1X", "EST https", "EST dot1x"], StringComparer.OrdinalIgnoreCase);
-        foreach (var profile in config.Profiles)
-        {
-            names.Add(NameFor(profile));
-            names.Add("EST " + profile.Name);
-        }
-
-        var all = store.All;
-        var made = all.Where(p => PolicyKinds.IsDeviceIssuing(p.Kind) && names.Contains(p.Name.Trim()) && !PolicyStore.IsSystem(p, all)).Select(p => p.Id).ToHashSet();
-        var profiles = config.Profiles.Select(p => p.PolicyId is { } id && made.Contains(id) && store.FirstOf(EstProfile.PolicyKindOf(p.Use)) is { } builtIn
-            ? p with { PolicyId = builtIn.Id }
-            : p).ToList();
-        if (!profiles.SequenceEqual(config.Profiles))
-        {
-            await settings.SetAsync(EstStore.ConfigKey, EstJson.Serialize(config with { Profiles = profiles }), ct).ConfigureAwait(false);
-        }
-
-        var named = profiles.Where(p => p.PolicyId is not null).Select(p => p.PolicyId!.Value).ToHashSet();
-        return await store.RewriteOnceAsync(CleanUpOwner, list => [.. list.Where(p => !made.Contains(p.Id) || named.Contains(p.Id))], ct).ConfigureAwait(false);
-    }
-
     /// <summary>The owner of the removal of the profiles that were off in OADM 4.1 (decision 2026-10-25).</summary>
     public const string OffProfilesOwner = EstPluginInfo.PluginId + ":off-profiles-2026-10-25";
 
@@ -269,14 +224,6 @@ public static partial class EstPolicies
 
     [LoggerMessage(Level = LogLevel.Information, Message = "EST profile {Profile} removed: it was off")]
     private static partial void LogOffProfileRemoved(ILogger logger, string profile);
-
-    /// <summary>"EST HTTPS", "EST 802.1X" for the two default profiles, "EST " + the name for the others (the names the conversion before 2026-10-25 gave).</summary>
-    public static string NameFor(EstProfile profile) => "EST " + profile.Name.ToLowerInvariant() switch
-    {
-        "https" => "HTTPS",
-        "dot1x" => "802.1X",
-        _ => profile.Name,
-    };
 
     private static EstConfig? Read(string? json)
     {

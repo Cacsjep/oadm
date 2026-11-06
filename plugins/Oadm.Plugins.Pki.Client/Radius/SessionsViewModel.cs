@@ -222,7 +222,7 @@ public sealed partial class SessionsViewModel : ObservableObject
         IsLoading = !_loadedOnce;
         IsReloading = _loadedOnce;
         _pending ??= [];
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var rows = RadiusJson.Deserialize<SessionList>(await _ctx.InvokeAsync(RadiusMethods.ListSessions, null, ct).ConfigureAwait(true)).Sessions;
             if (version != _readVersion)
@@ -252,24 +252,17 @@ public sealed partial class SessionsViewModel : ObservableObject
 
             Notify();
             Reloaded?.Invoke(this, EventArgs.Empty);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        }, GuardedCancel.Ignore, ct).ConfigureAwait(true);
+        if (error is not null)
         {
+            Error = "Cannot read the sessions: " + error;
         }
-#pragma warning disable CA1031 // Shown directly below the table.
-        catch (Exception ex)
-#pragma warning restore CA1031
+
+        if (version == _readVersion)
         {
-            Error = "Cannot read the sessions: " + ServerErrors.Message(ex);
-        }
-        finally
-        {
-            if (version == _readVersion)
-            {
-                _pending = null;
-                IsLoading = false;
-                IsReloading = false;
-            }
+            _pending = null;
+            IsLoading = false;
+            IsReloading = false;
         }
     }
 

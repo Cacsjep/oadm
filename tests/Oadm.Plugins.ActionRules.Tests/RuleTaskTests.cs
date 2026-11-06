@@ -46,6 +46,33 @@ public sealed class RuleTaskTests : IAsyncLifetime
         Parameters = new Dictionary<string, string> { ["period"] = "5" },
     };
 
+    [Fact]
+    public void The_payload_of_a_run_is_parsed_and_indexed_once_for_all_its_devices()
+    {
+        // 5,000 devices get the same payload string with 5,000 entries: read and checked once, each device looks up its own.
+        var devices = Enumerable.Range(0, 5000).Select(_ => Guid.NewGuid()).ToList();
+        var targets = devices.Select((id, i) => new DeviceTargets(id, [new RuleRef(i.ToString(System.Globalization.CultureInfo.InvariantCulture), "v1")])).ToList();
+        targets.Add(new DeviceTargets(devices[0], [new RuleRef("later", "v1")])); // a second entry of a device never counted
+        var json = ActionRulesJson.Serialize(new RuleTaskPayload(RuleTaskActions.ScheduleDelete, Guid.NewGuid(), "Delete schedules", targets, null)
+        {
+            Rules = [new DeviceTargets(devices[7], [new RuleRef("r1", "v2")])],
+        });
+
+        var run = RuleTaskPlugin.ParsedRun.Of(json);
+        Assert.Same(run, RuleTaskPlugin.ParsedRun.Of(json));
+        Assert.NotSame(run, RuleTaskPlugin.ParsedRun.Of(new string(json.AsSpan()))); // another run: its own string
+        Assert.Equal([new RuleRef("4999", "v1")], run.TargetsOf(devices[4999]));
+        Assert.Equal([new RuleRef("0", "v1")], run.TargetsOf(devices[0]));
+        Assert.Equal([new RuleRef("r1", "v2")], run.RulesOf(devices[7]));
+        Assert.Empty(run.RulesOf(devices[8]));
+        Assert.Empty(run.TargetsOf(Guid.NewGuid()));
+
+        // A payload that is refused is refused for every task, never kept.
+        var bad = ActionRulesJson.Serialize(new RuleTaskPayload(RuleTaskActions.Edit, Guid.NewGuid(), "Change", [], null));
+        Assert.Equal("Choose what to change. Nothing was changed.", Assert.Throws<ArgumentException>(() => RuleTaskPlugin.ParsedRun.Of(bad)).Message);
+        Assert.Equal("Choose what to change. Nothing was changed.", Assert.Throws<ArgumentException>(() => RuleTaskPlugin.ParsedRun.Of(bad)).Message);
+    }
+
     [Theory]
     [InlineData("os12")]
     [InlineData("os10")]

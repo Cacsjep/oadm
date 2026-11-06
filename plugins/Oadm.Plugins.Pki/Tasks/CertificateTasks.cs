@@ -240,7 +240,7 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
-        var payload = PkiJson.Deserialize<DeletePayload>(payloadJson);
+        var payload = PkiJson.DeserializeShared<DeletePayload>(payloadJson); // one entry per device: parsed once per run
         var chosen = payload.Devices.TryGetValue(device.Id, out var list) ? list.DistinctBy(r => (r.Alias, r.Ca)).ToList() : [];
         var deleteSteps = chosen.Select(r => "Delete certificate " + r.Alias).ToArray();
         ctx.PlanSteps([PkiSteps.CheckCompatibility, PkiSteps.ReadCertificates, .. deleteSteps, PkiSteps.Verify]);
@@ -368,13 +368,13 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
-        var payload = PkiJson.Deserialize<InstallPayload>(payloadJson);
+        var payload = PkiJson.DeserializeShared<InstallPayload>(payloadJson); // one file per device: parsed and indexed once per run
         var purpose = payload.Purpose;
 
         // HTTPS / 802.1X: the one file matched to this device. CA only: every file for this device or for all (Guid.Empty).
         var files = purpose == InstallPurpose.CaOnly
-            ? payload.Files.Where(f => f.DeviceId == device.Id || f.DeviceId == Guid.Empty).ToList()
-            : payload.Files.Where(f => f.DeviceId == device.Id).Take(1).ToList();
+            ? payload.FilesFor(device.Id).Concat(payload.FilesFor(Guid.Empty)).OrderBy(f => f.Index).Select(f => f.File).ToList()
+            : payload.FilesFor(device.Id).Take(1).Select(f => f.File).ToList();
         string[] purposeSteps = purpose switch
         {
             InstallPurpose.Https => [PkiSteps.ReadWebServer, PkiSteps.InstallCertificate, PkiSteps.SwitchWebServer, PkiSteps.VerifyHttps],
@@ -391,8 +391,15 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
         }
 
         var dot1x = purpose == InstallPurpose.Dot1x;
+        var overHttp = purpose != InstallPurpose.CaOnly && string.Equals(ctx.Vapix.BaseAddress.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase);
         var (apis, state, dot1xPolicy, radiusCas, support) = await ctx.StepAsync(PkiSteps.CheckCompatibility, async step =>
         {
+            // A private key over plain HTTP only with the user's answer in the payload, whatever the dialog showed.
+            if (overHttp && !payload.SendKeysOverHttp)
+            {
+                throw new InvalidOperationException(InstallPayload.KeysOverHttpRefused);
+            }
+
             // 802.1X: the settings of the IEEE 802.1X certificate policy the dialog chose (the file brings its own certificate)
             // and its RADIUS server CA, resolved before anything is read from or written to the device.
             Policies.PkiPolicy? policy = null;
@@ -446,6 +453,11 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
                     throw new InvalidOperationException($"{file.FileName}: {notCa} Nothing was changed.");
                 }
 
+                if (dot1x && CertificateFiles.Dot1xProblem(contents) is { } notClient)
+                {
+                    throw new InvalidOperationException($"{file.FileName}: {notClient} Nothing was changed.");
+                }
+
                 result.Add((file, data, contents));
             }
 
@@ -480,7 +492,8 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
 
             case InstallPurpose.Dot1x:
             {
-                await CertificateDeployment.CheckClockAsync(ctx, apis, Time, confirmed: false, ct).ConfigureAwait(false);
+                // The file's own start against the device's clock (the server's was checked when the file was read).
+                await CertificateDeployment.CheckClockAsync(ctx, apis, Time, confirmed: false, ct, contents.LeafNotBeforeUtc).ConfigureAwait(false);
                 var aliases = await CertificateDeployment.InstallCaCertificatesAsync(ctx, PkiSteps.InstallCas, radiusCas, support.Certificates, ct).ConfigureAwait(false);
                 var alias = await InstallAsync(ctx, support.Certificates, bytes, payload.Password, file, ct).ConfigureAwait(false);
                 if (await Dot1xEnableTask.ConfigureAsync(ctx, dot1xPolicy!, device, apis, state!, alias, aliases, null, ct).ConfigureAwait(false) == Dot1xCheck.Confirmed)
@@ -511,7 +524,7 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
             ctx.Log(TaskLogLevel.Info, $"Certificate \"{alias}\" installed from {file.FileName}.");
             if (string.Equals(ctx.Vapix.BaseAddress.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
             {
-                // The user confirmed it in the dialog ("Send the keys anyway"); never the password or the key in the log.
+                // The user confirmed it ("Send the keys anyway", checked before the first step); never the password or the key in the log.
                 ctx.Log(TaskLogLevel.Warning, $"{file.FileName} was sent with its private key over HTTP: unencrypted on the network.");
             }
             return alias;

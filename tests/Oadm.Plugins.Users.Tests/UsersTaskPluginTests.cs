@@ -246,6 +246,22 @@ public sealed class UsersTaskPluginTests
     }
 
     [Fact]
+    public async Task A_user_name_with_error_in_it_is_added_and_removed_like_any_other()
+    {
+        // The device answers "Created account errorlog1.": the word "error" in the name is no refusal.
+        var vapix = new FakeVapix();
+        var added = await RunAsync(vapix, Payload(UsersMode.Add, "errorlog1", Secret));
+        Assert.Equal(["Add user errorlog1: Done", "Verify users: Done", "Completed: Done"], StepRun.Lines(added.Steps)[^3..]);
+        Assert.Empty(added.Warnings);
+
+        // A Remove of several users does not stop at that name.
+        var removed = await RunAsync(vapix, RemovePayload("errorlog1", "acs"));
+        Assert.Equal(["action=remove&user=errorlog1", "action=remove&user=acs"], vapix.Writes.Skip(1).Select(w => w.Body));
+        Assert.Equal(["Remove user errorlog1: Done", "Remove user acs: Done", "Verify users: Done", "Completed: Done"], StepRun.Lines(removed.Steps)[^4..]);
+        Assert.Equal("Users errorlog1, acs removed.", LastDetail(removed));
+    }
+
+    [Fact]
     public async Task Device_error_answer_fails_the_device()
     {
         var vapix = new FakeVapix { WriteAnswer = "Error: invalid password." };

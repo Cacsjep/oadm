@@ -67,7 +67,10 @@ A test never depends on how fast the machine is or what runs next to it:
 ## Core plugins
 
 Start the server part with `FakeCoreContext` (`Oadm.Sdk.Testing`: devices, a `FakeCamera` per device, settings, the
-published events, the tasks it starts) and call `InvokeAsync` like the page would. For events, the
+published events, the tasks it starts) and call `InvokeAsync` like the page would. Its tasks stay active until
+`EndTask(id, TaskEndState.Failed, "message")` ends one and sets what `GetOutcomeAsync` answers. Its records are a
+`MemoryPluginRecords` (`PluginRecords`), its event publisher is null until you set a `FakeEventPublisher`, like a host
+without event rules. For events, the
 plugin test projects use the server's real `PluginEventHub` and an in-memory page context; the I/O Monitor and Image
 Health tests show the pattern. For the page, construct the view model with a fake `ICorePluginClientContext` and check
 what it shows after each answer and event.

@@ -84,7 +84,7 @@ public sealed partial class ImportConfigViewModel : ObservableObject
     public const string PasswordNote = "The file has no passwords. Event recipients that need one must get it again.";
 
     /// <summary>Warning below the settings areas when the file has connection settings (off by default).</summary>
-    public const string ConnectionNote = "Connection settings (HTTPS, HTTP port, login method, IEEE 802.1X, IPv6, web interface) can make the devices unreachable.";
+    public const string ConnectionNote = "Connection settings (HTTPS, ports, login method, IEEE 802.1X, IPv6, DNS, network link, web interface) can make the devices unreachable.";
 
     /// <summary>Added to the confirmation when the connection settings are chosen.</summary>
     public const string UnreachableWarning = "The devices may become unreachable.";
@@ -182,6 +182,11 @@ public sealed partial class ImportConfigViewModel : ObservableObject
             if (_targets.Count == 0)
             {
                 return IsZip ? "No selected device has a file in the ZIP" : "No selected device is of the file's model";
+            }
+
+            if (Sections.Count == 0)
+            {
+                return "The file has no settings OADM imports";
             }
 
             return Sections.Any(s => s.IsChecked) ? null : "Choose at least one settings area";
@@ -294,7 +299,7 @@ public sealed partial class ImportConfigViewModel : ObservableObject
             AddSection(new ImportSectionOption(section.Key, section.Name, DeviceConfigIds.Count(section.ValueCount, "value")));
         }
 
-        AddNotes(file.Data.ContainsKey(ConfigSections.Param), file.HasRecipients);
+        AddNotes(file.Data.ContainsKey(ConfigSections.Param), file.HasRecipients, file.NotImported);
         if (_leftOut.Count > 0)
         {
             Notes.Add(_leftOut.Count == _devices.Count
@@ -324,7 +329,7 @@ public sealed partial class ImportConfigViewModel : ObservableObject
             AddSection(new ImportSectionOption(key, ConfigSections.Name(key), null));
         }
 
-        AddNotes(plan.SectionKeys.Contains(ConfigSections.Param), plan.HasRecipients);
+        AddNotes(plan.SectionKeys.Contains(ConfigSections.Param), plan.HasRecipients, plan.UnknownSectionKeys);
         var parts = new List<string> { string.Create(CultureInfo.InvariantCulture, $"{_targets.Count:N0} ready") };
         if (_leftOut.Count > 0)
         {
@@ -352,7 +357,7 @@ public sealed partial class ImportConfigViewModel : ObservableObject
         Sections.Add(option);
     }
 
-    private void AddNotes(bool hasParams, bool hasRecipients)
+    private void AddNotes(bool hasParams, bool hasRecipients, IReadOnlyCollection<string> unknownSections)
     {
         if (hasParams)
         {
@@ -362,6 +367,12 @@ public sealed partial class ImportConfigViewModel : ObservableObject
         if (hasRecipients)
         {
             Notes.Add(PasswordNote);
+        }
+
+        // Areas OADM does not know are never sent; the user sees which.
+        if (ConfigSections.UnknownNote(unknownSections) is { } unknown)
+        {
+            Notes.Add(unknown);
         }
     }
 
@@ -473,6 +484,9 @@ public sealed class ZipPlan
     /// <summary>Settings areas of the usable files, in order of first appearance.</summary>
     public required IReadOnlyList<string> SectionKeys { get; init; }
 
+    /// <summary>Areas of the usable files OADM does not import, in order of first appearance.</summary>
+    public IReadOnlyList<string> UnknownSectionKeys { get; init; } = [];
+
     public required int FileCount { get; init; }
 
     /// <summary>Configuration files whose name has no selected device's MAC address.</summary>
@@ -534,6 +548,7 @@ public sealed class ZipPlan
 
         var rows = new List<ImportDeviceRow>(devices.Count);
         var keys = new List<string>();
+        var unknown = new List<string>();
         var seenKeys = new HashSet<string>(StringComparer.Ordinal);
         var recipients = false;
         foreach (var device in devices)
@@ -585,6 +600,14 @@ public sealed class ZipPlan
                     keys.Add(section.Key);
                 }
             }
+
+            foreach (var key in file.NotImported)
+            {
+                if (seenKeys.Add(key))
+                {
+                    unknown.Add(key);
+                }
+            }
         }
 
         // The connection settings come last, as in a single file and in the task.
@@ -593,6 +616,6 @@ public sealed class ZipPlan
             keys.Add(ConfigSections.Connection);
         }
 
-        return new ZipPlan { Rows = rows, SectionKeys = keys, FileCount = entries.Count, UnmatchedFiles = unmatched, HasRecipients = recipients };
+        return new ZipPlan { Rows = rows, SectionKeys = keys, UnknownSectionKeys = unknown, FileCount = entries.Count, UnmatchedFiles = unmatched, HasRecipients = recipients };
     }
 }

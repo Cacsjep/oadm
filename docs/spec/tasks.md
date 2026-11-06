@@ -5,6 +5,12 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 - **A task always targets exactly one device.** Running a plugin on N selected devices creates
   N tasks (one Run, one shared BatchId, the payload shared in memory), so one failing device
   never marks the others as failed. The task state is the device state.
+- **A payload with an entry per device is parsed once per run.** Every task of a run gets the same payload string, so a
+  plugin whose payload grows with the selection (a file, a license key or a list of rules per device) reads it once per
+  string and looks up its device by id, never once per task with a search through all entries: Applications
+  (`AcapPayload.ParseShared`), Import configuration (`ImportPayload.ParseShared`), Delete and Install certificates
+  (`PkiJson.DeserializeShared`, `InstallPayload.FilesFor`), the Action Rule Editor (`RuleTaskPlugin.ParsedRun`). The
+  parsed payload is shared between the tasks and never changed.
 - States: Queued, Running, Done, Failed, Cancelled, DoneWithWarnings (the plugin called
   `ReportWarning`; a failure wins over a warning). Persisted, visible in the tasks pane, history
   kept until the user deletes it or the retention removes it (finished tasks older than
@@ -19,7 +25,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   throws, the running step (or the one its `using` just ended) ends Failed with the exception message and
   pending ones Skipped ("Not run: an earlier step failed." / "... the task was cancelled."; a cancelled
   running step is Failed "Cancelled."). The running step is also the device message ("Upload AXIS OS to the device -
-  12 of 80 MB"). When the task succeeds (Done or Done with warnings) the engine appends a final step
+  12.0 of 80.4 MB"). When the task succeeds (Done or Done with warnings) the engine appends a final step
   **Completed** (Done, `TaskStepList.CompletedStepName`, also for plugins without own steps), so the
   tasks pane reads just "Completed"; Failed and Cancelled tasks get none (the failed step stays
   current). Overall progress = steps with equal weights, the running one with its own progress,
@@ -60,7 +66,10 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `RunAsync` is the system runner; inside the call of a user with a group it runs only on devices of that user's view
   (backstop). History, Watch, log, cancel and delete of a user with a group show only tasks whose device is in the view
   now, filtered in the query (`ITaskStore.ListPageAsync(deviceIds, ...)`, `EfTaskStore`: one JSON parameter through
-  `json_each`); 30,000 devices and 50,000 tasks: a page in under 1 s, a Watch snapshot of 10,000 in about 2 s. The Watch
+  `json_each`); measured at 30,000 devices and 50,000 tasks: a page in under 1 s, a Watch snapshot of 10,000 in about 2 s. The Watch
   follows devices that leave (their tasks Removed at once) and enter (their tasks Added, like the snapshot) through tag,
   site and rule changes.
+- **Page tasks**: a task hidden from the menus (`ShowInMenus` false) without permissions of its own starts only through
+  `call.Tasks` of a page method or job of its own package, on that method's permission; `TaskService.Run` refuses it for
+  every caller ("This task starts only from its page.", [security.md](security.md)).
 - No scheduling, retry or recurrence.

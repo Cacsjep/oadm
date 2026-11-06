@@ -51,7 +51,7 @@ public sealed class AddToolbarPlugin : IToolbarPlugin
     {
         ArgumentNullException.ThrowIfNull(ctx);
         var button = new ToolbarButton { Text = "Add", IconKey = "add", IsPrimary = true, Name = "AddButton", Flyout = CreateMenu(ctx) };
-        FollowRefusal(button, ctx, Tooltip);
+        _ = FollowRefusal(button, ctx, Tooltip); // the toolbar's own button lives as long as its context
         return button;
     }
 
@@ -60,13 +60,21 @@ public sealed class AddToolbarPlugin : IToolbarPlugin
     /// <summary>
     /// Disables an Add button while the user cannot add devices (a device group without a site), with the server's refusal
     /// as its tooltip (<see cref="ToolbarContext.AddDevicesRefusal"/>); <paramref name="tooltip"/> otherwise. Follows the
-    /// session live.
+    /// session live until the result is disposed: a view that goes away disposes it, the context lives on.
     /// </summary>
-    public static void FollowRefusal(Control button, IToolbarContext ctx, string? tooltip)
+    public static IDisposable FollowRefusal(Control button, IToolbarContext ctx, string? tooltip)
     {
         ArgumentNullException.ThrowIfNull(button);
         ArgumentNullException.ThrowIfNull(ctx);
-        void Apply()
+        var follower = new RefusalFollower(button, ctx, tooltip);
+        ctx.PermissionsChanged += follower.OnPermissionsChanged;
+        follower.Apply();
+        return follower;
+    }
+
+    private sealed class RefusalFollower(Control button, IToolbarContext ctx, string? tooltip) : IDisposable
+    {
+        public void Apply()
         {
             string? refusal = (ctx as ToolbarContext)?.AddDevicesRefusal;
             button.IsEnabled = refusal is null;
@@ -74,8 +82,9 @@ public sealed class AddToolbarPlugin : IToolbarPlugin
             ToolTip.SetShowOnDisabled(button, true);
         }
 
-        ctx.PermissionsChanged += (_, _) => Apply();
-        Apply();
+        public void OnPermissionsChanged(object? sender, EventArgs e) => Apply();
+
+        public void Dispose() => ctx.PermissionsChanged -= OnPermissionsChanged;
     }
 }
 

@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
+using Oadm.Sdk.Formatting;
+
 namespace Oadm.Sdk.Actions;
 
 /// <summary>
@@ -180,7 +182,7 @@ public static class ActionSettings
         }
 
         return file.Data.Length > field.MaxLength
-            ? string.Create(CultureInfo.InvariantCulture, $"The file is larger than {field.MaxLength / 1024:N0} KB.")
+            ? $"The file is larger than {ByteSize.Text(field.MaxLength)}."
             : null;
     }
 

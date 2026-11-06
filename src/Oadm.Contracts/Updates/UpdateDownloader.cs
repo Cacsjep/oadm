@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Security.Cryptography;
 
 namespace Oadm.Contracts.Updates;
@@ -200,8 +199,4 @@ public sealed class UpdateDownloader(IReleaseFeed feed, IDiskSpace disk)
 
         return null;
     }
-
-
-    /// <summary>"1.2 GB" for the refusal log.</summary>
-    public static string Size(long bytes) => string.Create(CultureInfo.InvariantCulture, $"{bytes / 1024d / 1024d:0.0} MB");
 }

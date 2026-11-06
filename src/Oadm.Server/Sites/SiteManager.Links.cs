@@ -1,3 +1,5 @@
+using System.Net;
+
 using Grpc.Core;
 
 using Oadm.Contracts.SiteNode;
@@ -22,13 +24,14 @@ public sealed partial class SiteManager
         {
             // Links of unknown keys that did not answer Hello yet are capped and get a short deadline: a flood of
             // connections that pass TLS and then say nothing cannot pile up. A bound site's key (from the TLS handshake)
-            // is not capped, so the flood cannot keep the sites' own nodes out; its Hello is checked all the same.
+            // is not capped, so the flood cannot keep the sites' own nodes out; its Hello is checked all the same. The key
+            // of a site whose node was reset counts as unknown: that key is no longer the site's.
             HelloReply? hello;
             bool known;
             lock (_lock)
             {
                 known = link.NodeFingerprintHex.Length > 0
-                    && _sites.Values.Any(e => string.Equals(e.Row.NodeKeyFingerprint, link.NodeFingerprintHex, StringComparison.OrdinalIgnoreCase));
+                    && _sites.Values.Any(e => !e.Row.NotBound && string.Equals(e.Row.NodeKeyFingerprint, link.NodeFingerprintHex, StringComparison.OrdinalIgnoreCase));
             }
 
             if (!known && Interlocked.Increment(ref _pendingLinks) > _options.MaxPendingLinks)
@@ -60,15 +63,29 @@ public sealed partial class SiteManager
             await Point("after-hello", _stopping).ConfigureAwait(false);
             Guid? siteId;
             bool accepting;
+            string? resetSite;
             lock (_lock)
             {
                 // Accept site nodes turned off (or the server stopping) while the link said Hello: it becomes nothing.
                 accepting = CanAttach();
-                siteId = _sites.Values.FirstOrDefault(e => string.Equals(e.Row.NodeKeyFingerprint, link.NodeFingerprintHex, StringComparison.OrdinalIgnoreCase))?.Row.Id;
+                var site = _sites.Values.FirstOrDefault(e => string.Equals(e.Row.NodeKeyFingerprint, link.NodeFingerprintHex, StringComparison.OrdinalIgnoreCase));
+                siteId = site?.Row.Id;
+                resetSite = site is { Row.NotBound: true } ? site.Row.Name : null;
             }
 
             if (!accepting)
             {
+                await link.DisposeAsync().ConfigureAwait(false);
+                return;
+            }
+
+            if (resetSite is not null && hello.State == NodeState.Bound)
+            {
+                // The site's node was reset: the key it had before is no longer the site's (a copy of the node from before
+                // the Reset, a lost or stolen node). It is never trusted and gets no session; the site stays Not bound.
+                // A node that offers to bind again (IsRebind) says UnboundOpen and waits below.
+                Interlocked.Increment(ref _resetKeysRefused);
+                LogResetKey(resetSite, link.RemoteHost);
                 await link.DisposeAsync().ConfigureAwait(false);
                 return;
             }
@@ -150,9 +167,36 @@ public sealed partial class SiteManager
         }
     }
 
+    private HashSet<string>? _siteAddresses; // under the lock; null = built again from the sites (SiteAddressesChanged)
+
+    /// <summary>
+    /// True when the node of a bound site last connected from <paramref name="address"/> (<c>Site.Address</c>, IPv6 per
+    /// /64): the listener keeps handshake places for these. One set lookup per connection; the set is built again only
+    /// after a site or its address changed.
+    /// </summary>
+    internal bool IsSiteAddress(IPAddress address)
+    {
+        var key = AddressRateLimiter.KeyOf(address);
+        lock (_lock)
+        {
+            _siteAddresses ??= [.. _sites.Values
+                .Where(e => !e.Row.NotBound && IPAddress.TryParse(e.Row.Address, out _))
+                .Select(e => AddressRateLimiter.KeyOf(IPAddress.Parse(e.Row.Address!)))];
+            return _siteAddresses.Contains(key);
+        }
+    }
+
+    // Under the lock: a site was added or removed, its node's address changed, or it is bound or not bound now.
+    private void SiteAddressesChanged() => _siteAddresses = null;
+
     private int _pendingLinks;
 
     private int _waitingRefused;
+
+    private int _resetKeysRefused;
+
+    /// <summary>Links refused because they carry the key a site's node had before it was reset (tests).</summary>
+    internal int ResetKeysRefused => Volatile.Read(ref _resetKeysRefused);
 
     /// <summary>Nodes refused a place in the waiting list because their address has enough there (tests).</summary>
     internal int WaitingRefused => Volatile.Read(ref _waitingRefused);
@@ -264,6 +308,9 @@ public sealed partial class SiteManager
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Refused the site node connection from {Remote}: {Problem}")]
     private partial void LogBadHello(string remote, string problem);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Refused a site node from {Remote}: it has the key the node of {Site} had before it was reset. Remove the site when that node was lost")]
+    private partial void LogResetKey(string site, string remote);
 
     /// <summary>A node that waits to be bound: the connection it opened.</summary>
     private sealed class WaitingNode(NodeLink link, HelloReply hello, DateTimeOffset since, long sinceTimestamp)

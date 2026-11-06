@@ -1,16 +1,20 @@
 using System.Collections.Concurrent;
+using System.IO.Compression;
 using System.Security.AccessControl;
 using System.Security.Principal;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Oadm.Core.Persistence;
 using Oadm.Core.Plugins;
 using Oadm.Sdk.Network;
+using Oadm.Server.AddOns;
 using Oadm.Server.Hosting;
+using Oadm.Server.Tests.AddOns;
 using Oadm.Tests.Shared;
 
 namespace Oadm.Server.Tests;
@@ -226,6 +230,446 @@ public sealed class ServiceSecurityTests : IDisposable
         Assert.StartsWith("Skipped: the plugin folder can be changed by users other than administrators (Everyone can write it)", error.Message, StringComparison.Ordinal);
     }
 
+    private static string PlantPlugin(string data, string id = "oadm.planted")
+    {
+        var plugin = Path.Combine(PluginPaths.Installed(data), id);
+        Directory.CreateDirectory(plugin);
+        File.WriteAllText(Path.Combine(plugin, PluginLoader.ManifestFileName), $$"""{ "id": "{{id}}", "version": "1.0.0", "minSdkVersion": "0.1.0" }""");
+        return plugin;
+    }
+
+    private static bool Knows(WebApplication app, string packageId) =>
+        app.Services.GetRequiredService<PluginLoader>().Packages.Any(p => p.Manifest.Id == packageId)
+        || app.Services.GetRequiredService<PluginRegistry>().Errors.Any(e => e.Source.Contains(packageId, StringComparison.Ordinal));
+
+    [Fact]
+    public async Task InstalledPluginsOfADataFolderThatWasLooseItselfAreMovedAsideAndNotLoaded()
+    {
+        var data = Path.Combine(_dir, "data");
+        PlantPlugin(data); // put there while everybody could write the data folder
+        var permissions = new FakePermissions();
+        permissions.Problems[data] = "BUILTIN\\Users can write it";
+        await using var app = BuildServer(serviceMode: true, data, permissions, pluginRoots: [PluginPaths.Installed(data)]);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.Equal([data], permissions.Fixed);
+            Assert.False(Knows(app, "oadm.planted"));
+            Assert.False(Directory.Exists(PluginPaths.Installed(data)));
+            var aside = Assert.Single(Directory.GetDirectories(data, InstalledPluginsTrust.AsidePrefix + "*"));
+            Assert.True(File.Exists(Path.Combine(aside, "oadm.planted", PluginLoader.ManifestFileName))); // kept for the administrator
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Fact]
+    public async Task InstalledPluginsOfASecureDataFolderStayAndAreLoaded()
+    {
+        var data = Path.Combine(_dir, "data");
+        var plugin = PlantPlugin(data);
+        await using var app = BuildServer(serviceMode: true, data, new FakePermissions(), pluginRoots: [PluginPaths.Installed(data)]);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.True(Knows(app, "oadm.planted")); // the loader took the folder (it holds no code: a package or its load error)
+            Assert.True(Directory.Exists(plugin));
+            Assert.Empty(Directory.GetDirectories(data, InstalledPluginsTrust.AsidePrefix + "*"));
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Fact]
+    public async Task ALooseFileElsewhereInTheDataFolderIsFixedAndChangesNothingForThePlugins()
+    {
+        var data = Path.Combine(_dir, "data");
+        var plugin = PlantPlugin(data);
+        var permissions = new FakePermissions();
+        // A backup an administrator copied in with their own account, a log file: nothing a plugin loads from.
+        permissions.Problems[Path.Combine(data, "backups", "monday.oadmbackup")] = "monday.oadmbackup is owned by PC\\anna";
+        permissions.Problems[Path.Combine(data, "logs", "server-20261106.log")] = "server-20261106.log is owned by PC\\anna";
+        await using var app = BuildServer(serviceMode: true, data, permissions, pluginRoots: [PluginPaths.Installed(data)]);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.Equal([data], permissions.Fixed); // fixed as before
+            Assert.Empty(permissions.Problems);
+            Assert.True(Knows(app, "oadm.planted"));
+            Assert.True(Directory.Exists(plugin));
+            Assert.Empty(Directory.GetDirectories(data, InstalledPluginsTrust.AsidePrefix + "*"));
+            Assert.False(File.Exists(Path.Combine(data, InstalledPluginsTrust.MarkerFileName)));
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Fact]
+    public async Task OnlyTheLoosePluginFolderIsMovedAsideTheOthersAreLoaded()
+    {
+        var data = Path.Combine(_dir, "data");
+        var loose = PlantPlugin(data, "acme.moved-in"); // installed with "sudo mv": still owned by the user
+        var good = PlantPlugin(data, "acme.copied-in");
+        var permissions = new FakePermissions();
+        permissions.Problems[Path.Combine(loose, "Acme.MovedIn.Server.dll")] = "Acme.MovedIn.Server.dll is owned by uid 1000";
+        await using var app = BuildServer(serviceMode: true, data, permissions, pluginRoots: [PluginPaths.Installed(data)]);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.Equal([data], permissions.Fixed);
+            Assert.False(Knows(app, "acme.moved-in"));
+            Assert.False(Directory.Exists(loose));
+            var aside = Assert.Single(Directory.GetDirectories(data, InstalledPluginsTrust.AsidePrefix + "*"));
+            Assert.True(File.Exists(Path.Combine(aside, "acme.moved-in", PluginLoader.ManifestFileName))); // kept for the administrator
+            Assert.True(Knows(app, "acme.copied-in"));
+            Assert.True(Directory.Exists(good));
+            Assert.False(File.Exists(Path.Combine(data, InstalledPluginsTrust.MarkerFileName)));
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Fact]
+    public async Task APluginsFolderThatWasLooseItselfIsMovedAsideAsAWhole()
+    {
+        var data = Path.Combine(_dir, "data");
+        PlantPlugin(data);
+        var permissions = new FakePermissions();
+        permissions.Problems[PluginPaths.Installed(data)] = "Everyone can write it"; // anyone could put a plugin folder there
+        await using var app = BuildServer(serviceMode: true, data, permissions, pluginRoots: [PluginPaths.Installed(data)]);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.False(Knows(app, "oadm.planted"));
+            Assert.False(Directory.Exists(PluginPaths.Installed(data)));
+            var aside = Assert.Single(Directory.GetDirectories(data, InstalledPluginsTrust.AsidePrefix + "*"));
+            Assert.True(File.Exists(Path.Combine(aside, "oadm.planted", PluginLoader.ManifestFileName)));
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Fact]
+    public async Task TheFolderCheckSaysWhatWasLooseAboutThePlugins()
+    {
+        var data = Path.Combine(_dir, "data");
+        var plugins = PluginPaths.Installed(data);
+        var first = PlantPlugin(data, "acme.first");
+        PlantPlugin(data, "acme.second");
+        var note = Path.Combine(plugins, "readme.txt");
+        File.WriteAllText(note, "a file beside the plugin folders");
+        var extract = Path.Combine(_dir, "runtime");
+        Directory.CreateDirectory(extract);
+
+        // Nothing loose: nothing fixed, nothing said.
+        var permissions = new FakePermissions();
+        Assert.Equal(ServerFoldersCheck.Untouched, await Guard(permissions).EnsureServerFoldersAsync([data, extract], plugins, CancellationToken.None));
+        Assert.Empty(permissions.Fixed);
+
+        // Loose elsewhere, in the data folder and in the extraction folder: fixed, and no plugin is named.
+        permissions.Problems[Path.Combine(data, OadmPaths.DatabaseFileName)] = "owned by uid 1000";
+        permissions.Problems[Path.Combine(extract, "lib.so")] = "owned by uid 1000";
+        var elsewhere = await Guard(permissions).EnsureServerFoldersAsync([data, extract], plugins, CancellationToken.None);
+        Assert.True(elsewhere.Fixed);
+        Assert.False(elsewhere.Plugins.All);
+        Assert.Empty(elsewhere.Plugins.Entries);
+        Assert.Equal([data, extract], permissions.Fixed);
+
+        // A plugin folder that holds something loose and a loose file beside the folders: exactly those two.
+        permissions.Problems[Path.Combine(first, "sub", "a.dll")] = "owned by uid 1000";
+        permissions.Problems[note] = "owned by uid 1000";
+        var some = await Guard(permissions).EnsureServerFoldersAsync([data], plugins, CancellationToken.None);
+        Assert.False(some.Plugins.All);
+        Assert.Equal([Path.GetFullPath(first), Path.GetFullPath(note)], some.Plugins.Entries);
+
+        // The data folder itself, or the plugins folder itself: everything in it.
+        permissions.Problems[data] = "Everyone can write it";
+        Assert.True((await Guard(permissions).EnsureServerFoldersAsync([data], plugins, CancellationToken.None)).Plugins.All);
+        permissions.Problems[plugins] = "Everyone can write it";
+        Assert.True((await Guard(permissions).EnsureServerFoldersAsync([data], plugins, CancellationToken.None)).Plugins.All);
+
+        // A plugins folder that is one plugin itself is loose as a whole.
+        File.WriteAllText(Path.Combine(plugins, PluginLoader.ManifestFileName), "{}");
+        permissions.Problems[Path.Combine(first, "a.dll")] = "owned by uid 1000";
+        Assert.True((await Guard(permissions).EnsureServerFoldersAsync([data], plugins, CancellationToken.None)).Plugins.All);
+
+        // Facts that cannot be read count as loose.
+        File.Delete(Path.Combine(plugins, PluginLoader.ManifestFileName));
+        permissions.Problems[Path.Combine(first, "a.dll")] = "owned by uid 1000";
+        permissions.OwnError = new UnauthorizedAccessException("Access denied");
+        Assert.True((await Guard(permissions).EnsureServerFoldersAsync([data], plugins, CancellationToken.None)).Plugins.All);
+    }
+
+    // ---------------------------------------------------------------- optional plugins (<datafolder>/addons)
+
+    /// <summary>Text recognition put into its folder by hand, of the version <see cref="BuildServer"/> gives the server.</summary>
+    private static string PlantAddOn(string data)
+    {
+        var folder = Path.Combine(AddOnFolders.Root(data), AddOnCatalog.TextRecognitionId);
+        Directory.CreateDirectory(folder);
+        using var zip = new ZipArchive(new MemoryStream(AddOnRig.Zip()), ZipArchiveMode.Read);
+        zip.ExtractToDirectory(folder, overwriteFiles: true);
+        return folder;
+    }
+
+    private static async Task<AddOnStatus> TextRecognitionAsync(WebApplication app) =>
+        Assert.Single(await app.Services.GetRequiredService<AddOnInstaller>().ListAsync(CancellationToken.None));
+
+    [Fact]
+    public async Task ALooseFileElsewhereInTheDataFolderIsFixedAndChangesNothingForTheOptionalPlugins()
+    {
+        var data = Path.Combine(_dir, "data");
+        var addOn = PlantAddOn(data);
+        var permissions = new FakePermissions();
+        // A log file and a backup an administrator copied in with their own account: nothing an optional plugin loads from.
+        permissions.Problems[Path.Combine(data, "logs", "server-20261106.log")] = "server-20261106.log is owned by PC\\anna";
+        permissions.Problems[Path.Combine(data, "backups", "monday.oadmbackup")] = "monday.oadmbackup is owned by PC\\anna";
+        await using var app = BuildServer(serviceMode: true, data, permissions, addOnVersion: AddOnRig.Version);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.Equal([data], permissions.Fixed); // fixed as before
+            Assert.Empty(permissions.Problems);
+            Assert.Equal(AddOnState.Installed, (await TextRecognitionAsync(app)).State);
+            Assert.True(Knows(app, AddOnCatalog.TextRecognitionId));
+            Assert.True(File.Exists(Path.Combine(addOn, PluginLoader.ManifestFileName)));
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Theory]
+    [InlineData("data")] // the data folder itself: anyone could put a folder into addons
+    [InlineData("addons")] // the addons folder itself
+    [InlineData("unreadable")] // something loose elsewhere, and the facts about addons cannot be read
+    public async Task OptionalPluginsOfAFolderThatWasLooseItselfOrCouldNotBeReadAreDeletedAndNotLoaded(string what)
+    {
+        var data = Path.Combine(_dir, "data");
+        var addOn = PlantAddOn(data);
+        var permissions = new FakePermissions();
+        switch (what)
+        {
+            case "data":
+                permissions.Problems[data] = "BUILTIN\\Users can write it";
+                break;
+            case "addons":
+                permissions.Problems[AddOnFolders.Root(data)] = "Everyone can write it";
+                break;
+            default:
+                permissions.Problems[Path.Combine(data, "logs", "server-20261106.log")] = "server-20261106.log is owned by PC\\anna";
+                permissions.OwnError = new UnauthorizedAccessException("Access denied");
+                break;
+        }
+
+        await using var app = BuildServer(serviceMode: true, data, permissions, addOnVersion: AddOnRig.Version);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.Equal([data], permissions.Fixed);
+            Assert.Equal(AddOnState.NotInstalled, (await TextRecognitionAsync(app)).State);
+            Assert.False(Knows(app, AddOnCatalog.TextRecognitionId));
+            Assert.False(Directory.Exists(addOn));
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Fact]
+    public async Task OnlyTheOptionalPluginWhoseFolderHeldSomethingLooseIsDeletedTheInstalledPluginsLoad()
+    {
+        var data = Path.Combine(_dir, "data");
+        var addOn = PlantAddOn(data);
+        var plugin = PlantPlugin(data);
+        var permissions = new FakePermissions();
+        permissions.Problems[Path.Combine(addOn, "models", "reader.onnx")] = "reader.onnx is owned by uid 1000";
+        await using var app = BuildServer(serviceMode: true, data, permissions, pluginRoots: [PluginPaths.Installed(data)], addOnVersion: AddOnRig.Version);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.Equal([data], permissions.Fixed);
+            Assert.Equal(AddOnState.NotInstalled, (await TextRecognitionAsync(app)).State);
+            Assert.False(Knows(app, AddOnCatalog.TextRecognitionId));
+            Assert.False(Directory.Exists(addOn));
+            Assert.True(Knows(app, "oadm.planted")); // a loose optional plugin says nothing about the installed plugins
+            Assert.True(Directory.Exists(plugin));
+            Assert.Empty(Directory.GetDirectories(data, InstalledPluginsTrust.AsidePrefix + "*"));
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Fact]
+    public async Task ALooseInstalledPluginChangesNothingForTheOptionalPlugins()
+    {
+        var data = Path.Combine(_dir, "data");
+        var addOn = PlantAddOn(data);
+        var plugin = PlantPlugin(data);
+        var permissions = new FakePermissions();
+        permissions.Problems[Path.Combine(plugin, "Acme.Server.dll")] = "Acme.Server.dll is owned by uid 1000";
+        await using var app = BuildServer(serviceMode: true, data, permissions, pluginRoots: [PluginPaths.Installed(data)], addOnVersion: AddOnRig.Version);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.False(Knows(app, "oadm.planted")); // moved aside, as before
+            Assert.Equal(AddOnState.Installed, (await TextRecognitionAsync(app)).State);
+            Assert.True(Directory.Exists(addOn));
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Fact]
+    public async Task TheFolderCheckSaysWhatWasLooseAboutTheOptionalPlugins()
+    {
+        var data = Path.Combine(_dir, "data");
+        var plugins = PluginPaths.Installed(data);
+        var addOns = AddOnFolders.Root(data);
+        var plugin = PlantPlugin(data, "acme.first");
+        var addOn = PlantAddOn(data);
+        var waiting = Path.Combine(addOns, ".update-" + AddOnCatalog.TextRecognitionId);
+        Directory.CreateDirectory(waiting);
+        var log = Path.Combine(data, "logs", "server-20261106.log");
+
+        // Nothing loose: nothing fixed, nothing said.
+        var permissions = new FakePermissions();
+        Assert.Equal(ServerFoldersCheck.Untouched, await Guard(permissions).EnsureServerFoldersAsync([data], plugins, addOns, CancellationToken.None));
+        Assert.Empty(permissions.Fixed);
+
+        // Loose elsewhere and in an installed plugin: fixed, the plugin is named, no optional plugin is.
+        permissions.Problems[log] = "owned by uid 1000";
+        permissions.Problems[Path.Combine(plugin, "a.dll")] = "owned by uid 1000";
+        var elsewhere = await Guard(permissions).EnsureServerFoldersAsync([data], plugins, addOns, CancellationToken.None);
+        Assert.True(elsewhere.Fixed);
+        Assert.Equal([Path.GetFullPath(plugin)], elsewhere.Plugins.Entries);
+        Assert.False(elsewhere.AddOns.All);
+        Assert.Empty(elsewhere.AddOns.Entries);
+
+        // Something loose in an optional plugin's folder and a loose waiting update: exactly those two, no installed plugin.
+        permissions.Problems[Path.Combine(addOn, "models", "reader.onnx")] = "owned by uid 1000";
+        permissions.Problems[waiting] = "owned by uid 1000";
+        var some = await Guard(permissions).EnsureServerFoldersAsync([data], plugins, addOns, CancellationToken.None);
+        Assert.False(some.AddOns.All);
+        Assert.Equal([Path.GetFullPath(waiting), Path.GetFullPath(addOn)], some.AddOns.Entries);
+        Assert.False(some.Plugins.All);
+        Assert.Empty(some.Plugins.Entries);
+
+        // The addons folder itself: every optional plugin, no installed plugin.
+        permissions.Problems[addOns] = "Everyone can write it";
+        var folder = await Guard(permissions).EnsureServerFoldersAsync([data], plugins, addOns, CancellationToken.None);
+        Assert.True(folder.AddOns.All);
+        Assert.False(folder.Plugins.All);
+
+        // The data folder itself: both.
+        permissions.Problems[data] = "Everyone can write it";
+        var both = await Guard(permissions).EnsureServerFoldersAsync([data], plugins, addOns, CancellationToken.None);
+        Assert.True(both.AddOns.All);
+        Assert.True(both.Plugins.All);
+
+        // Facts that cannot be read count as loose.
+        permissions.Problems[log] = "owned by uid 1000";
+        permissions.OwnError = new UnauthorizedAccessException("Access denied");
+        Assert.True((await Guard(permissions).EnsureServerFoldersAsync([data], plugins, addOns, CancellationToken.None)).AddOns.All);
+
+        // Asked without the optional plugins' folder: nothing is said about them.
+        permissions.OwnError = null;
+        permissions.Problems[data] = "Everyone can write it";
+        Assert.Same(LoosePlugins.None, (await Guard(permissions).EnsureServerFoldersAsync([data], plugins, CancellationToken.None)).AddOns);
+    }
+
+    [Fact]
+    public void ALoosePluginFolderThatCannotBeMovedKeepsThePluginsUnloadedAndOnlyItIsMovedLater()
+    {
+        var data = Path.Combine(_dir, "data");
+        var loose = PlantPlugin(data, "acme.moved-in");
+        var good = PlantPlugin(data, "acme.copied-in");
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(new DateTimeOffset(2026, 11, 6, 8, 0, 0, TimeSpan.Zero));
+        var logger = NullLogger.Instance;
+        var found = new LoosePlugins(false, [loose]);
+        static void Locked(string from, string to) => throw new IOException("The folder is in use.");
+
+        // The start that found it: somebody holds a file. No installed plugin loads, nothing was moved.
+        Assert.False(InstalledPluginsTrust.Check(data, found, time, logger, Locked));
+        Assert.True(Directory.Exists(loose));
+        Assert.Empty(Directory.GetDirectories(data, InstalledPluginsTrust.AsidePrefix + "*"));
+
+        // The next start finds every folder in order (the fix worked) and still does not load them.
+        Assert.False(InstalledPluginsTrust.Check(data, LoosePlugins.None, time, logger, Locked));
+
+        // Once the move works only the folder that was loose goes aside.
+        Assert.True(InstalledPluginsTrust.Check(data, LoosePlugins.None, time, logger));
+        Assert.True(File.Exists(Path.Combine(data, InstalledPluginsTrust.AsidePrefix + "20261106-080000", "acme.moved-in", PluginLoader.ManifestFileName)));
+        Assert.False(Directory.Exists(loose));
+        Assert.True(Directory.Exists(good));
+        Assert.False(File.Exists(Path.Combine(data, InstalledPluginsTrust.MarkerFileName)));
+        Assert.True(InstalledPluginsTrust.Check(data, LoosePlugins.None, time, logger, Locked)); // a normal start: nothing is moved
+
+        // A loose file beside the plugin folders goes aside too; a folder that is gone meanwhile is no problem.
+        var note = Path.Combine(PluginPaths.Installed(data), "readme.txt");
+        File.WriteAllText(note, "a file");
+        Assert.True(InstalledPluginsTrust.Check(data, new LoosePlugins(false, [note, Path.Combine(PluginPaths.Installed(data), "acme.gone")]), time, logger));
+        Assert.True(File.Exists(Path.Combine(data, InstalledPluginsTrust.AsidePrefix + "20261106-080000-2", "readme.txt")));
+        Assert.True(Directory.Exists(good));
+    }
+
+    [Fact]
+    public void InstalledPluginsThatCannotBeMovedStayUnloadedUntilTheMoveWorks()
+    {
+        var data = Path.Combine(_dir, "data");
+        var plugin = PlantPlugin(data);
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(new DateTimeOffset(2026, 11, 6, 8, 0, 0, TimeSpan.Zero));
+        var logger = NullLogger.Instance;
+        static void Locked(string from, string to) => throw new IOException("The folder is in use.");
+
+        // The start that fixed the data folder: somebody holds a file, the folder cannot be moved.
+        Assert.False(InstalledPluginsTrust.Check(data, LoosePlugins.Everything, time, logger, Locked));
+        Assert.True(Directory.Exists(plugin));
+
+        // The next start finds the data folder in order, and still does not load them.
+        Assert.False(InstalledPluginsTrust.Check(data, LoosePlugins.None, time, logger, Locked));
+
+        // Once the move works they are set aside and the folder is free for plugins again.
+        Assert.True(InstalledPluginsTrust.Check(data, LoosePlugins.None, time, logger));
+        Assert.True(File.Exists(Path.Combine(data, InstalledPluginsTrust.AsidePrefix + "20261106-080000", "oadm.planted", PluginLoader.ManifestFileName)));
+        Assert.False(Directory.Exists(PluginPaths.Installed(data)));
+        Assert.True(InstalledPluginsTrust.Check(data, LoosePlugins.None, time, logger, Locked)); // a normal start: nothing is moved
+        Assert.Single(Directory.GetDirectories(data, InstalledPluginsTrust.AsidePrefix + "*"));
+
+        // A second incident in the same second gets its own folder; an empty plugins folder is left alone.
+        PlantPlugin(data);
+        Assert.True(InstalledPluginsTrust.Check(data, LoosePlugins.Everything, time, logger));
+        Assert.True(Directory.Exists(Path.Combine(data, InstalledPluginsTrust.AsidePrefix + "20261106-080000-2")));
+        Directory.CreateDirectory(PluginPaths.Installed(data));
+        Assert.True(InstalledPluginsTrust.Check(data, LoosePlugins.Everything, time, logger, Locked));
+        Assert.True(Directory.Exists(PluginPaths.Installed(data)));
+    }
+
     [Fact]
     public void ServiceNeverUsesTheDevelopmentPluginFolder()
     {
@@ -254,6 +698,21 @@ public sealed class ServiceSecurityTests : IDisposable
 
         runner.Result = new CommandResult(1, "find: permission denied");
         Assert.Equal("cannot check /var/lib/oadm: find: permission denied", await permissions.FindProblemAsync("/var/lib/oadm", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task UnixCheckOfAnEntryItselfDoesNotLookBelowIt()
+    {
+        var runner = new FakeRunner();
+        var permissions = new UnixFolderPermissions(runner);
+
+        Assert.Null(await permissions.FindOwnProblemAsync("/var/lib/oadm", CancellationToken.None));
+        Assert.Equal("find /var/lib/oadm|-maxdepth|0|!|-type|l|(|!|-user|0|-o|-perm|-0020|-o|-perm|-0002|)|-print", runner.Calls[0]);
+
+        runner.Result = new CommandResult(0, "/var/lib/oadm\n");
+        Assert.Equal(
+            "/var/lib/oadm is not owned by root or writable by group or others",
+            await permissions.FindOwnProblemAsync("/var/lib/oadm", CancellationToken.None));
     }
 
     [Fact]
@@ -304,15 +763,25 @@ public sealed class ServiceSecurityTests : IDisposable
         var problem = await new WindowsFolderPermissions().FindProblemAsync(_dir, CancellationToken.None);
 
         Assert.NotNull(problem);
+
+        // The folder itself and a file in it, each asked on its own.
+        var file = Path.Combine(_dir, "a.txt");
+        File.WriteAllText(file, "x");
+        Assert.NotNull(await new WindowsFolderPermissions().FindOwnProblemAsync(_dir, CancellationToken.None));
+        Assert.NotNull(await new WindowsFolderPermissions().FindOwnProblemAsync(file, CancellationToken.None));
     }
 
     private static FolderGuard Guard(IFolderPermissions permissions) => new(permissions, NullLogger<FolderGuard>.Instance);
 
-    private WebApplication BuildServer(bool serviceMode, string? dataDirectory = null, IFolderPermissions? permissions = null) =>
-        OadmServerHost.Build([], new OadmServerHostOptions
+    /// <param name="addOnVersion">The server's version for its optional plugins (a folder of that version loads); null: the build's.</param>
+    private WebApplication BuildServer(
+        bool serviceMode, string? dataDirectory = null, IFolderPermissions? permissions = null, IReadOnlyList<string>? pluginRoots = null, string? addOnVersion = null)
+    {
+        dataDirectory ??= Path.Combine(_dir, "data-" + Guid.NewGuid().ToString("N"));
+        return OadmServerHost.Build([], new OadmServerHostOptions
         {
-            DataDirectory = dataDirectory ?? Path.Combine(_dir, "data-" + Guid.NewGuid().ToString("N")),
-            PluginRoots = [],
+            DataDirectory = dataDirectory,
+            PluginRoots = pluginRoots ?? [],
             LogToConsole = false,
             ServiceMode = serviceMode,
             ConfigureBuilder = b => b.WebHost.UseTestServer(),
@@ -323,8 +792,15 @@ public sealed class ServiceSecurityTests : IDisposable
                 {
                     services.AddSingleton(permissions);
                 }
+
+                if (addOnVersion is not null)
+                {
+                    services.RemoveAll<AddOnInstallerOptions>();
+                    services.AddSingleton(new AddOnInstallerOptions(dataDirectory, addOnVersion, AddOnInstallerOptions.CurrentRuntimeId()));
+                }
             },
         });
+    }
 
     private sealed class FakeRunner : ICommandRunner
     {
@@ -341,6 +817,7 @@ public sealed class ServiceSecurityTests : IDisposable
         }
     }
 
+    /// <summary>The loose entries by their path: a folder has a problem when it or something below it is loose.</summary>
     private sealed class FakePermissions : IFolderPermissions
     {
         public Dictionary<string, string> Problems { get; } = new(StringComparer.Ordinal);
@@ -349,9 +826,19 @@ public sealed class ServiceSecurityTests : IDisposable
 
         public Exception? FixError { get; set; }
 
+        /// <summary>Asking about an entry itself fails (the facts cannot be read).</summary>
+        public Exception? OwnError { get; set; }
+
         public bool FixClears { get; set; } = true;
 
-        public Task<string?> FindProblemAsync(string path, CancellationToken ct) => Task.FromResult(Problems.GetValueOrDefault(path));
+        private static bool IsAtOrBelow(string entry, string path) =>
+            entry == path || entry.StartsWith(path + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+
+        public Task<string?> FindProblemAsync(string path, CancellationToken ct) =>
+            Task.FromResult(Problems.OrderBy(p => p.Key, StringComparer.Ordinal).Where(p => IsAtOrBelow(p.Key, path)).Select(p => p.Value).FirstOrDefault());
+
+        public Task<string?> FindOwnProblemAsync(string path, CancellationToken ct) =>
+            OwnError is not null ? Task.FromException<string?>(OwnError) : Task.FromResult(Problems.GetValueOrDefault(path));
 
         public Task FixAsync(string path, bool readableByUsers, CancellationToken ct)
         {
@@ -363,7 +850,10 @@ public sealed class ServiceSecurityTests : IDisposable
             Fixed.Add(path + (readableByUsers ? " readable" : string.Empty));
             if (FixClears)
             {
-                Problems.Remove(path);
+                foreach (var entry in Problems.Keys.Where(k => IsAtOrBelow(k, path)).ToList())
+                {
+                    Problems.Remove(entry);
+                }
             }
 
             return Task.CompletedTask;

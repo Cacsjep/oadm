@@ -111,7 +111,7 @@ Targets:
   unit       Tests that need no camera, Category!=Hardware, Category!=Perf and Category!=HardwareWrite
              (default, fast; CI runs them once, without a retry, for every release tag and,
              in pr.yml, for every pull request)
-  perf       Scale tests, Category=Perf: 30,000 devices and 50,000 tasks (client stores,
+  perf       Scale tests, Category=Perf: 100,000 devices and 50,000 tasks (client stores,
              Devices grid, ListTaskPlugins, Watch snapshots, polling spread, task engine
              batches, task history paging and retention). A few minutes; each test has a time
              budget and writes its measured times to the test output

@@ -13,20 +13,26 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 | Kinds | Stateful (on / off per device or for the server) or stateless (one shot). Off is the default; a stateful source sends one full report (`ReplaceStates`) per type after every start ("ready"), then `SetState` per change or `ReplaceStates` again; a source that is turned off counts as everything off. |
 | Simple mode | Conditions must all hold. The first is the trigger ("When": an event, devices All / chosen / tags); further ones ("And") are stateful events (on "the same device", or "any" of All / chosen / tags) or schedules (weekdays + from / to in server time, over midnight allowed). Only the trigger may be one-shot. Advanced AND / OR later on the same model. |
 | Rule state | All events stateful: the rule is on per subject (the trigger's device, or the server) while all conditions hold. One-shot trigger: the rule fires while the others hold. |
-| Actions | One to five per rule, run in the listed order on each edge, each on its targets in parallel (16 at once for all rules, 30 s per run); a failure is logged and the next one runs; no retry. Edges run in order per rule and subject (a "turns off" never overtakes its "turns on"; edges with actions on chosen / tag / all devices also in order among themselves); different devices never wait for each other. Targets: the device of the event, chosen devices, devices with tags, all devices. Actions on chosen / tag / all devices run when the first subject turns on and when the last one turns off; actions on the event's device and actions without devices run per subject. |
-| Limits | Per rule, editable (security names): **Dead time** per device (default 10 s between two "turns on"), **Max per minute** (default 60 runs per minute for the whole rule); a suppressed "turns on" also suppresses its "turns off"; "Rule paused" logged once a minute. |
+| Actions | One to five per rule, run in the listed order on each edge, each on its targets in parallel (16 at once for all rules, 30 s per run); a failure is logged and the next one runs; no retry. A run that asks for more than 30 s (`IActionPlugin.MaxRunTime`: a pulse, Send email) takes one of 16 slots of its own, so a pulse never holds the slots of the others. One rule holds at most half of a lane's slots at a time (8 of 16, `ActionRunnerOptions.MaxPerRule`, `MaxPerRuleLong`); its further runs wait in the rule's own queue without a slot, so a rule whose target does not answer (a dead mail server) never takes the lane from the other rules. An action goes through its targets with at most the rule's share of runs at a time, and a target asks for its slot only when it is its turn: the targets of one action never count as waiting behind each other, so an action on 5,000 devices runs to its end. An action that got no slot for any target within 1 minute of asking (other actions hold the rule's share or the lane) is skipped as a whole and logged ("Waited too long: too many actions are running"; for many devices one line with their count). Once its first target has a slot the action has started: its other targets wait as long as it takes, also behind other rules, and are never skipped (a half-applied action is worse than a late one). An action of a "turns off" edge is never skipped, so nothing stays on (`ActionRunnerOptions.MaxParallelLong`, `MaxWait`). Edges run in order per rule and subject (a "turns off" never overtakes its "turns on"; edges with actions on chosen / tag / all devices also in order among themselves); different devices never wait for each other. Targets: the device of the event, chosen devices, devices with tags, all devices. Actions on chosen / tag / all devices run when the first subject turns on and when the last one turns off; actions on the event's device and actions without devices run per subject. |
+| Limits | Per rule, editable (security names): **Dead time** per device (default 10 s between two "turns on"), **Max per minute** (default 60 runs per minute for the whole rule); a suppressed "turns on" also suppresses its "turns off"; "Rule paused" logged once a minute. Held-back runs never fill the logs: per rule the first one of a minute is a line (event log and server log), the others are counted and become one line "Rule held back" ("312 more runs: Dead time (10 s after the last run)") after that minute, at a rule change or at the stop; the "turns off" of a held-back "turns on" is not logged. |
 | Changes | Turning off, changing or deleting a rule that is on runs its off actions first; a changed rule is then evaluated fresh. A removed device goes off. A plugin turned off: its events go off, rules show "Not available: <plugin> is turned off". |
 | Loops | Actions never fire events themselves; a device an action changes may send an event later, which the dead time keeps bounded. |
 | Restart | The subjects each rule was on for are stored (`EventRuleStates`); a rule is evaluated once every event type it uses is ready (or after 2 minutes); only real differences run actions; one-shot events missed while the server was down are not replayed. |
 | Field checks | At most 5 checks per event condition on the event's values (field, operator by kind, value), all must hold; see "Field checks". |
 | Roles | Permissions "See event rules" (rules and the log; operators by default), "Change event rules" (create, change, copy, turn on / off, delete, test an action; audited "Created / Changed / Deleted / Turned ... event rule") and "Delete the event log". |
-| Log | Own event log (`EventLogEntries`), never tasks: events a rule uses, rule edges, every action run with its result; 30 days or 100,000 entries (`Events.LogRetentionDays`, `Events.LogMaxEntries`, hourly). |
+| Log | Own event log (`EventLogEntries`), never tasks: events a rule uses, rule edges, every action run with its result; 30 days or 100,000 entries (`Events.LogRetentionDays`, `Events.LogMaxEntries`, hourly; the writer also prunes each time it wrote as many lines as the limit (`EventLog.Retention`), so a flood never grows the table beyond about twice the limit). |
 
 - **Device groups** ([device-scope.md](device-scope.md)): event rules are for users with all devices.
   Every `EventService` method (rules, the event log, the catalog, Test) is `AccessRule.AllDevices`: users with a device
   group get PERMISSION_DENIED "Only users with all devices can do this." and the client hides the Event rules page for
   them. Rules have no owner and run on all devices (migration `EventRulesWithoutOwner` drops the owner columns the migration
   `DeviceGroups` added); a deleted group changes no rule. Send HTTP request and Send TCP message send to any address.
+- **Names**: a rule name has 1 to 64 characters and no control characters (line break, tab, NUL): the server log, the
+  event log and the audit write it as it is, and a line break would forge a line. `RuleValidator` and the dialog refuse
+  one below the name, "Use letters, digits and punctuation only." (`RuleDefinition.NameInvalidText`, the same text for a
+  recipient). A rule stored before the check still loads and runs; only a save is refused, and a copy gets the name
+  without them. Send test and a recipient's Test run before a save: `EventGrpcService` takes the control characters out
+  of the name they send. A rule has no other free names (a schedule is days and times, a condition has no label).
 - **Recipients** ([recipients.md](recipients.md)): shared targets of Send email, Send HTTP request, Send TCP message, Publish MQTT message, Write Modbus value and Write OPC UA value (the last three share one connection per recipient, [recipient-sessions.md](recipient-sessions.md)). An action keeps
   the message and a link to its recipient (`ActionFieldType.Recipient`, `ActionField.Recipient`); `ActionRunner` merges the recipient's
   fields into the settings of a run and of a test. An action without its recipient fails with "Choose a recipient.".
@@ -61,7 +67,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   dialog shows the Placeholders list), `Validate`, `Describe`,
   `RunsOn(edge)`, `ExecuteAsync(IActionContext, ActionInvocation)`; `IActionContext` gives a pre-authenticated `Vapix` for
   the target, the plugin's settings, `Log`, `SessionAsync<T>` (the open connection of a persistent recipient) and `Text(text)` / `Text(text, PlaceholderEscape)` (None, Json, Xml, Url: each
-  value escaped for the format it goes into). The placeholders are one list,
+  value escaped for the format it goes into; SingleLine: control characters removed, a value never adds a line). The placeholders are one list,
   `Oadm.Sdk.Actions.ActionPlaceholders.Fixed` (everything OADM knows): {rule} {event} {state}
   {time} {date} {timeUtc}, device {device} {address} {hostName} {model} {serial} {mac} {firmware} {category} {tags}
   {status} {site} {webUrl} (the action's device, else the event's device), then every value of the event by its name; filled in
@@ -80,7 +86,15 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   successful write and written once more at stop; a saved / turned on or off / deleted rule always reaches the engine (it
   waits for room in a full queue, events are dropped). Saving a rule whose action's plugin is off runs only the shared field
   checks. The catalog is an id-indexed snapshot rebuilt when plugins or event types change; subject-independent conditions
-  are evaluated once per re-evaluation; a chosen device or tag counts only while OADM manages the device. Types can change while the server runs
+  are evaluated once per re-evaluation; a chosen device or tag counts only while OADM manages the device. A change of one
+  device (an event, other tags, removed) re-evaluates only that device; every subject of a rule only when a condition they
+  share can change: a server event whose part changed (a new count that still passes changes nothing), or "on for any of
+  these devices" while no other chosen device holds it (`RuleEngine.SharedCanFlip`, `AnyOfCanFlip`). The engine's devices
+  follow the feed: a change that is no longer the latest of its device is dropped (`IDeviceChangeFeed.IsLatest`), and after
+  device changes were dropped on a full queue the devices are read again once the queue is empty. The runner reads the
+  device list of an action on tags, all devices or more than 8 devices once per version of the device table
+  (`DeviceChangeFeed.Version`), one read at a time shared by the edges that wait, dropped after a minute without a use.
+  Types can change while the server runs
   (`IDynamicEventSource.EventTypesChanged`, device triggers): the registry reads them again, a new stateful type waits for
   its first report, a removed type counts as off ("Not available: an event of this rule no longer exists"), and a type a
   stored rule uses that no source declares yet waits like a source after a start (2 minutes), then counts as off.
@@ -95,10 +109,11 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 - **Notifications** (bundled always-on package `oadm.notifications`,
   `plugins/Oadm.Plugins.Notifications`, server only, plugin `README.md`): **Send HTTP request** (HTTP recipient: URL, login None /
   Basic / Digest / Bearer token, "Allow untrusted certificates"; action: method, query and
-  header rows, body type None / JSON / XML / Text / Form in the code editor, timeout, success = 2xx) and **Send email** (MailKit;
+  header rows, body type None / JSON / XML / Text / Form in the code editor, timeout, success = 2xx; a redirect is never
+  followed and fails with "The address redirects to <host>. Enter the final address.") and **Send email** (MailKit;
   Email recipient: mail server, port, STARTTLS / TLS / none, optional login, "Allow untrusted certificates", From, To; action:
   Subject, Format Text / HTML, body) and **Send TCP message** (TCP recipient: host, port, optional TLS
-  with "Allow untrusted certificates"; action: Text / JSON / XML / Hex bytes, line end, "Wait for an answer" + "Answer must contain", timeout) and **Log entry** (a message, written to the server log, nothing else). All four run without devices,
+  with "Allow untrusted certificates"; action: Text / JSON / XML / Hex bytes, line end, "Wait for an answer" + "Answer must contain", timeout; a value of the event never adds a line: JSON escapes control characters, Text and XML lose them) and **Log entry** (a message, written to the server log, nothing else). All four run without devices,
   once each time the rule turns on or fires, optionally also when the rule turns off.
 - **First actions**: **Set output** (bundled always-on package `oadm.outputs`, `plugins/Oadm.Plugins.Outputs`, server only):
   output number 1..64, modes Follow the rule (stateful rules only; inactive on the off edge), Pulse N s (1..3600), Set
@@ -156,7 +171,9 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   top, Actions below, the dead time as a shaded zone with the ignored pulses as ghosts, the minute shortened to runs 1,
   2, 3 and the last, the rest skipped; it follows the typed value); errors below their field; a server refusal below the overview. Fake mode (`FakeOadmApi.Events.cs`): catalog, three sample rules,
   a sample log.
-- **Tests**: `tests/Oadm.Core.Tests/Events` (the engine with a fake clock), `tests/Oadm.Server.Tests/EventServiceTests`,
+- **Tests**: `tests/Oadm.Core.Tests/Events` (the engine with a fake clock; `EngineLoadTests`: slots and the long lane, the skipped wait, an action on many devices (all of them, never cut off once started),
+  the device list per version, "any of" through events, tags and removals, a late and a dropped device change, the log under a flood, and
+  the Perf test with 100,000 devices tagged and removed while a tag rule is on), `tests/Oadm.Server.Tests/EventServiceTests`,
   `tests/Oadm.Plugins.Outputs.Tests` (+ opt-in `OutputHardwareWriteTests`), `tests/Oadm.Plugins.Notifications.Tests`,
   `tests/Oadm.Plugins.Modbus.Tests`, `tests/Oadm.Plugins.Mqtt.Tests`, `tests/Oadm.Plugins.OpcUa.Tests`, `tests/Oadm.RecipientStack.Tests` (opt-in,
   `manage test recipients`), `RunCommandActionTests` (VAPIX Commander), `tests/Oadm.Client.Tests/EventRulesTests` (100,000 devices).

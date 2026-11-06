@@ -1,8 +1,10 @@
 # Recipients
 
+Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
+
 Shared targets of event rule actions, like the Recipients of an Axis device (System > Events): a recipient says where and
-how to reach something, the action says what to send. Agreed with the maintainer on 2026-11-05. This replaces the old rule
-"the server settings live in each action, no shared setting" in `docs/spec/event-rules.md` and the Notifications README.
+how to reach something, the action says what to send. Agreed with the maintainer on 2026-11-05; until then each action
+kept its own server settings.
 
 ## Decisions
 
@@ -19,11 +21,11 @@ how to reach something, the action says what to send. Agreed with the maintainer
 | Delete | Refused while a rule uses it, with the rule names: "Used by OCR, Gate alarm. Change those rules first." |
 | Rights | The event rules' own: "See event rules" lists, "Change event rules" creates, changes, deletes and tests (audited). Users with a device group do not reach them, like every `EventService` method (`AccessRule.AllDevices`) |
 | Secrets | Password fields are stored with `ISecretProtector` (purpose `oadm:recipient:<id>:<field>`), never sent back to a client, decrypted only for a run or a test. Empty password on save keeps the stored one, only while every other field is unchanged: with a changed target Test and Save refuse an empty password below the field, "Enter the password again. The target changed."; a hidden one, which nobody can be asked for, is dropped on save and not used by Test. A stored optional password cannot be cleared on a changed target: a target without a login gets a new recipient |
-| Limit | At most 200 recipients (`RecipientStore.MaxRecipients`), names unique, at most 64 characters |
+| Limit | At most 200 recipients (`RecipientStore.MaxRecipients`), names unique, at most 64 characters, no control characters (line break, tab: the server log writes the name as it is; refused below the name with "Use letters, digits and punctuation only.", `RecipientType.NameInvalidText`). A recipient stored before the check still loads and sends, only a save is refused; Test takes them out of the name it writes to the audit |
 
 | Type | The recipient holds | The action keeps |
 |---|---|---|
-| HTTP | URL, login None / Basic / Digest / Bearer token with its user, password or token, Allow untrusted certificates | Method, query, headers, body, timeout, off edge |
+| HTTP | URL, login None / Basic / Digest / Bearer token with its user, password or token, Allow untrusted certificates. The URL is the final address: a redirect is never followed (the body, the headers and the login would go to an address nobody entered), Test and a run fail with "The address redirects to <host>. Enter the final address." | Method, query, headers, body, timeout, off edge |
 | Email | Mail server, port, encryption, Allow untrusted certificates, user name, password, From, To | Subject, format, body, off edge |
 | TCP | Host, port, Use TLS, Allow untrusted certificates | Format, message, line end, wait for an answer, answer must contain, timeout, off edge |
 

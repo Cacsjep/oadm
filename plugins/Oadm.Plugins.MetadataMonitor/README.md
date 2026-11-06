@@ -61,8 +61,8 @@ temperature, tampering, ACAP events). Read only for devices. Spec:
 One card (`HasOwnCards` false), `ui:PageHeader.Subtitle` "Shows the events a camera sends, live.".
 
 - One toolbar row (fits the 1280 px minimum window with the rail expanded): the camera command button ("10.0.0.48 ·
-  P3265-V", else "Choose a camera") opens the shared `DevicePickerWindow.ShowOneAsync` (search, virtualized, 30,000
-  devices) with the managed video and I/O devices (others are not offered); the view hands the picker to the view model as
+  P3265-V", else "Choose a camera") opens the shared `DevicePickerWindow.ShowOneAsync` (search, virtualized, tested at the
+  device limit) with the managed video and I/O devices (others are not offered); the view hands the picker to the view model as
   `PickCamera`; another camera stops the running stream, a removed one clears the choice. Then **Start** / **Stop**
   (command button with the start or stop icon), `ui:SearchBox` filter ("Filter events", live, case-insensitive over
   topic, info and raw XML), **Clear** (empties the list, the stream keeps running), **Autoscroll** toggle and the count
@@ -112,7 +112,7 @@ group or its rules change (the host ends the job). Messages and states go only t
 - `tests/Oadm.Plugins.MetadataMonitor.Tests`: parser (namespaces, several notifications per document, malformed XML, Info
   text), lifecycle with `FakeEventStreams` (start, stop, reconnect, refused statuses, watch ended), `CanaryTests` (the
   device-group canary and stream owners), view model (camera button: offered devices, the chosen camera into Start, a
-  removed camera stops the stream, Perf 30,000 devices; filter, clear, autoscroll, 10,000 cap, selection survives
+  removed camera stops the stream, Perf at the device limit; filter, clear, autoscroll, 10,000 cap, selection survives
   batches), fake mode, headless screenshots `metadata-monitor-page.png` (live list + detail) and `-error.png`, Perf
   `ScaleTests` (10,000 messages, a burst of 2,000 in one batch).
 - Core: `MetadataDepacketizerTests` (recorded packets of the development camera), `RtspMetadataSourceTests` (scripted

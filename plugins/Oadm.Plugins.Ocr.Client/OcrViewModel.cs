@@ -494,7 +494,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
                     break;
             }
         }
-        catch (System.Text.Json.JsonException)
+        catch (ArgumentException)
         {
             // A malformed event changes nothing; the next one or a reload brings the state.
         }
@@ -688,7 +688,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
             return;
         }
 
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             await _ctx.InvokeAsync(OcrMethods.DeleteReader, OcrJson.Serialize(new ReaderRequest { ReaderId = editor.Id }), CancellationToken.None)
                 .ConfigureAwait(true);
@@ -697,12 +697,10 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
             CloseEditor();
             ApplyFilter();
             await OpenFirstAsync().ConfigureAwait(true);
-        }
-#pragma warning disable CA1031 // The server's reason in the host's message.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            await _ctx.ShowMessageAsync("Delete reader", ServerErrors.Message(ex)).ConfigureAwait(true);
+            await _ctx.ShowMessageAsync("Delete reader", error).ConfigureAwait(true);
         }
     }
 

@@ -2,8 +2,8 @@
 
 Core plugin (+ `.Client`) with the rail page **DHCP server** (group Servers, icon `network`), on by default; the server
 itself starts disabled. Own RFC 2131 / RFC 2132 implementation (no library), IPv4 only, one interface, no relay agents.
-Spec: [Bundled plugins](../../docs/spec/bundled-plugins.md#dhcp-server-core-plugin), host support for service plugins:
-[plugins/README.md](../README.md#host-support-for-service-plugins-ntp-dhcp-).
+Spec: [Bundled plugins](../../docs/spec/bundled-plugins.md#dhcp-server-core-plugin), what the host offers a service
+plugin: [Host services](../../website/src/content/docs/dev/host-services.md) of the SDK guide.
 
 ## How it works
 
@@ -168,8 +168,8 @@ they never send DHCP traffic on a real interface or use port 67.
   `dhcp-server-auto-add.png`, `-page-errors.png`, `-page-other-server.png`, `dhcp-server-other-server-confirm.png`,
   `dhcp-server-static-lease-dialog.png`.
 - `MethodRoleTests` (who may call which method), `FirewallRuleTests` (the UDP 67 rule follows the enabled setting).
-- `CanaryTests` (the device-group canary, filtered leases and live changes), `GroupScaleTests` (5 groups at 30,000
-  devices: no read per round, + Perf; a change and a removal of one batch, the parts, `Renew`, the page's renewal).
+- `CanaryTests` (the device-group canary, filtered leases and live changes), `GroupScaleTests` (5 groups at the device limit:
+  no read per round, + Perf; a change and a removal of one batch, the parts, `Renew`, the page's renewal).
 
 ### Manual test plan (only on an isolated test network)
 

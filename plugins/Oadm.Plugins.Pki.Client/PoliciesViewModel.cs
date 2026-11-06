@@ -755,7 +755,7 @@ public sealed partial class PoliciesViewModel : ObservableObject
         }
 
         editor.IsBusy = true; // the form waits for the answer
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var reply = PkiJson.Deserialize<PolicySaveReply>(await _ctx.InvokeAsync(PolicyMethods.DeletePolicy, PkiJson.Serialize(new PolicyRef(policy.Id)), CancellationToken.None)
                 .ConfigureAwait(true));
@@ -766,17 +766,13 @@ public sealed partial class PoliciesViewModel : ObservableObject
             }
 
             Error = reply.Error?.Message;
-        }
-#pragma warning disable CA1031 // Shown on the tab.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            Error = ServerErrors.Message(ex);
+            Error = error;
         }
-        finally
-        {
-            editor.IsBusy = false;
-        }
+
+        editor.IsBusy = false;
     }
 
     /// <summary>Saves <paramref name="policy"/>; the list after it (the panel closes), or the error that refused it.</summary>

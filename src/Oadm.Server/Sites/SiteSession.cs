@@ -5,6 +5,7 @@ using Grpc.Core;
 
 using Oadm.Contracts.SiteNode;
 using Oadm.Core.Sites;
+using Oadm.Sites.Binding;
 
 namespace Oadm.Server.Sites;
 
@@ -339,8 +340,15 @@ internal sealed partial class SiteSession : IAsyncDisposable
         using var call = Control.Client.Watch(new WatchRequest(), cancellationToken: _life.Token);
         while (await call.ResponseStream.MoveNext(_life.Token).ConfigureAwait(false))
         {
+            var status = call.ResponseStream.Current;
+            if (NodeStatusRules.Problem(status) is { } problem)
+            {
+                _manager.AnswerRefused(this, problem);
+                return; // a status beyond the limits is kept nowhere: the session ends
+            }
+
             Ready = true;
-            _manager.OnStatus(this, call.ResponseStream.Current);
+            _manager.OnStatus(this, status);
         }
     }
 
@@ -368,6 +376,13 @@ internal sealed partial class SiteSession : IAsyncDisposable
                 }
 
                 continue;
+            }
+
+            // Every Hello is checked, also the heartbeat's of a bound node: its version is kept and shown.
+            if (HelloRules.Problem(hello) is { } problem)
+            {
+                _manager.AnswerRefused(this, problem);
+                return;
             }
 
             _manager.OnHeartbeat(this, hello, Stopwatch.GetElapsedTime(started));

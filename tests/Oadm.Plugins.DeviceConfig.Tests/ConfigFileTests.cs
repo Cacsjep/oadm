@@ -20,7 +20,8 @@ public sealed class ConfigFileTests
             ["Event rules", "MQTT events", "Schedules", "Network and system settings", "Power", "Time zone", "Password policy", "Connection settings"],
             file.Sections.Select(s => s.Name));
         Assert.True(file.Sections.Single(s => s.Key == ConfigSections.Param).ValueCount > 1000);
-        Assert.Equal(10, file.Sections.Single(s => s.Key == ConfigSections.Connection).ValueCount);
+        Assert.Equal(30, file.Sections.Single(s => s.Key == ConfigSections.Connection).ValueCount);
+        Assert.Empty(file.UnknownSections);
         Assert.Equal(0, file.Sections.Single(s => s.Key == ConfigSections.ActionRules).ValueCount);
         Assert.False(file.HasRecipients);
     }
@@ -69,9 +70,12 @@ public sealed class ConfigFileTests
         Assert.Equal("yes", (string?)network["Bonjour"]!["Enabled"]);
         Assert.False(((JsonObject)network["UPnP"]!).ContainsKey("FriendlyName"));
         Assert.False(network.ContainsKey("DHCP"));
-        Assert.Null(network["InterfaceCollection"]![0]!["dot1x"]!["EAPTLS"]);
-        Assert.Equal("3", (string?)network["InterfaceCollection"]![0]!["dot1x"]!["EAPOLVersion"]);
-        Assert.Equal("1.1.1.1", (string?)network["DNSServer1"]);
+        Assert.False(((JsonObject)network["DNSUpdate"]!).ContainsKey("DNSName"));
+        Assert.Equal("30", (string?)network["DNSUpdate"]!["TTL"]);
+        Assert.Equal("0", (string?)network["QoS"]!["Class1"]!["DSCP"]);
+        var dot1x = (JsonObject)ConfigIdentity.Clean(ConfigSections.Connection, file.Data[ConfigSections.Param]!)["Network"]!["InterfaceCollection"]![0]!["dot1x"]!;
+        Assert.Null(dot1x["EAPTLS"]);
+        Assert.Equal("3", (string?)dot1x["EAPOLVersion"]);
         Assert.False(((JsonObject)param["SNMP"]!).ContainsKey("EngineBoots"));
         Assert.Equal("public", (string?)param["SNMP"]!["V1ReadCommunity"]);
 
@@ -86,22 +90,134 @@ public sealed class ConfigFileTests
     }
 
     [Fact]
+    public void Only_the_areas_OADM_knows_are_offered()
+    {
+        var export = (JsonObject)JsonNode.Parse(Fixtures.Export)!;
+        export["data"]!["firewall.v1"] = new JsonObject { ["activated"] = true };
+        export["data"]!["param.v3"] = new JsonObject { ["Network"] = new JsonObject { ["HostName"] = "same-on-all" } };
+        export["data"]!["connection"] = new JsonObject { ["HTTPS"] = new JsonObject { ["Enabled"] = "no" } }; // not an area of a file
+        var file = ConfigFile.Parse(export.ToJsonString());
+
+        Assert.Equal(["firewall.v1", "param.v3"], file.UnknownSections);
+        Assert.DoesNotContain(file.Sections, s => s.Key is "firewall.v1" or "param.v3");
+        Assert.Equal(8, file.Sections.Count); // the seven known areas and the connection settings
+        Assert.All(ConfigSections.Known, key => Assert.True(ConfigSections.IsKnown(key)));
+        Assert.True(ConfigSections.IsKnown(ConfigSections.Connection));
+        Assert.False(ConfigSections.IsKnown("firewall.v1"));
+        Assert.Equal("Not imported: firewall.v1, param.v3. OADM does not import these settings.", ConfigSections.UnknownNote(file.UnknownSections));
+        Assert.Null(ConfigSections.UnknownNote([]));
+    }
+
+    [Fact]
+    public void Only_the_password_policy_of_the_user_area_is_imported()
+    {
+        // What the camera exports: the policy and nothing else, so nothing is left out.
+        var recorded = ConfigFile.Parse(Fixtures.Export);
+        Assert.Equal("""{"settings":{"passphraseComplexity":{"policy":"none"}}}""", recorded.Data[ConfigSections.UserManagement]!.ToJsonString());
+        Assert.Empty(recorded.NotImported);
+
+        // A file made by hand with accounts in the area.
+        var export = (JsonObject)JsonNode.Parse(Fixtures.Export)!;
+        var area = (JsonObject)export["data"]!["user-management.v2"]!;
+        area["users"] = new JsonArray(new JsonObject { ["name"] = "root", ["role"] = "viewer" });
+        area["groups"] = new JsonObject { ["admin"] = new JsonArray() };
+        area["settings"]!["anonymousAdmin"] = true;
+        export["data"]!["firewall.v1"] = new JsonObject { ["activated"] = true };
+        var file = ConfigFile.Parse(export.ToJsonString());
+
+        var cleaned = ConfigIdentity.Clean(ConfigSections.UserManagement, file.Data[ConfigSections.UserManagement]!);
+        Assert.Equal("""{"settings":{"passphraseComplexity":{"policy":"none"}}}""", cleaned.ToJsonString());
+        Assert.Equal(1, file.Sections.Single(s => s.Key == ConfigSections.UserManagement).ValueCount);
+        Assert.Equal(["firewall.v1"], file.UnknownSections);
+        Assert.Equal(["firewall.v1", "user-management.v2 (settings.anonymousAdmin, users, groups)"], file.NotImported);
+        Assert.Equal(
+            "Not imported: firewall.v1, user-management.v2 (settings.anonymousAdmin, users, groups). OADM does not import these settings.",
+            ConfigSections.UnknownNote(file.NotImported));
+
+        // Settings that are not an object, or no policy: nothing of the area is imported.
+        area["settings"] = "all";
+        var broken = ConfigFile.Parse(export.ToJsonString());
+        Assert.Equal("{}", ConfigIdentity.Clean(ConfigSections.UserManagement, broken.Data[ConfigSections.UserManagement]!).ToJsonString());
+        Assert.Contains("user-management.v2 (settings, users, groups)", broken.NotImported);
+    }
+
+    [Fact]
+    public void The_parameters_Configure_devices_warns_about_are_connection_settings_of_an_import()
+    {
+        // One table (DangerousParameters): what needs the dangerous right in Configure devices needs the connection right here.
+        var param = new JsonObject
+        {
+            ["Network"] = new JsonObject
+            {
+                ["Enabled"] = "yes",
+                ["Media"] = "auto",
+                ["DNSServer1"] = "1.1.1.1",
+                ["Filter"] = new JsonObject { ["Enabled"] = "yes" },
+                ["UPnP"] = new JsonObject { ["Enabled"] = "no" },
+                ["InterfaceCollection"] = new JsonArray(
+                    new JsonObject { ["groupId"] = "I0", ["Link"] = new JsonObject { ["MTU"] = "1500" } },
+                    new JsonObject { ["groupId"] = "I1", ["dot1x"] = new JsonObject { ["Enabled"] = "yes" }, ["Note"] = "kept" }),
+            },
+            ["HTTPS"] = new JsonObject { ["Ciphers"] = "x" },
+            ["System"] = new JsonObject { ["AlternateBoaPort"] = "8080", ["AccessLog"] = "Off" },
+        };
+
+        var rest = ConfigIdentity.Clean(ConfigSections.Param, param);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""
+            {
+              "Network": { "UPnP": { "Enabled": "no" }, "InterfaceCollection": [ { "groupId": "I1", "Note": "kept" } ] },
+              "System": { "AccessLog": "Off" }
+            }
+            """), rest), rest.ToJsonString());
+
+        var connection = ConfigIdentity.Clean(ConfigSections.Connection, param);
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""
+            {
+              "Network": {
+                "Enabled": "yes", "Media": "auto", "DNSServer1": "1.1.1.1", "Filter": { "Enabled": "yes" },
+                "InterfaceCollection": [
+                  { "Link": { "MTU": "1500" }, "groupId": "I0" },
+                  { "dot1x": { "Enabled": "yes" }, "groupId": "I1" }
+                ]
+              },
+              "HTTPS": { "Ciphers": "x" },
+              "System": { "AlternateBoaPort": "8080" }
+            }
+            """), connection), connection.ToJsonString());
+        Assert.Equal(8, ConfigIdentity.CountImported(ConfigSections.Connection, param));
+        Assert.Equal(3, ConfigIdentity.CountImported(ConfigSections.Param, param) - 1); // the kept item's groupId counts as before
+
+        foreach (var name in new[] { "Network.Enabled", "Network.Media", "HTTPS.Ciphers", "Network.Interface.I0.Link.MTU", "Network.Interface.I1.dot1x.Enabled", "System.AlternateBoaPort", "Network.DNSServer1", "Network.Resolver.ObtainFromDHCP" })
+        {
+            Assert.True(DangerousParameters.IsDangerous(name), name);
+            Assert.True(ConfigIdentity.IsConnection(name), name);
+        }
+
+        Assert.False(ConfigIdentity.IsConnection("Network.UPnP.Enabled"));
+    }
+
+    [Fact]
     public void Connection_settings_and_multicast_addresses_are_not_network_and_system_settings()
     {
         var file = ConfigFile.Parse(Fixtures.Export);
         var param = (JsonObject)ConfigIdentity.Clean(ConfigSections.Param, file.Data[ConfigSections.Param]!);
 
-        // Left out of the parameters: what decides how OADM reaches the device, and the MAC-derived multicast addresses.
-        Assert.False(((JsonObject)param["HTTPS"]!).ContainsKey("Enabled") || ((JsonObject)param["HTTPS"]!).ContainsKey("Port"));
-        Assert.NotNull(param["HTTPS"]!["Ciphers"]);
+        // Left out of the parameters: what decides how OADM reaches the device (the table of Configure devices), and the
+        // MAC-derived multicast addresses.
+        Assert.False(param.ContainsKey("HTTPS")); // Enabled, Port and Ciphers
         var system = (JsonObject)param["System"]!;
         Assert.False(system.ContainsKey("BoaPort") || system.ContainsKey("BoaGroupPolicy") || system.ContainsKey("WebInterfaceDisabled"));
-        Assert.Equal("0", (string?)system["AlternateBoaPort"]);
+        Assert.False(system.ContainsKey("AlternateBoaPort") || system.ContainsKey("HTTP2"));
+        Assert.Equal("Off", (string?)system["AccessLog"]);
         var network = (JsonObject)param["Network"]!;
-        Assert.False(((JsonObject)network["HTTP"]!).ContainsKey("AuthenticationPolicy"));
-        Assert.False(((JsonObject)network["IPv6"]!).ContainsKey("Enabled"));
-        Assert.Equal("yes", (string?)network["IPv6"]!["AcceptRA"]);
-        Assert.False(((JsonObject)network["InterfaceCollection"]![0]!["dot1x"]!).ContainsKey("Enabled"));
+        foreach (var name in new[] { "HTTP", "IPv6", "InterfaceCollection", "Enabled", "Media", "DNSServer1", "DNSServer2", "DomainName", "Resolver" })
+        {
+            Assert.False(network.ContainsKey(name), name); // link (MTU), IEEE 802.1X and DNS included
+        }
+
+        Assert.False(((JsonObject)network["RTSP"]!).ContainsKey("Port") || ((JsonObject)network["RTSP"]!).ContainsKey("Enabled"));
+        Assert.Equal("10", (string?)network["RTSP"]!["Timeout"]);
+        Assert.Equal("yes", (string?)network["SSH"]!["Enabled"]);
         Assert.All(((JsonArray)network["RTPCollection"]!).OfType<JsonObject>(), rtp =>
         {
             Assert.False(rtp.ContainsKey("VideoAddress") || rtp.ContainsKey("AudioAddress"));
@@ -110,21 +226,37 @@ public sealed class ConfigFileTests
 
         // The connection settings are an area of their own with only those values; collection items keep their group id.
         var connection = ConfigIdentity.Clean(ConfigSections.Connection, file.Data[ConfigSections.Param]!);
-        Assert.True(JsonNode.DeepEquals(JsonNode.Parse("""
+        var ciphers = (string?)file.Data[ConfigSections.Param]!["HTTPS"]!["Ciphers"];
+        Assert.True(JsonNode.DeepEquals(JsonNode.Parse($$"""
             {
-              "HTTPS": { "Enabled": "yes", "Port": "443" },
+              "HTTPS": { "Ciphers": "{{ciphers}}", "Enabled": "yes", "Port": "443" },
               "Network": {
-                "HTTP": { "AuthenticationPolicy": "recommended" },
-                "IPv6": { "Enabled": "no" },
-                "InterfaceCollection": [ { "dot1x": { "Enabled": "no" }, "groupId": "I0" } ]
+                "DNSServer1": "1.1.1.1",
+                "DNSServer2": "0.0.0.0",
+                "DomainName": "",
+                "Enabled": "yes",
+                "HTTP": { "AuthenticationPolicy": "recommended", "AuthenticationWithQop": "no" },
+                "IPv6": { "AcceptRA": "yes", "DHCPv6": "auto", "Enabled": "no" },
+                "InterfaceCollection": [
+                  { "Link": { "MTU": "1500" }, "dot1x": { "EAP": { "MultiAuthEnabled": "no" }, "EAPOLVersion": "3", "Enabled": "no" }, "groupId": "I0" }
+                ],
+                "Media": "auto",
+                "RTSP": { "Enabled": "yes", "Port": "554", "ProtViewer": "password" },
+                "RTSPS": { "Enabled": "no", "Port": "322" },
+                "Resolver": { "ObtainFromDHCP": "no" }
               },
               "System": {
+                "AlternateBoaPort": "0",
                 "BoaGroupPolicy": { "admin": "both", "operator": "both", "viewer": "both" },
                 "BoaPort": "80",
+                "HTTP2": { "AllowH2": "yes" },
                 "WebInterfaceDisabled": "no"
               }
             }
             """), connection), connection.ToJsonString());
+
+        // Every value of the parameters is in exactly one place: never imported, the connection area, or the rest.
+        Assert.Equal(30, ConfigIdentity.CountImported(ConfigSections.Connection, file.Data[ConfigSections.Param]!));
         Assert.Equal(ConfigSections.Param, ConfigSections.SourceKey(ConfigSections.Connection));
         Assert.Equal("time.v2", ConfigSections.SourceKey("time.v2"));
 

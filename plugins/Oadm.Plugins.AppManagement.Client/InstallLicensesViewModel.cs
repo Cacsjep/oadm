@@ -250,22 +250,18 @@ public sealed partial class InstallLicensesViewModel : ObservableObject
         IsBusy = true;
         BusyText = "Starting the tasks";
         ErrorText = null;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             await _ctx.InvokeAsync(AppManagementMethods.Run, AppManagementJson.Serialize(BuildRequest()), CancellationToken.None).ConfigureAwait(true);
             CloseRequested?.Invoke(this, true);
-        }
-#pragma warning disable CA1031 // Shown in the dialog.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            ErrorText = ServerErrors.Message(ex);
+            ErrorText = error;
         }
-        finally
-        {
-            IsBusy = false;
-            BusyText = null;
-        }
+
+        IsBusy = false;
+        BusyText = null;
     }
 
     [RelayCommand]

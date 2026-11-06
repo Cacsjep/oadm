@@ -346,7 +346,7 @@ public sealed partial class EdgeRecordingViewModel : ValidatingViewModel, IDispo
             SummaryText = string.Create(CultureInfo.CurrentCulture, $"{(stopped ? "Download stopped" : "Download finished")}: {downloaded:N0} downloaded")
                 + (skipped > 0 ? string.Create(CultureInfo.CurrentCulture, $", {skipped:N0} already there") : string.Empty)
                 + (failed > 0 ? string.Create(CultureInfo.CurrentCulture, $", {failed:N0} failed") : string.Empty)
-                + " · " + EdgeRecordingFormat.Size(doneBytes) + " in " + folder;
+                + " · " + Oadm.Sdk.Formatting.ByteSize.Text(doneBytes) + " in " + folder;
         }
     }
 
@@ -436,7 +436,7 @@ public sealed partial class EdgeRecordingViewModel : ValidatingViewModel, IDispo
     private void UpdateDownloadProgress(int file, int totalFiles, long bytes, long? totalBytes, string? _)
     {
         ProgressValue = totalBytes is > 0 ? Math.Min(99.9, bytes * 100.0 / totalBytes.Value) : (file - 1) * 100.0 / Math.Max(1, totalFiles);
-        ProgressText = string.Create(CultureInfo.CurrentCulture, $"Downloading recording {file:N0} of {totalFiles:N0} · {EdgeRecordingFormat.Size(bytes)}")
+        ProgressText = string.Create(CultureInfo.CurrentCulture, $"Downloading recording {file:N0} of {totalFiles:N0} · {Oadm.Sdk.Formatting.ByteSize.Text(bytes)}")
             + (totalBytes is { } t ? " of " + EdgeRecordingFormat.AboutSize(t) : string.Empty);
     }
 

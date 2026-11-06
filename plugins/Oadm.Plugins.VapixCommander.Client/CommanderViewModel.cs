@@ -770,13 +770,13 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         CommandRef reference;
         Dictionary<string, System.Text.Json.JsonElement> values;
         string name;
-        bool writes;
+        var level = SafetyLevel.Read;
         if (SelectedRolloutItem is { } item)
         {
             reference = item.Ref;
             values = item.Values();
             name = item.Name;
-            writes = item.Writes;
+            level = item.Dangerous ? SafetyLevel.Dangerous : item.Writes ? SafetyLevel.Write : SafetyLevel.Read;
         }
         else
         {
@@ -784,10 +784,7 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
             return;
         }
 
-        if (writes && !await _host.ConfirmAsync(
-                "Send command",
-                $"\"{name}\" changes {device.Address}. Send it now?",
-                "Send").ConfigureAwait(true))
+        if (level != SafetyLevel.Read && !await _host.ConfirmAsync("Send command", SendConfirmation.Text(name, device.Address, level), "Send").ConfigureAwait(true))
         {
             return;
         }
@@ -796,10 +793,13 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         SendingText = "Sending the request to " + device.Address;
         try
         {
-            var reply = await _backend.TryAsync(
-                new TryCommandRequest { DeviceId = device.Id, Command = reference, Values = values, Confirmed = writes },
-                CancellationToken.None).ConfigureAwait(true);
-            TryResult = new TryResultViewModel(name, device.Address, reply.Outcome, reply.Error ?? (reply.NeedsConfirmation ? "The command changes the device and was not confirmed." : null));
+            var reply = await SendConfirmation.SendAsync(_backend, _host, name, device.Address, level, new TryCommandRequest { DeviceId = device.Id, Command = reference, Values = values }).ConfigureAwait(true);
+            if (reply is null)
+            {
+                return; // the user said no to what the server asked for
+            }
+
+            TryResult = new TryResultViewModel(name, device.Address, reply.Outcome, reply.Error ?? SendConfirmation.Refusal(reply));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -863,16 +863,37 @@ public sealed partial class CommanderViewModel : ValidatingViewModel
         StartingRolloutText = string.Create(CultureInfo.InvariantCulture, $"Starting the rollout on {targets.Count:N0} {(targets.Count == 1 ? "device" : "devices")}");
         try
         {
-            var reply = await _backend.RolloutAsync(
-                new RolloutRequest
+            // Only what the user was asked: the server refuses a change or a dangerous command without its answer.
+            var request = new RolloutRequest
+            {
+                DeviceIds = [.. targets.Select(t => t.Id)],
+                Commands = [.. RolloutItems.Select(i => new RolloutCommand { Command = i.Ref, Values = i.Values() })],
+                StopOnFirstError = StopOnFirstError,
+                Confirmed = writes.Count > 0,
+                ConfirmedDangerous = dangerous.Count > 0,
+                Owner = _host.OwnerName,
+            };
+            var reply = await _backend.RolloutAsync(request, CancellationToken.None).ConfigureAwait(true);
+
+            // The server decides from the filled-in requests: it can see a change the page did not. Ask then, once per question.
+            for (var asked = 0; reply.NeedsConfirmation && asked < 2; asked++)
+            {
+                var names = string.Join(Environment.NewLine, reply.ConfirmCommands.Select(n => "• " + n)) + Environment.NewLine + Environment.NewLine;
+                var count = string.Create(CultureInfo.InvariantCulture, $"{targets.Count} {(targets.Count == 1 ? "device" : "devices")}?");
+                var confirmed = reply.Dangerous
+                    ? await _host.ConfirmAsync("Dangerous commands", "These commands can restart devices, reset them or cut them off the network:" + Environment.NewLine + names + "Run them on " + count, "Run dangerous commands").ConfigureAwait(true)
+                    : await _host.ConfirmAsync("Run VAPIX commands", "These commands change the devices:" + Environment.NewLine + names + "Run them on " + count, "Run").ConfigureAwait(true);
+                if (!confirmed)
                 {
-                    DeviceIds = [.. targets.Select(t => t.Id)],
-                    Commands = [.. RolloutItems.Select(i => new RolloutCommand { Command = i.Ref, Values = i.Values() })],
-                    StopOnFirstError = StopOnFirstError,
-                    Confirmed = true,
-                    Owner = _host.OwnerName,
-                },
-                CancellationToken.None).ConfigureAwait(true);
+                    ClearStatus();
+                    return;
+                }
+
+                request.Confirmed = true;
+                request.ConfirmedDangerous |= reply.Dangerous;
+                reply = await _backend.RolloutAsync(request, CancellationToken.None).ConfigureAwait(true);
+            }
+
             if (reply.Error is not null)
             {
                 SetStatus(reply.Error, error: true);

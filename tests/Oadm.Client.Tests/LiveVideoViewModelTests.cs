@@ -291,6 +291,69 @@ public sealed class LiveVideoViewModelTests : IDisposable
     });
 
     [Fact]
+    public Task While_the_UI_thread_is_busy_one_picture_waits_and_the_newest_one_is_shown() => _ui.RunAsync(async () =>
+    {
+        var time = new FakeTimeProvider();
+        var ui = new CountingDispatcher(_ui);
+        using var video = new LiveVideoViewModel(_fakes.Api, _fakes.Decoders, ui, NullLogger.Instance, _settings, Instant, time);
+        video.SetViewport(1000, 560);
+        video.Start("a", title: "P3265-V");
+        var stream = await _fakes.StreamAsync(0);
+        stream.Send();
+        await TestSupport.WaitUntilAsync(() => video.State == LiveViewState.Live);
+        var shown = (LiveVideoFakes.FakeImage)video.Image!;
+        LiveVideoFakes.FakeDecoder decoder;
+        lock (_fakes.Decoders.Created)
+        {
+            decoder = Assert.Single(_fakes.Decoders.Created);
+        }
+
+        // 50 pictures arrive while the UI thread is busy (this test holds it until the stream thread decoded them all).
+        int posts = ui.Posts;
+        for (var i = 0; i < 50; i++)
+        {
+            stream.Send();
+        }
+
+        LiveVideoFakes.FakeImage[] images = [];
+        bool decoded = SpinWait.SpinUntil(() =>
+        {
+            images = [.. decoder.Images];
+            return images.Length == 51 && images[1..^1].All(i => i.Disposed);
+        }, Eventually.DefaultTimeout);
+
+        // Before: 50 pictures queued for the UI thread (about 8 MB each at 1080p), none released.
+        Assert.True(decoded, $"{images.Length - 1} of 50 decoded, {images.Skip(1).Count(i => i.Disposed)} released while the UI thread was busy");
+        Assert.Equal(posts + 1, ui.Posts); // one job waits for the UI thread, not one per picture
+        Assert.False(images[^1].Disposed); // the newest one waits
+        Assert.False(shown.Disposed); // still on the screen
+        Assert.Same(shown, video.Image);
+
+        time.Advance(TimeSpan.FromSeconds(2));
+        await TestSupport.WaitUntilAsync(() => ReferenceEquals(video.Image, images[^1])); // the UI thread is free again
+        Assert.True(shown.Disposed);
+        Assert.Equal("25.0 fps", video.Details.FrameRate); // the stream's rate: the replaced pictures count
+    });
+
+    /// <summary>Counts the jobs handed to the UI thread from other threads.</summary>
+    private sealed class CountingDispatcher(UiThread inner) : Oadm.Client.Infrastructure.IUiDispatcher
+    {
+        private int _posts;
+
+        public int Posts => Volatile.Read(ref _posts);
+
+        public void Post(Action action)
+        {
+            if (!inner.CheckAccess())
+            {
+                Interlocked.Increment(ref _posts);
+            }
+
+            inner.Post(action);
+        }
+    }
+
+    [Fact]
     public Task A_dropped_stream_reconnects_with_the_ring_and_the_reason() => _ui.RunAsync(async () =>
     {
         using var video = await LiveAsync();

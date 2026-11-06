@@ -15,6 +15,8 @@ public partial class DevicesView : UserControl
 {
     private LiveViewViewModel? _liveView;
     private DevicesViewModel? _viewModel;
+    private IDisposable? _addRefusal;
+    private IDisposable? _columnLayout;
 
     // Device card : live view split while the panel is open (about 65 : 35), kept when the user drags the splitter.
     private GridLength _deviceColumn = new(65, GridUnitType.Star);
@@ -282,6 +284,11 @@ public partial class DevicesView : UserControl
             _liveView = null;
         }
 
+        // The view model lives longer than this view (a logout closes the window): nothing of the view stays in its events.
+        _addRefusal?.Dispose();
+        _addRefusal = null;
+        _columnLayout?.Dispose();
+        _columnLayout = null;
         if (_viewModel is not null)
         {
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
@@ -300,8 +307,8 @@ public partial class DevicesView : UserControl
             ApplyItemsSource();
             vm.Toolbar.AttachTo(ToolbarPanel, vm.ToolbarContext, TrailingToolbarPanel);
             EmptyAddButton.Flyout = Toolbar.AddToolbarPlugin.CreateMenu(vm.ToolbarContext);
-            Toolbar.AddToolbarPlugin.FollowRefusal(EmptyAddButton, vm.ToolbarContext, null);
-            DeviceGridLayoutBinder.Attach(DeviceGrid, vm.Columns);
+            _addRefusal = Toolbar.AddToolbarPlugin.FollowRefusal(EmptyAddButton, vm.ToolbarContext, null);
+            _columnLayout = DeviceGridLayoutBinder.Attach(DeviceGrid, vm.Columns);
             _liveView = vm.LiveView;
             _liveView.PropertyChanged += OnLiveViewPropertyChanged;
             ApplyLiveViewColumns();

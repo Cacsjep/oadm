@@ -140,12 +140,19 @@ public sealed class PwdgrpApiTests
     [InlineData("Modified account joe.", "Modified")]
     [InlineData("Modified the account joe.", "Modified")]
     [InlineData("<html><body>Removed account joe.</body></html>", "Removed")]
+    [InlineData("Created account errorlog1.", "Created")] // the answer names the user: "error" in a name is no refusal
+    [InlineData("Modified account Terror7.", "Modified")]
+    [InlineData("Removed account error.", "Removed")]
+    [InlineData("<html><body>Created account errorlog1.</body></html>", "Created")]
     public void Write_success_answers(string body, string verb) => PwdgrpApi.EnsureWriteSucceeded(200, body, verb);
 
     [Theory]
     [InlineData(200, "Error: invalid password.")]
     [InlineData(200, "Error: account user name.")]
     [InlineData(200, "Something else")]
+    [InlineData(200, "error: account Created1 already exists.")] // a refusal that names a user like the success word
+    [InlineData(200, "<html><head><title>Error</title></head><body>Error: Created1 exists.</body></html>")]
+    [InlineData(200, "Request failed: Error: internal error.")]
     [InlineData(401, "")]
     [InlineData(500, "boom")]
     public void Write_failures_throw(int status, string body) =>

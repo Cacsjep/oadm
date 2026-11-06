@@ -310,16 +310,14 @@ public sealed partial class EstViewModel : ValidatingViewModel, IDisposable
             return;
         }
 
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var json = await _ctx.InvokeAsync(EstMethods.GetCertificate, EstJson.Serialize(new CertificateQuery(row.Source.SerialNumber!)), CancellationToken.None).ConfigureAwait(true);
             CertificateRequested?.Invoke(this, new CertificateDetails(EstJson.Deserialize<CertificateDescription>(json), $"Certificate · {row.Device} · {row.Profile}", DateTime.UtcNow));
-        }
-#pragma warning disable CA1031 // Shown to the user.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            await _ctx.ShowMessageAsync("View certificate", ServerErrors.Message(ex)).ConfigureAwait(true);
+            await _ctx.ShowMessageAsync("View certificate", error).ConfigureAwait(true);
         }
     }
 

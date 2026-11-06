@@ -86,11 +86,4 @@ public sealed class PolicyUiTests
         pki.Anchors.ServerCertificate = null;
         Assert.DoesNotContain((await PageAsync(pki, new CertificatesRequest { NoAuthorities = true })).Rows, r => r.Id == "oadm-server");
     }
-
-    [Theory]
-    [InlineData("https", "EST HTTPS")]
-    [InlineData("dot1x", "EST 802.1X")]
-    [InlineData("mqtt_a", "EST mqtt_a")]
-    public void The_policy_of_an_est_profile_is_named_like_the_rest_of_oadm(string profile, string expected) =>
-        Assert.Equal(expected, Oadm.Plugins.Est.Serving.EstPolicies.NameFor(new Oadm.Plugins.Est.EstProfile(profile, Oadm.Plugins.Est.ProfileUse.Https)));
 }

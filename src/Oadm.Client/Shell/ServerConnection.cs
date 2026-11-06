@@ -82,6 +82,11 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     public void Start()
     {
         Stop();
+        if (State != ConnectionState.Connected)
+        {
+            SetState(ConnectionState.Connecting, "Connecting to " + _api.ServerAddress); // the server of this login
+        }
+
         _cts = new CancellationTokenSource();
         CancellationToken ct = _cts.Token;
         _ = Task.Run(() => DeviceLoopAsync(ct), ct);
@@ -118,6 +123,36 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
         _cts = null;
     }
 
+    /// <summary>
+    /// Logout (UI thread): stops the streams and empties what they filled (devices, tasks, tags, the waiting list, compliance,
+    /// sites), so the next user, maybe of another server, never sees the last one's. What a stopped stream still had on its
+    /// way to the UI thread is dropped (<see cref="StillRuns"/>).
+    /// </summary>
+    public void SignOut()
+    {
+        Stop();
+        _devices.Clear();
+        _tasks.Reset([]);
+        _devices.Tags.Reset([]);
+        _devices.Waiting.Clear();
+        _devices.Compliance.Clear();
+        _devices.Sites.Clear();
+        _devices.Sites.SetFromDevices(false);
+        SetState(ConnectionState.Connecting, "Connecting to " + _api.ServerAddress);
+    }
+
+    /// <summary>
+    /// A batcher whose batches are dropped once its stream was stopped: a batch posted before a logout must not bring the
+    /// last session's rows back after <see cref="SignOut"/> emptied the stores.
+    /// </summary>
+    private ChangeBatcher<T> StillRuns<T>(Action<IReadOnlyList<T>> apply, CancellationToken ct) => new(_ui, items =>
+    {
+        if (!ct.IsCancellationRequested)
+        {
+            apply(items);
+        }
+    });
+
     public void Dispose() => Stop();
 
     partial void OnStateChanged(ConnectionState value)
@@ -136,7 +171,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     private async Task DeviceLoopAsync(CancellationToken ct)
     {
         TimeSpan delay = MinDelay;
-        var batcher = new ChangeBatcher<StreamItem<PreparedDeviceSnapshot, DeviceChanged>>(_ui, ApplyDevices);
+        var batcher = StillRuns<StreamItem<PreparedDeviceSnapshot, DeviceChanged>>(ApplyDevices, ct);
         while (!ct.IsCancellationRequested)
         {
             try
@@ -174,6 +209,11 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
                 int seconds = (int)delay.TotalSeconds;
                 _ui.Post(() =>
                 {
+                    if (ct.IsCancellationRequested)
+                    {
+                        return; // stopped meanwhile (logout): the state is the next login's
+                    }
+
                     _updates?.Disconnected();
                     SetState(ConnectionState.Disconnected, $"Server {_api.ServerAddress} unreachable, retrying in {seconds} s");
                 });
@@ -197,7 +237,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     private async Task TaskLoopAsync(CancellationToken ct)
     {
         TimeSpan delay = MinDelay;
-        var batcher = new ChangeBatcher<StreamItem<PreparedTaskSnapshot, TaskChanged>>(_ui, ApplyTasks);
+        var batcher = StillRuns<StreamItem<PreparedTaskSnapshot, TaskChanged>>(ApplyTasks, ct);
         while (!ct.IsCancellationRequested)
         {
             try
@@ -250,7 +290,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     private async Task TagLoopAsync(CancellationToken ct)
     {
         TimeSpan delay = MinDelay;
-        var batcher = new ChangeBatcher<TagList>(_ui, lists => _devices.Tags.Reset(lists[^1].Tags));
+        var batcher = StillRuns<TagList>(lists => _devices.Tags.Reset(lists[^1].Tags), ct);
         while (!ct.IsCancellationRequested)
         {
             try
@@ -291,7 +331,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     private async Task WaitingLoopAsync(CancellationToken ct)
     {
         TimeSpan delay = MinDelay;
-        var batcher = new ChangeBatcher<WaitingSummary>(_ui, summaries => _devices.Waiting.Apply(summaries[^1]));
+        var batcher = StillRuns<WaitingSummary>(summaries => _devices.Waiting.Apply(summaries[^1]), ct);
         while (!ct.IsCancellationRequested)
         {
             if (_session is null || _session.Has(Oadm.Sdk.Plugins.HostPermissionKeys.DevicesAddRemove))
@@ -336,7 +376,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     private async Task SitesLoopAsync(CancellationToken ct)
     {
         TimeSpan delay = MinDelay;
-        var batcher = new ChangeBatcher<SiteList>(_ui, lists => _devices.Sites.Apply(lists[^1]));
+        var batcher = StillRuns<SiteList>(lists => _devices.Sites.Apply(lists[^1]), ct);
         // O(1) per batch: the store counts the devices at a site; nothing to do while the server's list decides.
         void FromDevices() => _devices.Sites.SetFromDevices(_devices.DevicesAtSite > 0);
         void OnDevices(object? sender, DeviceStoreChangedEventArgs e)
@@ -448,7 +488,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     private async Task ComplianceChecksLoopAsync(CancellationToken ct)
     {
         TimeSpan delay = MinDelay;
-        var batcher = new ChangeBatcher<ComplianceCheckList>(_ui, lists => _devices.Compliance.ApplyChecks(lists[^1]));
+        var batcher = StillRuns<ComplianceCheckList>(lists => _devices.Compliance.ApplyChecks(lists[^1]), ct);
         while (!ct.IsCancellationRequested)
         {
             if (MaySeeCompliance)
@@ -492,13 +532,13 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     private async Task ComplianceResultsLoopAsync(CancellationToken ct)
     {
         TimeSpan delay = MinDelay;
-        var batcher = new ChangeBatcher<(IReadOnlyList<ComplianceResultEntry> Results, bool Reset)>(_ui, batches =>
+        var batcher = StillRuns<(IReadOnlyList<ComplianceResultEntry> Results, bool Reset)>(batches =>
         {
             foreach (var (results, reset) in batches)
             {
                 _devices.Compliance.ApplyResults(results, reset);
             }
-        });
+        }, ct);
         while (!ct.IsCancellationRequested)
         {
             if (MaySeeCompliance)
@@ -556,7 +596,7 @@ public sealed partial class ServerConnection : ObservableObject, IDisposable
     private async Task SessionLoopAsync(UserSession session, CancellationToken ct)
     {
         TimeSpan delay = MinDelay;
-        var batcher = new ChangeBatcher<UserInfo>(_ui, users => session.Update(users[^1]));
+        var batcher = StillRuns<UserInfo>(users => session.Update(users[^1]), ct);
         while (!ct.IsCancellationRequested)
         {
             try

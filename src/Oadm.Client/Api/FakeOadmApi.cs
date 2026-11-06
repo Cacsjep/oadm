@@ -8,6 +8,7 @@ using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Formatting;
 
 namespace Oadm.Client.Api;
 
@@ -1904,7 +1905,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 
             if (state == TaskStepState.Running && names[i] == UploadFirmwareStep)
             {
-                step.Detail = string.Create(CultureInfo.InvariantCulture, $"{step.Progress * 82 / 100} of 82 MB");
+                step.Detail = ByteSize.Progress(step.Progress * 82L * 1024 * 1024 / 100, 82L * 1024 * 1024);
             }
 
             task.Steps.Add(step);

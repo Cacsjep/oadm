@@ -92,7 +92,8 @@ falls back the rule turns off. An event that does not send the value never passe
   passwords. Optionally a second command when the rule turns off, for example to hide an overlay again. Commands marked
   dangerous need **Allow dangerous commands**. Text fields of the command take [placeholders](#placeholders).
 - **Send HTTP request**: calls a web service, for example a webhook of Teams or Slack or a building system. Choose a
-  [recipient](#recipients), then the method, query parameters, headers and a body as JSON, XML, text or form.
+  [recipient](#recipients), then the method, query parameters, headers and a body as JSON, XML, text or form. OADM does
+  not follow a redirect: the action fails and names where the address points to. Enter that address in the recipient.
 - **Send email**: sends a mail to a [recipient](#recipients), as text or HTML.
 - **Publish MQTT message**: publishes a message to a topic on an MQTT broker, a [recipient](#recipients).
 - **Write Modbus value**: writes on or off, a pulse, a number or text to a PLC or gateway, a [recipient](#recipients). Addresses count from 0.
@@ -115,7 +116,8 @@ Every text of an action can hold placeholders that OADM fills in when the rule r
 event, for example `{objectId}`. The **Placeholders** card next to the actions lists them; the icon copies one.
 
 In a JSON, XML or HTML body and in a JSON or XML TCP message OADM escapes each value, so `"objectID": "{objectId}"`
-stays valid whatever the event sends. Text sends the values as they are.
+stays valid whatever the event sends. Text sends the values as they are. A value never starts a new line in a TCP message: in
+Text and XML its line breaks and tabs are left out.
 
 **Send test** sends the email, the request or the message once right away, with sample values for the event and the
 first device of the trigger. For MQTT, Modbus and OPC UA it is off: use **Test** on the recipient, which only connects.
@@ -184,7 +186,11 @@ action with its result. The newest entries come first and new ones appear live. 
 
 - **Dead time** (default 10 s): after the rule ran for a device, that device is ignored for this long. **Max per
   minute** (default 60 runs per minute for the whole rule): further events are skipped. Both protect against a flickering
-  camera; skipped runs are noted in the event log.
+  camera. The event log notes the first skipped run of a minute, then how many more there were.
+- When too many actions run at once, an action that could not start within a minute is skipped and the event log
+  says so. An action that started runs on all its devices, however long that takes. Turning something off is never
+  skipped. A long pulse does not keep other actions waiting, and a rule whose target does not answer does not keep
+  the other rules waiting.
 - After a server restart OADM checks every event again and runs only what changed while it was down.
 - A failed action is logged; the next action of the rule still runs. OADM does not retry.
 - Devices that need a login, have no password yet or have a changed certificate are skipped.

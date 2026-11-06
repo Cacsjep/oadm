@@ -66,7 +66,7 @@ Layout, top to bottom:
    field: one device its reason ("The user name or password is wrong."), several "2 of 5 devices rejected it:
    10.0.0.48, 10.0.0.49" (other reasons: "2 of 3 devices failed: 10.0.0.48 (wrong user name or password), 10.0.0.49
    (Unreachable - ...)", at most 5 named, "+N more"). Fake mode accepts every password except "wrong" (10.0.0.23 is
-   Credentials required). Tests: `tests/Oadm.Server.Tests/DeviceLoginTests` (+ Perf 5,000 devices in one call),
+   Credentials required). Tests: `tests/Oadm.Server.Tests/DeviceLoginTests` (+ Perf the device limit in one call),
    `tests/Oadm.Client.Tests/DeviceLoginTests`.
    **Set password** (icon `lock`) is shown only while the selection holds a device with status
    Password not set (e.g. added by the DHCP server's automatic add) and follows the status live; it applies to those
@@ -190,7 +190,7 @@ failed polls are Debug only. Tests `DevicePollingRoundTests`, `DevicePollingSche
   `PlaintextStreamFilter`): a new connection and the Digest 401 challenge before the authorized request are not part of
   the round trip. Only Ok answers count; no header or an unreadable one keeps the last value. A reading less than 1 s from
   the stored one keeps the stored one, nothing is written or published (`ClockHealth.MinChangeMs`: the whole-second header
-  jitters by up to a second, 30,000 devices would publish every poll). Clamped to about 24.8 days either way (an int of
+  jitters by up to a second, 100,000 devices would publish every poll). Clamped to about 24.8 days either way (an int of
   ms). Through a site the relay's time is part of the round trip, nothing else changes.
 - NTP: the full refresh asks `getNTPInfo` (`ntp.cgi`, API `ntp` in the device's API list, any 1.x) for `enabled` and
   `synced` (`Device.NtpState`: Unknown, Synced, NotSynced, Off). Without the API, or when the read fails, Unknown; a failed
@@ -209,5 +209,5 @@ failed polls are Debug only. Tests `DevicePollingRoundTests`, `DevicePollingSche
   (default 2, 1..3600) or, with **NTP must be synced** (default on), NtpState NotSynced or Off; "Not measured yet" while the
   offset is unknown; not checked while the device is not Ok (`oadm.compliance.clock`, settings `allowedSeconds`, `ntpSynced`).
 - Tests: the offset from recorded `Date` headers with a fake clock (ahead, behind, the half second, missing header);
-  getNTPInfo parsing from fixtures; the event count follows device changes; 30,000 devices: sort and the count stay
+  getNTPInfo parsing from fixtures; the event count follows device changes; the device limit: sort and the count stay
   O(n).

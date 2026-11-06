@@ -187,18 +187,16 @@ public sealed partial class SwitchesViewModel : ObservableObject
             return;
         }
 
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             await _ctx.InvokeAsync(RadiusMethods.DeleteSwitch, RadiusJson.Serialize(new SwitchRef(row.Source.Id)), CancellationToken.None).ConfigureAwait(true);
             Rows.Remove(row);
             Selected = null;
             NotifyRows();
-        }
-#pragma warning disable CA1031 // Shown to the user.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            await _ctx.ShowMessageAsync("Delete switch", ServerErrors.Message(ex)).ConfigureAwait(true);
+            await _ctx.ShowMessageAsync("Delete switch", error).ConfigureAwait(true);
         }
     }
 
@@ -316,22 +314,18 @@ public sealed partial class SwitchDialogViewModel : ValidatingViewModel
     private async Task GenerateAsync()
     {
         IsBusy = true;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var reply = RadiusJson.Deserialize<GeneratedSecret>(await _ctx.InvokeAsync(RadiusMethods.GenerateSecret, null, CancellationToken.None).ConfigureAwait(true));
             Secret = reply.Secret;
             ShowSecret = true;
-        }
-#pragma warning disable CA1031 // Shown below the field.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            Validation.SetServerError(nameof(Secret), ServerErrors.Message(ex));
+            Validation.SetServerError(nameof(Secret), error);
         }
-        finally
-        {
-            IsBusy = false;
-        }
+
+        IsBusy = false;
     }
 
     private bool CanSave() => !IsBusy && IsFormValid;

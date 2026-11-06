@@ -39,7 +39,6 @@ public sealed class IssuingPolicyTests
         // The EST server's policy picks a certificate of the list (decision 2026-10-25); none before OADM PRO makes one.
         var est = Assert.Single(store.PoliciesOf(PolicyKinds.EstServer));
         Assert.Equal(("EST server", null, null), (est.Name, est.CertificateId, est.ValidDays));
-        Assert.DoesNotContain(store.All, p => p.Kind == PolicyKinds.LegacyServerCertificate);
         Assert.All(store.All.Where(p => PolicyKinds.IsIssuing(p.Kind)), p => Assert.Null(PolicyRules.Validate(p, Suites)));
         Assert.Contains(PkiService.IssuingOwner, store.Converted);
         Assert.Equal(365, pki.Service.DefaultValidDays);
@@ -214,9 +213,7 @@ public sealed class IssuingPolicyTests
                 ["All devices", "802.1X server", "OADM CA", "HTTPS", "IEEE 802.1X", "EST server"],
                 pki.Policies.All.Select(p => p.Name));
             Assert.Equal(45, pki.Policies.FirstOf(PolicyKinds.ExpiryWarning)!.Days); // nothing of stage 3 converted again
-            Assert.Equal(["oadm.pki", "oadm.radius", PkiService.IssuingOwner, PkiService.KindsOwner, PkiService.RadiusCaOwner, PolicyStore.PreviousCasOwner], pki.Policies.Converted);
-            var server = pki.Policies.ServerPolicy!; // its certificate's defaults (stage 3 had none)
-            Assert.Equal((CertificateAuthorityInfo.OadmId, 365, PolicyKeys.Ecc), (server.CaId, server.ValidDays!.Value, server.Key));
+            Assert.Equal(["oadm.pki", "oadm.radius", PkiService.IssuingOwner, PkiService.RadiusCaOwner, PolicyStore.PreviousCasOwner], pki.Policies.Converted);
         }
 
         await using var again = await PkiHarness.StartAsync(settings);
