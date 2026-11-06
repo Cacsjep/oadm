@@ -450,7 +450,9 @@ A core plugin runs inside the server for the server's lifetime and may have a pa
     `NotManaged`, `KeptHostName`, `NotVerified`). Call both off your hot path (a queue with a few workers, like the
     DHCP server's `DhcpDeviceAutoAdd`); the server writes the audit entries.
 - A contributed task plugin that only the page starts sets `ShowInMenus => false` and has no public constructor, so
-  the loader never registers it on its own.
+  the loader never registers it on its own. Without `Permissions` of its own it is a page task: start it with
+  `call.Tasks.RunAsync` from a page method (or its job), the method's `RequiredPermission` is the role check; nothing
+  else can start it (`TaskService.Run` refuses it).
 - **Video sources**: `IVapixClient.GetVideoSourcesAsync()` returns the sources the live view offers (`VideoSource`
   with camera number, name, sensor and resolutions); `VideoResolutions.Choose` picks the largest resolution that fits
   a box with the sensor aspect.

@@ -163,6 +163,13 @@ public sealed partial class TaskGrpcService(
             throw GrpcGuard.NotFound(UnknownTaskPlugin(request.PluginId));
         }
 
+        // A task only its page starts has no run key: the page's methods carry the rights, so Run refuses it for every caller
+        // (a payload sent here would skip them).
+        if (TaskRunPermissions.IsPageTask(task.Plugin))
+        {
+            throw new RpcException(new Status(StatusCode.PermissionDenied, TaskRunPermissions.PageTaskOnly));
+        }
+
         // The same check as call.Tasks of a plugin's call: PERMISSION_DENIED with what the role lacks (the interceptor's answer
         // to DeviceAccessRefusedException).
         TaskRunPermissions.Require(task.Plugin, payload, caller.Permissions, () => roles.Catalog);

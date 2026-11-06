@@ -370,7 +370,8 @@ The host side is in `docs/spec/plugins.md` "Host side of the call context".
   again when a queued task leaves the queue) and left out of `ListTaskPlugins`; a group owner's task runs under a
   `PluginCallMark` without all devices, so the package's `ctx.*` refuses inside it like in the owner's call.
   `TaskEngine.ForView(view, caller)` is the runner of a user's call (`call.Tasks`: the role's run permissions first, like
-  `Run`, `TaskRunPermissions`; outside ids refuse the run; cancel and
+  `Run`, `TaskRunPermissions`, except a page task of the calling page's own package, which starts on the method's
+  permission; the device view checks are the same for both; outside ids refuse the run; cancel and
   the active check only for the user's own tasks when the user has a group, another user's active task answers null,
   "cannot tell"; `AnyActiveAsync` answers for the tasks of the view's devices). The raw-id `RunAsync` (`ITaskRunner`) is
   the system runner; a caller with a group in `CallerContext` is refused outside the view (backstop, never without

@@ -145,7 +145,13 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   and `rollout` are audited; "Install in trusted root store" on the server asks with the CA's SHA-256 fingerprint and is
   audited. `TaskService.Run` needs every key `PermissionCatalog.RunKeys` names for the payload (refused before any task
   starts), and so does a run a core plugin starts through `call.Tasks` of the user's call or job (`TaskRunPermissions`, the
-  one check of both: PERMISSION_DENIED with the same "Your role does not allow: ..." text), `Query` any key of the task; `ListTaskPlugins` leaves out tasks without a key. Users with a device group
+  one check of both: PERMISSION_DENIED with the same "Your role does not allow: ..." text). **Page tasks** (hidden from
+  the menus, no permissions of their own: Edge storage tools, Action Rule Editor runs, VAPIX Commander rollouts) have no
+  key a role could hold (`TaskRunPermissions.IsPageTask`): through `call.Tasks` of a page method or job of their own
+  package they start without run keys, the method's permission (checked by the host before the plugin ran) is the check;
+  from another package they need the key like any task (Administrator only), and `TaskService.Run` refuses them for every
+  caller with PERMISSION_DENIED "This task starts only from its page." (a payload sent there would skip the page's finer
+  rights; tests `RoleTests`, `PermissionCatalogTests`). `Query` needs any key of the task; `ListTaskPlugins` leaves out tasks without a key. Users with a device group
   (docs/spec/device-scope.md "Plugins"): only packages with `minSdkVersion` 0.4.0 or later, never the methods a plugin
   declares with `RequiresAllDevices`, and the plugin's `ctx.Devices` / `Vapix` / `Tasks` / `EventStreams` / `System`
   refuse during their calls, in work started from the call and in their jobs (PERMISSION_DENIED); jobs, job ids and

@@ -23,6 +23,30 @@ public sealed class PermissionCatalogTests
         Assert.Contains(PermissionKeys.Task("t.hidden-own", "enroll"), keys); // still grantable while it is hidden
     }
 
+    /// <summary>
+    /// A page task (hidden, no permissions of its own) has no key in the catalog: only a page of its own package starts it
+    /// without the run keys; every other task and every other package keeps the role check.
+    /// </summary>
+    [Fact]
+    public void OnlyAPageOfTheSamePackageStartsAPageTaskWithoutRunKeys()
+    {
+        var registry = new PluginRegistry();
+        Register(registry, new Task("t.menu", showInMenus: true));
+        Register(registry, new Task("t.hidden", showInMenus: false));
+        Register(registry, new Task("t.hidden-own", showInMenus: false, new PermissionDefinition("enroll", "Enroll", "Enroll certificates.")));
+        var none = PermissionSet.None;
+        void Run(string task, string? package) =>
+            Oadm.Core.Tasks.TaskRunPermissions.Require(registry, task, null, none, refuseUnknown: true, package);
+
+        Run("t.hidden", "TEST.t.hidden"); // package ids compare without case
+
+        Assert.Throws<DeviceAccessRefusedException>(() => Run("t.hidden", null));
+        Assert.Throws<DeviceAccessRefusedException>(() => Run("t.hidden", "test.t.menu"));
+        Assert.Throws<DeviceAccessRefusedException>(() => Run("t.menu", "test.t.menu"));
+        Assert.Throws<DeviceAccessRefusedException>(() => Run("t.hidden-own", "test.t.hidden-own"));
+        Assert.Throws<ArgumentException>(() => Run("t.unknown", "test.t.hidden"));
+    }
+
     [Fact]
     public void PluginGroupsFollowTheRailOrderSoVisionComesRightAfterMonitoring()
     {

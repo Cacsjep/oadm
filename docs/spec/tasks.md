@@ -63,4 +63,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `json_each`); measured at 30,000 devices and 50,000 tasks: a page in under 1 s, a Watch snapshot of 10,000 in about 2 s. The Watch
   follows devices that leave (their tasks Removed at once) and enter (their tasks Added, like the snapshot) through tag,
   site and rule changes.
+- **Page tasks**: a task hidden from the menus (`ShowInMenus` false) without permissions of its own starts only through
+  `call.Tasks` of a page method or job of its own package, on that method's permission; `TaskService.Run` refuses it for
+  every caller ("This task starts only from its page.", [security.md](security.md)).
 - No scheduling, retry or recurrence.

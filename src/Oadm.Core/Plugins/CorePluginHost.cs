@@ -458,7 +458,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
             systemAllowed = !string.IsNullOrWhiteSpace(Answer(registered, method, p => p.SystemAccessReason(method), fallback: null));
         }
 
-        var call = new HostCallContext(caller, entry.CallVapix ?? _vapix, _tasks, entry.CallEventStreams, _viewWatcher, _taskOwners, _registry);
+        var call = new HostCallContext(caller, entry.CallVapix ?? _vapix, _tasks, entry.CallEventStreams, _viewWatcher, _taskOwners, _registry, registered.Origin.PackageId);
         return (call, new PluginCallMark(registered.Id, method, caller.HasAllDevices, systemAllowed) { ScopeKey = caller.View.ScopeKey });
     }
 

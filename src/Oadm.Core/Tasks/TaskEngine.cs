@@ -142,6 +142,17 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     }
 
     /// <summary>
+    /// <see cref="ForView"/> for the page call (or job) of a core plugin of the package <paramref name="pagePackageId"/>: a
+    /// page task of that package (<see cref="TaskRunPermissions.IsPageTask"/>) starts on the page method's permission.
+    /// </summary>
+    internal Sdk.Tasks.ITaskRunner ForPage(DeviceGroups.DeviceView view, TaskCaller caller, string? pagePackageId)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        ArgumentNullException.ThrowIfNull(caller);
+        return view.IsSystem ? this : new ViewTaskRunner(this, view, caller, pagePackageId);
+    }
+
+    /// <summary>
     /// The call of <paramref name="caller"/> with <paramref name="view"/> for task plugins (the task dialog's queries):
     /// devices, VAPIX clients and task runs only of the view.
     /// </summary>
