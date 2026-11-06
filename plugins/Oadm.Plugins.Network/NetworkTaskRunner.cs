@@ -48,7 +48,10 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
     internal const string KeepUnchanged = "Keep unchanged";
     internal const string DhcpReason = "OADM finds the device again at its new address.";
 
-    /// <summary>Runs the task. <paramref name="sections"/> limits the planned write steps (Assign IP address: DNS and IPv4 only).</summary>
+    /// <summary>
+    /// Runs the task. <paramref name="payload"/> is validated (once per run, <see cref="NetworkRunCache"/>);
+    /// <paramref name="sections"/> limits the planned write steps (Assign IP address: DNS and IPv4 only).
+    /// </summary>
     public async Task RunAsync(ITaskExecutionContext ctx, IDeviceInfo device, NetworkPayload payload, IReadOnlyList<StepKind> sections, CancellationToken ct)
     {
         var readIpv6Mode = sections.Contains(StepKind.Ipv6);
@@ -110,7 +113,7 @@ internal sealed class NetworkTaskRunner(ReachabilityOptions options, TimeProvide
         // Plan: Require(...) per method happens here, so an unsupported method fails before any write.
         var plan = await ctx.StepAsync(StepValidate, step =>
         {
-            var built = NetworkPlanner.Build(payload, device.Id, apis, current, device.Address);
+            var built = NetworkPlanner.BuildValidated(payload, device.Id, apis, current, device.Address);
             step.Complete(built.Steps.Count == 0
                 ? "Nothing to change"
                 : built.Steps.Count == 1 ? "1 section to change" : $"{built.Steps.Count} sections to change");

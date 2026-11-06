@@ -48,6 +48,15 @@ public static class NetworkPlanner
         ArgumentNullException.ThrowIfNull(connectionAddress);
 
         PayloadValidator.ThrowIfInvalid(payload);
+        return BuildValidated(payload, deviceId, apis, current, connectionAddress);
+    }
+
+    /// <summary>
+    /// <see cref="Build"/> for a payload the caller validated already: the task validates the whole batch once per run
+    /// (<c>NetworkRunCache</c>), not again for every device.
+    /// </summary>
+    internal static NetworkPlan BuildValidated(NetworkPayload payload, Guid deviceId, IReadOnlyList<DeviceApi> apis, CurrentNetworkSettings current, string connectionAddress)
+    {
         var entry = payload.Devices.TryGetValue(deviceId, out var e) ? e : null;
         if (entry is null)
         {

@@ -174,7 +174,10 @@ addresses are never probed ("10.0.0.48 is the device's own address"). When anyth
 "10.0.0.60 is already in use (answers ping). Nothing was changed." (or "(answers on port 80/443)") and nothing is sent,
 not even DNS. Skipped "DHCP: no static address is set" / "No static address is set".
 
-1. Parse and validate the payload for the whole batch. Invalid: fails with "... Nothing was changed."
+1. Parse and validate the payload for the whole batch, once per run: the device tasks of a run share the result
+   (`NetworkRunCache`, one per plugin: a run is its payload text, found by reference first, kept 10 minutes, at most 16
+   runs; a refusal is kept too) and take their entry by device id. Invalid: every task fails with the same
+   "... Nothing was changed." The planner's public `Build` still validates; the task calls `BuildValidated`.
 2. Fresh `GetApiListAsync`; read the current settings (getNetworkInfo, or param.cgi on legacy devices).
 3. Build the plan: method per section from the table in "Device API", `Require(...)` per method, device limits
    (`maxSupportedStaticNameServers`, interface with IPv4/IPv6). Anything unsupported fails with
@@ -239,4 +242,5 @@ dialog probes on the route of the query's device (the first selected).
 `tests/Oadm.Plugins.Network.Tests`: parsers from recorded answers (`Fixtures/`, MAC and serial anonymized), request
 building, validation, address assignment, following the device (`FollowAddressTests`, also a write without an answer:
 applied, not applied, nobody at either address, a refusal, a cancel), the task with fakes, the dialog
-view models, device groups, Perf scale tests and headless dialog screenshots. No write was ever sent to a real device.
+view models, device groups, the run cache (`RunCacheTests`: one parse per run, 100,000 devices in a Perf test), Perf
+scale tests and headless dialog screenshots. No write was ever sent to a real device.
