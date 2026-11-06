@@ -18,8 +18,9 @@ public sealed class PluginEventWatchOptions
     public TimeSpan? MaxRetryDelay { get; init; }
 
     /// <summary>
-    /// A read that failed or a stream that broke (never the cancellation that ends the watch), for a page that shows the
-    /// reason; the watch goes on after the wait. Called on the context of the watch, usually the UI thread.
+    /// A read that failed, an event that could not be applied or a stream that broke (never the cancellation that ends
+    /// the watch), for a page that shows the reason; the watch goes on after the wait. Called on the context of the
+    /// watch, usually the UI thread.
     /// </summary>
     public Action<Exception>? Failed { get; init; }
 
