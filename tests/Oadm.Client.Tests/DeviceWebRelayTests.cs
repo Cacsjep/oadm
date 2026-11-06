@@ -3,7 +3,12 @@ using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
 
+using Grpc.Core;
+
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+
+using NSubstitute;
 
 using Oadm.Client.Api;
 using Oadm.Client.DeviceWeb;
@@ -24,8 +29,17 @@ public sealed class DeviceWebRelayTests
         return (api, Guid.Parse(device.Id));
     }
 
-    private static HttpClient Browser(CookieContainer cookies) =>
-        new(new SocketsHttpHandler { CookieContainer = cookies, UseCookies = true, AllowAutoRedirect = true, UseProxy = false }) { Timeout = TimeSpan.FromSeconds(10) };
+    /// <summary>The embedded browser: like it, the requests say that they come from the relay's own page.</summary>
+    private static HttpClient Browser(CookieContainer cookies)
+    {
+        var browser = Bare(cookies);
+        browser.DefaultRequestHeaders.TryAddWithoutValidation("Sec-Fetch-Site", "same-origin");
+        return browser;
+    }
+
+    /// <summary>A client that sends only the headers a test gives it.</summary>
+    private static HttpClient Bare(CookieContainer cookies) =>
+        new(new SocketsHttpHandler { CookieContainer = cookies, UseCookies = true, AllowAutoRedirect = true, UseProxy = false }) { Timeout = TimeSpan.FromSeconds(30) };
 
     [Fact]
     public async Task The_start_address_hands_out_the_cookie_and_opens_the_page()
@@ -122,6 +136,7 @@ public sealed class DeviceWebRelayTests
 
         using var socket = new ClientWebSocket();
         socket.Options.Cookies = cookies;
+        socket.Options.SetRequestHeader("Origin", relay.Origin.GetLeftPart(UriPartial.Authority)); // like a browser
         socket.Options.AddSubProtocol("events");
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await socket.ConnectAsync(new Uri("ws://" + relay.Origin.Authority + "/vapix/ws-data-stream?sources=events"), timeout.Token);
@@ -161,6 +176,215 @@ public sealed class DeviceWebRelayTests
         var session = (DeviceWebRelay)await access.OpenAsync(Guid.Parse(ok.Id), CancellationToken.None);
         access.Dispose();
         Assert.True(session.IsDisposed);
+    }
+
+    [Fact]
+    public async Task On_the_shared_address_only_the_relays_own_page_gets_through()
+    {
+        // macOS: every relay is on 127.0.0.1 and the browser sends this relay's cookie to requests of every relay's page.
+        var (api, device) = await FakeAsync();
+        using var relay = new DeviceWebRelay(api, device, NullLogger.Instance, ownAddress: false);
+        using var other = new DeviceWebRelay(api, device, NullLogger.Instance, ownAddress: false);
+        Assert.Equal("127.0.0.1", relay.Origin.Host);
+        var own = relay.Origin.GetLeftPart(UriPartial.Authority);
+        var foreign = other.Origin.GetLeftPart(UriPartial.Authority);
+        var cookies = new CookieContainer();
+        using var browser = Bare(cookies);
+
+        // The browser's own first load: a page, no Origin, no Sec-Fetch-Site, no Referer.
+        using (var first = new HttpRequestMessage(HttpMethod.Get, relay.StartAddress("/")))
+        {
+            first.Headers.TryAddWithoutValidation("Accept", "text/html,application/xhtml+xml");
+            using var opened = await browser.SendAsync(first);
+            Assert.Equal(HttpStatusCode.OK, opened.StatusCode);
+        }
+
+        (string Method, string[] Headers)[] passes =
+        [
+            ("GET", ["Sec-Fetch-Site: same-origin"]), // a picture, a script, fetch of the page
+            ("GET", ["Sec-Fetch-Site: none", "Accept: text/html"]), // the tab opens a page itself
+            ("POST", ["Origin: " + own, "Sec-Fetch-Site: same-origin"]),
+            ("POST", ["Origin: " + own]),
+            ("GET", ["Accept: text/html"]), // a browser without Sec-Fetch-Site opens a page itself
+            ("GET", ["Referer: " + own + "/camera/index.html"]), // its page's picture
+        ];
+        foreach (var (method, headers) in passes)
+        {
+            using var response = await SendAsync(browser, relay, method, headers);
+            Assert.True(response.StatusCode == HttpStatusCode.OK, method + " " + string.Join(", ", headers));
+        }
+
+        (string Method, string[] Headers)[] refused =
+        [
+            ("GET", []), // another relay's page without a referrer: a picture, a script
+            ("GET", ["Referer: " + foreign + "/camera/index.html"]),
+            ("GET", ["Accept: text/html", "Referer: " + foreign + "/camera/index.html"]), // a frame in another relay's page
+            ("GET", ["Sec-Fetch-Site: same-site"]), // another port of 127.0.0.1
+            ("GET", ["Sec-Fetch-Site: same-site", "Accept: text/html"]),
+            ("GET", ["Sec-Fetch-Site: cross-site"]),
+            ("GET", ["Sec-Fetch-Site: same-site", "Referer: " + own + "/"]),
+            ("POST", ["Accept: text/html"]),
+            ("POST", ["Origin: null"]),
+            ("POST", ["Origin: null", "Sec-Fetch-Site: same-origin"]),
+            ("POST", ["Origin: " + foreign]),
+            ("POST", ["Origin: " + foreign, "Sec-Fetch-Site: same-origin"]),
+        ];
+        foreach (var (method, headers) in refused)
+        {
+            using var response = await SendAsync(browser, relay, method, headers);
+            Assert.True(response.StatusCode == HttpStatusCode.Forbidden, method + " " + string.Join(", ", headers));
+            // Not the lost-session page: the tab must not open the page again.
+            Assert.DoesNotContain(DeviceWebPages.SessionLostTitle, await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        }
+
+        // A WebSocket always names its page.
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var address = new Uri("ws://" + relay.Origin.Authority + "/vapix/ws-data-stream?sources=events");
+        using var socket = new ClientWebSocket();
+        socket.Options.Cookies = cookies;
+        socket.Options.SetRequestHeader("Origin", own);
+        await socket.ConnectAsync(address, timeout.Token);
+        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, timeout.Token);
+        foreach (var origin in new[] { null, foreign })
+        {
+            using var stranger = new ClientWebSocket();
+            stranger.Options.Cookies = cookies;
+            if (origin is not null)
+            {
+                stranger.Options.SetRequestHeader("Origin", origin);
+            }
+
+            await Assert.ThrowsAsync<WebSocketException>(() => stranger.ConnectAsync(address, timeout.Token));
+        }
+    }
+
+    [Fact]
+    public async Task On_its_own_address_a_request_without_these_headers_still_passes()
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            return; // no address of its own there
+        }
+
+        var (api, device) = await FakeAsync();
+        using var relay = new DeviceWebRelay(api, device, NullLogger.Instance);
+        using var browser = Bare(new CookieContainer());
+        await browser.GetStringAsync(relay.StartAddress("/"));
+
+        // The session cookie is SameSite=Strict and the address is the relay's alone: no other page's request carries it.
+        using var plain = await SendAsync(browser, relay, "GET", []);
+        Assert.Equal(HttpStatusCode.OK, plain.StatusCode);
+        using var foreign = await SendAsync(browser, relay, "POST", ["Origin: http://127.0.0.1:1"]);
+        Assert.Equal(HttpStatusCode.Forbidden, foreign.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_refusal_before_the_answer_is_a_page_that_says_why()
+    {
+        // The session ended, the device left the user's devices, the plugin was turned off: the server refuses the call.
+        var api = Refusing(new Status(StatusCode.NotFound, Oadm.Sdk.Devices.DeviceMessages.NoLongerAvailable(1)));
+        using var relay = new DeviceWebRelay(api, Guid.NewGuid(), NullLogger.Instance);
+        using var browser = Browser(new CookieContainer());
+
+        using var response = await browser.GetAsync(relay.StartAddress("/camera/index.html"));
+
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        Assert.Contains(Oadm.Sdk.Devices.DeviceMessages.NoLongerAvailable(1), await response.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_log_names_the_path_without_its_query()
+    {
+        // VAPIX queries carry passwords (pwdgrp.cgi?...&pwd=).
+        var api = Refusing(new Status(StatusCode.Unavailable, "The server is not reachable."));
+        var log = new ListLogger();
+        using var relay = new DeviceWebRelay(api, Guid.NewGuid(), log);
+        using var browser = Browser(new CookieContainer());
+
+        using var response = await browser.GetAsync(relay.StartAddress("/axis-cgi/pwdgrp.cgi?action=update&user=root&pwd=S3cret-pw"));
+
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        var entry = Assert.Single(log.Entries);
+        Assert.Contains("/axis-cgi/pwdgrp.cgi", entry, StringComparison.Ordinal);
+        Assert.DoesNotContain("S3cret-pw", entry, StringComparison.Ordinal);
+        Assert.DoesNotContain("?", entry, StringComparison.Ordinal);
+    }
+
+    private static async Task<HttpResponseMessage> SendAsync(HttpClient browser, DeviceWebRelay relay, string method, string[] headers)
+    {
+        using var request = new HttpRequestMessage(new HttpMethod(method), new Uri(relay.Origin, "/axis-cgi/param.cgi?action=list"));
+        if (method == "POST")
+        {
+            request.Content = new StringContent("a=1");
+        }
+
+        foreach (var header in headers)
+        {
+            var parts = header.Split(": ", 2);
+            request.Headers.TryAddWithoutValidation(parts[0], parts[1]);
+        }
+
+        return await browser.SendAsync(request);
+    }
+
+    /// <summary>A server whose Exchange accepts the request and then refuses the call before any answer.</summary>
+    private static IOadmApi Refusing(Status status)
+    {
+        var api = Substitute.For<IOadmApi>();
+        api.ExchangeDeviceWeb(default).ReturnsForAnyArgs(_ => new RefusedCall(status));
+        return api;
+    }
+
+    private sealed class RefusedCall(Status status) : IDeviceWebCall
+    {
+        public Task SendAsync(Contracts.V1.DeviceWebFrame frame, CancellationToken ct) => Task.CompletedTask;
+
+        public Task CompleteAsync() => Task.CompletedTask;
+
+        public async IAsyncEnumerable<Contracts.V1.DeviceWebFrame> ReadAllAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+        {
+            await Task.Yield();
+            if (status.StatusCode != StatusCode.OK)
+            {
+                throw new RpcException(status);
+            }
+
+            yield break;
+        }
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class ListLogger : ILogger
+    {
+        private readonly Lock _gate = new();
+        private readonly List<string> _entries = [];
+
+        public IReadOnlyList<string> Entries
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return [.. _entries];
+                }
+            }
+        }
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            lock (_gate)
+            {
+                _entries.Add(formatter(state, exception));
+            }
+        }
     }
 
     [Theory]

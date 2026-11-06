@@ -440,9 +440,10 @@ Without the OS browser runtime (WebView2, WebKitGTK) the page says what to insta
   loopback address `127.1.x.y`, so the devices' login cookies never mix; macOS 127.0.0.1,
   `Oadm.Client/DeviceWeb/DeviceWebRelay`), the server sends every request and WebSocket to the device with the stored
   login and the pinned certificate (`DeviceWebService`); only the browser that opened the relay's one-time start address
-  gets its session cookie (others 403, another Host 400); requests stay on the device; a tab shows only its device (an
-  address outside its relay is cancelled, a website opens in the system browser); refused statuses are not contacted;
-  every open is audited. Permissions "oadm.web-view:show" and "oadm.web-view:open" (full device control), both
+  gets its session cookie (others 403, another Host 400; on the shared 127.0.0.1 of macOS only requests of the relay's
+  own page pass: `Origin`, `Sec-Fetch-Site`, else `Referer` or a page load); requests stay on the device; a tab shows
+  only its device (an address outside its relay is cancelled, a website opens in the system browser); the logs name
+  paths without their query; refused statuses are not contacted; every open is audited. Permissions "oadm.web-view:show" and "oadm.web-view:open" (full device control), both
   off for the built-in Operator by default; without "open" the page says "Your role does not allow opening devices."
 - Device groups: no page methods; the tree lists only the user's devices and `DeviceWebService` takes the device from the
   user's view, so a tab's requests end when its device leaves the view (its tab closes like a removed device's).

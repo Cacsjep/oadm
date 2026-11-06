@@ -28,7 +28,8 @@ and `Oadm.Client/DeviceWeb`.
   because `login.cgi` hands out a session cookie with every 401 and accepts only the login together with that cookie; a
   refused try is sent once more with the device's new cookies (which the page gets too). Request bodies are buffered so
   they can be sent again (in memory up to 16 MB, beyond that in `<datafolder>/web-relay/`, deleted on close; at most
-  4 GB). A device that does not answer gives a small error page (502) with the shared device text. WebSockets: `VapixClient.ConnectRelayWebSocketAsync` (the page brings its own session
+  4 GB). A device that does not answer gives a small error page (502) with the shared device text. The debug log names
+  the path of a failed request without its query (VAPIX queries carry passwords). WebSockets: `VapixClient.ConnectRelayWebSocketAsync` (the page brings its own session
   token; a 401 of the upgrade is answered with the stored login, `WebSocketLogin`: Digest, Basic only over HTTPS), messages both ways, close handshake passed through.
 - **Client** (host, `Oadm.Client/DeviceWeb/`): `DeviceWebRelay` is a small HTTP/1.1 server, one per tab, each on its own
   loopback address `127.1.x.y:<random port>`: browsers keep cookies per host, not per port, and every Axis device uses
@@ -37,6 +38,12 @@ and `Oadm.Client/DeviceWeb`.
   (`oadm_relay_<port>`) on every system. Only `StartAddress` (one-time token) hands out the session
   cookie (HttpOnly, SameSite=Strict); requests without it get 403 (page title `DeviceWebPages.SessionLostTitle`: the tab
   opens the page again through the start address), a Host header other than the relay's own gets 400.
+  A request with another relay's or website's `Origin` gets 403. On the shared 127.0.0.1 the browser sends a relay's
+  cookie with the requests of every relay's page, so there only the relay's own page gets through (others 403):
+  `Origin`, when sent, is the relay's (never `null`); `Sec-Fetch-Site`, when sent, is `same-origin` or `none`; with
+  neither, the `Referer` is the relay's page or the browser opens a page itself (GET for `text/html`, no `Referer`).
+  A call the server refuses before its answer (session ended, device left the user's devices, plugin off) is a small
+  page (502) with the server's text; the debug log names the path without its query.
   Request bodies with a length or chunked, responses with their length or chunked, keep-alive, WebSocket upgrade
   (`WebSocket.CreateFromStream`). Device cookies lose `Domain`, `Secure` and `SameSite=None` (the relay is plain HTTP on
   loopback; the link to the device is the server's). `DeviceWebAccess` is the page's `ICorePluginClientContext.DeviceWeb`
@@ -75,12 +82,13 @@ with "1 device is no longer available." and its tab closes like the tab of a rem
 
 - `tests/Oadm.Server.Tests/DeviceWebTests`: Open (refusals, audit), a request with body and headers through the fake
   network (stored login, Origin / Referer, Location, cookies), unreachable device, paths that leave the device, changed
-  certificate. Read-only hardware tests (camera 10.0.0.202 of `dev-cameras.yaml`): `Hardware/DeviceWebHardwareTests` (the
+  certificate, the log without the query. Read-only hardware tests (camera 10.0.0.202 of `dev-cameras.yaml`): `Hardware/DeviceWebHardwareTests` (the
   start page, `param.cgi`, the event WebSocket with and without a session token) and `DeviceWebLoginHardwareTests` (a
   SOAP read, `login.cgi` with its session cookie). `tests/Oadm.Core.Tests/Vapix/WebSocketLoginTests` (Digest against the
   RFC example, SHA-256, Basic only over HTTPS, cookie merge).
 - `tests/Oadm.Client.Tests/DeviceWebRelayTests`: cookie and token, 403 / 400 for others, bodies with a length and chunked,
-  WebSocket both ways, dispose, refusals.
+  WebSocket both ways, dispose, refusals, the shared address (requests of other pages refused, the own page's pass), a
+  call refused before its answer (502), the log without the query.
 - `tests/Oadm.Plugins.WebView.Tests`: tree, tabs, Close all, Back, presets and Custom, refusals, removed devices, addresses
   that leave the device, missing
   runtime, the device limit, the shared device icon, the device-group canary (`CanaryTests`); headless `web-view-page.png`, `web-view-custom-error.png`, `web-view-runtime-missing.png`

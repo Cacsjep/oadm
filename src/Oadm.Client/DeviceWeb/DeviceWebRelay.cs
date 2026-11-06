@@ -47,10 +47,17 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
     private readonly string _secret;
     private readonly string _host;
     private readonly string _cookie;
+    private readonly bool _shared;
     private readonly Task _accept;
     private int _disposed;
 
     public DeviceWebRelay(IOadmApi api, Guid deviceId, ILogger logger)
+        : this(api, deviceId, logger, ownAddress: !OperatingSystem.IsMacOS())
+    {
+    }
+
+    /// <param name="ownAddress">False: listen on 127.0.0.1 like on macOS (tests).</param>
+    internal DeviceWebRelay(IOadmApi api, Guid deviceId, ILogger logger, bool ownAddress)
     {
         ArgumentNullException.ThrowIfNull(api);
         ArgumentNullException.ThrowIfNull(logger);
@@ -61,8 +68,9 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
         // (browser history, the tab's address).
         _token = NewSecret();
         _secret = NewSecret();
-        _listener = Listen();
+        _listener = Listen(ownAddress);
         var endpoint = (IPEndPoint)_listener.LocalEndpoint;
+        _shared = endpoint.Address.Equals(IPAddress.Loopback);
         var port = endpoint.Port.ToString(CultureInfo.InvariantCulture);
         _host = endpoint.Address + ":" + port;
         _cookie = CookieName + "_" + port;
@@ -76,9 +84,9 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
     /// Windows and Linux route all of 127.0.0.0/8 to this computer; macOS only 127.0.0.1, which stays the fallback there
     /// and when the address cannot be bound.
     /// </summary>
-    private static TcpListener Listen()
+    private static TcpListener Listen(bool ownAddress)
     {
-        if (!OperatingSystem.IsMacOS())
+        if (ownAddress)
         {
             var n = (uint)Interlocked.Increment(ref s_nextAddress) % (250 * 250);
             var address = new IPAddress(new byte[] { 127, 1, (byte)(1 + (n / 250)), (byte)(1 + (n % 250)) });
@@ -192,9 +200,7 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
             return await StartAsync(request, stream, ct).ConfigureAwait(false);
         }
 
-        // Pages of other relays share the cookie scope on 127.0.0.1 (macOS): a request from another origin is refused.
-        if (request.Header("Origin") is { Length: > 0 } origin && origin != "null"
-            && !string.Equals(origin.TrimEnd('/'), "http://" + _host, StringComparison.OrdinalIgnoreCase))
+        if (!IsFromOwnPage(request))
         {
             await DrainBodyAsync(request, reader, ct).ConfigureAwait(false);
             await WriteSimpleAsync(stream, 403, "Forbidden", "Open the device from OADM.", ct).ConfigureAwait(false);
@@ -215,6 +221,41 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
         }
 
         return await RelayHttpAsync(request, reader, stream, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>False for a request of another page (another relay's page, a website).</summary>
+    private bool IsFromOwnPage(HttpRequestHead request)
+    {
+        var own = "http://" + _host;
+        var origin = request.Header("Origin") is { Length: > 0 } sent ? sent : null;
+        var ownOrigin = origin is not null && string.Equals(origin.TrimEnd('/'), own, StringComparison.OrdinalIgnoreCase);
+        if (!_shared)
+        {
+            // The relay's own address: the session cookie (SameSite=Strict) never goes with another page's request.
+            return origin is null or "null" || ownOrigin;
+        }
+
+        // On 127.0.0.1 shared by all relays (macOS) the browser sends this relay's cookie with every relay's page. Origin, when
+        // sent, is this relay (never null) and Sec-Fetch-Site, when sent, same-origin or none. With neither: the Referer is
+        // this relay's page, or the browser opens a page itself (GET for text/html, no Referer).
+        if (origin is not null && !ownOrigin)
+        {
+            return false;
+        }
+
+        if (request.Header("Sec-Fetch-Site") is { Length: > 0 } site)
+        {
+            return site.Equals("same-origin", StringComparison.OrdinalIgnoreCase) || site.Equals("none", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (origin is not null)
+        {
+            return true;
+        }
+
+        return request.Header("Referer") is { Length: > 0 } referer
+            ? referer.StartsWith(own + "/", StringComparison.OrdinalIgnoreCase)
+            : request.Method == "GET" && request.Header("Accept")?.Contains("text/html", StringComparison.OrdinalIgnoreCase) == true;
     }
 
     private async Task<bool> StartAsync(HttpRequestHead request, NetworkStream stream, CancellationToken ct)
@@ -331,6 +372,7 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
         var keepAlive = !request.WantsClose;
         var noBody = request.Method == "HEAD";
         var chunked = false;
+        var answered = false;
         try
         {
             await foreach (var frame in call.ReadAllAsync(ct).ConfigureAwait(false))
@@ -339,6 +381,7 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
                 {
                     case DeviceWebFrame.KindOneofCase.Response:
                         var response = frame.Response;
+                        answered = true;
                         noBody |= response.Status is 204 or 304 or < 200;
                         chunked = !noBody && !response.Headers.Any(h => h.Name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase));
                         await stream.WriteAsync(ResponseHead(response, chunked, keepAlive), ct).ConfigureAwait(false);
@@ -358,7 +401,13 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
         }
         catch (RpcException ex)
         {
-            LogExchangeFailed(request.Target, ex.Status.Detail);
+            var path = PathOnly(request.Target);
+            LogExchangeFailed(path, ex.Status.Detail);
+            if (!answered)
+            {
+                // Refused before any answer (the session ended, the device left the user's devices, the plugin is off).
+                await WriteSimpleAsync(stream, 502, "Bad Gateway", ex.Status.Detail, ct).ConfigureAwait(false);
+            }
         }
 
         // The call ended without a complete answer: the browser must not wait for more.
@@ -573,6 +622,13 @@ public sealed partial class DeviceWebRelay : IDeviceWebSession
             $"HTTP/1.1 {status} {reason}\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n");
         await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct).ConfigureAwait(false);
         await stream.WriteAsync(body, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>The path without its query, for the log: VAPIX queries carry passwords (pwdgrp.cgi?...&amp;pwd=).</summary>
+    internal static string PathOnly(string target)
+    {
+        var end = target.IndexOfAny(['?', '#']);
+        return end < 0 ? target : target[..end];
     }
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Web View relay: bad request ({Reason})")]

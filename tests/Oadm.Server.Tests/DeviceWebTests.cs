@@ -5,6 +5,9 @@ using Google.Protobuf;
 
 using Grpc.Core;
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
 using Oadm.Core.Auth;
 using Oadm.Server.DeviceWeb;
 using Oadm.Server.Tests.Support;
@@ -109,6 +112,47 @@ public sealed class DeviceWebTests
     }
 
     [Fact]
+    public async Task TheLogNamesThePathWithoutItsQuery()
+    {
+        // VAPIX queries carry passwords (pwdgrp.cgi?...&pwd=).
+        var network = new FakeAxisNetwork();
+        network.Add("10.9.0.1", FakeSerials.Make(1), "pw").Offline = true;
+        var log = new ListLogger();
+        await using var host = await TestServerHost.StartAsync(network, configureServices: services =>
+            services.AddSingleton<ILogger<DeviceWebGrpcService>>(log));
+        var device = await DeviceServiceTests.AddDeviceAsync(host, "10.9.0.1", 1);
+        const string Path = "/axis-cgi/pwdgrp.cgi?action=update&user=root&pwd=S3cret-pw";
+
+        var page = await ExchangeAsync(host, Request(device.Id, "GET", Path));
+        var socket = Request(device.Id, "GET", Path);
+        socket.Websocket = true;
+        var upgrade = await ExchangeAsync(host, socket);
+
+        Assert.Equal(502, page[0].Response.Status);
+        Assert.Equal(502, upgrade[0].Response.Status);
+        var entries = log.Entries;
+        Assert.Equal(2, entries.Count);
+        Assert.All(entries, entry =>
+        {
+            Assert.Contains("/axis-cgi/pwdgrp.cgi", entry, StringComparison.Ordinal);
+            Assert.DoesNotContain("S3cret-pw", entry, StringComparison.Ordinal);
+            Assert.DoesNotContain("?", entry, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void TheLoggedReasonOfARefusedLoginDoesNotNameTheQuery()
+    {
+        // The exception of a refused WebSocket login names the path with its query.
+        var ex = new Oadm.Core.Vapix.VapixAuthenticationException("/vapix/ws?pwd=S3cret-pw: HTTP 401", HttpStatusCode.Unauthorized);
+
+        Assert.DoesNotContain("S3cret-pw", DeviceWebGrpcService.ErrorText(ex), StringComparison.Ordinal);
+        Assert.Equal("/axis-cgi/pwdgrp.cgi", DeviceWebGrpcService.PathOnly("/axis-cgi/pwdgrp.cgi?action=add&pwd=x"));
+        Assert.Equal("/camera/index.html", DeviceWebGrpcService.PathOnly("/camera/index.html#/apps?x=1"));
+        Assert.Equal("/", DeviceWebGrpcService.PathOnly("/"));
+    }
+
+    [Fact]
     public async Task ARefusedDeviceGetsNoRequestAndRequestsWithoutOpenAreAuditedOnce()
     {
         var network = new FakeAxisNetwork();
@@ -188,4 +232,34 @@ public sealed class DeviceWebTests
 
     private static byte[] Body(List<Proto.DeviceWebFrame> frames) =>
         [.. frames.Where(f => f.KindCase == Proto.DeviceWebFrame.KindOneofCase.Body).SelectMany(f => f.Body.ToByteArray())];
+
+    private sealed class ListLogger : ILogger<DeviceWebGrpcService>
+    {
+        private readonly Lock _gate = new();
+        private readonly List<string> _entries = [];
+
+        public IReadOnlyList<string> Entries
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return [.. _entries];
+                }
+            }
+        }
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            lock (_gate)
+            {
+                _entries.Add(formatter(state, exception));
+            }
+        }
+    }
 }
