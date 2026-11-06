@@ -184,7 +184,7 @@ those devices and ignores ids that were not selected (SDK 0.5.0; the default run
 `FirmwareTaskDialog`). A dialog that should stay open while its task runs checks `ctx.CanRunTasks`, starts the run with
 `ctx.RunTaskAsync(deviceIds, payload, progress, ct)` (progress: every task's `TaskRunState`; the result once all ended),
 shows the result in the dialog and returns null (nothing runs twice); without `CanRunTasks` (older hosts) it returns the
-payload.
+payload. A task that was deleted while it ran is reported as `Cancelled` with an empty message.
 `ctx.QueryAsync(deviceId, method, payload, ct)` calls the plugin's query; `ctx.UploadAsync(path, progress, ct)`
 uploads a file (progress 0.0 to 1.0) and returns its id for the payload. Failures are `Grpc.Core.RpcException`; show
 `Status.Detail` to the user.

@@ -220,11 +220,16 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
   starts its task itself (TaskService.Run, the tasks show in the tasks pane too) and follows it in the client's task
   mirror (`TaskDialogContext`, `TaskStore`: no extra stream) as `TaskRunState` {DeviceId, TaskId, `TaskRunStatus`, Step,
   Message} until every task ended; it then returns null from `ShowAsync`. First user: EST - Certificate Enrollment.
+  The mirror keeps at most 10,000 tasks: a task of the run that left it (`TaskStore.Forgotten`: an ended one beyond the
+  limit, e.g. a run on more than 10,000 devices, or a deleted one) has ended for the run, with the last state the mirror
+  had (its result when it had ended; one that left while the client still saw it running is Cancelled without a message:
+  the server has no call for one task's result). The run follows from before `TaskService.Run` answers, so a task that
+  arrives, ends and leaves a full mirror before the answer names it counts too.
   `StartView` (SDK 0.7.0, DIM null): the part of the dialog a page asked for with
   `ICorePluginClientContext.RunTaskAsync(pluginId, deviceIds, startView, ct)`, a name the dialog defines (Applications:
   "license" or "license:<package name>"); null and unknown names: the usual start. Host: `TaskPluginRunner.RunAsync(...,
   startView, ct)` -> `IDialogService.ShowTaskPluginDialogAsync(dialog, devices, startView)` -> `TaskDialogContext`.
-  Tests `TaskDialogAndLogTests.DialogContextRunsItsTask...`.
+  Tests `TaskDialogAndLogTests.DialogContextRunsItsTask...`, `A_run_on_more_devices_than_the_task_list_keeps...`.
 - Records: `IPluginRecords.GetAsync(collection, key)` reads one record (DIM through `ListAsync`; the host and
   `MemoryPluginRecords` read only that row).
 - `ICorePluginPage.CreateView(ctx)`: the rail page; `HasOwnCards` (the view lays out its own cards), `ShowTasksPane` (the

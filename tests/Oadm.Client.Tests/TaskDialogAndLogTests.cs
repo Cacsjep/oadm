@@ -2,11 +2,14 @@ using System.Security.Cryptography;
 
 using Grpc.Core;
 
+using NSubstitute;
+
 using Oadm.Client.Api;
 using Oadm.Client.Devices;
 using Oadm.Client.Plugins;
 using Oadm.Client.Tasks;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Testing;
 
 namespace Oadm.Client.Tests;
 
@@ -64,6 +67,101 @@ public sealed class TaskDialogAndLogTests
         var ended = await run;
         Assert.Equal([Oadm.Sdk.Client.TaskRunStatus.Done, Oadm.Sdk.Client.TaskRunStatus.Failed], ended.Select(s => s.Status));
         Assert.Equal("Connection refused", ended[1].Message);
+    }
+
+    private static TaskChanged Change(string id, Guid device, TaskState state, string message = "", TaskChanged.Types.Kind kind = TaskChanged.Types.Kind.Updated) => new()
+    {
+        Kind = kind,
+        Task = new TaskInfo
+        {
+            Id = id, PluginId = FakeOadmApi.RestartPluginId, State = state, DeviceId = device.ToString(),
+            Devices = { new TaskDeviceResult { DeviceId = device.ToString(), State = state, Message = message } },
+        },
+    };
+
+    [Fact]
+    public async Task A_run_on_more_devices_than_the_task_list_keeps_ends_with_the_results_of_the_tasks_that_left_it()
+    {
+        // 10,002 tasks of one run: while more than the limit run, the mirror drops every task as soon as it ends.
+        int count = TaskStore.MaxTasks + 2;
+        string[] ids = [.. Enumerable.Range(0, count).Select(i => "t" + i)];
+        Guid[] devices = [.. Enumerable.Range(0, count).Select(_ => Guid.NewGuid())];
+        var api = Substitute.For<IOadmApi>();
+        api.RunTaskAsync(default!, default!, default, default!, default).ReturnsForAnyArgs((IReadOnlyList<string>)ids);
+        var tasks = new TaskStore(new DeviceStore());
+        var ctx = new TaskDialogContext(api, FakeOadmApi.RestartPluginId, tasks: tasks);
+        IReadOnlyList<Oadm.Sdk.Client.TaskRunState>? last = null;
+
+        var run = ctx.RunTaskAsync(devices, null, new SyncProgress<IReadOnlyList<Oadm.Sdk.Client.TaskRunState>>(s => last = s), CancellationToken.None);
+        tasks.ApplyBatch([.. ids.Select((id, i) => Change(id, devices[i], TaskState.Running, kind: TaskChanged.Types.Kind.Added))]);
+        Assert.Equal(count, tasks.Tasks.Count); // running tasks all stay
+
+        tasks.ApplyBatch([Change(ids[0], devices[0], TaskState.Done), Change(ids[1], devices[1], TaskState.Failed, "Connection refused")]);
+        Assert.Null(tasks.Find(ids[0])); // ended and beyond the limit: no longer in the mirror
+        Assert.Null(tasks.Find(ids[1]));
+        Assert.Equal(TaskStore.MaxTasks, tasks.Tasks.Count);
+        Assert.NotNull(last);
+        Assert.Equal(Oadm.Sdk.Client.TaskRunStatus.Done, last[0].Status); // read as queued before, for ever
+        Assert.Equal(Oadm.Sdk.Client.TaskRunStatus.Failed, last[1].Status);
+        Assert.Equal("Connection refused", last[1].Message);
+        Assert.False(run.IsCompleted);
+
+        tasks.ApplyBatch([.. ids.Skip(2).Select((id, i) => Change(id, devices[i + 2], TaskState.Done))]);
+        var ended = await run.WaitAsync(Eventually.DefaultTimeout);
+
+        Assert.Equal(count, ended.Count);
+        Assert.Equal(count - 1, ended.Count(s => s.Status == Oadm.Sdk.Client.TaskRunStatus.Done));
+        Assert.Equal(Oadm.Sdk.Client.TaskRunStatus.Failed, ended[1].Status);
+        Assert.Equal(devices, ended.Select(s => s.DeviceId));
+    }
+
+    [Fact]
+    public async Task A_task_that_ended_and_left_a_full_task_list_before_the_run_call_answered_counts_as_ended()
+    {
+        var api = Substitute.For<IOadmApi>();
+        var answer = new TaskCompletionSource<IReadOnlyList<string>>();
+        api.RunTaskAsync(default!, default!, default, default!, default).ReturnsForAnyArgs(answer.Task);
+        var tasks = new TaskStore(new DeviceStore()) { Capacity = 2 };
+        Guid other = Guid.NewGuid(), device = Guid.NewGuid();
+        tasks.ApplyBatch([Change("a", other, TaskState.Running, kind: TaskChanged.Types.Kind.Added), Change("b", other, TaskState.Running, kind: TaskChanged.Types.Kind.Added)]);
+        var ctx = new TaskDialogContext(api, FakeOadmApi.RestartPluginId, tasks: tasks);
+
+        var run = ctx.RunTaskAsync([device], null, null, CancellationToken.None);
+        // The stream is ahead of the call's answer: the task arrives, ends with a warning and is dropped (the list is full of running tasks).
+        tasks.ApplyBatch([Change("t", device, TaskState.Running, kind: TaskChanged.Types.Kind.Added), Change("t", device, TaskState.DoneWithWarnings, "Restarted late")]);
+        Assert.Null(tasks.Find("t"));
+        answer.SetResult(["t"]);
+        var ended = await run.WaitAsync(Eventually.DefaultTimeout);
+
+        var state = Assert.Single(ended);
+        Assert.Equal(Oadm.Sdk.Client.TaskRunStatus.DoneWithWarnings, state.Status);
+        Assert.Equal("Restarted late", state.Message);
+        Assert.Equal(device, state.DeviceId);
+    }
+
+    [Fact]
+    public async Task A_task_deleted_while_it_runs_ends_the_run_as_cancelled_without_a_message()
+    {
+        var api = Substitute.For<IOadmApi>();
+        api.RunTaskAsync(default!, default!, default, default!, default).ReturnsForAnyArgs((IReadOnlyList<string>)["t"]);
+        var tasks = new TaskStore(new DeviceStore());
+        Guid device = Guid.NewGuid();
+        var ctx = new TaskDialogContext(api, FakeOadmApi.RestartPluginId, tasks: tasks);
+        var reports = new List<IReadOnlyList<Oadm.Sdk.Client.TaskRunState>>();
+
+        var run = ctx.RunTaskAsync([device], null, new SyncProgress<IReadOnlyList<Oadm.Sdk.Client.TaskRunState>>(reports.Add), CancellationToken.None);
+        tasks.ApplyBatch([Change("t", device, TaskState.Running, kind: TaskChanged.Types.Kind.Added), Change("x", Guid.NewGuid(), TaskState.Done, kind: TaskChanged.Types.Kind.Added)]);
+        tasks.Apply(Change("x", Guid.NewGuid(), TaskState.Done, kind: TaskChanged.Types.Kind.Removed)); // another task leaves: nothing for this run
+        Assert.Equal(Oadm.Sdk.Client.TaskRunStatus.Running, reports[^1][0].Status);
+        Assert.False(run.IsCompleted);
+
+        tasks.Apply(Change("t", device, TaskState.Running, kind: TaskChanged.Types.Kind.Removed)); // Delete all, by another user
+        var ended = await run.WaitAsync(Eventually.DefaultTimeout);
+
+        var state = Assert.Single(ended);
+        Assert.Equal(Oadm.Sdk.Client.TaskRunStatus.Cancelled, state.Status);
+        Assert.Equal(string.Empty, state.Message);
+        Assert.Equal(device, state.DeviceId);
     }
 
     [Fact]
