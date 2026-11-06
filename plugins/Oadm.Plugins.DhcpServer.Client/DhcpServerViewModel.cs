@@ -29,8 +29,8 @@ public interface IDhcpPageUi
 /// </summary>
 public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposable
 {
-    /// <summary>Wait before watching again after the event stream ended or failed.</summary>
-    public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
+    /// <summary>The waits of the event watch (again after the stream ended or broke); a test passes its own.</summary>
+    public PluginEventWatchOptions EventWatch { get; init; } = new();
 
     /// <summary>
     /// How often the page of a user with a device group reads the state again while shown (<see cref="DhcpState.Renew"/>):
@@ -298,7 +298,7 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
             SetStatus("accent", "Checking for other DHCP servers", null);
         }
 
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             IReadOnlyList<string>? confirmed = null;
             while (true)
@@ -346,17 +346,13 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
                 ApplyStatus(reply.State);
                 return;
             }
-        }
-#pragma warning disable CA1031 // Shown to the user.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            SetStatus(ServiceStatus.Error, "Saving failed", Message(ex));
+            SetStatus(ServiceStatus.Error, "Saving failed", error);
         }
-        finally
-        {
-            IsSaving = false;
-        }
+
+        IsSaving = false;
     }
 
     private bool CanSave() => !IsSaving && IsFormValid && MayManage;
@@ -447,16 +443,14 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
 
     private async Task CallAsync(string method, string mac)
     {
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             await _ctx.InvokeAsync(method, DhcpJson.Serialize(new LeaseRequest(mac)), CancellationToken.None).ConfigureAwait(true);
             await LoadAsync().ConfigureAwait(true); // the live event follows too; reading keeps a host without events right
-        }
-#pragma warning disable CA1031 // Shown to the user.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            await _ctx.ShowMessageAsync("DHCP server", Message(ex)).ConfigureAwait(true);
+            await _ctx.ShowMessageAsync("DHCP server", error).ConfigureAwait(true);
         }
     }
 
@@ -480,46 +474,9 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
         }
     }
 
-    private async Task RunAsync(CancellationToken ct)
-    {
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                var events = _ctx.WatchEventsAsync(ct).GetAsyncEnumerator(ct);
-                try
-                {
-                    // Subscribe first, then read the state: nothing published in between is lost (lease versions deduplicate).
-                    var next = events.MoveNextAsync();
-                    await LoadAsync(ct).ConfigureAwait(true);
-                    while (await next.ConfigureAwait(true))
-                    {
-                        HandleEvent(events.Current);
-                        next = events.MoveNextAsync();
-                    }
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    return;
-                }
-#pragma warning disable CA1031 // The connection dropped: read again and watch again after a short delay.
-                catch (Exception)
-#pragma warning restore CA1031
-                {
-                }
-                finally
-                {
-                    await events.DisposeAsync().ConfigureAwait(true);
-                }
-
-                await Task.Delay(ReconnectDelay, ct).ConfigureAwait(true);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // page hidden
-        }
-    }
+    // Subscribe first, then read the state: nothing published in between is lost (lease versions deduplicate). After a
+    // drop the page waits, reads again and watches again.
+    private Task RunAsync(CancellationToken ct) => _ctx.RunAsync(LoadAsync, HandleEvent, EventWatch, ct);
 
     private void ApplyForm(DhcpConfig config)
     {
