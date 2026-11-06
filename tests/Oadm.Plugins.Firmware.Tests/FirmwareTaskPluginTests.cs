@@ -450,6 +450,106 @@ public sealed class FirmwareTaskPluginTests
         Assert.Equal("Wait for the device to come back: Failed", StepRun.Lines(ctx.Steps)[7]);
     }
 
+    /// <summary>An image whose name does not say its version and that holds the version the device already runs.</summary>
+    private static (RecordingContext Ctx, FakeAxisDevice Device, string Payload) SameVersion(FactoryDefaultMode mode = FactoryDefaultMode.None)
+    {
+        var (ctx, device, payload, _) = Setup("axis-os.bin", mode, allowDowngrade: mode != FactoryDefaultMode.None);
+        device.NewVersion = device.Version;
+        return (ctx, device, payload);
+    }
+
+    [Theory]
+    [InlineData(1)] // one lost probe
+    [InlineData(2)] // two in a row look like a restart, but the device says nothing waits to be committed
+    public async Task The_same_version_again_waits_for_the_restart_after_a_lost_probe(int lostProbes)
+    {
+        // Lost probes, then answers while the device still installs (nothing to commit yet), then the restart.
+        var (ctx, device, payload) = SameVersion();
+        device.LostProbes = lostProbes;
+
+        await Run(ctx, payload, new FakeDevice(), SteppedPlugin(), CancellationToken.None);
+
+        Assert.Equal(lostProbes + device.InstallingProbes + device.DownProbes + 1, device.Probes);
+        Assert.Equal(1, device.Commits);
+        Assert.True(device.Committed);
+        Assert.Empty(ctx.Warnings);
+        Assert.Equal(
+            Then("Upload AXIS OS to the device: Done", "Install AXIS OS: Done", "Wait for the device to come back: Done", "Verify version: Done", "Read commit state: Done", "Commit AXIS OS: Done", "Completed: Done"),
+            StepRun.Lines(ctx.Steps));
+        Assert.Equal("Not committed yet", StepRun.Detail(ctx.Steps, "Read commit state"));
+    }
+
+    [Fact]
+    public async Task The_same_version_again_without_a_lost_probe_commits_after_the_restart()
+    {
+        var (ctx, device, payload) = SameVersion();
+
+        await Run(ctx, payload, new FakeDevice(), SteppedPlugin(), CancellationToken.None);
+
+        Assert.Equal(device.DownProbes + 1, device.Probes);
+        Assert.Equal(1, device.Commits);
+        Assert.Equal(["Commit AXIS OS: Done", "Completed: Done"], StepRun.Lines(ctx.Steps)[^2..]);
+    }
+
+    [Theory]
+    [InlineData(1, "The device did not restart within 15 minutes after the upload and still runs 11.11.160.")]
+    [InlineData(2, "The device did not install the upload within 15 minutes: nothing waits to be committed. It still runs 11.11.160.")] // away for two probes: maybe a restart
+    public async Task The_same_version_again_that_never_restarts_fails_and_is_never_done(int lostProbes, string expected)
+    {
+        // Lost probes, then the device answers for good and nothing ever waits to be committed.
+        var (ctx, device, payload) = SameVersion();
+        device.LostProbes = lostProbes;
+        device.After = AfterUpgrade.NeverDown;
+
+        var ex = await Assert.ThrowsAsync<TimeoutException>(() => Run(ctx, payload, new FakeDevice(), SteppedPlugin(), CancellationToken.None));
+
+        Assert.Equal(expected, ex.Message);
+        Assert.Equal(0, device.Commits);
+        Assert.False(device.Committed);
+        Assert.Equal(
+            Then("Upload AXIS OS to the device: Done", "Install AXIS OS: Done", "Wait for the device to come back: Failed", "Verify version: Skipped", "Read commit state: Skipped", "Commit AXIS OS: Skipped"),
+            StepRun.Lines(ctx.Steps));
+        Assert.Equal(ex.Message, StepRun.Detail(ctx.Steps, "Wait for the device to come back"));
+    }
+
+    [Fact]
+    public async Task The_same_version_again_with_a_factory_default_waits_for_the_restart_too()
+    {
+        // The device commits by itself and OADM's login is gone after the reset: only the restart says that it happened.
+        var (ctx, device, payload) = SameVersion(FactoryDefaultMode.Soft);
+        device.LostProbes = 1;
+
+        await Run(ctx, payload, new FakeDevice(), SteppedPlugin(), CancellationToken.None);
+
+        Assert.Equal(1 + device.InstallingProbes + device.DownProbes + 1, device.Probes);
+        Assert.Equal(0, device.Commits);
+        Assert.Equal("Wait for the device to come back: Done", StepRun.Lines(ctx.Steps)[7]);
+        Assert.Contains(ctx.Warnings, w => w.StartsWith("Soft factory default applied", StringComparison.Ordinal));
+
+        // It never goes away: Failed, and the text says it did not restart.
+        var (never, stuck, again) = SameVersion(FactoryDefaultMode.Soft);
+        stuck.LostProbes = 1;
+        stuck.After = AfterUpgrade.NeverDown;
+        var ex = await Assert.ThrowsAsync<TimeoutException>(() => Run(never, again, new FakeDevice(), SteppedPlugin(), CancellationToken.None));
+        Assert.Equal("The device did not restart within 15 minutes after the upload and still runs 11.11.160.", ex.Message);
+    }
+
+    [Fact]
+    public async Task The_same_version_again_with_an_unreadable_status_takes_the_restart_as_the_proof()
+    {
+        // The status request is refused once the image is in: only a device that was away for more than one probe came back.
+        var (ctx, device, payload) = SameVersion();
+        device.LostProbes = 1;
+        device.StatusFailsAfterUpgrade = true;
+
+        // The commit then fails on the same unreadable status; what counts here is that the wait saw the restart.
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, payload, new FakeDevice(), SteppedPlugin(), CancellationToken.None));
+
+        Assert.Equal(1 + device.InstallingProbes + device.DownProbes + 1, device.Probes);
+        Assert.Equal("Wait for the device to come back: Done", StepRun.Lines(ctx.Steps)[7]);
+        Assert.Equal("Verify version: Done", StepRun.Lines(ctx.Steps)[8]);
+    }
+
     [Fact]
     public async Task Times_out_when_the_device_never_comes_back()
     {

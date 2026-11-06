@@ -679,6 +679,8 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
     /// (or already answers with another version), "Wait for the device to come back" until it answers with another
     /// version. One missed probe (a timeout, a site link) looks like a restart while the device still installs, so an
     /// answer with the old version keeps waiting; at the timeout the firmware manager says whether the device rolled back.
+    /// An image of the version the device already runs keeps waiting too, until the install is proven
+    /// (<see cref="InstalledAgainAsync"/>); without a proof at the timeout the task fails, never Done.
     /// </summary>
     private async Task<string?> WaitForRestartAsync(ITaskExecutionContext ctx, FwmgrClient fwmgr, string oldVersion, AxisOsVersion? expected,
         FactoryDefaultMode mode, string cancelled, CancellationToken ct)
@@ -713,8 +715,9 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             }
         }, ct).ConfigureAwait(false);
 
-        // An image of the version the device already runs comes back with it; any other answers with the old version
-        // only while it installs or after a rollback.
+        // An image of the version the device already runs comes back with it, so its answer needs a proof that the
+        // install happened (InstalledAgainAsync); any other answers with the old version only while it installs or
+        // after a rollback.
         var sameVersion = expected is not null && expected == AxisOsVersion.TryParse(oldVersion);
         return await StepAfterUploadAsync(ctx, Steps.WaitForDevice, cancelled, async step =>
         {
@@ -724,13 +727,25 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 return changedVersion;
             }
 
+            var missedProbes = 1; // in a row; the one that ended "Install AXIS OS"
+            var wasAway = false;
             while (true)
             {
                 await Task.Delay(_timings.PollInterval, _time, ct).ConfigureAwait(false);
                 var elapsed = _time.GetElapsedTime(start);
                 var version = await TryReadVersionAsync(ctx, ct).ConfigureAwait(false);
-                var stillOld = version is not null && !sameVersion && string.Equals(version, oldVersion, StringComparison.Ordinal);
-                if (version is not null && !stillOld)
+                var oldAgain = version is not null && string.Equals(version, oldVersion, StringComparison.Ordinal);
+                var stillOld = oldAgain && !sameVersion;
+                var unproven = false;
+                if (oldAgain && sameVersion)
+                {
+                    var away = missedProbes > 1;
+                    wasAway |= away;
+                    unproven = !await InstalledAgainAsync(fwmgr, mode, away, ct).ConfigureAwait(false);
+                }
+
+                missedProbes = version is null ? missedProbes + 1 : 0;
+                if (version is not null && !stillOld && !unproven)
                 {
                     step.Complete($"Answers with AXIS OS {version}");
                     return version;
@@ -738,6 +753,14 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
                 if (elapsed >= _timings.RestartTimeout)
                 {
+                    if (unproven)
+                    {
+                        // Never Done: nothing was committed, and an uncommitted install rolls back by itself.
+                        throw new TimeoutException(wasAway
+                            ? $"The device did not install the upload within {minutes} minutes: nothing waits to be committed. It still runs {oldVersion}."
+                            : NotRestarted(minutes, oldVersion));
+                    }
+
                     if (stillOld)
                     {
                         // Rolled back: the version check says so. Else the device never restarted.
@@ -762,9 +785,36 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                     throw new TimeoutException($"The device did not come back within {minutes} minutes after the AXIS OS upload.{hint}");
                 }
 
-                step.ReportProgress(Percent(elapsed), stillOld ? InstallsText : "Not answering yet");
+                step.ReportProgress(Percent(elapsed), stillOld || unproven ? InstallsText : "Not answering yet");
             }
         }, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// An image of the version the device already runs: the device answers the same before and after its restart, and
+    /// one missed probe looks like the restart. Whether the install happened: with the settings kept, the firmware
+    /// manager holds an upgrade that waits for the commit (the state "Commit AXIS OS" acts on); a status that says
+    /// nothing waits means the device still installs. Where the status cannot say (a factory default commits by
+    /// itself and removes OADM's login, a status that cannot be read): the device was away for more than one probe
+    /// (<paramref name="wasAway"/>).
+    /// </summary>
+    private static async Task<bool> InstalledAgainAsync(FwmgrClient fwmgr, FactoryDefaultMode mode, bool wasAway, CancellationToken ct)
+    {
+        if (mode != FactoryDefaultMode.None)
+        {
+            return wasAway;
+        }
+
+        try
+        {
+            return (await fwmgr.GetStatusAsync(ct).ConfigureAwait(false)).HasUncommittedUpgrade;
+        }
+#pragma warning disable CA1031 // No answer, a refusal or another answer: the status says nothing.
+        catch (Exception) when (!ct.IsCancellationRequested)
+#pragma warning restore CA1031
+        {
+            return wasAway;
+        }
     }
 
     private const string InstallsText = "The device installs AXIS OS";

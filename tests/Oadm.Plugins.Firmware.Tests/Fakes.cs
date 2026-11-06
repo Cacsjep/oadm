@@ -173,6 +173,7 @@ internal sealed class FakeAxisDevice : IVapixClient
     public bool Committed { get; private set; } = true;
 
     private bool _upgraded;
+    private bool _restarted;
     private int _downCount;
     private int _lostCount;
     private int _installingCount;
@@ -265,7 +266,8 @@ internal sealed class FakeAxisDevice : IVapixClient
             return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
         }
 
-        if (Version == NewVersion)
+        // The new image runs only after the restart (an image of the version the device already runs: the same version before and after).
+        if (_restarted)
         {
             return Json(UncommittedStatus());
         }
@@ -339,6 +341,7 @@ internal sealed class FakeAxisDevice : IVapixClient
         if (After == AfterUpgrade.Restart)
         {
             Version = NewVersion;
+            _restarted = true;
         }
 
         return Unrestricted(Version);

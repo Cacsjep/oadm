@@ -51,7 +51,10 @@ the version and commits it.
   install a file (none for up to date, no file for their model or refused); the device rolls back by itself unless OADM
   verified and committed (Commit AXIS OS waits up to 5 minutes while AXIS OS has not finished booting); an answer with
   the old version after the upload is never a rollback by itself (the wait goes on, at the timeout the device's status
-  decides); a cancel after the upload says that the device rolls back by itself and restarts; at most 4 devices at a time.
+  decides); an image of the version the device already runs is done only with a proof that it was installed (an upgrade
+  that waits for the commit, or the device was away for more than one probe where the status cannot say), else the task
+  fails at the timeout; a cancel after the upload says that the device rolls back by itself and restarts; at most 4
+  devices at a time.
 - Upgrade path (README "Upgrade path"): advice only, never refused; "Not recommended" only when an upgrade jumps over
   an LTS track, leaving the device's LTS track is a note in Details (OADM does not know the latest version of a track). A
   major version with breaking changes (13) shows one line with the Axis guide below the list, never one per device.
