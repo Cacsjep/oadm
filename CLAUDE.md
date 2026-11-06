@@ -59,8 +59,9 @@ src/
   Oadm.SiteNode/       OADM Site Node service and command line (README with the manual test plan)
   Oadm.SiteNode.Admin/ the node's local channel, texts and parsing shared by service, command line and app
   Oadm.SiteNode.App/   the OADM Site Node app (Avalonia)
-plugins/               layout and SDK guide: plugins/README.md; every bundled plugin has its entry (id, what it does, on
-                       or off by default, its rules) in docs/spec/bundled-plugins.md
+plugins/               folders, build and tests of a bundled plugin: plugins/README.md; the SDK guide is the website's
+                       developer pages (website/src/content/docs/dev/); every bundled plugin has its entry (id, what it
+                       does, on or off by default, its rules) in docs/spec/bundled-plugins.md
   Oadm.Plugins.<Name>/          server part: Oadm.Plugins.<Name>.Server.dll + plugin.json
   Oadm.Plugins.<Name>.Client/   optional Avalonia part: Oadm.Plugins.<Name>.Client.dll
                                 (both copy their output to artifacts/plugins/<plugin id>/)
@@ -154,6 +155,7 @@ must never break.
   every release, the online update is opt-in (Off by default) and never sends device data.
 - **[Plugin system](docs/spec/plugins.md)**: task and core plugins, SDK and client SDK, loading, plugins on and off,
   licenses, plugin documentation (every plugin has its `README.md`). New SDK members are default interface members.
+  The SDK is explained only in the website's developer pages; `plugins/README.md` holds repository matters.
 - **[Bundled plugins](docs/spec/bundled-plugins.md)**: one entry per plugin: id, what it does, on or off by default, the
   rules that must never break; the details in each plugin's README.
 - **[Settings and backup](docs/spec/settings-backup.md)**: server settings and the Settings page; encrypted backups
@@ -305,7 +307,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   `Oadm.Sdk.Client.Validation.ValidatingViewModel` (rules per property on its `FormValidator`); errors show once the
   field was edited, the user left it (an empty required field says so) or a submit was tried, never on an untouched
   form; submit buttons stay disabled while any error exists and their tooltip says why. Usage and the pieces:
-  `plugins/README.md` "Validation".
+  `website/src/content/docs/dev/ui.md` "Validation".
 - **HARD RULE, loading feedback.** Everything that can take longer than 1 s at 100,000 devices shows that it is working
   from the first moment: a page or dialog that waits for a read `ui:LoadingOverlay` (ring and text, Cancel stays usable),
   a list or card that reloads `ui:ProgressRow` or a `ui:ProgressRing` in place, a button that started the work disabled
@@ -334,7 +336,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
   - Server-to-UI streams go through `ChangeBatcher` (one dispatcher post per burst).
   - A plugin page that reads or changes devices starts from the user's choice (`PageDeviceChoice` first in its toolbar,
     nothing read before a choice; one device: `DevicePickerWindow.ShowOneAsync`), never from every device by itself
-    (`plugins/README.md` "Choose devices first").
+    (`website/src/content/docs/dev/core-plugins.md` "Choose devices first").
   - Server: per-device work has bounded parallelism and is spread over time (polling); writes for many
     devices or tasks are one transaction (`RemoveManyAsync`, `SetManyAsync`, `AddRangeAsync`,
     `DeleteManyAsync`); lists that can grow without bound are paged or limited (task history, Watch
