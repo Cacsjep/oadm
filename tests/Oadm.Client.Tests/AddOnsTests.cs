@@ -28,7 +28,10 @@ namespace Oadm.Client.Tests;
 /// </summary>
 public sealed class AddOnsTests : IDisposable
 {
-    private const string Server = AddOnClientSync.UnpinnedServer;
+    /// <summary>The pinned certificate of the server the tests sync with, and its cache folder.</summary>
+    private const string Fingerprint = "3F:A2:0B";
+
+    private const string Server = "3fa20b";
 
     private readonly string _root = Path.Combine(Path.GetTempPath(), "oadm-addons-" + Guid.NewGuid().ToString("N"));
 
@@ -105,7 +108,7 @@ public sealed class AddOnsTests : IDisposable
         await InstallAsync(api);
         api.AddOnClientPart = Part(File("Oadm.Plugins.Ocr.Client.dll", "client"), File("Oadm.Plugins.Ocr.Server.dll", "server"), File("client/Model.dll", "model"), File("plugin.json", "{}"));
         var loader = new RecordingLoader();
-        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance);
+        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance, () => Fingerprint);
 
         Assert.Equal(1, await sync.SyncAsync(CancellationToken.None));
 
@@ -121,7 +124,7 @@ public sealed class AddOnsTests : IDisposable
 
         // The next start takes the files of this version from the cache of this server.
         var restarted = new RecordingLoader();
-        using var next = new AddOnClientSync(api, Cache(), restarted, NullLogger<AddOnClientSync>.Instance);
+        using var next = new AddOnClientSync(api, Cache(), restarted, NullLogger<AddOnClientSync>.Instance, () => Fingerprint);
         Assert.Equal(1, await next.SyncAsync(CancellationToken.None));
         Assert.Equal(folder, Assert.Single(restarted.Loads).Folder);
         Assert.Equal(1, api.AddOnClientPartCalls);
@@ -134,12 +137,70 @@ public sealed class AddOnsTests : IDisposable
         Assert.Equal(2, api.AddOnClientPartCalls);
     }
 
+    [Fact]
+    public void The_cache_folder_of_a_server_holds_the_hex_digits_of_its_fingerprint() =>
+        Assert.Equal(Server, AddOnClientSync.CacheKey(Fingerprint));
+
     [Theory]
-    [InlineData(null, AddOnClientSync.UnpinnedServer)]
-    [InlineData("", AddOnClientSync.UnpinnedServer)]
-    [InlineData("3F:A2:0B", "3fa20b")]
-    public void The_cache_folder_of_a_server_holds_the_hex_digits_of_its_fingerprint(string? fingerprint, string key) =>
-        Assert.Equal(key, AddOnClientSync.CacheKey(fingerprint));
+    [InlineData(false, null)] // nothing tells the fingerprint
+    [InlineData(true, null)] // plain http, or fake mode: no pinned certificate
+    [InlineData(true, "")]
+    public async Task Without_a_pinned_server_certificate_no_client_part_is_fetched_or_loaded(bool asked, string? fingerprint)
+    {
+        using var api = new FakeOadmApi(TimeSpan.Zero);
+        await InstallAsync(api);
+        api.AddOnClientPart = Part(File("Oadm.Plugins.Ocr.Client.dll", "client"));
+        var loader = new RecordingLoader();
+        var log = new RecordingLogger();
+        using var sync = new AddOnClientSync(api, Cache(), loader, log, asked ? () => fingerprint : null);
+        var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance, sync);
+
+        // The plugin list loads as always (the Plugins page); the sync it starts brings nothing.
+        await store.LoadAsync(CancellationToken.None);
+        await store.AddOnsSynced;
+        await store.LoadAsync(CancellationToken.None);
+        await store.AddOnsSynced;
+        Assert.Equal(0, await sync.SyncAsync(CancellationToken.None));
+
+        Assert.NotEmpty(store.Packages);
+        Assert.Empty(loader.Loads);
+        Assert.Equal(0, api.AddOnClientPartCalls);
+        Assert.False(Directory.Exists(_root)); // nothing stored either
+        Assert.False(sync.AnyInstalling);
+        string line = Assert.Single(log.Lines); // said once, not at every sync
+        Assert.Contains("no pinned certificate", line, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_plain_http_address_has_no_pinned_fingerprint_also_when_the_same_host_and_port_were_pinned_over_TLS()
+    {
+        using var api = new GrpcOadmApi("https://127.0.0.1:1"); // never connects
+        var trust = new GrpcServerTrust(api);
+        api.Pinning.Trust(api.ServerUri, Fingerprint);
+        Assert.Equal(Fingerprint, trust.PinnedFingerprint);
+
+        api.SetServerAddress("http://127.0.0.1:1"); // the pin is kept per host and port
+        Assert.Null(trust.PinnedFingerprint);
+    }
+
+    private sealed class RecordingLogger : Microsoft.Extensions.Logging.ILogger<AddOnClientSync>
+    {
+        public List<string> Lines { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            lock (Lines)
+            {
+                Lines.Add(formatter(state, exception));
+            }
+        }
+    }
 
     [Fact]
     public async Task A_server_pinned_with_a_real_fingerprint_gets_its_client_part_stored_found_and_loaded()
@@ -218,7 +279,7 @@ public sealed class AddOnsTests : IDisposable
         await InstallAsync(api);
         api.AddOnClientPart = Part(File("Oadm.Plugins.Ocr.Client.dll", "client"));
         var loader = new RecordingLoader { FailNext = 1 };
-        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance);
+        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance, () => Fingerprint);
 
         Assert.Equal(0, await sync.SyncAsync(CancellationToken.None));
         Assert.Equal(1, await sync.SyncAsync(CancellationToken.None));
@@ -245,14 +306,14 @@ public sealed class AddOnsTests : IDisposable
         using var api = new FakeOadmApi(TimeSpan.Zero);
         await InstallAsync(api);
         api.AddOnClientPart = Part(File("Oadm.Plugins.Ocr.Client.dll", "client"));
-        using (var first = new AddOnClientSync(api, Cache(), new RecordingLoader(), NullLogger<AddOnClientSync>.Instance))
+        using (var first = new AddOnClientSync(api, Cache(), new RecordingLoader(), NullLogger<AddOnClientSync>.Instance, () => Fingerprint))
         {
             await first.SyncAsync(CancellationToken.None);
         }
 
         System.IO.File.WriteAllText(Path.Combine(VersionFolder(), "Oadm.Plugins.Ocr.Client.dll"), "changed on disk");
         var loader = new RecordingLoader();
-        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance);
+        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance, () => Fingerprint);
 
         Assert.Equal(1, await sync.SyncAsync(CancellationToken.None));
 
@@ -267,7 +328,7 @@ public sealed class AddOnsTests : IDisposable
         await InstallAsync(api);
         api.AddOnClientPart = Part(File("Oadm.Plugins.Ocr.Client.dll", "client"));
         var loader = new RecordingLoader();
-        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance);
+        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance, () => Fingerprint);
         await sync.SyncAsync(CancellationToken.None);
         var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance, sync);
         var vm = new AddOnsViewModel(api, store, NullLogger<AddOnsViewModel>.Instance, sync: sync);
@@ -296,7 +357,7 @@ public sealed class AddOnsTests : IDisposable
         await InstallAsync(api);
         api.AddOnClientPart = Part(File("Oadm.Plugins.Ocr.Client.dll", "client"), File("Other.dll", "changed on the way", sha: new string('0', 64)));
         var loader = new RecordingLoader();
-        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance);
+        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance, () => Fingerprint);
 
         Assert.Equal(0, await sync.SyncAsync(CancellationToken.None));
 
@@ -348,7 +409,7 @@ public sealed class AddOnsTests : IDisposable
         api.AddOnClientPart = Part(File("Oadm.Plugins.Ocr.Client.dll", "client"));
         var loader = new RecordingLoader();
         loader.Packages.Add(FakeOadmApi.TextRecognitionAddOnId); // a plugin folder (a checkout) has it
-        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance);
+        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance, () => Fingerprint);
 
         Assert.Equal(0, await sync.SyncAsync(CancellationToken.None));
         Assert.Equal(0, api.AddOnClientPartCalls);
@@ -362,7 +423,7 @@ public sealed class AddOnsTests : IDisposable
         api.ListPluginPackagesAsync(Arg.Any<CancellationToken>()).Returns(new PluginPackageList());
         api.ListAddOnsAsync(Arg.Any<CancellationToken>()).Returns<Task<AddOnList>>(_ => throw new RpcException(new Status(StatusCode.Unimplemented, "")));
         var loader = new RecordingLoader();
-        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance);
+        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance, () => Fingerprint);
         var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance, sync);
         var changed = 0;
         store.Changed += (_, _) => changed++;
@@ -384,7 +445,7 @@ public sealed class AddOnsTests : IDisposable
         await InstallAsync(api);
         api.AddOnClientPart = Part(File("Oadm.Plugins.Ocr.Client.dll", "client"));
         var loader = new RecordingLoader();
-        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance);
+        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance, () => Fingerprint);
         var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance, sync);
         var seen = new List<bool>();
         store.Changed += (_, _) => seen.Add(loader.HasPackage(FakeOadmApi.TextRecognitionAddOnId)
@@ -404,7 +465,7 @@ public sealed class AddOnsTests : IDisposable
         api.TextRecognitionState = AddOnState.AddOnInstalling; // another administrator installs it
         var loader = new RecordingLoader();
         var time = new FakeTimeProvider();
-        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance);
+        using var sync = new AddOnClientSync(api, Cache(), loader, NullLogger<AddOnClientSync>.Instance, () => Fingerprint);
         var store = new PluginPackageStore(api, NullLogger<PluginPackageStore>.Instance, sync, time);
 
         await store.LoadAsync(CancellationToken.None);
@@ -427,7 +488,7 @@ public sealed class AddOnsTests : IDisposable
         using var api = new FakeOadmApi(TimeSpan.Zero);
         await InstallAsync(api);
         api.AddOnClientPart = Part(File("Oadm.Plugins.Ocr.Client.dll", "client"));
-        using var sync = new AddOnClientSync(api, Cache(), new RecordingLoader(), NullLogger<AddOnClientSync>.Instance);
+        using var sync = new AddOnClientSync(api, Cache(), new RecordingLoader(), NullLogger<AddOnClientSync>.Instance, () => Fingerprint);
         await sync.SyncAsync(CancellationToken.None);
         string folder = Path.GetDirectoryName(VersionFolder())!;
 

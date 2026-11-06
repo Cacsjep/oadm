@@ -68,7 +68,11 @@ computer. A client loads the client part its server hands it: the user must trus
    client that cannot replace one that no longer matches loads nothing. A part that fails to load is tried again at the next
    sync. A
    removed add-on's client files, and the versions an add-on no longer uses, go at the client's next start. A client
-   never installs anything on its computer and needs no rights for it.
+   never installs anything on its computer and needs no rights for it. **Only from a pinned server:** the client part is
+   code the client runs, so the sync asks for nothing and loads nothing while the connection has no pinned certificate
+   (an `http://` server address, where `GrpcServerTrust.PinnedFingerprint` is null also when the same host and port were
+   pinned over TLS; fake mode): one log line, the Plugins page and the plugin list work as usual, the add-on's pages are
+   missing.
 7. **GPU when there is one, the CPU always works, no own service.** Vision plugins run inside the server's plugin; their
    native libraries (ONNX Runtime with its GPU providers) and model files are in the plugin's own folder for the server's
    platform and load through the plugin's load context (`PluginLoadContext.LoadUnmanagedDll`). A missing or failing GPU
