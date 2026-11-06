@@ -19,9 +19,6 @@ public sealed class TaskEngineOptions
     /// </summary>
     public Func<int>? MaxParallelTasksPerPluginSource { get; set; }
 
-    /// <summary>Unused since change-feed subscriptions coalesce per task instead of dropping changes; kept for compatibility.</summary>
-    public int ChangeFeedCapacity { get; set; } = 4096;
-
     /// <summary>Log entries kept per task; later entries are dropped (the last kept one says so). Default 1000.</summary>
     public int MaxLogEntriesPerTask { get; set; } = 1000;
 

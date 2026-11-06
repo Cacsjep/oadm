@@ -21,10 +21,8 @@ public sealed partial class TaskChangeFeed
     private readonly ILogger? _logger;
     private bool _completed;
 
-    /// <param name="capacity">Kept for source compatibility (must be at least 1); subscriptions coalesce instead of dropping.</param>
-    public TaskChangeFeed(int capacity = 4096, ILogger? logger = null)
+    public TaskChangeFeed(ILogger? logger = null)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
         _logger = logger;
     }
 

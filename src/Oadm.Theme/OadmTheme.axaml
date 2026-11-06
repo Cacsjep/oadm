@@ -606,10 +606,6 @@
     <Setter Property="Margin" Value="0,4,4,0" />
     <Setter Property="IsHitTestVisible" Value="False" />
   </Style>
-  <!-- No status dot on the device icon: the Status column already says it -->
-  <Style Selector="Ellipse.statusDot">
-    <Setter Property="IsVisible" Value="False" />
-  </Style>
 
   <!-- Count badge (navigation, tasks header): same chip look -->
   <Style Selector="Border.badge">
@@ -2335,12 +2331,6 @@
     <Setter Property="BorderThickness" Value="1" />
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
     <Setter Property="Padding" Value="14" />
-  </Style>
-  <Style Selector="Border.pickList">
-    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
-    <Setter Property="ClipToBounds" Value="True" />
   </Style>
   <Style Selector="ToggleButton.day">
     <Setter Property="MinWidth" Value="48" />
