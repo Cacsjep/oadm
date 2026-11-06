@@ -36,10 +36,10 @@ public sealed partial class ConfigFile
         Data = data;
         Model = model;
         FirmwareVersion = firmware;
-        var sections = data.Where(p => ConfigSections.IsKnown(p.Key) && p.Value is JsonObject)
+        var sections = data.Where(p => ConfigSections.Known.Contains(p.Key, StringComparer.Ordinal) && p.Value is JsonObject)
             .Select(p => new ConfigSection(p.Key, ConfigSections.Name(p.Key), ConfigIdentity.CountImported(p.Key, p.Value!)))
             .ToList();
-        UnknownSections = [.. data.Where(p => IsSectionKey(p.Key) && p.Value is JsonObject && !ConfigSections.IsKnown(p.Key)).Select(p => p.Key)];
+        UnknownSections = [.. data.Where(p => IsSectionKey(p.Key) && p.Value is JsonObject && !ConfigSections.Known.Contains(p.Key, StringComparer.Ordinal)).Select(p => p.Key)];
         if (data[ConfigSections.Param] is JsonObject param && ConfigIdentity.CountImported(ConfigSections.Connection, param) is > 0 and var count)
         {
             sections.Add(new ConfigSection(ConfigSections.Connection, ConfigSections.Name(ConfigSections.Connection), count));

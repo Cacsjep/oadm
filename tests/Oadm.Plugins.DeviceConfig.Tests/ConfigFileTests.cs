@@ -95,6 +95,7 @@ public sealed class ConfigFileTests
         var export = (JsonObject)JsonNode.Parse(Fixtures.Export)!;
         export["data"]!["firewall.v1"] = new JsonObject { ["activated"] = true };
         export["data"]!["param.v3"] = new JsonObject { ["Network"] = new JsonObject { ["HostName"] = "same-on-all" } };
+        export["data"]!["connection"] = new JsonObject { ["HTTPS"] = new JsonObject { ["Enabled"] = "no" } }; // not an area of a file
         var file = ConfigFile.Parse(export.ToJsonString());
 
         Assert.Equal(["firewall.v1", "param.v3"], file.UnknownSections);

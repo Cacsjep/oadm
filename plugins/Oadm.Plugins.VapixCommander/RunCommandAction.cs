@@ -9,7 +9,7 @@ namespace Oadm.Plugins.VapixCommander;
 /// Event rule action "Run VAPIX command": a saved command (with its stored values and
 /// passwords) or a library command that needs no input, when the rule turns on or fires, and optionally a second one
 /// when it turns off. Device safety like a rollout: the command must fit the device's cached API list, a command that
-/// changes the device re-checks a fresh API list first, and commands marked dangerous need "Allow dangerous commands".
+/// changes the device re-checks a fresh API list first, and dangerous commands (by their request, <see cref="RequestSafety"/>) need "Allow dangerous commands".
 /// Contributed by the VAPIX Commander, so it is available while that plugin is on.
 /// </summary>
 public sealed class RunCommandAction(VapixCommanderPlugin owner) : IActionPlugin
@@ -62,7 +62,7 @@ public sealed class RunCommandAction(VapixCommanderPlugin owner) : IActionPlugin
             }
             else if (RequestSafety.Of(command) == SafetyLevel.Dangerous && !allowDangerous)
             {
-                errors[key] = "This command is marked dangerous. Turn on \"Allow dangerous commands\" to use it.";
+                errors[key] = "This command is dangerous. Turn on \"Allow dangerous commands\" to use it.";
             }
         }
 
@@ -99,7 +99,7 @@ public sealed class RunCommandAction(VapixCommanderPlugin owner) : IActionPlugin
         var level = RequestSafety.Of(command, rendered);
         if (level == SafetyLevel.Dangerous && !invocation.GetBool("allowDangerous"))
         {
-            throw new InvalidOperationException($"{command.Name} is marked dangerous and \"Allow dangerous commands\" is off. Nothing was sent.");
+            throw new InvalidOperationException($"{command.Name} is dangerous and \"Allow dangerous commands\" is off. Nothing was sent.");
         }
 
         var cached = Compatibility.Check(command, device.Apis, device.HasVideo);
