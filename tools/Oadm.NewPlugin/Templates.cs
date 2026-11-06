@@ -207,7 +207,7 @@ internal static partial class Templates
 
             ## Scale
 
-            OADM manages up to 30,000 devices.
+            OADM manages up to 100,000 devices.
 
             - A page that reads or changes devices starts from the user's choice (`ui:PageDeviceChoice` first in its toolbar;
               one device: `DevicePickerWindow.ShowOneAsync`), never from every device by itself.

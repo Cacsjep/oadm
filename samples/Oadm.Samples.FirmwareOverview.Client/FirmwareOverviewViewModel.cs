@@ -104,7 +104,7 @@ public sealed partial class FirmwareOverviewViewModel : ObservableObject, IDispo
         try
         {
             ErrorText = null;
-            // All devices go as "all", not as every id: one short request also with 30,000 devices.
+            // All devices go as "all", not as every id: one short request also at the device limit.
             var request = Devices.Choice.Kind == DeviceChoiceKind.All
                 ? new RefreshRequest(true, [])
                 : new RefreshRequest(false, [.. Devices.Resolve().Select(d => d.Id)]);
