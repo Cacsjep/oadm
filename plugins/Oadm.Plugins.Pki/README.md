@@ -230,8 +230,14 @@ confirmed (then a Warning log line). Tests: `ClockTests`.
   only), .pfx / .p12 files (one password for all, `CertificateFiles`: wrong password under the field), table File,
   Certificate, Device, Status chip; a file must match exactly one selected device by MAC (serial in any notation, also
   `axis-<serial>`), IP or host name / FQDN in CN or SAN, one file per device; problems block Install. Install confirms,
-  uploads (`UploadAsync`) and sends `{purpose, password, files[{deviceId, fileId, fileName}], policyId}` (CA only: deviceId
-  empty = every device). IEEE 802.1X shows the IEEE 802.1X policy below Use for (`IssuingPolicyField`, read once through the
+  uploads (`UploadAsync`) and sends `{purpose, password, files[{deviceId, fileId, fileName}], policyId, sendKeysOverHttp}`
+  (CA only: deviceId empty = every device). The file check (`CertificateFiles.Read`, the dialog's row and "Read
+  certificate file" alike, before any write): password, one certificate with a key, not expired, not valid only later
+  (`NotValidYetProblem`: the server's clock, for 802.1X also the device's in "Check device clock"; 5 minutes ahead pass,
+  `EarlyStart`), and for 802.1X an extended key usage that allows client authentication (`Dot1xProblem`; none passes).
+  `sendKeysOverHttp` is the user's answer to "Send the keys anyway": without it the task refuses a device its client
+  reaches over HTTP in Check compatibility, before any request (`InstallPayload.KeysOverHttpRefused`; an older payload
+  without the field is not answered). IEEE 802.1X shows the IEEE 802.1X policy below Use for (`IssuingPolicyField`, read once through the
   task's query `listIssuingPolicies` when the purpose is first chosen, `ui:LoadingOverlay` over the card); the run sets that
   policy's identity, EAPOL version and RADIUS server CA (without `policyId` the first policy; a deleted one fails in Check
   compatibility, nothing written). Steps: Check compatibility, Read certificate file, then HTTPS: Read web server settings,

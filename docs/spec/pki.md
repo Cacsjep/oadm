@@ -726,8 +726,20 @@ fresh in Check compatibility before the first write; the menus use the cached AX
   the 3 devices that get a file are reached over HTTP: their private keys cross the network unencrypted.") and the check box
   **Send the keys anyway**; Install stays disabled until it is ticked (tooltip "Tick Send the keys anyway."). Never one
   question per device; counted once over the files (O(files)); nothing extra without an HTTP device or for CA certificates
-  only. The task logs a Warning line per device it sent a key to over HTTP ("cam48.pfx was sent with its private key over
-  HTTP: unencrypted on the network.", never the password or the key).
+  only. The answer travels in the payload (`InstallPayload.SendKeysOverHttp`) and the task enforces it: a device its
+  client reaches over HTTP is refused in Check compatibility, before any request, without it ("The device is reached over
+  HTTP: its private key would cross the network unencrypted. Start the task again and tick Send the keys anyway. Nothing
+  was changed."). A payload without the field (an older client) counts as not answered. The task logs a Warning line per
+  device it sent a key to over HTTP ("cam48.pfx was sent with its private key over HTTP: unencrypted on the network.",
+  never the password or the key).
+- **Install certificates, the file check** (`CertificateFiles`, the same in the dialog's row and in "Read certificate
+  file", before any write): the password, exactly one certificate with a key, not expired, and not valid only later
+  ("&lt;file&gt;: The certificate is not valid before 2026-11-08 10:00 UTC. Nothing was changed."). The start is compared with
+  the server's clock and, for IEEE 802.1X, again with the device's clock in "Check device clock" ("... The device's time
+  is 2026-11-06 09:12 UTC. Nothing was changed."); a start up to 5 minutes ahead passes, the allowance OADM's own
+  certificates get by starting 5 minutes early (`CertificateFiles.EarlyStart`). For IEEE 802.1X a certificate whose
+  extended key usage leaves out client authentication is refused ("&lt;file&gt;: The certificate is not for client
+  authentication, which IEEE 802.1X needs. Nothing was changed."); one without the extension, or with any use, passes.
 
 ## Code
 

@@ -113,7 +113,10 @@ are greyed and cannot be deleted. When OADM cannot read what a device uses its c
 
 HTTPS and IEEE 802.1X files hold a private key. When OADM reaches some of the devices over HTTP, the dialog says how
 many, because their keys cross the network unencrypted. Tick **Send the keys anyway** to install them, or run
-**Enable HTTPS** on these devices first.
+**Enable HTTPS** on these devices first. Without the tick, a device reached over HTTP gets nothing.
+
+A file is refused before anything is changed when its certificate has expired or is not valid yet, and for IEEE 802.1X
+when it is not for client authentication.
 
 A device without a matching file ends with a warning and nothing is sent.
 

@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 
+using Oadm.Plugins.DeviceClocks;
 using Oadm.Plugins.Pki.Ca;
 
 namespace Oadm.Plugins.Pki;
@@ -17,6 +18,15 @@ public sealed record Pkcs12Contents(
 {
     /// <summary>A certificate with its private key (HTTPS / 802.1X need one).</summary>
     public bool HasLeaf => LeafFingerprint is not null;
+
+    /// <summary>From when the certificate with the key is valid.</summary>
+    public DateTime? LeafNotBeforeUtc { get; init; }
+
+    /// <summary>
+    /// The certificate with the key may log in as a client (IEEE 802.1X): it has no extended key usage, or one with client
+    /// authentication (or any use).
+    /// </summary>
+    public bool LeafAllowsClientAuth { get; init; } = true;
 }
 
 /// <summary>Reads PKCS#12 files (.pfx / .p12) and matches them to devices (shared by the dialog and the task).</summary>
@@ -26,6 +36,39 @@ public static class CertificateFiles
     public const int MaxBytes = 1024 * 1024;
 
     public const string WrongPassword = "The password is wrong or the file is damaged.";
+
+    /// <summary>
+    /// A certificate may start this long after the clock it is compared with: the allowance OADM's own certificates get by
+    /// starting 5 minutes early (docs/spec/pki.md "Clock check before installing a certificate").
+    /// </summary>
+    public static readonly TimeSpan EarlyStart = CameraClock.CertificateStartBack;
+
+    /// <summary>A certificate whose extended key usage leaves out client authentication cannot log in to IEEE 802.1X.</summary>
+    public const string NotForClientAuth = "The certificate is not for client authentication, which IEEE 802.1X needs.";
+
+    private const string ClientAuthOid = "1.3.6.1.5.5.7.3.2";
+    private const string AnyUseOid = "2.5.29.37.0";
+
+    /// <summary>
+    /// Why a certificate that starts at <paramref name="notBeforeUtc"/> cannot be used at <paramref name="nowUtc"/> (the
+    /// device's clock where it is known, else the server's): it is not valid yet, beyond <see cref="EarlyStart"/>. Else null.
+    /// </summary>
+    public static string? NotValidYetProblem(DateTime notBeforeUtc, DateTime nowUtc) =>
+        notBeforeUtc > nowUtc + EarlyStart ? $"The certificate is not valid before {notBeforeUtc:yyyy-MM-dd HH:mm} UTC." : null;
+
+    /// <summary>IEEE 802.1X: the refusal for a certificate that is not for client authentication (<see cref="NotForClientAuth"/>), or null.</summary>
+    public static string? Dot1xProblem(Pkcs12Contents contents)
+    {
+        ArgumentNullException.ThrowIfNull(contents);
+        return contents.HasLeaf && !contents.LeafAllowsClientAuth ? NotForClientAuth : null;
+    }
+
+    private static bool AllowsClientAuth(X509Certificate2 certificate)
+    {
+        var usages = certificate.Extensions.OfType<X509EnhancedKeyUsageExtension>().ToList();
+        return usages.Count == 0
+            || usages.Exists(u => u.EnhancedKeyUsages.Cast<Oid>().Any(oid => oid.Value is ClientAuthOid or AnyUseOid));
+    }
 
     /// <summary>Reads the file; <see cref="Pkcs12Contents.Error"/> says why it cannot be used. Nothing is stored.</summary>
     public static Pkcs12Contents Read(byte[] bytes, string? password, DateTime nowUtc)
@@ -64,13 +107,18 @@ public static class CertificateFiles
 
             var leaf = leaves[0];
             var notAfter = leaf.NotAfter.ToUniversalTime();
+            var notBefore = leaf.NotBefore.ToUniversalTime();
             return new Pkcs12Contents(
                 CaCertificates.Fingerprint(leaf),
                 leaf.Subject,
                 notAfter,
                 NamesOf(leaf),
                 pems,
-                notAfter < nowUtc ? $"The certificate expired on {notAfter:yyyy-MM-dd}." : null);
+                notAfter < nowUtc ? $"The certificate expired on {notAfter:yyyy-MM-dd}." : NotValidYetProblem(notBefore, nowUtc))
+            {
+                LeafNotBeforeUtc = notBefore,
+                LeafAllowsClientAuth = AllowsClientAuth(leaf),
+            };
         }
         finally
         {

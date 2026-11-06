@@ -82,7 +82,7 @@ public sealed class KeysOverHttpTests
         await using var h = await TaskHarness.StartAsync(new FakeCamera { BaseAddress = new Uri(address) });
         using var ca = TestCa.Root("Customer CA");
         using var leaf = RenewDeleteInstallTests.LeafWithKey(ca, "10.0.0.48");
-        var payload = PkiJson.Serialize(new InstallPayload { Purpose = InstallPurpose.Https, Password = "secret", Files = [new InstallFile(h.Device.Id, "f1", "cam48.pfx")] });
+        var payload = PkiJson.Serialize(new InstallPayload { Purpose = InstallPurpose.Https, Password = "secret", Files = [new InstallFile(h.Device.Id, "f1", "cam48.pfx")], SendKeysOverHttp = warned });
 
         Assert.Null(await RenewDeleteInstallTests.RunWithFileAsync(h, payload, TestCa.Pfx("secret", leaf)));
 

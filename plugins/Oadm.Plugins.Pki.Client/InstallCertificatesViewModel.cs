@@ -304,6 +304,12 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject, IDi
                 continue;
             }
 
+            if (IsDot1x && CertificateFiles.Dot1xProblem(contents) is { } notClient)
+            {
+                SetRow(row, "Cannot be used", error: true, notClient);
+                continue;
+            }
+
             var matches = _devices.Where(d => CertificateFiles.Matches(contents.Names, d.Serial, d.Address, d.HostName)).Take(2).ToList();
             if (matches.Count == 0)
             {
@@ -380,6 +386,7 @@ public sealed partial class InstallCertificatesViewModel : ObservableObject, IDi
                 Password = Password,
                 Files = files,
                 PolicyId = IsDot1x ? Policy.PolicyId : null,
+                SendKeysOverHttp = HttpWarning is not null && SendKeysOverHttp, // the user's answer; the task refuses without it
             }));
         }
 #pragma warning disable CA1031 // Shown in the dialog; the user can retry.

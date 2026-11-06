@@ -188,6 +188,17 @@ public sealed record InstallPayload
     /// certificate). Null (older payloads): the first of the kind.
     /// </summary>
     public Guid? PolicyId { get; init; }
+
+    /// <summary>
+    /// The user's answer to "Send the keys anyway": a file with its private key may go to a device OADM reaches over HTTP.
+    /// False (also a payload without it, from an older client): not answered, such a device is refused
+    /// (<see cref="KeysOverHttpRefused"/>).
+    /// </summary>
+    public bool SendKeysOverHttp { get; init; }
+
+    /// <summary>The task's refusal for a device reached over HTTP without <see cref="SendKeysOverHttp"/>.</summary>
+    public const string KeysOverHttpRefused =
+        "The device is reached over HTTP: its private key would cross the network unencrypted. Start the task again and tick Send the keys anyway. Nothing was changed.";
 }
 
 /// <summary>One CA certificate of "Install CA certificates": the name for the step and the PEM.</summary>
