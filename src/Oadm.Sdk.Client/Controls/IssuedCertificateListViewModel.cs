@@ -858,7 +858,7 @@ public partial class IssuedCertificateListViewModel : ObservableObject
     protected async Task ViewAsync(IssuedCertificateRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var reply = await _source.GetCertificateAsync(row.Key, CancellationToken.None).ConfigureAwait(true);
             if (reply.Certificate is not { } certificate)
@@ -877,12 +877,10 @@ public partial class IssuedCertificateListViewModel : ObservableObject
             {
                 await dialogs.ShowCertificateAsync(details).ConfigureAwait(true);
             }
-        }
-#pragma warning disable CA1031 // Shown to the user.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            await ShowMessageAsync("View certificate", ServerErrors.Message(ex)).ConfigureAwait(true);
+            await ShowMessageAsync("View certificate", error).ConfigureAwait(true);
         }
     }
 

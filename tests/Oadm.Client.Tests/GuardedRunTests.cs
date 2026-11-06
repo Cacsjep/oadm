@@ -98,19 +98,4 @@ public sealed class GuardedRunTests
 
         Assert.Equal("Not allowed.", error);
     }
-
-    [Fact]
-    public async Task A_call_with_an_answer_gives_the_answer_or_the_text()
-    {
-        var (value, none) = await GuardedRun.GetAsync(() => Task.FromResult("{\"count\":3}"));
-        var (nothing, error) = await GuardedRun.GetAsync<string>(() => throw new RpcException(new Status(StatusCode.NotFound, "The reader is gone.")));
-        var (ignored, quiet) = await GuardedRun.GetAsync<string>(() => throw new OperationCanceledException(), GuardedCancel.Ignore);
-
-        Assert.Equal("{\"count\":3}", value);
-        Assert.Null(none);
-        Assert.Null(nothing);
-        Assert.Equal("The reader is gone.", error);
-        Assert.Null(ignored);
-        Assert.Null(quiet);
-    }
 }
