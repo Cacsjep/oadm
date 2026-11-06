@@ -18,6 +18,12 @@ public enum PlaceholderEscape
 
     /// <summary>Percent-encoded (URL parts, form bodies).</summary>
     Url = 3,
+
+    /// <summary>
+    /// Control characters removed (line breaks, tabs, NUL), so a value never adds a line: the message of a text protocol
+    /// where a line is a command.
+    /// </summary>
+    SingleLine = 4,
 }
 
 /// <summary>A placeholder of the event rule actions: "{serial}" and what it stands for.</summary>
@@ -116,6 +122,7 @@ public static partial class ActionPlaceholders
             PlaceholderEscape.Json => JsonEncodedText.Encode(value, System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping).ToString(),
             PlaceholderEscape.Xml => XmlEscape(value),
             PlaceholderEscape.Url => Uri.EscapeDataString(value),
+            PlaceholderEscape.SingleLine => value.Any(char.IsControl) ? string.Concat(value.Where(c => !char.IsControl(c))) : value,
             _ => value,
         };
     }

@@ -794,7 +794,7 @@ public sealed class EmailAction : IActionPlugin
   event log; there is no retry. Devices that refuse the login are skipped before the action is called.
 - **Settings of the plugin** (an SMTP server): `ctx.Settings` (the package's, or the owning core plugin's).
 - **Placeholders**: `ctx.Text(text)` fills `ActionPlaceholders.Fixed` and the event's values; `ctx.Text(text,
-  PlaceholderEscape.Json | Xml | Url)` escapes every value for a body or URL, never the text around it. `ActionPlaceholders.FirstUnknown(text, ctx)` names a `{name}` the run does not fill, for an action that must not send it literally. The rule dialog
+  PlaceholderEscape.Json | Xml | Url)` escapes every value for a body or URL, never the text around it; `SingleLine` removes the control characters of a value, for a text protocol where a line is a command. `ActionPlaceholders.FirstUnknown(text, ctx)` names a `{name}` the run does not fill, for an action that must not send it literally. The rule dialog
   lists the placeholders, and actions without devices get **Send test** (sample values; off on a persistent recipient, its Test only connects).
 - Samples: `plugins/Oadm.Plugins.Outputs/SetOutputAction.cs` (device action, choices, a visible-when field, turn off),
   `plugins/Oadm.Plugins.VapixCommander/RunCommandAction.cs` (contributed by a core plugin, dynamic choices, off command).

@@ -9,7 +9,7 @@ Spec: [Event rules](../../docs/spec/event-rules.md).
 | Topic | Decision |
 |---|---|
 | Recipients | The target and its login live in a recipient ([spec](../../docs/spec/recipients.md)), the action keeps the message. The plugin declares the types HTTP, Email and TCP (`NotificationRecipients`); the host merges the chosen recipient's fields into the settings, so the actions read `host` or `url` as before. A target takes no placeholders. |
-| Escaping | Placeholder values are escaped for where they go: URL-encoded in form bodies, JSON-escaped in JSON bodies and JSON TCP messages, XML-escaped in XML and HTML bodies and XML TCP messages. Text bodies, text emails and Text TCP messages get the values as they are. The text around them is never touched. One exception: a query name and value are URL-encoded as a whole, typed text included. The URL takes no placeholders. |
+| Escaping | Placeholder values are escaped for where they go: URL-encoded in form bodies, JSON-escaped in JSON bodies and JSON TCP messages, XML-escaped in XML and HTML bodies and XML TCP messages. Text bodies and text emails get the values as they are. A TCP message never gets a line from a value, since a line is often a command there: JSON escapes control characters, Text (`PlaceholderEscape.SingleLine`) and XML lose them (line breaks, tabs, NUL). The text around the values is never touched, a line break typed in the message stays. One exception: a query name and value are URL-encoded as a whole, typed text included. The URL takes no placeholders. |
 | HTTP login | None, Basic, Digest, Bearer token. Passwords and tokens are stored encrypted (password fields). |
 | Certificates | "Allow untrusted certificates" per recipient, off by default. |
 | Test | "Send test" in the rule dialog sends once with sample values (`EventService.TestAction`), Test in the recipient dialog once with the action's defaults (`EventService.TestRecipient`); both audited, with "Change event rules". |
@@ -50,7 +50,7 @@ Spec: [Event rules](../../docs/spec/event-rules.md).
 - Format Text / JSON / XML / Hex bytes, Message (code field colored by the format), Line end None / CR / LF / CR LF (not for hex),
   Wait for an answer (+ "Answer must contain"), timeout 1..120 s (default 10).
 - One connection per run: connect, write the message (UTF-8; hex: "02 41 0x42", spaces, commas and line breaks ignored),
-  close. With TLS the certificate must be trusted unless allowed.
+  close. A value of the event never adds a line (Escaping above); hex takes no placeholders. With TLS the certificate must be trusted unless allowed.
 - Without "Wait for an answer" success = the message was written; the log says "Sent 42 bytes to host:port". With it, the
   action reads until the answer contains the expected text (or, without one, until the first data), the other side closes
   or 4 KB arrived: no data = "The connection was closed without an answer.", another text = "The answer does not contain

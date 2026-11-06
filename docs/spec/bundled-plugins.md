@@ -644,7 +644,7 @@ Server only, always on, no page. Spec: `docs/spec/event-rules.md`.
   HTTP request**, **Send TCP message** and **Log entry**, without devices, and the recipient types HTTP, Email and TCP
   ([recipients.md](recipients.md)). Rules that must hold: a recipient holds the target and its login, the action the message; no
   placeholders in a target; placeholder values are escaped for where
-  they go, never the text around them; Send HTTP request never
+  they go, never the text around them; a value of the event never adds a line to a TCP message; Send HTTP request never
   follows a redirect; passwords and tokens are stored encrypted; untrusted certificates only with
   "Allow untrusted certificates" (off by default).
 - **Modbus** (`plugins/Oadm.Plugins.Modbus`, id `oadm.modbus`, our own client): the action **Write Modbus value** without devices, and the recipient

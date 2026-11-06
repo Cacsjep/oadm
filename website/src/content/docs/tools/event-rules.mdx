@@ -116,7 +116,8 @@ Every text of an action can hold placeholders that OADM fills in when the rule r
 event, for example `{objectId}`. The **Placeholders** card next to the actions lists them; the icon copies one.
 
 In a JSON, XML or HTML body and in a JSON or XML TCP message OADM escapes each value, so `"objectID": "{objectId}"`
-stays valid whatever the event sends. Text sends the values as they are.
+stays valid whatever the event sends. Text sends the values as they are. A value never starts a new line in a TCP message: in
+Text and XML its line breaks and tabs are left out.
 
 **Send test** sends the email, the request or the message once right away, with sample values for the event and the
 first device of the trigger. For MQTT, Modbus and OPC UA it is off: use **Test** on the recipient, which only connects.

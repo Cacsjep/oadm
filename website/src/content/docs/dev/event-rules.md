@@ -58,7 +58,8 @@ the dialog and on the server.
 - `ctx.Text(text)` fills the placeholders: `{rule}`, `{event}`, `{state}`, `{time}`, `{device}`, `{address}`, `{model}`,
   `{serial}`, `{tags}`, `{site}` (the device's site, or the site of a "Site offline" event), ..., and every value of the
   event by its name (`{port}`). `ctx.Text(text,
-  PlaceholderEscape.Json)` (or `Xml`, `Url`) escapes each value for a body or a URL.
+  PlaceholderEscape.Json)` (or `Xml`, `Url`) escapes each value for a body or a URL; `SingleLine` removes the control
+  characters of a value, so it never adds a line to a text protocol.
 - `Password` fields are stored encrypted and never sent back to a client. `ctx.Settings` are the plugin's settings.
 - A recipient (SDK 0.11.0) is a shared target several rules choose. Declare a `RecipientType(id, name, icon, fields, testActionId)`
   in `RecipientTypes` and add `ActionField.Recipient("recipient", "Recipient", [typeId])` to `Fields`. Before a run the host merges

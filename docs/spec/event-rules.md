@@ -67,7 +67,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   dialog shows the Placeholders list), `Validate`, `Describe`,
   `RunsOn(edge)`, `ExecuteAsync(IActionContext, ActionInvocation)`; `IActionContext` gives a pre-authenticated `Vapix` for
   the target, the plugin's settings, `Log`, `SessionAsync<T>` (the open connection of a persistent recipient) and `Text(text)` / `Text(text, PlaceholderEscape)` (None, Json, Xml, Url: each
-  value escaped for the format it goes into). The placeholders are one list,
+  value escaped for the format it goes into; SingleLine: control characters removed, a value never adds a line). The placeholders are one list,
   `Oadm.Sdk.Actions.ActionPlaceholders.Fixed` (everything OADM knows): {rule} {event} {state}
   {time} {date} {timeUtc}, device {device} {address} {hostName} {model} {serial} {mac} {firmware} {category} {tags}
   {status} {site} {webUrl} (the action's device, else the event's device), then every value of the event by its name; filled in
@@ -105,7 +105,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   followed and fails with "The address redirects to <host>. Enter the final address.") and **Send email** (MailKit;
   Email recipient: mail server, port, STARTTLS / TLS / none, optional login, "Allow untrusted certificates", From, To; action:
   Subject, Format Text / HTML, body) and **Send TCP message** (TCP recipient: host, port, optional TLS
-  with "Allow untrusted certificates"; action: Text / JSON / XML / Hex bytes, line end, "Wait for an answer" + "Answer must contain", timeout) and **Log entry** (a message, written to the server log, nothing else). All four run without devices,
+  with "Allow untrusted certificates"; action: Text / JSON / XML / Hex bytes, line end, "Wait for an answer" + "Answer must contain", timeout; a value of the event never adds a line: JSON escapes control characters, Text and XML lose them) and **Log entry** (a message, written to the server log, nothing else). All four run without devices,
   once each time the rule turns on or fires, optionally also when the rule turns off.
 - **First actions**: **Set output** (bundled always-on package `oadm.outputs`, `plugins/Oadm.Plugins.Outputs`, server only):
   output number 1..64, modes Follow the rule (stateful rules only; inactive on the off edge), Pulse N s (1..3600), Set
