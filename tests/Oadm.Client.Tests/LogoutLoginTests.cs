@@ -8,6 +8,7 @@ using NSubstitute;
 
 using Oadm.Client.Api;
 using Oadm.Client.Devices;
+using Oadm.Client.Devices.Toolbar;
 using Oadm.Client.Infrastructure;
 using Oadm.Client.Plugins;
 using Oadm.Client.Shell;
@@ -98,6 +99,7 @@ public sealed class LogoutLoginTests
             int devices = main.Devices.FilteredDevices.Count;
             DevicesView firstDevicesView = firstWindow.GetVisualDescendants().OfType<DevicesView>().Single();
             Assert.Same(main.Devices, firstDevicesView.DataContext);
+            int listeners = main.Devices.ToolbarContext.PermissionsChangedListeners; // the toolbar and this one view
 
             // A plugin page is open when the user logs out.
             NavItemViewModel item = main.NavItems.First(n => n.Page is CorePluginPageViewModel);
@@ -119,6 +121,8 @@ public sealed class LogoutLoginTests
             Assert.Null(TopLevel.GetTopLevel(firstView)); // no longer in the closed window
             Assert.Null(firstWindow.DataContext);
             Assert.Null(firstDevicesView.DataContext); // the closed window's device grid no longer listens to the view model
+            // Neither does the Devices view the logout built in the closed window (it went to the Devices page): only the toolbar is left.
+            Assert.Equal(listeners - 1, main.Devices.ToolbarContext.PermissionsChangedListeners);
             Assert.Empty(f.Store.Devices);
             Assert.Empty(f.Tasks.Tasks);
             Assert.Empty(main.Devices.FilteredDevices);
@@ -137,6 +141,8 @@ public sealed class LogoutLoginTests
             Assert.NotSame(firstWindow, secondWindow);
             await TestSupport.WaitUntilAsync(() => main.NavItems.Any(n => n.Key == key) && main.Devices.FilteredDevices.Count == devices);
             Assert.False(main.Devices.IsLoading);
+            await TestSupport.WaitUntilAsync(() => secondWindow.GetVisualDescendants().OfType<DevicesView>().Any(v => ReferenceEquals(v.DataContext, main.Devices)));
+            Assert.Equal(listeners, main.Devices.ToolbarContext.PermissionsChangedListeners); // the views of the last login are gone
 
             // The page of the new login is a new one, with its own context.
             var secondPage = (CorePluginPageViewModel)main.NavItems.Single(n => n.Key == key).Page;
@@ -151,6 +157,35 @@ public sealed class LogoutLoginTests
             main.Stop();
             secondWindow.Close();
             return true;
+        }, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// The view a logout from another page builds in the window it closes is never shown (never measured, its grid never
+    /// enters or leaves a visual tree): it lets go of the view model, which lives on, when it loses its DataContext.
+    /// </summary>
+    [Fact]
+    public async Task A_devices_view_that_was_never_shown_lets_go_of_the_view_model_with_its_DataContext()
+    {
+        await HeadlessSession.Shared.Dispatch(() =>
+        {
+            using var f = new DevicesFixture();
+            ToolbarContext context = f.Devices.ToolbarContext;
+            ColumnOptionViewModel option = f.Devices.Columns.Find("model")!;
+            Assert.True(option.IsVisible);
+
+            var view = new DevicesView { DataContext = f.Devices };
+            DataGridColumn column = view.FindControl<DataGrid>("DeviceGrid")!.Columns.Single(c => c.Tag as string == "model");
+            int listening = context.PermissionsChangedListeners; // the toolbar's own Add button and the view's
+            option.IsVisible = false;
+            Assert.False(column.IsVisible); // the view follows the column chooser
+
+            view.DataContext = null;
+            option.IsVisible = true;
+
+            Assert.Equal(listening - 1, context.PermissionsChangedListeners); // the toolbar lives on with the view model
+            Assert.False(column.IsVisible); // no longer follows
+            return Task.CompletedTask;
         }, CancellationToken.None);
     }
 
