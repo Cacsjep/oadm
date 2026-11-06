@@ -25,7 +25,7 @@ kept its own server settings.
 
 | Type | The recipient holds | The action keeps |
 |---|---|---|
-| HTTP | URL, login None / Basic / Digest / Bearer token with its user, password or token, Allow untrusted certificates | Method, query, headers, body, timeout, off edge |
+| HTTP | URL, login None / Basic / Digest / Bearer token with its user, password or token, Allow untrusted certificates. The URL is the final address: a redirect is never followed (the body, the headers and the login would go to an address nobody entered), Test and a run fail with "The address redirects to <host>. Enter the final address." | Method, query, headers, body, timeout, off edge |
 | Email | Mail server, port, encryption, Allow untrusted certificates, user name, password, From, To | Subject, format, body, off edge |
 | TCP | Host, port, Use TLS, Allow untrusted certificates | Format, message, line end, wait for an answer, answer must contain, timeout, off edge |
 

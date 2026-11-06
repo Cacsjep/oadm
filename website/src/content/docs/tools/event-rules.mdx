@@ -92,7 +92,8 @@ falls back the rule turns off. An event that does not send the value never passe
   passwords. Optionally a second command when the rule turns off, for example to hide an overlay again. Commands marked
   dangerous need **Allow dangerous commands**. Text fields of the command take [placeholders](#placeholders).
 - **Send HTTP request**: calls a web service, for example a webhook of Teams or Slack or a building system. Choose a
-  [recipient](#recipients), then the method, query parameters, headers and a body as JSON, XML, text or form.
+  [recipient](#recipients), then the method, query parameters, headers and a body as JSON, XML, text or form. OADM does
+  not follow a redirect: the action fails and names where the address points to. Enter that address in the recipient.
 - **Send email**: sends a mail to a [recipient](#recipients), as text or HTML.
 - **Publish MQTT message**: publishes a message to a topic on an MQTT broker, a [recipient](#recipients).
 - **Write Modbus value**: writes on or off, a pulse, a number or text to a PLC or gateway, a [recipient](#recipients). Addresses count from 0.

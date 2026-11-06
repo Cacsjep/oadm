@@ -119,7 +119,9 @@ public sealed class SendHttpAction : IActionPlugin
         var auth = invocation.Get("auth") ?? "none";
         using var handler = new SocketsHttpHandler
         {
-            AllowAutoRedirect = true,
+            // Never followed: a redirect would carry the body, the headers and the values of the event to an address the
+            // administrator did not enter, also one inside the server's network.
+            AllowAutoRedirect = false,
             ConnectTimeout = TimeSpan.FromSeconds(10),
             PooledConnectionLifetime = TimeSpan.Zero,
         };
@@ -203,6 +205,11 @@ public sealed class SendHttpAction : IActionPlugin
                 return;
             }
 
+            if (IsRedirect(response))
+            {
+                throw new InvalidOperationException(RedirectText(uri, response.Headers.Location));
+            }
+
             var text = await ReadExcerptAsync(response, timeout.Token).ConfigureAwait(false);
             throw new InvalidOperationException(text.Length == 0 ? status : status + ": " + text);
         }
@@ -238,6 +245,38 @@ public sealed class SendHttpAction : IActionPlugin
         {
             return string.Empty;
         }
+    }
+
+    /// <summary>A 3xx answer that points somewhere else: one of the redirect statuses, or any 3xx with a Location.</summary>
+    private static bool IsRedirect(HttpResponseMessage response) =>
+        (int)response.StatusCode is >= 300 and < 400
+        && (response.Headers.Location is not null
+            || response.StatusCode is HttpStatusCode.MovedPermanently or HttpStatusCode.Found or HttpStatusCode.SeeOther or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect);
+
+    /// <summary>
+    /// Why a redirect failed the action, with the host it points to when the Location names one (in its ASCII form: the
+    /// text goes to the event log and the server log). Another address on the same host is named with its scheme
+    /// ("https://hooks.example.com"), since the host alone would say nothing new.
+    /// </summary>
+    public static string RedirectText(Uri request, Uri? location)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        const string NoTarget = "The address redirects. Enter the final address.";
+        if (location is null || !Uri.TryCreate(request, location, out var target) || (target.Scheme != Uri.UriSchemeHttp && target.Scheme != Uri.UriSchemeHttps))
+        {
+            return NoTarget;
+        }
+
+        var host = target.HostNameType == UriHostNameType.IPv6 ? target.Host : target.IdnHost; // "[fd00::1]", "xn--..."
+        if (host.Length == 0 || host.Any(c => char.IsControl(c) || char.IsWhiteSpace(c)))
+        {
+            return NoTarget;
+        }
+
+        var named = string.Equals(target.IdnHost, request.IdnHost, StringComparison.OrdinalIgnoreCase)
+            ? target.Scheme + "://" + host + (target.IsDefaultPort ? string.Empty : string.Create(CultureInfo.InvariantCulture, $":{target.Port}"))
+            : host;
+        return $"The address redirects to {named}. Enter the final address.";
     }
 
     private static string Inner(Exception ex) => (ex.InnerException ?? ex).Message;

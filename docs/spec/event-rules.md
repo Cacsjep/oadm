@@ -101,7 +101,8 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
 - **Notifications** (bundled always-on package `oadm.notifications`,
   `plugins/Oadm.Plugins.Notifications`, server only, plugin `README.md`): **Send HTTP request** (HTTP recipient: URL, login None /
   Basic / Digest / Bearer token, "Allow untrusted certificates"; action: method, query and
-  header rows, body type None / JSON / XML / Text / Form in the code editor, timeout, success = 2xx) and **Send email** (MailKit;
+  header rows, body type None / JSON / XML / Text / Form in the code editor, timeout, success = 2xx; a redirect is never
+  followed and fails with "The address redirects to <host>. Enter the final address.") and **Send email** (MailKit;
   Email recipient: mail server, port, STARTTLS / TLS / none, optional login, "Allow untrusted certificates", From, To; action:
   Subject, Format Text / HTML, body) and **Send TCP message** (TCP recipient: host, port, optional TLS
   with "Allow untrusted certificates"; action: Text / JSON / XML / Hex bytes, line end, "Wait for an answer" + "Answer must contain", timeout) and **Log entry** (a message, written to the server log, nothing else). All four run without devices,

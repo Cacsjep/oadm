@@ -23,6 +23,11 @@ Spec: [Event rules](../../docs/spec/event-rules.md).
 - Success is any 2xx answer; the event log line says "HTTP 200 OK". Anything else fails with the status and the first
   200 characters of the answer. Timeout 1..120 s (default 15).
 - Basic login is sent with the first request; Digest answers the server's challenge (`SocketsHttpHandler`).
+- A redirect is never followed (`AllowAutoRedirect` off): it would carry the body, the headers and the event's values to
+  an address nobody entered, also one inside the server's network. A 301, 302, 303, 307 or 308 answer (or any 3xx with a
+  Location) fails with "The address redirects to <host>. Enter the final address.", in a run and in the recipient's Test.
+  The host is the Location's, in its ASCII form; a target on the same host is named with its scheme
+  ("https://hooks.example.com"); without a usable Location: "The address redirects. Enter the final address."
 - A header value never spans lines (line breaks of a filled value are removed).
 
 ## Send email (`oadm.notifications.email`)

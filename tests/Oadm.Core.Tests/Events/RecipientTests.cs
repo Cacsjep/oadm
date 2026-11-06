@@ -775,6 +775,54 @@ public sealed class RecipientTests
     }
 
     [Fact]
+    public async Task TheTestOfAnHTTPRecipientThatRedirectsSaysWhereToAndSendsNothingThere()
+    {
+        await using var rig = await NotificationsRigAsync();
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var requests = 0;
+        var serving = Task.Run(async () =>
+        {
+            // Answers every request with a redirect to another host, until the listener stops.
+            while (true)
+            {
+                TcpClient client;
+                try
+                {
+                    client = await listener.AcceptTcpClientAsync();
+                }
+                catch (Exception ex) when (ex is SocketException or ObjectDisposedException or InvalidOperationException)
+                {
+                    return;
+                }
+
+                using (client)
+                {
+                    var stream = client.GetStream();
+                    var head = new StringBuilder();
+                    var one = new byte[1];
+                    while (!head.ToString().EndsWith("\r\n\r\n", StringComparison.Ordinal) && await stream.ReadAsync(one) == 1)
+                    {
+                        head.Append((char)one[0]);
+                    }
+
+                    Interlocked.Increment(ref requests);
+                    await stream.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 302 Found\r\nLocation: http://internal.example.com/admin\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"));
+                }
+            }
+        });
+        var values = new JsonObject { ["url"] = $"http://127.0.0.1:{((IPEndPoint)listener.LocalEndpoint).Port}/in", ["auth"] = "none" };
+
+        var (ok, message) = await rig.Runner.TestRecipientAsync(NotificationRecipients.HttpType, null, values, CancellationToken.None);
+
+        Assert.False(ok);
+        Assert.Equal("The address redirects to internal.example.com. Enter the final address.", message);
+        Assert.Equal(1, Volatile.Read(ref requests));
+        listener.Stop();
+        await serving.WaitAsync(TimeSpan.FromSeconds(30));
+    }
+
+    [Fact]
     public async Task ARecipientOfNotificationsIsCheckedByItsAction()
     {
         await using var rig = await NotificationsRigAsync();
