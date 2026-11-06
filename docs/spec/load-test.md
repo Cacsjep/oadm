@@ -15,14 +15,19 @@ Core plugin `plugins/Oadm.Plugins.LoadTest` (+ `.Client`), id `oadm.load-test`, 
 1. **Choose devices first.** The page starts from `PageDeviceChoice` ("Selected cameras"); nothing streams before
    **Start**. Devices without video are left out with the reason in the table.
 2. **The exposure always goes back.** The low-light phase is the only write. The original value is read and kept in
-   memory before the write and written back after the phase, on Cancel, when a camera drops out of the check and when the
-   plugin stops. A camera whose restore fails stays in the result with a warning and its original value.
-3. **One check at a time** per server. A second Start is refused with the running check's owner and progress.
+   memory before the write and written back after the phase, on Cancel, when a camera drops out of the check or leaves
+   the starter's device group, when the host ends the check's job and when the plugin stops. A camera whose restore
+   fails stays in the result with a warning and its original value.
+3. **One check at a time** per server. A second Start is refused: with the running check's user and progress for users
+   who see that check, with "A check is running. Start again when it ends." for a user of another device group.
 4. **Bounded load.** At most 200 cameras stream at once (one batch); the expected rate of a batch is shown before Start.
 5. **Read-only otherwise.** Streams and parameter reads only; no stream profile, no setting other than the exposure value
    is changed. Credentials never leave the server.
 6. **Device groups.** A group user chooses, checks and sees only the cameras of the group (chosen ids outside it refused
-   whole, NOT_FOUND); stored runs are owned by the device scope that ran them.
+   whole, NOT_FOUND); stored runs are owned by the device scope that ran them. A check is a host job of its device scope
+   (`IPluginJobs.StartShared`): its streams and its exposure writes reach only the devices of the user who started it
+   as they are now, a camera that leaves the group is dropped at the next second, and its live rows no longer reach the
+   group.
 
 ## The check
 
@@ -93,6 +98,23 @@ the plugin, not settings.
   plugin's own store), listed with date, user, cameras and verdict; open, delete. The 6th run deletes the oldest. No
   export.
 
+## The check as a job
+
+- **Start** runs the check with `ctx.Jobs.StartShared(caller, "check", ...)` (like the hardening scan); an in-process call
+  without a user runs it as background work of the plugin. The host opens a stream only for a device of the starter's
+  group (`ctx.StreamProbes` inside the job), the exposure is read and raised through the starter's call (`caller.Vapix`).
+- **A camera that leaves the group** during the check (a tag, a site, the group's devices; asked every second for the
+  cameras of the running batch, `IDeviceScopes.Contains`): its stream closes, its exposure goes back at once, it is not
+  opened or written again, the phase in progress and the later ones are N/A (no failure) and its row says "Left the
+  device group during the check". Live rows go to the group only for cameras that are its devices now, like `getRun`.
+- **The host ends the job** when the rules of the group change or the group is deleted: the run ends as Failed with "The
+  check stopped when its device group changed", the streams close and every exposure goes back. A job the host ends
+  because the plugin stops ends with "The check stopped when the plugin stopped". The starter's logout or new role leaves
+  the check running for the group (a shared job belongs to its scope, [device-scope.md](device-scope.md)).
+- **The exposure always goes back**: the write back uses `ctx.System.Vapix` (the method `start` declares
+  `SystemAccessReason`), so a camera that left the group, a deleted group and an ended job still get the original
+  value. Nothing else of the check uses the system access.
+
 ## Server and SDK
 
 - The RTSP client and the H.264 / H.265 depacketizers of `Oadm.Core/LiveView` get RTP over UDP (client ports from a fixed
@@ -111,7 +133,9 @@ the plugin, not settings.
 - RTP over UDP: recorded packets with gaps, reorders and duplicates give the expected loss and jitter.
 - Restore: Cancel, a dropped camera, a failed write and plugin stop all write the original exposure back (`FakeCamera`).
 - A choice at the device limit is refused at once, before any read (a check takes at most 1,000 cameras); 1,000 streams plan, run and open (every getRun page well below 16 MB).
-- Device groups: chosen ids outside the group are refused whole.
+- Device groups: chosen ids outside the group are refused whole; a camera that leaves the group is dropped and its
+  exposure goes back, also before Low light (never written); its live rows no longer reach the group; the check is a
+  shared job, ended by the host with every exposure back; another group's Start says only that a check runs.
 
 ## Decided at the build
 

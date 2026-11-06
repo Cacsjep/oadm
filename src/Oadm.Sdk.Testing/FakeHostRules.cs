@@ -15,8 +15,8 @@ internal static class FakeHostRules
 {
     private static readonly AsyncLocal<Mark?> Current = new();
 
-    /// <summary>A call in progress: the user has all devices; the method may use <c>ctx.System</c>.</summary>
-    internal sealed record Mark(bool HasAllDevices, bool SystemAllowed);
+    /// <summary>A call in progress: the user has all devices; the method may use <c>ctx.System</c>; the user's call (page methods).</summary>
+    internal sealed record Mark(bool HasAllDevices, bool SystemAllowed, ICallContext? Call = null);
 
     public static IDisposable Use(Mark mark)
     {
@@ -27,6 +27,13 @@ internal static class FakeHostRules
 
     /// <summary>True when the current call is a group user's (and, for <paramref name="system"/>, its method declared no reason).</summary>
     public static bool Refuses(bool system) => Current.Value is { HasAllDevices: false } mark && !(system && mark.SystemAllowed);
+
+    /// <summary>
+    /// True when the current call (or the job it started) is a group user's and <paramref name="device"/> is not one of the
+    /// caller's devices: <c>ctx.StreamProbes</c> answers it like an unknown device, as on the server.
+    /// </summary>
+    public static bool RefusesDevice(IDeviceInfo? device) =>
+        Current.Value is { HasAllDevices: false } mark && (device is null || mark.Call is null || !mark.Call.Contains(device));
 
     public static async Task<T> CallAsync<T>(ICorePlugin plugin, ICallContext call, string method, Func<Task<T>> run)
     {
@@ -42,7 +49,7 @@ internal static class FakeHostRules
             systemAllowed = !string.IsNullOrWhiteSpace(plugin.SystemAccessReason(method));
         }
 
-        using (Use(new Mark(call.HasAllDevices, systemAllowed)))
+        using (Use(new Mark(call.HasAllDevices, systemAllowed, call)))
         {
             return await run().ConfigureAwait(false);
         }

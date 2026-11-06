@@ -327,13 +327,17 @@ one row per camera stream. Details: [Load test](load-test.md) and the plugin's R
 
 - Devices: the "Selected cameras" command button (`PageDeviceChoice`); nothing streams before **Start**.
 - Rules that must hold: the exposure value in Low light is the only write, read and kept in memory before it and always
-  written back (after the phase, on Cancel, when a stream drops out, on the plugin's stop; a failed restore is a run
-  warning); one check at a time per server (a second Start names the running check's user and progress); at most 1,000
+  written back (after the phase, on Cancel, when a stream drops out or its camera leaves the starter's group, on the
+  plugin's stop, when the host ends the check's job; a failed restore is a run warning); one check at a time per server
+  (a second Start names the running check's user and progress only to users who see that check); at most 1,000
   camera streams per check and 200 at once; RTP over UDP on 50000-50799 with the firewall rule open only while a check runs; the last 5 runs kept
   (the 6th deletes the oldest), a run that was running at a server stop kept as Failed. Methods `plan`, `listRuns`,
   `getRun`, `getStream` need "show" (Viewer), `start`, `cancel`, `deleteRun` the plugin's "run" permission (Operator).
 - Device groups: a group user checks only the group's cameras (chosen ids outside it refused whole, NOT_FOUND); runs
-  belong to the device scope that ran them.
+  belong to the device scope that ran them. A check is a shared host job of that scope: streams and the exposure raise
+  only on the starter's devices as they are now, a camera that leaves the group is dropped, live rows only of cameras
+  the group still has, ended by the host when the group's rules change ("The check stopped when its device group
+  changed").
 
 ## I/O Monitor (core plugin)
 

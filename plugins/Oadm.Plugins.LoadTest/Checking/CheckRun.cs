@@ -182,6 +182,9 @@ internal static class Verdicts
     /// <summary>A run stopped because the plugin stopped (turned off, or the server stops now).</summary>
     public const string PluginStopped = "The check stopped when the plugin stopped";
 
+    /// <summary>A run of a device group the host ended: the rules of the group changed, or it was deleted.</summary>
+    public const string GroupChanged = "The check stopped when its device group changed";
+
     /// <summary>
     /// "Loss starts at 150 cameras" (the first ramp step or Normal with a failed camera, over all batches: the fewest
     /// streams at once of that phase's failing steps), else "3 cameras fail in Low light", else null.
@@ -305,6 +308,15 @@ internal sealed class StreamState(PlannedStream planned, int index)
     /// <summary>The note of a stream whose UDP was blocked.</summary>
     public const string UdpBlockedNote = "UDP is blocked between the camera and the server, packet loss not measured";
 
+    /// <summary>
+    /// The device is no longer one of the devices of the group that runs the check: the stream is closed, its exposure
+    /// written back, and it is neither opened nor written again for the rest of the check.
+    /// </summary>
+    public bool Left { get; set; }
+
+    /// <summary>The note of a stream whose camera left the group that runs the check (no failure).</summary>
+    public const string LeftGroupNote = "Left the device group during the check";
+
     public List<float> Mbps { get; } = [];
 
     public List<float> Loss { get; } = [];
@@ -362,7 +374,7 @@ internal sealed class StreamState(PlannedStream planned, int index)
             Round(rate),
             Round(measured.Count == 0 ? 0 : measured.Max(p => p.Jitter)),
             Phases.FirstOrDefault(p => p.Problem is not null && p.Result is PhaseResult.Failed or PhaseResult.Interrupted)?.Problem,
-            UdpBlocked ? UdpBlockedNote : null);
+            Left ? LeftGroupNote : UdpBlocked ? UdpBlockedNote : null);
     }
 
     /// <summary>"H.265 1920x1080 30 fps".</summary>

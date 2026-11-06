@@ -14,9 +14,12 @@ namespace Oadm.Plugins.LoadTest.Checking;
 /// memory only, and writes <see cref="MaxValue"/>; after the phase, on Cancel, when the stream drops out and when the
 /// plugin stops it writes the original back. A source without the parameter, or with a value that is not a number from 0
 /// to 100, is not written (its Low light result is N/A). A failed restore gives a warning that names the camera and the
-/// original value. Every write and restore is logged (parameter and values only).
+/// original value. Every write and restore is logged (parameter and values only). The read and the raise go through
+/// <paramref name="raise"/>, the devices of the user who started the check as they are now (a camera that left the user's
+/// group is not written); the write back goes through <paramref name="restore"/>, which reaches every camera the check
+/// wrote, also one that left the group meanwhile.
 /// </summary>
-internal sealed partial class ExposureKeeper(IVapixClientFactory vapix, ILogger logger, LoadTestOptions options)
+internal sealed partial class ExposureKeeper(IVapixClientFactory raise, IVapixClientFactory restore, ILogger logger, LoadTestOptions options)
 {
     /// <summary>The highest exposure value of Axis cameras (the parameter's range is 0 to 100).</summary>
     public const int MaxValue = 100;
@@ -64,7 +67,7 @@ internal sealed partial class ExposureKeeper(IVapixClientFactory vapix, ILogger 
 
         try
         {
-            await WriteAsync(kept.DeviceId, kept.Parameter, kept.Original).ConfigureAwait(false);
+            await WriteAsync(restore, kept.DeviceId, kept.Parameter, kept.Original).ConfigureAwait(false);
             LogRestored(logger, kept.CameraName, kept.Parameter, kept.Original);
             return null;
         }
@@ -104,7 +107,7 @@ internal sealed partial class ExposureKeeper(IVapixClientFactory vapix, ILogger 
         string? original;
         try
         {
-            var client = await vapix.CreateAsync(stream.Device.Id, ct).ConfigureAwait(false);
+            var client = await raise.CreateAsync(stream.Device.Id, ct).ConfigureAwait(false);
             var values = await client.ListParametersAsync([parameter], ct).ConfigureAwait(false);
             original = values.TryGetValue(parameter, out var value) ? value.Trim() : null;
         }
@@ -131,7 +134,7 @@ internal sealed partial class ExposureKeeper(IVapixClientFactory vapix, ILogger 
         _kept[stream.StreamId] = new Kept(stream.Device.Id, parameter, name, original);
         try
         {
-            await WriteAsync(stream.Device.Id, parameter, MaxValue.ToString(CultureInfo.InvariantCulture)).ConfigureAwait(false);
+            await WriteAsync(raise, stream.Device.Id, parameter, MaxValue.ToString(CultureInfo.InvariantCulture)).ConfigureAwait(false);
             LogRaised(logger, name, parameter, original, MaxValue);
             return true;
         }
@@ -145,7 +148,7 @@ internal sealed partial class ExposureKeeper(IVapixClientFactory vapix, ILogger 
     }
 
     /// <summary>A param.cgi update in the POST body, with its own timeout (restores run without the run's token).</summary>
-    private async Task WriteAsync(Guid deviceId, string parameter, string value)
+    private async Task WriteAsync(IVapixClientFactory vapix, Guid deviceId, string parameter, string value)
     {
         using var timeout = new CancellationTokenSource(options.WriteTimeout, options.Time);
         var client = await vapix.CreateAsync(deviceId, timeout.Token).ConfigureAwait(false);

@@ -76,6 +76,14 @@ public sealed class LoadTestPlugin : ICorePlugin, IAsyncDisposable
     public string? RequiredPermission(string method) =>
         method is LoadTestMethods.Start or LoadTestMethods.Cancel or LoadTestMethods.DeleteRun ? LoadTestInfo.RunPermission : PermissionKeys.Show;
 
+    /// <summary>
+    /// The exposure always goes back (docs/spec/load-test.md): the check a group user starts writes the original value back
+    /// with full access, also on a camera that left the group during the check. Nothing else of the check uses it.
+    /// </summary>
+    public string? SystemAccessReason(string method) => method is LoadTestMethods.Start
+        ? "writes the exposure back on cameras the check changed, also after they left the group; shows no device data"
+        : null;
+
     /// <summary>A user's call: the chosen cameras must be the caller's; runs of the caller's device scope.</summary>
     public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {

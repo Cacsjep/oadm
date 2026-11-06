@@ -155,6 +155,23 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
         await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => rig.InvokeAsync(rig.Anna, "ctx.system", null));
     }
 
+    /// <summary>
+    /// A job keeps the system access of the method that started it, and only that (the load test writes the exposure back
+    /// from its job, also on a camera that left the group).
+    /// </summary>
+    [Fact]
+    public async Task AGroupUsersJobUsesTheSystemAccessOnlyWhenItsMethodDeclaredAReason()
+    {
+        await using var rig = await RigAsync();
+
+        await rig.InvokeAsync(rig.Anna, "system.job", null);
+        Assert.Equal(2, await rig.Plugin.JobResult.Task.WaitAsync(Eventually.DefaultTimeout));
+
+        rig.Plugin.JobResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await rig.InvokeAsync(rig.Anna, "job.system", null);
+        Assert.IsType<DeviceAccessRefusedException>(await rig.Plugin.JobResult.Task.WaitAsync(Eventually.DefaultTimeout));
+    }
+
     [Fact]
     public async Task AJobBelongsToItsUserRunsWithoutTheCallerAndKeepsTheOwnersDevices()
     {
@@ -693,7 +710,7 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
             _ => false,
         };
 
-        public string? SystemAccessReason(string method) => method is "system.count" or "system.count.ctx" or "system.scopes" or "system.membership" or "system.name" ? "counts every device, shows no device data" : null;
+        public string? SystemAccessReason(string method) => method is "system.count" or "system.count.ctx" or "system.scopes" or "system.membership" or "system.name" or "system.job" ?"counts every device, shows no device data" : null;
 
         public Task StartAsync(ICorePluginContext context, CancellationToken ct)
         {
@@ -740,6 +757,20 @@ public sealed class PluginCallContextTests : DeviceGroupTestBase
                         try
                         {
                             JobResult.TrySetResult((await ctx.StreamProbes!.ListSourcesAsync(probed, token)).Count);
+                        }
+                        catch (Exception ex)
+                        {
+                            JobResult.TrySetResult(ex);
+                        }
+                    }).Id;
+
+                case "system.job":
+                case "job.system":
+                    return ctx.Jobs!.StartShared(caller, method, async (job, token) =>
+                    {
+                        try
+                        {
+                            JobResult.TrySetResult((await ctx.System.Devices.ListAsync(token)).Count);
                         }
                         catch (Exception ex)
                         {

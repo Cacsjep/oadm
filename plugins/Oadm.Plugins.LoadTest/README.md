@@ -16,7 +16,7 @@ Spec: [Load test](../../docs/spec/load-test.md),
 | Sampling | Once per second of the plugin's `TimeProvider` (`PeriodicTimer`): each open probe is read (`IDeviceStreamProbe.Read`, cumulative) and the difference to the last read is the second's value. |
 | Interrupted | No first packet within `StartTimeout` (10 s) after the open, or no packet for `StallTimeout` (5 s); for the rest of that phase. A refused open or a broken stream is opened again in the next phase. |
 | Pass | Per stream and phase: packet loss (lost / (received + lost), UDP only), frame loss (missing against the expected frames) and late frames each below 1 %, and not Interrupted. Jitter never fails. |
-| Verdict | "Loss starts at N cameras" (the fewest streams at once of the failing steps of the first ramp step or Normal with a failure, over all batches), else "N cameras fail in Low light", else "The network and cameras carry this load"; "The check was cancelled", "The check stopped when the plugin stopped", "The server stopped during the check" (found at the next start). |
+| Verdict | "Loss starts at N cameras" (the fewest streams at once of the failing steps of the first ramp step or Normal with a failure, over all batches), else "N cameras fail in Low light", else "The network and cameras carry this load"; "The check was cancelled", "The check stopped when the plugin stopped", "The check stopped when its device group changed" (the host ended the check's job), "The server stopped during the check" (found at the next start). |
 | Headroom | "100 %" when every ramp step and Normal passed in every batch, else the last ramp step that passed ("75 %", ... "0 %"). |
 | UDP blocked | A probe that fell back to TCP because UDP was blocked (`UdpBlocked`): Transport TCP and the row's `note` "UDP is blocked between the camera and the server, packet loss not measured"; no failure. |
 | Firewall | "OADM Server (Load test, UDP 50000-50799)" through `FirewallRuleKeeper`, open only while a check runs, closed at plugin start (a rule left by a crash). `LoadTestInfo.UdpFirstPort/UdpLastPort` must equal the core's `RtpUdpPorts`. |
@@ -29,7 +29,10 @@ Spec: [Load test](../../docs/spec/load-test.md),
 (the stream still streams, nothing is written). The original is kept in memory only (before the write, so a write
 whose answer is lost is still written back), then 100 is written (`action=update` in the POST body; "# Error" answers
 count as refused: N/A). Written back after Low light, at once when the stream drops out (open refused or stream
-broken), on Cancel, on the plugin's stop and when the run breaks off; each write and restore has its own 10 s timeout.
+broken) or its camera leaves the starter's device group, on Cancel, on the plugin's stop, when the host ends the check's
+job and when the run breaks off; each write and restore has its own 10 s timeout. The read and the raise go through the
+starter's call (`caller.Vapix`: a camera that left the group is not written), the write back through `ctx.System.Vapix`
+(`SystemAccessReason` of `start`), so it reaches every camera the check wrote.
 A failed restore becomes a run warning "<camera>: exposure <original> was not written back". Every write and restore
 is logged (camera, parameter, values). The parameter (0..100, default 50) is confirmed on AXIS P3265-V and M3215-LVE (AXIS OS 12.11).
 
@@ -38,7 +41,7 @@ is logged (camera, parameter, values). The parameter (0..100, default 50) is con
 | File | What |
 |---|---|
 | `LoadTestPlugin.cs` | `ICorePlugin`, methods, permissions |
-| `Checking/CheckService.cs` | One check at a time, device checks, the kept runs, events, the firewall rule |
+| `Checking/CheckService.cs` | One check at a time, device checks, the check's job, the kept runs, events, the firewall rule |
 | `Checking/CheckPlanner.cs` | Sources (`ListSourcesAsync`, 16 at a time, 15 s each, kept 10 minutes for Start), left-out reasons, batches, time, rate |
 | `Checking/CheckRunner.cs` | The phases and the per-second sampling, phase results, steps |
 | `Checking/CheckRun.cs` | The run's state, rows, summary, verdict and headroom texts (`Verdicts`) |
@@ -61,7 +64,7 @@ Running at its start and after every batch: after a crash it is loaded as Failed
 | Method | Permission | Payload | Answer |
 |---|---|---|---|
 | `plan` | show | `PlanRequest` {deviceIds (1 to the device limit, `DeviceLimits.MaxDevices`), batchSize, phaseMinutes, allDevices} | `CheckPlan` (read only, nothing streams) |
-| `start` | run | `StartRequest` (as plan) | `RunSummary` at once (`phase` null while the first streams connect); refused while a check runs: "A check by anna is running (40 % done). Start again when it ends." |
+| `start` | run | `StartRequest` (as plan) | `RunSummary` at once (`phase` null while the first streams connect); refused while a check runs: "A check by anna is running (40 % done). Start again when it ends." for users who see that check, "A check is running. Start again when it ends." for a user of another group |
 | `cancel` | run | none | `RunSummary` of the cancelled run once the exposure is back and the probes are closed, or null when none of the caller's runs |
 | `listRuns` | show | none | `RunList` (newest first, the running one included) |
 | `getRun` | show | `RunRequest` {runId, skip, take} | `RunDetail`: one page of rows worst first (take 0 = 5,000, at most 5,000), `totalStreams`, the graphs only with skip 0 |
@@ -78,9 +81,18 @@ A group user's chosen ids must all be in the group, else the whole request is re
 available.", nothing read); a user with all devices gets the chosen devices that still exist. A run belongs to the device
 scope that started it: its users list and open only their scope's runs (a camera that left the group is no longer in
 their rows), users with all devices every run; another scope's run answers like a deleted one. `live` and `runs` go to
-the owner scope and to users with all devices (`PluginEventAudience.DeviceScope`). A Start of another group while a check
-runs names the running check's user and progress. The calls have no stream probes: the ids are checked against the call,
-then the streams and the exposure writes run as background work over the context (`Detached`).
+the owner scope and to users with all devices (`PluginEventAudience.DeviceScope`); the group's `live` events carry only
+the rows of cameras that are its devices now. A Start of another group while a check runs says only that a check runs
+(no user, no progress).
+
+The check is a shared job of the starter's device scope (`ctx.Jobs.StartShared(caller, "check", ...)`, like the hardening
+scan; an in-process call without a user runs it as background work): the host opens streams only for the starter's
+devices (`ctx.StreamProbes` in the job), and ends the job when the rules of the group change or the group is deleted
+(Failed, "The check stopped when its device group changed"; when the plugin stops: "The check stopped when the plugin
+stopped"). Every second the runner asks `ctx.DeviceScopes.Contains(owner, device)` for the cameras of the running batch:
+one that left the group is closed, gets its exposure back at once, is never opened or written again (the phase in
+progress and the later ones N/A, no failure) and its row's `note` says "Left the device group during the check". Only the
+plan's read of the video sources still runs detached from the call (`Detached`), after the ids were checked against it.
 
 ## Tests
 
@@ -90,7 +102,8 @@ cached sources, All devices), `RunnerTests` (ramp counts, each limit, verdicts a
 start, refused and broken streams, TCP, UDP blocked, batches, live events, chunks, one at a time, Cancel, Start while the
 cameras connect, firewall), `ExposureTests` (Low light only, Cancel, drop-out, failed restore, plugin stop, no usable
 value, refused write), `RunStoreTests` (5 runs, restart, server stop -> Failed, delete, no data folder),
-`DeviceGroupTests` (the plugin canary, refusal whole, run ownership, permissions), `ScaleTests` (a choice at the device limit
+`DeviceGroupTests` (the plugin canary, refusal whole, run ownership, the busy refusal per group, a camera that leaves
+the group in and before Low light, live rows, the shared job and its end by the host, permissions), `ScaleTests` (a choice at the device limit
 refused at once, 1,000 streams planned and started, the largest run below 4 MB, getRun pages; Perf: plan, summary and
 table of 1,000), `FakeStreamProbesTests`. The page's tests are in `Client/`.
 

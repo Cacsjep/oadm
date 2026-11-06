@@ -309,7 +309,11 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     /// </summary>
     public FakeStreamProbes FakeStreamProbes { get; init; } = new();
 
-    /// <summary>The <see cref="FakeStreamProbes"/>, refused in a group user's call like <see cref="Vapix"/> (use them from background work).</summary>
+    /// <summary>
+    /// The <see cref="FakeStreamProbes"/>, like on the server: in a group user's call and the jobs it starts only for the
+    /// devices of the caller's group; any other id answers like an unknown one (<see cref="KeyNotFoundException"/>, counted in
+    /// <see cref="RefusedAccesses"/>) and the device is never asked.
+    /// </summary>
     public IDeviceStreamProbes? StreamProbes => field ??= new GuardedStreamProbes(this);
 
     /// <summary>The plugin's jobs (<see cref="FakePluginJobs"/>): owned by the user who started them.</summary>
@@ -565,14 +569,23 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     {
         public Task<IReadOnlyList<StreamProbeSource>> ListSourcesAsync(Guid deviceId, CancellationToken ct)
         {
-            core.Check("StreamProbes");
+            Check(deviceId);
             return core.FakeStreamProbes.ListSourcesAsync(deviceId, ct);
         }
 
         public Task<IDeviceStreamProbe> OpenAsync(Guid deviceId, StreamProbeRequest request, CancellationToken ct)
         {
-            core.Check("StreamProbes");
+            Check(deviceId);
             return core.FakeStreamProbes.OpenAsync(deviceId, request, ct);
+        }
+
+        private void Check(Guid deviceId)
+        {
+            if (FakeHostRules.RefusesDevice(core.DeviceList.Find(d => d.Id == deviceId)))
+            {
+                core.RefusedAccesses.Enqueue("StreamProbes");
+                throw new KeyNotFoundException($"Device {deviceId} not found.");
+            }
         }
     }
 

@@ -140,7 +140,8 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
     with a `SystemAccessReason` reach only `Exists` and `Contains` of every scope (yes or no about devices they have from
     `ctx.System`), never another scope's `Devices` or `NameOf`. `ctx.StreamProbes` (no call member) answers in a group
     user's call and its jobs only for devices of the caller's own scope (every group identity on the call, through
-    `ctx.DeviceScopes`' host); any other id is `KeyNotFoundException` like an unknown device, before any connection.
+    `ctx.DeviceScopes`' host); any other id is `KeyNotFoundException` like an unknown device, before any connection
+    (`FakeCoreContext.StreamProbes` of `Oadm.Sdk.Testing` follows the same rule with the call's group).
     `CorePluginHost.InvokeAsync(pluginId, ...)` without a
     caller stays for in-process host work and tests (no user, background).
   - Task plugin queries: `TaskPluginQueries.QueryAsync(caller, ...)` (the device through the view, the query context's

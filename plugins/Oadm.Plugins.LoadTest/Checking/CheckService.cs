@@ -8,12 +8,15 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Plugins.LoadTest.Checking;
 
 /// <summary>
-/// The checks of the server: one at a time (a second Start is refused with the running check's user and progress), the
-/// kept runs (<see cref="LoadTestInfo.MaxRuns"/>, the next one deletes the oldest) and the page's events. Device
-/// groups (docs/spec/device-scope.md): the chosen ids must all be in the caller's devices (else NOT_FOUND, nothing read);
-/// a run is owned by the device scope that ran it: users of that group list and open only its runs, users with all
-/// devices every run. The streams and exposure writes are background work over the context (the call has no stream
-/// probes), started only after the ids were checked against the caller.
+/// The checks of the server: one at a time (a second Start is refused; the running check's user and progress only for
+/// users who see that check), the kept runs (<see cref="LoadTestInfo.MaxRuns"/>, the next one deletes the oldest) and the
+/// page's events. Device groups (docs/spec/device-scope.md): the chosen ids must all be in the caller's devices (else
+/// NOT_FOUND, nothing read); a run is owned by the device scope that ran it: users of that group list and open only its
+/// runs, users with all devices every run. A check is a shared job of its user's device scope
+/// (<see cref="IPluginJobs.StartShared"/>): the host opens its streams only for the starter's devices and ends it when the
+/// rules of the group change; the exposure is raised through the starter's call (the devices as they are now), a camera
+/// that leaves the group is dropped, and its live rows reach only users who still see it. Every exposure the check wrote
+/// goes back, also after the job was ended or the camera left the group (<see cref="LoadTestPlugin.SystemAccessReason"/>).
 /// </summary>
 internal sealed class CheckService : IAsyncDisposable
 {
@@ -27,6 +30,9 @@ internal sealed class CheckService : IAsyncDisposable
     private CheckRunner? _runner;
     private Task _current = Task.CompletedTask;
     private bool _starting;
+
+    /// <summary>The kind of the check's job (<see cref="IPluginJobs"/>).</summary>
+    internal const string JobKind = "check";
 
     public CheckService(ICorePluginContext ctx, LoadTestOptions options)
     {
@@ -129,10 +135,12 @@ internal sealed class CheckService : IAsyncDisposable
         var devices = await ResolveAsync(caller, request.AllDevices ? null : request.DeviceIds, request.BatchSize, request.PhaseMinutes, ct).ConfigureAwait(false);
         lock (_gate)
         {
-            RefuseWhileRunning();
+            RefuseWhileRunning(caller);
             _starting = true;
         }
 
+        // The job's work waits here until the run is saved and listed; false: the start failed, nothing runs.
+        var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
             var planned = await Detached.Run(() => _planner.PlanAsync(devices, request.BatchSize, request.PhaseMinutes, ct)).ConfigureAwait(false);
@@ -148,8 +156,12 @@ internal sealed class CheckService : IAsyncDisposable
 
             var phaseSeconds = _options.PhaseSeconds ?? planned.PhaseMinutes * 60;
             var run = new CheckRun(Guid.NewGuid(), caller.UserName, caller.DeviceScopeKey, _options.Time.GetUtcNow(), planned, phaseSeconds);
-            var exposure = new ExposureKeeper(_ctx.System.Vapix, _ctx.Logger, _options);
-            var runner = new CheckRunner(run, _ctx.StreamProbes!, exposure, _store, _options, _ctx.Logger, PublishLive);
+
+            // Read and raised through the starter's call (the devices of the starter now); written back with full access:
+            // a camera that left the group meanwhile still gets its exposure back.
+            var exposure = new ExposureKeeper(caller.Vapix, _ctx.System.Vapix, _ctx.Logger, _options);
+            var runner = new CheckRunner(run, _ctx.StreamProbes!, exposure, _store, _options, _ctx.Logger, PublishLive, InView(caller));
+            var asJob = StartJob(caller, runner, ready);
 
             // The RTP over UDP of the probes comes in on these ports, only while the check runs.
             await _firewall.SyncAsync(true, CancellationToken.None).ConfigureAwait(false);
@@ -166,7 +178,15 @@ internal sealed class CheckService : IAsyncDisposable
                     _kept.Remove(old);
                 }
 
-                runner.Start();
+                if (asJob)
+                {
+                    ready.TrySetResult(true);
+                }
+                else
+                {
+                    runner.Start();
+                }
+
                 _current = Detached.Run(() => FinishAsync(runner));
             }
 
@@ -184,11 +204,54 @@ internal sealed class CheckService : IAsyncDisposable
         }
         finally
         {
+            ready.TrySetResult(false); // a start that failed after its job began: the job ends without a run
             lock (_gate)
             {
                 _starting = false;
             }
         }
+    }
+
+    /// <summary>
+    /// Starts the check as a shared job of the caller's device scope (the host: streams only of the starter's devices, ended
+    /// when the rules of the group change or the plugin stops); the work begins once <paramref name="ready"/> says so. False
+    /// for an in-process call without a user and on a host without jobs: the caller starts the check as background work.
+    /// </summary>
+    private bool StartJob(ICallContext caller, CheckRunner runner, TaskCompletionSource<bool> ready)
+    {
+        if (caller is ContextCall || _ctx.Jobs is not { } jobs)
+        {
+            return false;
+        }
+
+        // Only the plugin's stop ends the job of a user with all devices; a group's job also ends with the group's rules.
+        var verdict = caller.HasAllDevices ? Verdicts.PluginStopped : Verdicts.GroupChanged;
+        _ = jobs.StartShared(caller, JobKind, async (_, token) =>
+        {
+            using (token.Register(() => runner.Stop(RunState.Failed, verdict, byHost: true)))
+            {
+                if (await ready.Task.ConfigureAwait(false))
+                {
+                    await runner.RunAsync().ConfigureAwait(false);
+                }
+            }
+        });
+        return true;
+    }
+
+    /// <summary>
+    /// Whether a device is one of the devices of the group that runs the check now (asked every second for the cameras of
+    /// the running batch); null for a user with all devices. A host without device scopes: no (fail closed).
+    /// </summary>
+    private Func<Guid, bool>? InView(ICallContext caller)
+    {
+        if (caller.HasAllDevices)
+        {
+            return null;
+        }
+
+        var key = caller.DeviceScopeKey;
+        return id => _ctx.DeviceScopes?.Contains(key, id) ?? false;
     }
 
     /// <summary>Cancels the running check the caller sees: exposure restored, measured part kept. Null when none runs.</summary>
@@ -297,7 +360,45 @@ internal sealed class CheckService : IAsyncDisposable
         if (runner is not null)
         {
             runner.Stop(RunState.Failed, Verdicts.PluginStopped);
+
+            // The host ends a stopping plugin's jobs before it stops the plugin: that run stopped with the plugin too.
+            var renamed = runner.EndedWithThePlugin();
             await current.ConfigureAwait(false);
+            if (renamed)
+            {
+                await SaveAgainAsync(runner.Run).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>Keeps and saves the summary of an ended run again (its verdict changed after it was saved).</summary>
+    private async Task SaveAgainAsync(CheckRun run)
+    {
+        StoredRun stored;
+        lock (run.Gate)
+        {
+            stored = new StoredRun(run.Summary(), run.Owner);
+        }
+
+        lock (_gate)
+        {
+            var index = _kept.FindIndex(k => k.Summary.RunId == run.Id);
+            if (index < 0)
+            {
+                return;
+            }
+
+            _kept[index] = stored;
+        }
+
+        try
+        {
+            await _store.SaveSummaryAsync(stored, CancellationToken.None).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // A full disk must not keep the plugin from stopping; the run keeps its first verdict.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
         }
     }
 
@@ -306,7 +407,10 @@ internal sealed class CheckService : IAsyncDisposable
 
     private const string NoStream = "The camera is not in this check.";
 
-    private void RefuseWhileRunning()
+    /// <summary>The refusal for a user who does not see the running check: no user, no progress.</summary>
+    internal const string CheckRunning = "A check is running. Start again when it ends.";
+
+    private void RefuseWhileRunning(ICallContext caller)
     {
         if (_starting)
         {
@@ -315,6 +419,11 @@ internal sealed class CheckService : IAsyncDisposable
 
         if (_runner is { } runner)
         {
+            if (!OwnerScope.Sees(caller, runner.Run.Owner))
+            {
+                throw new InvalidOperationException(CheckRunning);
+            }
+
             RunSummary summary;
             lock (runner.Run.Gate)
             {
@@ -477,7 +586,10 @@ internal sealed class CheckService : IAsyncDisposable
         }
     }
 
-    /// <summary>One live event per second (rows in chunks), to users with all devices and to the users of the run's group.</summary>
+    /// <summary>
+    /// One live event per second (rows in chunks), to users with all devices and to the users of the run's group; the group
+    /// gets only the rows of cameras that are its devices now (like <see cref="GetRunAsync"/>).
+    /// </summary>
     private void PublishLive(CheckRun run)
     {
         if (_ctx.Events is not { } events)
@@ -493,17 +605,21 @@ internal sealed class CheckService : IAsyncDisposable
             taken = run.TakeNew();
         }
 
-        var payloads = new List<string>();
-        var chunks = taken.Rows.Chunk(_options.MaxRowsPerEvent).ToList();
-        payloads.Add(LoadTestJson.Serialize(new LiveEvent(summary, taken.FromSecond, taken.Points, chunks.Count > 0 ? chunks[0] : [])));
         var end = taken.FromSecond + taken.Points.Phases.Count;
         var empty = new RunGraphs([], [], [], [], [], []);
-        payloads.AddRange(chunks.Skip(1).Select(chunk => LoadTestJson.Serialize(new LiveEvent(summary, end, empty, chunk))));
         foreach (var scope in ScopesOf(run.Owner))
         {
-            foreach (var payload in payloads)
+            IEnumerable<StreamRow> rows = scope == ICallContext.AllDevicesScopeKey
+                ? taken.Rows
+                : taken.Rows.Where(r => _ctx.DeviceScopes?.Contains(scope, r.DeviceId) ?? false);
+            var chunks = rows.Chunk(_options.MaxRowsPerEvent).ToList();
+            events.Publish(
+                LoadTestMethods.LiveTopic,
+                LoadTestJson.Serialize(new LiveEvent(summary, taken.FromSecond, taken.Points, chunks.Count > 0 ? chunks[0] : [])),
+                PluginEventAudience.DeviceScope(scope));
+            foreach (var chunk in chunks.Skip(1))
             {
-                events.Publish(LoadTestMethods.LiveTopic, payload, PluginEventAudience.DeviceScope(scope));
+                events.Publish(LoadTestMethods.LiveTopic, LoadTestJson.Serialize(new LiveEvent(summary, end, empty, chunk)), PluginEventAudience.DeviceScope(scope));
             }
         }
     }
