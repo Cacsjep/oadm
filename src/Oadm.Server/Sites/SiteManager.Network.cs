@@ -52,10 +52,18 @@ public sealed partial class SiteManager
     public bool Reaches(Guid siteId, IPAddress address)
     {
         ArgumentNullException.ThrowIfNull(address);
+        SiteNetworks networks;
         lock (_lock)
         {
-            return _sites.TryGetValue(siteId, out var entry) && entry.Networks.Contains(address);
+            if (!_sites.TryGetValue(siteId, out var entry))
+            {
+                return false;
+            }
+
+            networks = entry.Networks;
         }
+
+        return networks.Contains(address); // the node's networks are looked through outside the lock
     }
 
     /// <summary>The range against each network's bounds: O(networks), never per address (a /16 x 100 sites).</summary>
@@ -108,7 +116,7 @@ public sealed partial class SiteManager
         var ip = Reached(siteId, address, out var session, out var siteName);
         lock (_lock)
         {
-            if (_sites.TryGetValue(siteId, out var entry) && !Allows(entry.Status, port))
+            if (_sites.TryGetValue(siteId, out var entry) && !entry.ConnectPorts.Contains(port))
             {
                 throw SiteException.For(siteId, siteName, SiteProblem.PortNotAllowed, port);
             }

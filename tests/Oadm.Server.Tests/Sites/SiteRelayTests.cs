@@ -178,6 +178,46 @@ public sealed class SiteRelayTests
     }
 
     [Fact]
+    public async Task ATcpRelayKeepsAFixedNumberOfConnectionsWhateverTheNodeNames()
+    {
+        await using var server = await SiteServer.StartAsync(accept: false);
+        // Never started: the node's messages come from the test, as a node that keeps no rules would send them.
+        await using var relay = new global::Oadm.Server.Sites.SiteTcpRelay(server.Manager, "Building B", Guid.NewGuid(), 9000, "Test");
+        var handed = new List<IIncomingConnection>();
+        const int Max = global::Oadm.Server.Sites.SiteTcpRelay.MaxConnections;
+
+        for (var connection = 1UL; connection <= Max + 100; connection++)
+        {
+            var kept = relay.Connections;
+            relay.OnPacket(new Oadm.Contracts.SiteNode.RelayPacket { ConnectionId = connection, Accepted = true, RemoteAddress = "192.168.0.30:50000" });
+            if (relay.Connections > kept)
+            {
+                handed.Add(await relay.AcceptAsync(CancellationToken.None)); // waiting in the relay: handed out at once
+            }
+        }
+
+        Assert.Equal(Max, handed.Count);
+
+        // An id that is in use is not a new connection: nothing replaces the one the plugin holds.
+        relay.OnPacket(new Oadm.Contracts.SiteNode.RelayPacket { ConnectionId = 1, Accepted = true, RemoteAddress = "192.168.0.31:50000" });
+        Assert.Equal(Max, relay.Connections);
+    }
+
+    [Fact]
+    public async Task AUdpRelayKeepsNothingLongerThanADatagram()
+    {
+        await using var server = await SiteServer.StartAsync(accept: false);
+        await using var relay = new global::Oadm.Server.Sites.SiteUdpRelay(server.Manager, "Building B", Guid.NewGuid(), 9000, "Test");
+        const int Max = global::Oadm.Server.Sites.SiteUdpRelay.MaxDatagram;
+
+        relay.OnPacket(new Oadm.Contracts.SiteNode.RelayPacket { RemoteAddress = "192.168.0.30:123", Data = Google.Protobuf.ByteString.CopyFrom(new byte[Max + 1]) });
+        relay.OnPacket(new Oadm.Contracts.SiteNode.RelayPacket { RemoteAddress = "192.168.0.30:123", Data = Google.Protobuf.ByteString.CopyFromUtf8("what time is it") });
+
+        using var cts = new CancellationTokenSource(Wait);
+        Assert.Equal("what time is it", Encoding.ASCII.GetString((await relay.ReceiveAsync(cts.Token)).Data.Span));
+    }
+
+    [Fact]
     public async Task TheRelayIsSiteOfflineWhileTheNodeIsGoneAndOpensAgainWhenItReconnects()
     {
         await using var server = await SiteServer.StartAsync();

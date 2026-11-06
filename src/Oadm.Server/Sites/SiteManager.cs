@@ -270,7 +270,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             }
 
             // The node's allowed ports come with Watch: a port it does not allow is not dialed, and asked for once.
-            if (!Allows(entry.Status, port))
+            if (!entry.ConnectPorts.Contains(port))
             {
                 request = entry.Requested.Add(port);
                 if (!request)
@@ -299,8 +299,12 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         return await session.DialAsync(name, host, port, kind, timeout, ct).ConfigureAwait(false);
     }
 
-    private static bool Allows(NodeStatus? status, int port) =>
-        status is not null && status.Allowed.Any(r => r.Direction == PortDirection.Connect && r.Protocol == Protocol.Tcp && r.Port == port);
+    /// <summary>
+    /// The TCP ports the node connects to devices on, from its status: built once per status, outside the lock, so a dial
+    /// asks a set and never reads the node's list under the manager's lock.
+    /// </summary>
+    private static HashSet<int> ConnectPortsOf(NodeStatus status) =>
+        [.. status.Allowed.Where(r => r.Direction == PortDirection.Connect && r.Protocol == Protocol.Tcp).Select(r => r.Port)];
 
     // ---------- ISiteLargeTransfers ----------
 
@@ -365,6 +369,9 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         var changed = false;
         var reset = false;
         var edges = new List<SiteEdge>();
+        // What the dials and the discovery ask for every connection, read from the node's lists before the lock.
+        var ports = ConnectPortsOf(status);
+        var networks = SiteNetworks.From(status);
         lock (_lock)
         {
             if (!_sites.TryGetValue(session.SiteId, out var entry) || entry.Session != session)
@@ -382,7 +389,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             }
             else
             {
-                changed = Apply(entry, status, now, Time.GetUtcNow(), edges);
+                changed = Apply(entry, status, ports, networks, now, Time.GetUtcNow(), edges);
             }
         }
 
@@ -402,18 +409,15 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
     }
 
     // Under the lock.
-    private bool Apply(SiteEntry entry, NodeStatus status, long now, DateTimeOffset wall, List<SiteEdge> edges)
+    private bool Apply(SiteEntry entry, NodeStatus status, HashSet<int> ports, SiteNetworks networks, long now, DateTimeOffset wall, List<SiteEdge> edges)
     {
         entry.Status = status;
-        entry.Networks = SiteNetworks.From(status);
+        entry.ConnectPorts = ports;
+        entry.Networks = networks;
         entry.LastAnswer = now;
         entry.LastSeen = wall;
         entry.ConnectedSince ??= now;
-        foreach (var port in entry.Requested.Where(p => Allows(status, p)).ToList())
-        {
-            entry.Requested.Remove(port);
-        }
-
+        entry.Requested.RemoveWhere(ports.Contains);
         return Evaluate(entry, now, edges);
     }
 
@@ -447,6 +451,24 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
 
         RaiseList();
     }
+
+    /// <summary>
+    /// A bound node's heartbeat Hello broke <c>HelloRules</c> or its status <c>NodeStatusRules</c>: nothing of it is kept,
+    /// and the session ends (the caller returns).
+    /// </summary>
+    internal void AnswerRefused(SiteSession session, string problem)
+    {
+        Interlocked.Increment(ref _answersRefused);
+        LogAnswerRefused(NameOf(session.SiteId) ?? session.SiteId.ToString(), session.Control.RemoteHost, problem);
+    }
+
+    private int _answersRefused;
+
+    /// <summary>Sessions ended because the node's Hello or status broke the rules (tests).</summary>
+    internal int AnswersRefused => Volatile.Read(ref _answersRefused);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The site node of {Site} ({Remote}) sent an answer outside the limits ({Problem}); its connection is closed")]
+    private partial void LogAnswerRefused(string site, string remote, string problem);
 
     /// <summary>
     /// True when the node of <paramref name="session"/> has not answered for longer than the offline time, counted from
@@ -1293,6 +1315,9 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         public string? Message { get; set; }
 
         public NodeStatus? Status { get; set; }
+
+        /// <summary>The TCP ports the node connects to devices on (from <see cref="Status"/>, <see cref="ConnectPortsOf"/>).</summary>
+        public HashSet<int> ConnectPorts { get; set; } = [];
 
         /// <summary>The networks the node reaches (from <see cref="Status"/>): reached cards, all cards, extra subnets.</summary>
         public SiteNetworks Networks { get; set; } = SiteNetworks.None;

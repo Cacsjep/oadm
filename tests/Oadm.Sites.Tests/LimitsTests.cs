@@ -134,4 +134,47 @@ public sealed class LimitsTests
         Assert.NotNull(HelloRules.Problem(many));
         Assert.True(HelloRules.IsNodeId(Guid.NewGuid().ToString()));
     }
+
+    [Fact]
+    public void AStatusUpToTheLimitsPasses()
+    {
+        Assert.Null(NodeStatusRules.Problem(Status()));
+        Assert.Null(NodeStatusRules.Problem(Status(
+            cards: NodeStatusRules.MaxCards,
+            addressesPerCard: NodeStatusRules.MaxAddresses / NodeStatusRules.MaxCards,
+            subnets: NodeStatusRules.MaxExtraSubnets,
+            allowed: NodeStatusRules.MaxAllowed,
+            requested: NodeStatusRules.MaxRequested,
+            relays: NodeStatusRules.MaxRelays)));
+    }
+
+    [Fact]
+    public void AStatusWithOneListBeyondItsLimitIsRefused()
+    {
+        Assert.Equal("no status", NodeStatusRules.Problem(null));
+        Assert.Equal("too many network cards", NodeStatusRules.Problem(Status(cards: NodeStatusRules.MaxCards + 1)));
+        Assert.Equal("too many addresses", NodeStatusRules.Problem(Status(cards: 1, addressesPerCard: NodeStatusRules.MaxAddresses + 1)));
+        Assert.Equal("too many addresses", NodeStatusRules.Problem(Status(cards: 2, addressesPerCard: (NodeStatusRules.MaxAddresses / 2) + 1))); // all cards together
+        Assert.Equal("too many extra networks", NodeStatusRules.Problem(Status(subnets: NodeStatusRules.MaxExtraSubnets + 1)));
+        Assert.Equal("too many allowed ports", NodeStatusRules.Problem(Status(allowed: NodeStatusRules.MaxAllowed + 1)));
+        Assert.Equal("too many requested ports", NodeStatusRules.Problem(Status(requested: NodeStatusRules.MaxRequested + 1)));
+        Assert.Equal("too many relays", NodeStatusRules.Problem(Status(relays: NodeStatusRules.MaxRelays + 1)));
+    }
+
+    private static NodeStatus Status(int cards = 2, int addressesPerCard = 2, int subnets = 1, int allowed = 3, int requested = 1, int relays = 1)
+    {
+        var status = new NodeStatus { State = NodeState.Bound };
+        for (var c = 0; c < cards; c++)
+        {
+            var card = new NetworkCard { Id = "card" + c, Name = "Ethernet " + c, Reached = true };
+            card.Addresses.Add(Enumerable.Range(0, addressesPerCard).Select(a => $"10.{c % 256}.{a / 256}.{a % 256}/24"));
+            status.Cards.Add(card);
+        }
+
+        status.ExtraSubnets.Add(Enumerable.Range(0, subnets).Select(s => $"172.16.{s % 256}.0/24"));
+        status.Allowed.Add(Enumerable.Range(0, allowed).Select(p => new PortRule { Direction = PortDirection.Connect, Protocol = Protocol.Tcp, Port = 1 + p }));
+        status.Requested.Add(Enumerable.Range(0, requested).Select(p => new PortRule { Direction = PortDirection.Connect, Protocol = Protocol.Tcp, Port = 10000 + p }));
+        status.Relays.Add(Enumerable.Range(0, relays).Select(p => new RelayInfo { Protocol = Protocol.Udp, Port = 20000 + p }));
+        return status;
+    }
 }

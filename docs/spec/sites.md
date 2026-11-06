@@ -56,6 +56,16 @@ side.
   site's key is not capped); 16 KB answers until a link carries a bound site's key (`NodeLink.Trust`); Hello checked by
   `HelloRules`; 10 new unknown connections a minute per address; 50 waiting nodes kept by key fingerprint, 3 per
   address, full = the one waiting longest makes room, dropped after 24 h.
+- **Limits on a bound site's node** (a node someone took over never exhausts the server or holds up the other sites):
+  1 MB per answer on a trusted link (`NodeLink.TrustedReceiveBytes`; the largest message a node sends is a chunk of 64
+  KB: Dial data, a relay's datagram or TCP data, so uploads, downloads and live video through a site are streams of
+  chunks and never one message); every Hello is checked by `HelloRules`, the heartbeat's too; a status is checked by
+  `NodeStatusRules` (256 cards, 1,024 addresses, 256 extra networks, 2,048 allowed and 1,024 requested ports, 256
+  relays); a Hello or status that breaks the rules is kept nowhere and ends the session (logged). The allowed ports and
+  the networks of a status are read once, outside the manager's lock (`SiteEntry.ConnectPorts`, `SiteNetworks`); a dial
+  asks a set. A range scan probes each address of the range once whatever the node answers
+  (`DiscoveryService.ScanSiteAsync`); a TCP relay keeps at most 512 connections (`SiteTcpRelay.MaxConnections`, the
+  node holds 256) and at most 512 refusals waiting for the link, a UDP relay nothing longer than a datagram.
 - **Binding** with J-PAKE (`Oadm.Sites.Binding`): one at a time; the node's Bind runs to its end whatever the caller does;
   Unbind when the site cannot be stored or Bind's answer was lost; a node that accepted a new server identity binds its
   site again with the code.

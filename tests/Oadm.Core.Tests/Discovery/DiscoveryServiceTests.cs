@@ -298,6 +298,48 @@ public class DiscoveryServiceTests
     }
 
     [Fact]
+    public async Task ASiteRangeScanProbesEachAddressOfTheRangeOnceWhateverTheNodeSends()
+    {
+        var sites = new Oadm.Tests.Shared.FakeSiteTransport();
+        var site = sites.AddSite("Building B");
+        var inside = IPAddress.Parse("192.168.0.20");
+        // A node that keeps no rules: the same address thousands of times, thousands of addresses outside the range.
+        site.ScanAnswers =
+        [
+            .. Enumerable.Repeat(new Oadm.Core.Sites.SiteRangeScanResult(inside, [80], 1, 2, false), 5000),
+            .. Enumerable.Range(0, 5000).Select(i => new Oadm.Core.Sites.SiteRangeScanResult(new IPAddress([10, 9, (byte)(i >> 8), (byte)i]), [80], 1, 2, false)),
+            new Oadm.Core.Sites.SiteRangeScanResult(IPAddress.Parse("::ffff:192.168.0.20"), [80], 2, 2, false),
+            new Oadm.Core.Sites.SiteRangeScanResult(null, [], 2, 2, true),
+        ];
+        var probe = new SiteProbes();
+        await using var service = new DiscoveryService(new FakeMdnsBrowser(), new RangeScanner(probe), probe, sites: sites);
+
+        var session = service.StartRangeScan(inside, IPAddress.Parse("192.168.0.21"));
+        var events = await Collect(service, session.Id);
+
+        Assert.True(events[^1].Finished);
+        Assert.Equal(["192.168.0.20"], probe.ThroughSite);
+    }
+
+    /// <summary>Nothing answers; counts the probes through a site.</summary>
+    private sealed class SiteProbes : IDeviceProbe
+    {
+        public System.Collections.Concurrent.ConcurrentQueue<string> ThroughSite { get; } = [];
+
+        public Task<DeviceProbeResult?> ProbeAsync(IPAddress address, TimeSpan timeout, CancellationToken cancellationToken) => Task.FromResult<DeviceProbeResult?>(null);
+
+        public Task<DeviceProbeResult?> ProbeAsync(IPAddress address, Oadm.Core.Sites.DeviceRoute route, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            if (route.SiteId is not null)
+            {
+                ThroughSite.Enqueue(address.ToString());
+            }
+
+            return Task.FromResult<DeviceProbeResult?>(null);
+        }
+    }
+
+    [Fact]
     public void MergeKeepsTheDnsNameOnlyForItsAddress()
     {
         var t0 = DateTimeOffset.UnixEpoch;
