@@ -110,7 +110,7 @@ the plugin, not settings.
 
 - RTP over UDP: recorded packets with gaps, reorders and duplicates give the expected loss and jitter.
 - Restore: Cancel, a dropped camera, a failed write and plugin stop all write the original exposure back (`FakeCamera`).
-- 30,000 chosen devices are refused at once; 1,000 streams plan, run and open (every getRun page well below 16 MB).
+- A choice at the device limit is refused at once, before any read (a check takes at most 1,000 cameras); 1,000 streams plan, run and open (every getRun page well below 16 MB).
 - Device groups: chosen ids outside the group are refused whole.
 
 ## Decided at the build

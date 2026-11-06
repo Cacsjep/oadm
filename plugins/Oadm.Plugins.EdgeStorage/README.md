@@ -92,6 +92,6 @@ One table per device scope (`DeviceSweeps<StorageRow>`): the users of a device g
 `tests/Oadm.Plugins.EdgeStorage.Tests`: `DeviceGroupTests` (the plugin canary, one table per group, runs through the
 caller), `DeviceSweepsTests` (the shared sweep per scope), parsing of the recorded answers, every task against `SdCamera` (a stateful fake
 that answers like the Q1615 Mk III, 403 while mounted), the plugin's table and rights, the page view model against the
-plugin in process, the dialogs, headless screenshots (`edge-storage-*.png`), Perf (5,000 cameras read, searched and
+plugin in process, the dialogs, headless screenshots (`edge-storage-*.png`), Perf (the device limit read, searched and
 selected). Opt-in `StorageHardwareWriteTests` (`OADM_STORAGE_WRITE_URL` / `_USER` / `_PASSWORD`; **formats the card**):
 every tool on one camera, the card ends as it started; passed on the Q1615 Mk III (1 min 34 s).

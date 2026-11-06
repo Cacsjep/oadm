@@ -1,6 +1,7 @@
 # Help (offline docs)
 
-Status: built 2026-10-27 (docs build, installers, Help window, docs server); the release workflow change runs first in CI with the next release.
+Status: built 2026-10-27, released in 4.6.0 (docs build, installers, Help window, docs server); `release.yml` builds the
+offline docs for every release tag (job `docs`) and checks that each installer has them in the client only.
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 

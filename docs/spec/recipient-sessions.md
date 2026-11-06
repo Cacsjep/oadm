@@ -1,6 +1,9 @@
 # Recipient sessions: MQTT, Modbus and OPC UA
 
-Built on 2026-11-05 (SDK 0.12.0): MQTT, Modbus TCP and OPC UA on one architecture. Libraries: MQTTnet, the OPC Foundation's .NET stack, Modbus
+Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
+
+The recipient types MQTT, Modbus TCP and OPC UA: each recipient keeps one open connection that all its rules share.
+Built on 2026-11-05 (SDK 0.12.0). Libraries: MQTTnet, the OPC Foundation's .NET stack, Modbus
 our own. **Client and output only**: OADM connects out and writes, it never runs a broker or server and never reads values.
 
 ## The rule

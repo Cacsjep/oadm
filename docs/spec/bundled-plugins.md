@@ -121,8 +121,8 @@ command**. Command format: `Schema/command-format.md` + `command.schema.json` (t
   and each device re-checks a fresh API list before a write ("Missing API x. Nothing was sent."). The response kind
   decides how success, errors and values are read (Axis devices answer errors with HTTP 200).
 - Saved commands: plugin setting `savedCommands`, at most 500, shared by all clients, export / import as library files.
-- Roles: methods are Operator; `tryRequest` and `rollout` are audited. Scale: 30,000 target devices, every list action
-  under 200 ms (test).
+- Roles: methods are Operator; `tryRequest` and `rollout` are audited. Scale: target devices at the device limit, every list action
+  under 1 s (Perf test).
 - Device groups: devices, clients and tasks only through the call (`tryRequest`, `checkCompatibility`, `rollout`: an id
   outside the user's view refuses the request like an unknown one); `save`, `delete` and `import` only for users with
   all devices (`RequiresAllDevices`; the page hides New command, Import, Edit, Delete and Save with values); a saved

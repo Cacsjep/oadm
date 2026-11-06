@@ -19,7 +19,7 @@ computer, one folder per camera. Spec: [Bundled plugins](../../docs/spec/bundled
 | Errors | A recording that fails (deleted meanwhile, camera gone) counts in its row ("18 downloaded, 2 failed", the last reason as detail) and the next one runs. A folder that cannot be written (disk full) stops the download with the reason below the table. |
 | Lifetime | The view model lives as long as the rail page: switching pages does not stop a download; logging out or turning the plugin off stops it. Stop ends the current file (its `.part` is deleted) and keeps the finished ones. |
 | Refusals | Certificate changed, Credentials required and Password not set are not contacted (shared `DeviceMessages`). Not a video device, no edge storage (`Properties.LocalStorage.LocalStorage`), no export (`Properties.LocalStorage.ExportRecording`, AXIS OS 5.60+) are the row's problem. Every search also reads the disk list (`disks/list.cgi`): a card that failed, is encrypted and cannot be opened, is not in use, read-only or locked is named next to the recordings found ("12 recordings found" as warning, "The SD card failed"), or is the row's status when nothing was found; no disk present: "No SD card or network share". A full card is no problem (the camera removes the oldest recordings). |
-| Scale | At most 50,000 recordings per camera and search (pages of 1,000); the grid is virtualized; 5,000 cameras tested. |
+| Scale | At most 50,000 recordings per camera and search (pages of 1,000); the grid is virtualized; tested at the device limit. |
 
 ## Device API
 
@@ -61,7 +61,7 @@ whether the camera is still in the group's devices now (`IDeviceScopes.Devices`)
 `tests/Oadm.Plugins.EdgeRecordingExport.Tests`: parsing of the recorded answers, the server part against a fake camera
 that answers like the P3265-V (paging, cut times, estimates, refusals, export), the page (choice, range errors, search
 summary, download into a folder per camera, skip on the second run, "_2", a failed recording, Stop, the export right),
-a headless screenshot (`edge-recording-export.png`, `-download.png`), Perf (5,000 cameras), the device-group canary
+a headless screenshot (`edge-recording-export.png`, `-download.png`), Perf (the device limit), the device-group canary
 (`CanaryTests`), and the read-only hardware
 test through the in-process server and the real gRPC client (searches the last two minutes of every dev camera and
 downloads them). Server: `tests/Oadm.Server.Tests/PluginDownloadTests` (the SDK file stream). Fake mode

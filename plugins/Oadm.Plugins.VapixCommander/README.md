@@ -77,8 +77,8 @@ the shared tasks pane sits below the page (`ShowTasksPane`), so a started rollou
 - Scale: the problem list is virtualized; `Targets`, `SelectedTargets` and `ProblemTargets` are replaced as whole lists
   (one reset), sorted by IPv4 address; the choice is resolved in one O(n) pass after every choice and device change;
   compatibility comes from each device's cached API list on the client (`Compatibility.Check`), no request per device.
-  At 30,000 devices All devices, the Devices page selection, a tag and the compatibility each stay under 200 ms
-  (`ScaleTests`).
+  At the device limit All devices, the Devices page selection, a tag and the compatibility each stay under 1 s
+  (`PageViewModelTests`, Perf).
 
 ## Request builder
 
@@ -170,7 +170,7 @@ Page methods get the user's call (`InvokeAsync(caller, ...)`); see [device group
 - `tests/Oadm.Plugins.VapixCommander.Tests`: rendering of every field type, typed JSON, booleans per kind, validation,
   files, every response kind with error texts and transport mapping against a fake device, stop on first error through
   the real task engine, saved commands (encryption, export, import), compatibility, the event rule action, the page and
-  request builder view models, `ScaleTests` (30,000 devices), `BundledLibraryTests`, `DeviceGroupTests` (`PluginCanary`
+  request builder view models, `ScaleTests` (the device limit), `BundledLibraryTests`, `DeviceGroupTests` (`PluginCanary`
   with every method and its id fields, the owner, stored passwords, the page), headless screenshots.
 - `tests/Oadm.Plugins.VapixCommander.Library.Tests`: the bundled library; see [Library/README.md](Library/README.md#tests).
 - `tests/Oadm.Client.Tests/CodeViewTests`; `tests/Oadm.Server.Tests/VapixCommanderServerTests` (routing, hidden task).

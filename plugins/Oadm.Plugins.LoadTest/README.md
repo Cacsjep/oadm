@@ -52,7 +52,7 @@ not OK (no request), the device's own error of `ListSourcesAsync`, "No H.264 or 
 
 Storage: the summaries as plugin records (collection `runs`, with the owner scope), the graphs and rows as
 `runs/<id>/detail.json.gz` and the per-second values of each stream as `runs/<id>/batch-<n>.json.gz` in the plugin's data
-folder (in memory without one). The values of a batch are saved and freed at its end, so 30,000 streams never sit in
+folder (in memory without one). The values of a batch are saved and freed at its end, so the values of 1,000 streams never sit in
 memory at once. The last 5 runs are kept (`MaxRuns`); a start that would make 6 deletes the oldest. A run is saved as
 Running at its start and after every batch: after a crash it is loaded as Failed.
 
@@ -60,7 +60,7 @@ Running at its start and after every batch: after a crash it is loaded as Failed
 
 | Method | Permission | Payload | Answer |
 |---|---|---|---|
-| `plan` | show | `PlanRequest` {deviceIds (1 to 30,000), batchSize, phaseMinutes, allDevices} | `CheckPlan` (read only, nothing streams) |
+| `plan` | show | `PlanRequest` {deviceIds (1 to the device limit, `DeviceLimits.MaxDevices`), batchSize, phaseMinutes, allDevices} | `CheckPlan` (read only, nothing streams) |
 | `start` | run | `StartRequest` (as plan) | `RunSummary` at once (`phase` null while the first streams connect); refused while a check runs: "A check by anna is running (40 % done). Start again when it ends." |
 | `cancel` | run | none | `RunSummary` of the cancelled run once the exposure is back and the probes are closed, or null when none of the caller's runs |
 | `listRuns` | show | none | `RunList` (newest first, the running one included) |
@@ -90,7 +90,7 @@ cached sources, All devices), `RunnerTests` (ramp counts, each limit, verdicts a
 start, refused and broken streams, TCP, UDP blocked, batches, live events, chunks, one at a time, Cancel, Start while the
 cameras connect, firewall), `ExposureTests` (Low light only, Cancel, drop-out, failed restore, plugin stop, no usable
 value, refused write), `RunStoreTests` (5 runs, restart, server stop -> Failed, delete, no data folder),
-`DeviceGroupTests` (the plugin canary, refusal whole, run ownership, permissions), `ScaleTests` (30,000 chosen devices
+`DeviceGroupTests` (the plugin canary, refusal whole, run ownership, permissions), `ScaleTests` (a choice at the device limit
 refused at once, 1,000 streams planned and started, the largest run below 4 MB, getRun pages; Perf: plan, summary and
 table of 1,000), `FakeStreamProbesTests`. The page's tests are in `Client/`.
 

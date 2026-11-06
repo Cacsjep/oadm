@@ -1,8 +1,10 @@
 # Recipients
 
+Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
+
 Shared targets of event rule actions, like the Recipients of an Axis device (System > Events): a recipient says where and
-how to reach something, the action says what to send. Agreed with the maintainer on 2026-11-05. This replaces the old rule
-"the server settings live in each action, no shared setting" in `docs/spec/event-rules.md` and the Notifications README.
+how to reach something, the action says what to send. Agreed with the maintainer on 2026-11-05; until then each action
+kept its own server settings.
 
 ## Decisions
 

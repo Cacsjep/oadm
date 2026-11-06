@@ -83,4 +83,4 @@ Not at sites in the first version: the staging DHCP runs on the server's own net
 - Proposals: next free address skips OADM devices, rows and answering addresses; duplicates in the table refused.
 - Apply network: written only on Apply, unreachable at the new address shows the problem, the device moves.
 - PRO: the page and the steps run only with an active license or trial.
-- 30,000 devices in OADM: proposals and the duplicate check stay fast.
+- 100,000 devices in OADM: proposals and the duplicate check stay fast.

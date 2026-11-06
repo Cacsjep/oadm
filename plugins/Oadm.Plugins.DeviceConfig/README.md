@@ -87,7 +87,7 @@ The export contains values that belong to **one device** and some that cannot be
 - The window (`ExportConfigWindow`, like System report: Devices card with progress row, result chip, virtualized grid
   Address, MAC address, Model, Status Waiting / Exporting / Done + size / Failed + reason; Cancel, then Close) reads each
   device through the read-only query `export` (`ITaskPluginQuery`, `GET /config/rest/$export`, stored credentials) at
-  most 8 at a time and writes each answer into the ZIP as it arrives (one entry open at a time; 5,000 devices tested).
+  most 8 at a time and writes each answer into the ZIP as it arrives (one entry open at a time; tested at the device limit).
   One device: the file is opened only when the export succeeded.
 - The file is exactly the device's answer (`status`, `data`, `metadata`), so the camera web interface can import it too.
   The file name carries what OADM knows beyond that; the MAC address in it is what the ZIP import matches on.
@@ -298,7 +298,7 @@ own run): the server keeps no shared file with saved passwords. Tests: server `D
   run, device warnings and differing values, devices left out, broken or missing file, connection settings only when
   chosen and last, a timeout failing one area, a changed certificate stopping, verify unreadable, ZIP entry of another
   device, upload removed meanwhile.
-- Export query and window: one file, failed single export writes nothing, ZIP with summary, cancel, Perf 5,000 devices.
+- Export query and window: one file, failed single export writes nothing, ZIP with summary, cancel, Perf at the device limit.
 - Import dialog: one file with other models, confirmation, connection settings off by default and warned about, broken
   files, ZIP matching (every status), Perf 5,000 files.
 - Headless screenshots `device-config-export.png`, `device-config-import-other-model.png`, `device-config-import-zip.png`.
@@ -310,7 +310,7 @@ own run): the server keeps no shared file with saved passwords. Tests: server `D
   parameters last and their right, a refused part failing only its step, the profile limit), the payload; the dialogs
   against the real queries (merge of models, one read per model, checks below the input, overview and payload, dangerous
   confirmation and the hidden ones without the right, an ADM file with unknown parameters, a non-ADM file, Create
-  configuration file); Perf 5,000 devices of 20 AXIS OS versions (20 reads); headless screenshots
+  configuration file); Perf the device limit of 20 AXIS OS versions (20 reads); headless screenshots
   `device-config-configure.png`, `-configure-rules.png`, `-configure-overview.png`, `device-config-create-file.png`;
   read-only `ConfigureHardwareTests` (every dev camera answers the read query).
 - Opt-in `ImportHardwareWriteTests` (`Category=HardwareWrite`, `OADM_CONFIG_WRITE_URL` / `_USER` / `_PASSWORD`) and

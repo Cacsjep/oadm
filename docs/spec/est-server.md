@@ -210,7 +210,7 @@ The camera sends no event when a renewal fails (see "The camera's own EST errors
   closes the listener ("Interface ... is not available"); failures of the hourly check and of the 30 s retry are logged.
 - Robustness: a failed write of the store is logged and tried again; stopping never opens a listener or relay any more; a
   move of 4.1.0-rc.2 data cut short keeps the records' newer state.
-- Scale: a per-device index (`_profilesOf`) keeps Stop and Forget O(1) per device (`RenewalTests`, Perf: 30,000 cameras in
+- Scale: a per-device index (`_profilesOf`) keeps Stop and Forget O(1) per device (`RenewalTests`, Perf at the device limit; measured: 30,000 cameras in
   about 0.5 s); one read of the device list per check; at most 20 log lines per check, then one summary line.
 
 ## Setting up a camera

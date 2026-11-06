@@ -195,7 +195,7 @@ The Policies tab is one card and a side panel, like Intune (`PkiView` `PoliciesP
 - **Form** (`PolicyFormView`, `PolicyEditorViewModel`): the kind's description (`PolicyKinds.Description`), the name (not
   for a system policy), the kind's own fields, and for kinds with devices **Devices**: All devices, or the chosen sites, tags
   and devices in one line with **Choose devices** (the shared `DevicePickerWindow` in its group mode over a copy of the
-  choice, made only on that click, never one over 30,000 devices per click on a row; Cancel changes nothing). The Devices
+  choice, made only on that click, never one over 100,000 devices per click on a row; Cancel changes nothing). The Devices
   field is a field of the form's validator (none chosen, the server's overlap refusal until the choice changes), so it
   blocks Save like any other error. A system policy keeps its name and devices (a system Expiry warning for chosen devices
   names them below the days). Save is off without a change ("No changes to save."); "changed" is worked out once per edit.
@@ -373,7 +373,7 @@ and are checked against the 802.1X trusted CA and EST sign-in CA policies. The t
 
 ## Certificates
 
-Every certificate OADM uses now (no history, see "Current and pending"), paged on the server, so 30,000 devices with two
+Every certificate OADM uses now (no history, see "Current and pending"), paged on the server, so 100,000 devices with two
 certificates each stay fast: the CAs, each managed camera's current certificate per use (tasks and EST), OADM's server
 certificates and the certificates created, signed or imported here. Two cards of the shared `ui:IssuedCertificateList`
 (virtualized, pages of 500) on the Certificates tab.
@@ -777,7 +777,7 @@ The detail lives in `plugins/Oadm.Plugins.Pki/README.md`; the map:
   `CurrentCertificateTests`, `CertificateConfirmationTaskTests`, `IssuedRegistryTests`, `ExistingCertificateImportTests`,
   `LegacyDeviceApiTests`, `CompatibilityMatrixTests`, `LegacyTaskTests`, `WebServerRestartTests`, `HttpsTaskTests`,
   `TaskSafetyFixesTests`, `DeviceSoapErrorTests`, `KeysOverHttpTests`, `FakeModeTests`; Perf `PolicyPerfTests`,
-  `CertificateListPerfTests`, `IssuedScaleTests` (30,000 devices); `Oadm.Plugins.Est.Tests` `EnrollmentPolicyTests`,
+  `CertificateListPerfTests`, `IssuedScaleTests` (the device limit); `Oadm.Plugins.Est.Tests` `EnrollmentPolicyTests`,
   `PolicyTests`, `ServerTests`; `Oadm.Plugins.Radius.Tests` `PolicyTests`, `AllowCaTests`, `ConversionTests` (fixtures of
   every stored format in `Fixtures/Conversion`), `PkiTabHeadlessTests`; `Oadm.Client.Tests` `PluginTabTests`;
   `Oadm.Core.Tests` `ExpiryWarningTests`.

@@ -79,5 +79,5 @@ with "1 device is no longer available." and its tab closes like the tab of a rem
 - `tests/Oadm.Client.Tests/DeviceWebRelayTests`: cookie and token, 403 / 400 for others, bodies with a length and chunked,
   WebSocket both ways, dispose, refusals.
 - `tests/Oadm.Plugins.WebView.Tests`: tree, tabs, Close all, Back, presets and Custom, refusals, removed devices, missing
-  runtime, 5,000 devices, the shared device icon, the device-group canary (`CanaryTests`); headless `web-view-page.png`, `web-view-custom-error.png`, `web-view-runtime-missing.png`
+  runtime, the device limit, the shared device icon, the device-group canary (`CanaryTests`); headless `web-view-page.png`, `web-view-custom-error.png`, `web-view-runtime-missing.png`
   (the native browser needs a real window: a stand-in shows where the page goes).

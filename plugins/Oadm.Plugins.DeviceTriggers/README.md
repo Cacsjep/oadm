@@ -139,7 +139,7 @@ default: show only. Refusals show the server's text ("Your role does not allow: 
   filters, messages, reports, Any, one-shot, connection lost and back, event gone, refused statuses, turn off, types follow
   save / copy / delete, validation, removed devices, live read, roles; `RobustnessTests` (resolve order and stop, filters
   only to changed devices, connect limit, refused filter of one trigger, turned-off and empty triggers report at once,
-  5,000 devices); `DeviceGroupTests`; `PageTests` (page and dialog view models incl. 5,000 devices, headless
+  a trigger on 10,000 devices); `DeviceGroupTests`; `PageTests` (page and dialog view models incl. the device limit, headless
   `device-triggers-page.png`, `device-triggers-editor.png`).
 - Core: `tests/Oadm.Core.Tests/Events/DynamicEventTypesTests`, `tests/Oadm.Core.Tests/Vapix/VapixWebSocketTests`.
 - Fake mode (`FakeOadmApi.DeviceTriggers.cs`): three sample triggers, event lists per device kind.

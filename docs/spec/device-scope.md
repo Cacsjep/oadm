@@ -220,7 +220,7 @@ The host side is in `docs/spec/plugins.md` "Host side of the call context".
   job, stream and download ids of user A refused for user B; every `EventService` method refused for a group user; empty
   ids touch only the view; runnable sets and address checks leak no ids or addresses; a removed serial does not join a
   group when re-added by someone outside it.
-- Perf tests with 30,000 devices and 50,000 tasks: views, streams, task history paging.
+- Perf tests at the device limit with 50,000 tasks: views, streams, task history paging.
 
 ## Code: model and views
 
@@ -264,7 +264,7 @@ The host side is in `docs/spec/plugins.md` "Host side of the call context".
   NOT_FOUND.
 - **Membership cache:** the allowed ids are cached per (group revision, tag and site catalog revision,
   `DeviceChangeFeed.MembershipVersion`). The membership version moves only when a device is added or removed or its
-  serial, site, tags or adder change, never for a status, so at 30,000 devices a polling round reads no allowed ids again;
+  serial, site, tags or adder change, never for a status, so at 100,000 devices a polling round reads no allowed ids again;
   at the start `HostDeviceScopes.LoadAsync` seeds the feed with every stored device (`DeviceChangeFeed.SeedMembership`),
   so the first polling round moves nothing either. `HostDeviceScopes.LoadAsync` reads the rows once for every caller; one
   read is shared by concurrent callers and never runs on one caller's token.
@@ -360,7 +360,7 @@ The host side is in `docs/spec/plugins.md` "Host side of the call context".
   event streams), `Oadm.Server.Tests/DeviceGroups/DeviceGroupStreamsTests` (feed over gRPC next to an administrator's,
   new rules end the stream, unknown ids refused, live video ends, Sites page), canary cases for every method and
   `Filtered` (List, Watch, ListSites, WatchSites: the reply never shows the outside device), perf
-  `DeviceGroupWatchScaleTests` (3,000 of 30,000 devices: snapshot, a burst over every device, 1,000 in and 1,000 out).
+  `DeviceGroupWatchScaleTests` (a group of 3,000 at the device limit: snapshot, a burst over every device, 1,000 in and 1,000 out).
 
 ## Code: tasks
 
@@ -395,7 +395,7 @@ The host side is in `docs/spec/plugins.md` "Host side of the call context".
 - **Query:** `TaskPluginQueries.QueryAsync(pluginId, ViewedDevices, method, payload, ICallContext)`; the plugin gets the
   call and, for a group, `ITaskQueryContext.Devices` of the view.
 - **Tests:** `tests/Oadm.Core.Tests/DeviceGroups/TaskViewTests` (runs, call, queue race, history, Watch with devices that
-  leave and enter, a removed site and new rules, backstop), `Perf/TaskViewScaleTests` (30,000 devices, 50,000 tasks),
+  leave and enter, a removed site and new rules, backstop), `Perf/TaskViewScaleTests` (the device limit, 50,000 tasks),
   `Perf/TaskQueueCheckScaleTests` (5,000 queued tasks of a group user leave the queue, 501 users), the canary cases of
   TaskService.
 

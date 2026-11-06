@@ -96,6 +96,6 @@ with the labels in the grid, the search, the export and the import; plugins read
 - **Fake mode**: Building A (blue), Building C (green), PTZ (amber), Outdoor (teal) on the sample devices; every
   `TagService` call works in memory (`FakeOadmApi.Tags.cs`).
 - **Tests**: `tests/Oadm.Core.Tests/DeviceGroups/TagGuardTests` (guard, group save during tagging, membership audit),
-  `tests/Oadm.Server.Tests/DeviceGroups/SharedCore/TagScopeTests`, `tests/Oadm.Server.Tests/TagServiceTests` + Perf `TagScaleTests` (5,000 devices: SetDeviceTags 4.4 s, rename
+  `tests/Oadm.Server.Tests/DeviceGroups/SharedCore/TagScopeTests`, `tests/Oadm.Server.Tests/TagServiceTests` + Perf `TagScaleTests` (the device limit; measured at 5,000 devices: SetDeviceTags 4.4 s, rename
   2.2 s, delete 2.0 s, list 35 ms); `tests/Oadm.Client.Tests/DeviceTagsTests`, `DeviceTagsHeadlessTests`, Perf
   `TagGroupScaleTests`.

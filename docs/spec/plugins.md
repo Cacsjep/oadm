@@ -293,7 +293,7 @@ The Devices page toolbar is made of toolbar plugins. Built in (compiled into the
   HTTPS, Certificate expires as ISO date yyyy-MM-dd, Certificate, IEEE 802.1X, Compliance) in the grid's unsorted order,
   RFC 4180 quoting (`Infrastructure/Csv`), CRLF, UTF-8 with BOM, a cell starting with = + - @ gets a leading `'` (no
   formula injection), no password (the client has none); save picker `IDialogService.SaveFileAsync`, default name
-  `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a failed save = `ui:MessageWindow`; O(n), 5,000 devices tested.
+  `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a failed save = `ui:MessageWindow`; O(n), tested at the device limit.
 - One generic plugin with a button per task plugin that declares `ShowInToolbar` (Tasks; enabled when it can run on the
   whole selection, otherwise disabled with the reason as tooltip).
 - **AXIS OS - Release Notes** (Plugins, order 1000): an icon-only `ui:ToolbarButton` (icon `externalLink`, class

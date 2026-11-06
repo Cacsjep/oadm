@@ -25,7 +25,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   then fades the whole splash window out (0.35 s); a login does the same, the login window stays until the main window
   drew. Log out shows the login window directly, without the splash. Tests: `SplashTests`; `StartupStallTests` runs the
   start through `AppShell` against the fake server with a stall probe (`UiStallProbe`: how long a Render job waits), Perf
-  with 30,000 devices: the longest UI stall until "Ready" stays under 400 ms (measured about 45 ms;
+  at the device limit: the longest UI stall until "Ready" stays under 1 s (measured about 45 ms at 30,000 devices, 310 to 440 ms at 100,000;
   `OADM_STARTUP_PLUGINS=<folder>` also loads client plugins).
 
 - Window: starts maximized. Custom title bar (ExtendClientAreaToDecorationsHint), app name
@@ -243,7 +243,7 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 - `DevicePickerWindow` + `DevicePickerViewModel`: every "choose devices" dialog.
   - Every managed device in address order, search over address, model, MAC and host name, Select all / Select none for
     what the search shows, the count "12 of 4,812 devices chosen", chosen devices can be unchosen, devices that cannot be
-    used greyed with the reason; virtualized, 30,000 devices tested. While its `Accept` runs (the host saves) Cancel,
+    used greyed with the reason; virtualized, tested at the device limit. While its `Accept` runs (the host saves) Cancel,
     Escape and the X wait (`IsAccepting`).
   - `ShowAsync` returns the ids or null; `ShowOneAsync` (`DevicePickerOptions.SingleDevice`: checking a device unchecks
     the one before, no Select all / none) returns one id.

@@ -72,7 +72,7 @@ notRunning, withoutApp, failed, checkedUtc).
 
 | Method | Payload | Answer |
 |---|---|---|
-| `check` | `CheckRequest` {deviceIds: 1 to 30,000 ids}; no payload = the caller's video devices (older pages) | starts a check of those cameras unless one runs; the state at once |
+| `check` | `CheckRequest` {deviceIds: 1 to the device limit, `DeviceLimits.MaxDevices`}; no payload = the caller's video devices (older pages) | starts a check of those cameras unless one runs; the state at once |
 | `getState` | none | the state, without a request |
 
 ## Device groups
@@ -93,7 +93,7 @@ See [Device groups](../../docs/spec/device-scope.md).
 answers, disabled / unsuitable / other values; check lifecycle: no request without a check, only the chosen cameras
 (first check, Refresh and Auto refresh; nothing before a choice; the choice remembered), Not running, removed app,
 changes timed, one check at a time, 24 at a time with 200 cameras, failures; view model: one check on show, Auto refresh
-off by default and only while shown, 5,000 rows; headless `image-health-dashboard.png`. Read-only hardware test
+off by default and only while shown, rows at the device limit; headless `image-health-dashboard.png`. Read-only hardware test
 `ImageHealthHardwareTests` through the in-process server and the real page over gRPC, with a development camera that runs
 AIHA (renders `image-health-dashboard-live.png`). No fake mode.
 

@@ -47,8 +47,8 @@ Apache-2.0), also for `plugins/Oadm.Plugins.Pki.Client/Radius`.
   parsing rules, fuzzing, fragmentation, alerts, timeouts; the plugin end to end through its in-memory UDP listener and site
   relays, `ServerTests`; `HardeningTests`; the device-group canary and filtering, `PluginTests`; PKI's policies,
   `AllowCaTests`, `PolicyTests`, `ConversionTests` (fixtures in `Fixtures/Conversion`); `Category=Perf` for many parallel
-  sessions and 30,000 authentications through the plugin). Client: `tests/Oadm.Plugins.Radius.Tests/Client` against
+  sessions and 1,000 authentications through the plugin among managed devices at the device limit). Client: `tests/Oadm.Plugins.Radius.Tests/Client` against
   `FakeRadiusBackend` (view models, headless rendering and screenshots with `OADM_SCREENSHOT_DIR`, `ServerLayoutTests`,
-  `PkiTabHeadlessTests`, `Category=Perf` for 10,000 sessions and 30,000 devices).
+  `PkiTabHeadlessTests`, `Category=Perf` for 10,000 sessions and the device limit).
 - Not built yet: recorded conversations of real switches (Cisco, Aruba, ...): none could be recorded here; the tests replay
   the RFC examples. A new switch quirk becomes a fixture first.

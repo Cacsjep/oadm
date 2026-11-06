@@ -119,7 +119,7 @@ of the level is Warn or Fail.
   1..64), progress and changed rows as events every 500 ms (`results` split at
   1,000 rows and below the 1 M character event limit), `cancelScan` keeps what was scanned.
 - `Scanning/ResultStore.cs`: the last result per device and level, written to the plugin setting `results` at most every
-  2 s and at the end of a scan; at most 30,000 devices per level (the device limit `DeviceLimits.MaxDevices`, oldest dropped), values cut at 160 and details at 600
+  2 s and at the end of a scan; at most the device limit per level (`DeviceLimits.MaxDevices`, oldest dropped), values cut at 160 and details at 600
   characters; results of removed devices are dropped on `getState`.
 
 ## Page
@@ -179,7 +179,7 @@ Every method works on the user's view. One scan at a time per device scope (all 
 with `# Error` lines and unprefixed parameters, hardened and weak variants, failures isolated per read, unreachable and refused
 devices, catalog), `ParserTests`, `ScanServiceTests` (bounded parallelism, device timeout, refused statuses, stop, persistence
 across a restart, removed devices, event batches, parallelism setting, store bound; the fake camera records a violation for
-any request that is not a read), `PageViewModelTests` (5,000 devices: state, filter, search, level switch, a 1,000-row batch;
+any request that is not a read), `PageViewModelTests` (the device limit: state, filter, search, level switch, a 1,000-row batch;
 levels merged by scan time; CSV; tooltips; the device choice: nothing before a choice, a tag, the scan request, the
 remembered choice, the loading ring and the progress row from the click on), `MethodRoleTests`, `FakeModeTests`, `HeadlessPageTests` (`hardening-scan-basic.png`,
 `hardening-scan-extended.png`), and `HardeningHardwareTests` (`Category=Hardware`, one Extended scan of the development camera through the
