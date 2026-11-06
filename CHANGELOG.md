@@ -16,7 +16,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Event rules: MQTT and OPC UA recipients can use certificates from the PKI page.
 - Event rules: a changed target asks for the password again, a stored password never goes to a new target.
 - PKI: a certificate or CA a recipient uses cannot be deleted.
-- Plugin SDK 0.12.0.
+- Plugin SDK 0.12.0: recipient sessions, one call that reads and watches a page's events, GuardedRun, ByteSize and PluginJson.
 
 ### Changed
 
@@ -41,7 +41,6 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Optional plugins load in the client only over a secure connection to the server.
 - File and transfer sizes read the same everywhere, for example 412 KB, 87.0 MB and 37.0 of 82.4 MB.
 - Network settings, Assign IP address, Import configuration and the certificate tasks start faster on thousands of devices.
-- Plugin SDK 0.12.0: one call reads and watches a page's events, GuardedRun, ByteSize and PluginJson.
 
 ### Fixed
 
