@@ -86,8 +86,8 @@ public sealed partial class ApplicationsViewModel : ObservableObject, IDisposabl
         ctx.PermissionsChanged += OnPermissionsChanged;
     }
 
-    /// <summary>Wait before watching the events again after the stream broke.</summary>
-    public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
+    /// <summary>The waits of the event watch (again after the stream ended or broke); a test passes its own.</summary>
+    public PluginEventWatchOptions EventWatch { get; init; } = new();
 
     /// <summary>How often the page asks for the progress while a read runs (its events may be missed).</summary>
     public static TimeSpan StatePollInterval { get; set; } = TimeSpan.FromSeconds(1);
@@ -276,7 +276,7 @@ public sealed partial class ApplicationsViewModel : ObservableObject, IDisposabl
             return;
         }
 
-        _ = _ctx.RunAsync(HandleEvent, ReconnectDelay, token);
+        _ = _ctx.RunAsync(null, HandleEvent, EventWatch, token);
         Loading = LoadSessionAsync(token);
     }
 
@@ -582,7 +582,7 @@ public sealed partial class ApplicationsViewModel : ObservableObject, IDisposabl
     /// <summary>The session's rows first; a read only when there are none yet and devices are chosen.</summary>
     private async Task LoadSessionAsync(CancellationToken ct)
     {
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var state = await LoadRowsAsync(ct).ConfigureAwait(true);
             if (state is { Reading: true })
@@ -593,15 +593,10 @@ public sealed partial class ApplicationsViewModel : ObservableObject, IDisposabl
             {
                 await ReadAsync(ct).ConfigureAwait(true);
             }
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        }, GuardedCancel.Ignore, ct).ConfigureAwait(true);
+        if (error is not null)
         {
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            ErrorText = ServerErrors.Message(ex);
+            ErrorText = error;
         }
     }
 
@@ -717,20 +712,15 @@ public sealed partial class ApplicationsViewModel : ObservableObject, IDisposabl
             return;
         }
 
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var request = new RunRequest { Action = action, Items = items, Owner = _ctx.OwnerName };
             await _ctx.InvokeAsync(AppManagementMethods.Run, AppManagementJson.Serialize(request), _active?.Token ?? CancellationToken.None).ConfigureAwait(true);
             ErrorText = null;
-        }
-        catch (OperationCanceledException)
+        }, GuardedCancel.Ignore).ConfigureAwait(true);
+        if (error is not null)
         {
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            ErrorText = ServerErrors.Message(ex);
+            ErrorText = error;
         }
     }
 
