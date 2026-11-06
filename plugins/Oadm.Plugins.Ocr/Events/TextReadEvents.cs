@@ -12,7 +12,8 @@ namespace Oadm.Plugins.Ocr.Events;
 /// <summary>
 /// The event "Text read" of each reader (docs/spec/ocr.md "Events and the rule action"): one stateless event type per
 /// reader in the folder Text recognition / reader name, one event per area and reading, with the fields Area, Text, Text
-/// read, All matches, Number, Confidence and Matches format.
+/// read, All matches, Number, Confidence and Matches format. Text is one line; Text read holds the area's rows with line
+/// breaks ("Several lines").
 /// </summary>
 public static class TextReadEvents
 {
@@ -81,8 +82,9 @@ public static class TextReadEvents
     }
 
     /// <summary>
-    /// The event's values of one area: Text and Text read with the lines joined by a space (a line ending in "-" without
-    /// one), at most <see cref="MaxTextLength"/> characters; Confidence rounded to one decimal; Matches format Yes or No.
+    /// The event's values of one area: Text on one line (never a line break: rule checks work on it), Text read in rows
+    /// with line breaks, each at most <see cref="MaxTextLength"/> characters; Confidence rounded to one decimal; Matches
+    /// format Yes or No.
     /// </summary>
     public static IReadOnlyDictionary<string, string> Data(AreaResult area, AreaDetails details)
     {
@@ -92,7 +94,7 @@ public static class TextReadEvents
         {
             [OcrInfo.AreaField] = area.Area,
             [OcrInfo.TextField] = Join(area.Text),
-            [OcrInfo.TextReadField] = Join(area.TextRead),
+            [OcrInfo.TextReadField] = Rows(area.TextRead),
             [OcrInfo.AllMatchesField] = Cut(details.AllMatches),
             [OcrInfo.NumberField] = details.Number,
             [OcrInfo.ConfidenceField] = Math.Round(Math.Clamp(area.Confidence, 0, 100), 1).ToString(CultureInfo.InvariantCulture),
@@ -101,8 +103,15 @@ public static class TextReadEvents
     }
 
     /// <summary>
-    /// Lines joined for the events: with a space, a line that ends in "-" without one ("DECAF-" and "FEINATO" give
-    /// "DECAF-FEINATO"); at most <see cref="MaxTextLength"/> characters.
+    /// An area's rows as an event value or a results row: the line breaks stay, at most <see cref="MaxTextLength"/>
+    /// characters (a cut never ends in a line break).
+    /// </summary>
+    public static string Rows(string? text) =>
+        string.IsNullOrEmpty(text) ? string.Empty : text.Length <= MaxTextLength ? text : text[..MaxTextLength].TrimEnd();
+
+    /// <summary>
+    /// Rows joined to one line (the value Number is made of, the log line of the action Read text): with a space, a row that
+    /// ends in "-" without one ("DECAF-" and "FEINATO" give "DECAF-FEINATO"); at most <see cref="MaxTextLength"/> characters.
     /// </summary>
     public static string Join(string? text)
     {

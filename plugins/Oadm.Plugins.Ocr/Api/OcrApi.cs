@@ -498,7 +498,10 @@ public sealed record RecentRead
     /// <summary>The area's name at that moment.</summary>
     public string Area { get; init; } = string.Empty;
 
-    /// <summary>The value, at most <see cref="Events.TextReadEvents.MaxTextLength"/> characters.</summary>
+    /// <summary>
+    /// The value, at most <see cref="Events.TextReadEvents.MaxTextLength"/> characters; without a format in rows, with line
+    /// breaks (docs/spec/ocr.md "Several lines").
+    /// </summary>
     public string Text { get; init; } = string.Empty;
 
     /// <summary>0 to 100.</summary>

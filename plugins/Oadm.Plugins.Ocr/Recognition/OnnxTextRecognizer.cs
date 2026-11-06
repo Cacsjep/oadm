@@ -848,7 +848,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
         return turned;
     }
 
-    /// <summary>The lines in the matcher's reading order (<see cref="LineOrder"/>: rows top to bottom, in a row left to right).</summary>
+    /// <summary>The lines in the matcher's reading order (<see cref="LineOrder"/>: row by row at any turn; every line stays, one box per line found).</summary>
     private static List<RecognizedLine> Order(List<RecognizedLine> lines)
     {
         var byLine = new Dictionary<TextLine, RecognizedLine>(ReferenceEqualityComparer.Instance);

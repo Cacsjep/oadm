@@ -76,14 +76,15 @@ internal sealed partial class ReaderRuntime
         }
 
         var drawn = index < reader.Areas.Count ? reader.Areas[index] : null;
+        var hasFormat = drawn?.Expected.Kind == ExpectedTextKind.Format;
         var read = new RecentRead
         {
             Id = Interlocked.Increment(ref _readIds),
             Time = time,
             Area = area.Area,
-            Text = area.Text.Length <= TextReadEvents.MaxTextLength ? area.Text : area.Text[..TextReadEvents.MaxTextLength],
+            Text = TextReadEvents.Rows(!hasFormat && SameText(area.TextRead, area.Text) ? area.TextRead : area.Text),
             Confidence = area.Confidence,
-            HasFormat = drawn?.Expected.Kind == ExpectedTextKind.Format,
+            HasFormat = hasFormat,
             MatchesFormat = area.MatchesFormat,
         };
         var box = seen.Box ?? BoxOf(area.Lines) ?? drawn?.Box ?? RelativeBox.Whole;
@@ -92,6 +93,37 @@ internal sealed partial class ReaderRuntime
         {
             _toCut.Enqueue(reads);
             StartCutting();
+        }
+    }
+
+    /// <summary>
+    /// True when <paramref name="rows"/> is <paramref name="text"/> in rows: the same characters, spaces and line breaks aside.
+    /// A row without a format then shows the rows; where the vote changed a character it shows the value on one line.
+    /// </summary>
+    internal static bool SameText(string rows, string text)
+    {
+        var (i, j) = (0, 0);
+        while (true)
+        {
+            while (i < rows.Length && char.IsWhiteSpace(rows[i]))
+            {
+                i++;
+            }
+
+            while (j < text.Length && char.IsWhiteSpace(text[j]))
+            {
+                j++;
+            }
+
+            if (i == rows.Length || j == text.Length)
+            {
+                return i == rows.Length && j == text.Length && rows.Length > 0;
+            }
+
+            if (rows[i++] != text[j++])
+            {
+                return false;
+            }
         }
     }
 

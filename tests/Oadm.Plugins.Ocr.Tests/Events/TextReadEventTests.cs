@@ -76,12 +76,47 @@ public sealed class TextReadEventTests
 
         Assert.Equal("Container", data[OcrInfo.AreaField]);
         Assert.Equal("MSCU 123456 7", data[OcrInfo.TextField]);
-        Assert.Equal("MSCU 123456 7 MAX GROSS", data[OcrInfo.TextReadField]);
+        Assert.Equal("MSCU 123456 7\nMAX GROSS", data[OcrInfo.TextReadField]); // the area's rows
         Assert.Equal("MSCU 123456 7", data[OcrInfo.AllMatchesField]);
         Assert.Equal(string.Empty, data[OcrInfo.NumberField]);
         Assert.Equal("91.5", data[OcrInfo.ConfidenceField]);
         Assert.Equal(OcrInfo.Yes, data[OcrInfo.MatchesFormatField]);
         Assert.True(RuleChecks.IsYes(data[OcrInfo.MatchesFormatField]));
+    }
+
+    [Fact]
+    public void TextNeverHoldsALineBreakAndTextReadHoldsTheRows()
+    {
+        // Whatever a matcher gives as the value: the event's Text is one line. Text read keeps its rows.
+        var area = new AreaResult { Area = "Receipt", Text = "TOTAL EUR 10.60\nORDER 23F7H", TextRead = "TOTAL EUR 10.60\nORDER 23F7H", Confidence = 90 };
+        var data = TextReadEvents.Data(area, ReadingMaker.DetailsOf(area, [], null));
+
+        Assert.Equal("TOTAL EUR 10.60 ORDER 23F7H", data[OcrInfo.TextField]);
+        Assert.Equal("TOTAL EUR 10.60\nORDER 23F7H", data[OcrInfo.TextReadField]);
+        Assert.Equal(string.Empty, data[OcrInfo.NumberField]);
+
+        // Text read is cut at 500 characters and never ends in a line break.
+        var rows = string.Join('\n', Enumerable.Repeat(new string('x', 24), 30));
+        var cut = TextReadEvents.Data(area with { TextRead = rows }, new AreaDetails())[OcrInfo.TextReadField];
+        Assert.Equal(499, cut.Length);
+        Assert.Equal(rows[..499], cut);
+        Assert.Equal(TextReadEvents.MaxTextLength, TextReadEvents.Rows(new string('x', 600)).Length);
+        Assert.Equal(string.Empty, TextReadEvents.Rows(null));
+    }
+
+    [Theory]
+    [InlineData("00815", "815")]
+    [InlineData("12,50", "12.5")]
+    [InlineData("12 kWh", "")]
+    public void NumberIsMadeOfTheOneLineValueAsBefore(string text, string number)
+    {
+        var (result, details) = new ReadingMaker(new FakeRecognizer(), new TextMatcher(), TimeProvider.System)
+            .Area(new Area { Name = "Meter" }, [new TextLine(text, new RelativeBox(0.1, 0.1, 0.3, 0.1), 90)]);
+
+        Assert.Equal(number, details.Number);
+        Assert.Equal(number, TextReadEvents.Data(result, details)[OcrInfo.NumberField]);
+        Assert.Equal(text, result.Text);
+        Assert.Equal(text, result.TextRead);
     }
 
     [Fact]

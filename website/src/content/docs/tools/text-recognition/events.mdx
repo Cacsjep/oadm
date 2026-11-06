@@ -13,14 +13,17 @@ per area and read.
 | Value | What it holds | Placeholder |
 |---|---|---|
 | **Area** | The area's name, a choice of the reader's areas | `{area}` |
-| **Text** | With a format: the match. Without: all lines | `{text}` |
-| **Text read** | All lines as read, without the format | `{textRead}` |
+| **Text** | With a format: the match. Without: all lines, joined on one line | `{text}` |
+| **Text read** | Everything in the area as read, without the format: one line per [row](../readers/#several-lines) | `{textRead}` |
 | **All matches** | Every different match of the format, separated by a space, at most 10. Empty without a format | `{allMatches}` |
 | **Number** | The value as a number when it is one, `.` or `,` as the decimal sign. Empty otherwise | `{number}` |
 | **Confidence** | 0 to 100, from the value's least sure character | `{confidence}` |
 | **Matches format** | Yes when the value matches the area's format. Always no for **Any text** | `{matchesFormat}` |
 
 `1234,5` gives the **Number** `1234.5` and `00815` gives `815`.
+
+**Text** never holds a line break, so use it for checks. **Text read** holds one for each row: a check with **equals**, or
+with **contains** across two rows, does not match it, and a message with `{textRead}` has several lines.
 
 The placeholders work in every text of an action, next to OADM's own such as `{time}` and `{device}`. See
 [Placeholders](../../event-rules/#placeholders).

@@ -30,9 +30,9 @@ public sealed record TextLine(string Text, RelativeBox Box, double Confidence)
 }
 
 /// <summary>What <see cref="ITextMatcher"/> makes of an area's lines.</summary>
-/// <param name="Value">The area's value: the match with a format (empty without one), else all lines joined with line breaks.</param>
+/// <param name="Value">The area's value, on one line: the match with a format (empty without one), else all lines joined with a space.</param>
 /// <param name="MatchesFormat">True when the area's format matched; always false for Any text (no format to match).</param>
-/// <param name="RawText">All lines, top to bottom and left to right, joined with line breaks.</param>
+/// <param name="RawText">The whole area in rows: one row per line, the lines of a row joined with a space.</param>
 public sealed record AreaMatch(string Value, bool MatchesFormat, string RawText);
 
 /// <summary>The result of one area in one reading (the page's results row, one event "Text read").</summary>
@@ -41,10 +41,10 @@ public sealed record AreaResult
     /// <summary>The area's name.</summary>
     public string Area { get; init; } = string.Empty;
 
-    /// <summary>The value: the match with a format, else all lines.</summary>
+    /// <summary>The value, on one line: the match with a format, else all lines joined with a space.</summary>
     public string Text { get; init; } = string.Empty;
 
-    /// <summary>All lines, raw.</summary>
+    /// <summary>The whole area in rows: one row per line, the lines of a row joined with a space.</summary>
     public string TextRead { get; init; } = string.Empty;
 
     /// <summary>0 to 100: the lowest confidence of the lines that make the value; 0 without text.</summary>

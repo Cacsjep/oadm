@@ -482,6 +482,62 @@ public sealed class PageRecentReadsTests
         }, CancellationToken.None);
     }
 
+    /// <summary>A read without a format holds the area's rows (docs/spec/ocr.md "Several lines"): the cell shows them as lines.</summary>
+    [Fact]
+    public async Task A_read_without_a_format_shows_its_rows_as_lines()
+    {
+        var suffix = Headless.Appearance;
+        await Headless.Session.Dispatch(async () =>
+        {
+            const string Rows = "1x Water 1.90\nTOTAL EUR 10.60\nORDER 23F7H";
+            var ctx = Samples.Context();
+            ctx.Video!.Still = Samples.ContainerPicture();
+            var receipt = new RecentRead { Id = 2000, Time = Samples.Reads(1)[0].Time.AddSeconds(2), Area = "Receipt", Text = Rows, Confidence = 93, Cutout = ReceiptPicture(Rows) };
+            IReadOnlyList<RecentRead> reads = [receipt, .. Samples.WithCutOuts(Samples.Reads(4))];
+            ctx.Answers[OcrMethods.GetReading] = _ => Samples.ReplyJson(Samples.GateReading(), Samples.GateExtras, null, reads);
+            ctx.Answers[OcrMethods.GetPreview] = _ => Samples.ReplyJson(Samples.GateReading(), Samples.GateExtras, null, reads);
+
+            using var vm = new OcrViewModel(ctx) { DecodePicture = Samples.Decode };
+            var view = new OcrView();
+            var window = Headless.Host(view, 2000, 870);
+            window.Show();
+            view.DataContext = vm;
+            await vm.LoadAsync(CancellationToken.None);
+            var editor = vm.Editor!;
+            editor.PreviewTime = new FakeTimeProvider();
+            editor.StartPreview();
+            await Eventually.TrueAsync(() => editor.PreviewId is not null, "the preview started");
+            await editor.RefreshPreviewAsync(CancellationToken.None);
+            Headless.Pump();
+
+            Assert.Equal(Rows, editor.Results[0].Text);
+            Assert.False(editor.Results[0].HasFormat);
+            var grid = view.FindControl<DataGrid>("ResultsGrid")!;
+            var cell = grid.GetVisualDescendants().OfType<TextBlock>().Single(t => t.IsEffectivelyVisible && t.Text == Rows);
+            Assert.Equal(3, cell.TextLayout.TextLines.Count); // one line per row of the text
+            var single = grid.GetVisualDescendants().OfType<TextBlock>().First(t => t.IsEffectivelyVisible && t.Text == editor.Results[1].Text);
+            Assert.Single(single.TextLayout.TextLines);
+            Headless.Capture(window, $"ocr-recent-rows-{suffix}.png");
+            window.Close();
+            return true;
+        }, CancellationToken.None);
+
+        // A cut-out of the three rows, like the level box around an area's lines.
+        static byte[] ReceiptPicture(string rows)
+        {
+            using var target = new RenderTargetBitmap(new PixelSize(220, 96));
+            using (var dc = target.CreateDrawingContext())
+            {
+                dc.FillRectangle(new SolidColorBrush(Color.Parse("#f8f7f0")), new Rect(0, 0, 220, 96));
+                dc.DrawText(new FormattedText(rows, System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Typeface.Default, 22, Brushes.Black), new Point(8, 6));
+            }
+
+            using var stream = new MemoryStream();
+            target.Save(stream, PngBitmapEncoderOptions.Default);
+            return stream.ToArray();
+        }
+    }
+
     /// <summary>The table with 20 rows and paused, in the window size the maintainer works in.</summary>
     [Fact]
     public async Task Screenshots_of_the_last_20_reads()

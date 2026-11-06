@@ -171,12 +171,73 @@ model (later, as a choice per reader).
 
 ### Several lines
 
-Rows at any turn, with line breaks in `Text read`: [ocr-multi-line.md](ocr-multi-line.md) (spec, not built).
+Rows built 2026-11-06 from [ocr-multi-line.md](ocr-multi-line.md): the outputs of other plugins and the open points are still there.
 
-An area can hold several lines. Its lines are ordered top to bottom, left to right; each keeps its box and confidence
-(shown on the page, one line per row). For the events the lines are joined with a space, a line ending in "-" joined
-without one ("DECAF-" and "FEINATO" give "DECAF-FEINATO"), so a rule's "contains" finds a word on any line; at most 500
-characters.
+An area can hold several lines. They are put in rows, so what stands on one line of the text stays on one line, at any
+turn of the text: an article and its price on a receipt, a label and its value on a sign. Always on, no setting (decision
+2026-11-06). No model and no pixels: arithmetic on the rotated boxes the recognition already has (`TextLine.Turn`), in
+pixels of the picture (`Matching/LineOrder`, used by the matcher and by the recognition's line order).
+
+1. **Blocks by direction.** The longest line sets a direction; every line within 15 degrees of it, either way round, joins
+   its block. A short line (shorter than 1.5 times its height) has no reliable direction and joins the first block. The
+   next line left over starts the next block, so two receipts at different angles stay apart. Blocks are read top to
+   bottom in the picture, blocks side by side (they overlap top to bottom by half of the smaller one) left to right; the
+   order never depends on which block holds the longest line.
+2. **The block's axis.** The length-weighted mean of the directions with the angles doubled (a line has no front), of the
+   lines long enough to have a direction. Its side is the way most of the text length reads, so a line of digits read the
+   wrong way round does not turn the block. One axis per block, never a line's own direction: 2 degrees are 17 px at
+   500 px, more than half a line height, and a wide table would fall apart.
+3. **Rows.** Two lines share a row when their centres lie, across the axis, within 0.55 of the smaller line's height. Rows
+   are the connected groups of that relation (at most 30 lines, so at most 435 pairs). No limit on the gap inside a row: a
+   table with its prices far right is what this is for.
+4. **Order.** Rows by their mean place across the axis, the lines of a row along it.
+5. **Found twice.** Two lines that lie on one row by themselves (rule 3 between the two, not only through a third line)
+   and overlap along the axis by more than half of the shorter one are one text (the tile overlap gives `5.80 5.80` or
+   `5.80 .80`): the narrower one is left out of the values. Its box stays (one box per line found), and a format still
+   looks at it: a tile's cut piece can be the wider one and the whole value the narrower.
+
+A line without `Turn` has only its level box: then every line of the area uses its level box (pixels and shares of the
+picture never mix).
+
+| Value | Holds | Used by |
+|---|---|---|
+| `Text` | one line: the lines in the order of the rows, joined with a space, a line ending in "-" without one ("DECAF-" and "FEINATO" give "DECAF-FEINATO"); at most 500 characters | rule checks, the change check, the vote, `Number` |
+| `Text read` | one row per line, the lines of a row joined with a space; at most 500 characters, never ending in a line break | messages, the results table |
+
+- **`Text` never holds a line break** (decision 2026-11-06). An `equals` on a text of two rows would break, and a row that
+  splits in one frame would count as a new value and fire an event. So a rule's "contains" finds a word on any row.
+- **No new event value** (decision 2026-11-06). With a format `Text` is the match and `Text read` the whole area in rows:
+  no value holds the whole area on one line then.
+- `AreaResult.TextRead` is the source (`TextMatch.RawText`); `TextReadEvents.Data` hands it on as it is.
+  `TextReadEvents.Join` makes one line of it for `Number` and for the log line of the action Read text.
+- A voted value takes `Text read` from the reading that stands for the vote (`FrameVote.Current`), so where the vote
+  changed a character the two differ by that character. Accepted.
+- A rule on `Text read` with `equals`, or with `contains` across rows, does not match; `contains` inside a row does. A
+  rule that sends `{textRead}` sends line breaks: MQTT text, HTTP plain, the email text, Modbus and OPC UA text.
+- **Cost** (`Matching/LineOrderSpeedTests`, Perf, a Debug build on 24 cores): 30 lines, the most a reading has, take about
+  25 µs for the rows and about 40 µs and 9.6 KB for the whole value; at 15 frames per second 0.6 ms a second, about 0.15 %
+  of a small area's reading. Unchanged areas run no model and stay cheap.
+- **Measured** (`Recognition/RowsSweepTests`, Perf, 2026-11-06: receipts of the accuracy set's generator, Search over the
+  whole full HD picture, Any text, the CPU). "Both read" is what the recognition delivered: rows can reach no more.
+
+  | Test | Both read | In the right row | Before rows: the price straight after its article |
+  |---|---|---|---|
+  | Every 15 degrees, scale 0.8 | 80/96 | 80/96 | 6/96 |
+  | Every 15 degrees, scale 1.3 | 80/96 | 80/96 | 10/96 |
+  | Up to 10 degrees from level or upside down | 40/40 | 40/40 | 16/40 |
+  | Wide table, the price 25 characters away, 8 turns | 29/32 | 29/32 | 3/32 |
+  | Tilted to the side by 20 degrees | 16/16 | 16/16 | 7/16 |
+  | Tilted from the top by 50 degrees | 16/16 | 16/16 | 8/16 |
+  | Tilted to the side by 50 degrees | 16/16 | 16/16 | 7/16 |
+  | Tilted both ways by 40 degrees, turned 30 degrees | 6/8 | 6/8 | 0/8 |
+  | The 20 receipts of the accuracy set | 48/80 | 47/80 | 15/80 |
+
+  The rows found came in the receipt's order in every picture. The one miss is a damaged receipt whose row took a
+  second price. A real-model test pins a receipt at 0, 90, 180, 270 and 15 degrees (`Recognition/RowsRecognitionTests`).
+  The accuracy set reads as before rows: 90.7 % exact with a format, 91.7 % any text, the same misses.
+- **Limits.** Two objects side by side at the same angle: their rows mix (one area per object; different angles stay
+  apart). Under a strong tilt a row can split in two and the fan of directions can split a text into two blocks. What the
+  recognition loses stays lost: two close lines merge at about 45 to 60 degrees ("Why it breaks"); rows do not repair that.
 
 - **One area per value**, never line numbers: lines are found anew in each picture and their count changes with light
   and focus, so "line 2" would point at another line. The page's empty area list says "Draw one area around each text
@@ -250,8 +311,8 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
 ## Events and the rule action
 
 - Event **Text read** per reader (folder Text recognition / reader name), stateless, one event per area and reading,
-  fields: Area (choice of the reader's areas), Text (the value: the match with a format, else all lines), Text read (all
-  lines, raw), All matches (every different match of the format, separated by a space; empty without a format),
+  fields: Area (choice of the reader's areas), Text (the value on one line, never a line break: the match with a format,
+  else all lines joined with a space), Text read (the whole area in rows, one row per line, "Several lines"), All matches (every different match of the format, separated by a space; empty without a format),
   Number (the value as a number when it is one, "." or "," as the decimal sign, e.g. a meter reading; written with "."
   without leading zeros or trailing decimal zeros, every digit kept, never through a floating point number,
   `Matching/NumberText`; empty otherwise), Confidence (number, 0 to 100), Matches format (Yes / No). Conditions check them with the field checks
@@ -275,7 +336,7 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
 - **Watching** publishes an area's event only when its value changes, and only once the vote of the last 5 frames ("Accuracy") gives the same value in 2 frames
   in a row (no flicker between two readings of one picture); with Moving objects once the value itself was read in 2 frames in a row ("Moving objects"). No text at all is never an empty Text read, for watching readers and the action alike (decision 2026-11-05: an empty event ran rules and its dead time held back the real read after it): the area fires the reader's own stateless event **No text read** (`oadm.ocr.no-text.<reader id>`, value Area, same tree folder), once when a watching area's value goes empty, whatever raw text the frame still holds (decision 2026-11-05; an area that has held no value stays quiet), and for every area with no text on each action, a watching reader's too. Text that does not match the format: a watching reader fires nothing for it; the action fires Text read with the raw text in Text read and Matches format No.
 - Rule action **Read text** (`IActionPlugin`): parameter the reader (On action or Watching; a rule without one is refused
-  at its save: "Choose a reader."). Reads one picture now and publishes Text read of every area with text and No text read of the others, changed or not (the event log line gives the raw text on a mismatch, "no text" for an empty area); a reader
+  at its save: "Choose a reader."). Reads one picture now and publishes Text read of every area with text and No text read of the others, changed or not (the event log line, always one line, gives the raw text on a mismatch, "no text" for an empty area); a reader
   without an area ends "The reader has no area. Draw one on the Text recognition page." and reads nothing. A watching
   reader answers with its own reading of at most 1 s ago (`ReaderRuntime.FreshReading`, the voted values), else with the
   reading its stream has in work once it ends, else with a picture of its own: its stream reads all the time, so the
@@ -329,7 +390,8 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
     format): the last 20 reads, newest on top ("The last 20 reads"), in the rest of the column's height (on a wide screen the
     video shrinks and keeps its shape, the results stay on the page); while there are none "Waiting for the first picture."
     or why the preview reads nothing, while paused "No reads yet." A row shows the value's cut-out only when the server sent
-    one (users with Live view); without one, or one that does not decode, the text alone.
+    one (users with Live view); without one, or one that does not decode, the text alone. A read without a format shows its
+    rows as lines ("Several lines"); the cell wraps and the row grows.
   - **No area yet**: the video is dimmed a little (the theme's video dim) with "Start by drawing an area" in its middle;
     nothing is read (the preview has no stream), no lines, no results. New in the Areas header stays the way to start;
     while drawing the drawing hint shows instead.
@@ -457,6 +519,9 @@ is a format (decision 2026-11-04, no select; `*` keeps its one meaning in a form
     empty, A two. On a Watching reader that is the moment of its Text read event, after the vote, so the list fills with the page
     closed. The action Read text adds its values by the same rule: the same value twice is one row. A change of the reader's
     picture (`Forget`) keeps the rows; each area's next value is a new one.
+  - **The row's text**: the value. The change check works on `Text`, so rows that split or join add no row. Without a format
+    the row holds the area's rows with line breaks (`Text read`, at most 500 characters) when they are the value, spaces
+    and line breaks aside (`ReaderRuntime.SameText`); where the vote changed a character it holds the value on one line.
   - **A preview** of an unsaved or changed draft has no events: its own stream's new values go into a list of that preview (one
     per preview, no vote, with Moving objects by the 2 frames rule), which ends with the preview. A preview that shares a saved watching reader shows that reader's
     list. The page of a saved On action reader whose draft is unchanged shows the preview's list and the reader's together, newest
@@ -925,6 +990,14 @@ The page uses the server part's payloads (`Api/`) and texts (`ReaderRules`), nev
   without decoding); at most 30 text boxes, the strongest, and the reading's note.
 - Recognition from recorded camera pictures with known text (`tests/Oadm.Plugins.Ocr.Tests/Fixtures`, recorded read-only
   from the development cameras): lines found, text and order, several lines, a slanted line.
+- Rows (`Matching/LineOrderTests`, constructed `LineTurn` values): a receipt at every 15 degrees, upside down, a wide table,
+  two blocks at different angles and their order, lines without a turn, a text found twice, columns and stacked small print
+  kept, a digit line read the wrong way round, a short line, the cut at 500 characters. The values (`TextMatcherTests`,
+  `Events/TextReadEventTests`, `Readers/RowsTests`): `Text` without a line break, `Text read` with the rows, `Number`
+  unchanged, a format still finding its match in a line found twice, a row that splits in one frame fires no event (the vote
+  and Moving objects), the results row, the one log line of Read text. The real models (`Recognition/RowsRecognitionTests`):
+  a receipt at 0, 90, 180, 270 and 15 degrees. The page (`Client/PageRecentReadsTests`): a read's rows as lines, with a
+  screenshot. Perf: `LineOrderSpeedTests` (the cost), `RowsSweepTests` (the measured table).
 - Format: the syntax, look-alike fixes by position, a number split over two lines, no match; a dash must be a dash, on the matcher and on what the reader read (`TextMatcherTests`, `DecodingTests`).
 - Moving objects and a value's frame (`Readers/AreaWatchTests`, `Readers/MovingObjectsTests`): off equals the plain vote, on needs 2 frames in a row, a misread in one frame gives no row and no event, A, B, A three, the second frame's picture, a voted value's cut-out from its own frame, also through the action, the frames held per area, a preview with and without the setting and changing it on a running stream, a draft that never shares another setting's stream, Pause; the setting saved, restarted and missing in an older record. The page (`Client/PageNoteTests`): the checkbox only while Watching and in the draft, the note above Save, the video's height unchanged, the 5 s hold on a fake clock, an alert that joins without a change, the paused lines at once, a short window, screenshots at 2000 x 870.
 - Upright cut-outs (`Recognition/UprightCutOutTests`): labels turned by 180, 90, -90, 15, -30 and 165 degrees read for real on the CPU, the cut-out wide, not upside down, reading its value again; no turn or a bad one never fails; the limits; a screenshot of the dialog.
@@ -1079,8 +1152,8 @@ Search with a format, tilted: 100 % up to 60° to the side, up to 50° from the 
   candidate threshold is 0.3), so it is read turned only sometimes.
 - **The picture**: of the misses 117 had strong JPEG and 129 Consolas (wide letter spacing), 10 noise.
 - Near-square boxes at 45° were not a problem (`4/12` 100 % at 45°).
-- Any text with several lines upside down gives the lines in reversed order (`TOTAL EUR 10.60 36F1A`); a format is not
-  affected.
+- Any text with several lines upside down gave the lines in reversed order (`TOTAL EUR 10.60 36F1A`) when this was
+  measured; since rows (2026-11-06, "Several lines") they read from the text's own top. A format was never affected.
 
 **Tried, no gain** (`What_if_rotation`, the same 3,200 pictures through a wrapped model runner, nothing in the plugin
 changed): every unsure line read both ways (the angle model skipped) 88.2 % with a format, the text finder's pixel threshold

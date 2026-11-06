@@ -3,7 +3,10 @@ using Oadm.Plugins.Ocr.Model;
 
 namespace Oadm.Plugins.Ocr.Tests.Matching;
 
-/// <summary>Line order, joining and the format of an area's expected text (docs/spec/ocr.md "Several lines", "Expected text").</summary>
+/// <summary>
+/// Line order, joining and the format of an area's expected text (docs/spec/ocr.md "Several lines", "Expected text"); the rows
+/// themselves: <see cref="LineOrderTests"/>.
+/// </summary>
 public sealed class TextMatcherTests
 {
     private readonly TextMatcher _matcher = new();
@@ -75,7 +78,7 @@ public sealed class TextMatcherTests
         Assert.Equal(turn, _matcher.Match([line], ExpectedText.WithFormat("Order ####")).MatchTurn);
         Assert.Equal(turn, _matcher.Match([line], ExpectedText.AnyText).MatchTurn);
 
-        var split = new[] { Line("CSQU 3054", 0.1, 0.1) with { Turn = turn }, Line("38 3", 0.1, 0.2) with { Turn = turn } };
+        var split = new[] { Line("CSQU 3054", 0.1, 0.1) with { Turn = turn }, Line("38 3", 0.1, 0.2) with { Turn = turn with { CenterY = 150 } } };
         var value = _matcher.Match(split, ExpectedText.WithFormat("@@@U ###### #"));
         Assert.Equal("CSQU 305438 3", value.Match.Value);
         Assert.Null(value.MatchTurn);
@@ -113,7 +116,6 @@ public sealed class TextMatcherTests
         var match = TextMatcher.MatchAll([Line("DECAF-", 0.1, 0.1), Line("FEINATO", 0.1, 0.2), Line("250 g", 0.1, 0.3, confidence: 70)], ExpectedText.AnyText);
 
         Assert.Equal("DECAF-FEINATO 250 g", match.Text);
-        Assert.Equal("DECAF-FEINATO 250 g", match.TextRead);
         Assert.Equal("DECAF-\nFEINATO\n250 g", match.RawText);
         Assert.False(match.MatchesFormat); // Any text has no format to match: Matches format is No
         Assert.Equal(70, match.Confidence);
@@ -128,8 +130,68 @@ public sealed class TextMatcherTests
 
         var match = TextMatcher.MatchAll(lines, ExpectedText.AnyText);
 
-        Assert.Equal(LineOrder.MaxEventChars, match.TextRead.Length);
+        Assert.Equal(LineOrder.MaxEventChars, match.RawText.Length);
         Assert.Equal(LineOrder.MaxEventChars, match.Text.Length);
+    }
+
+    [Fact]
+    public void TheValueIsOneLineAndTheRawTextHoldsTheRows()
+    {
+        // A receipt's rows: the article left, its price right, a little lower (the paper is never quite level).
+        var lines = new[]
+        {
+            Line("10.60", 0.6, 0.305, width: 0.1), Line("1x Water", 0.1, 0.2), Line("TOTAL EUR", 0.1, 0.3),
+            Line("1.90", 0.6, 0.205, width: 0.1), Line("ORDER 23F7H", 0.1, 0.4, confidence: 70),
+        };
+
+        var match = TextMatcher.MatchAll(lines, ExpectedText.AnyText);
+
+        Assert.Equal("1x Water 1.90 TOTAL EUR 10.60 ORDER 23F7H", match.Text);
+        Assert.Equal("1x Water 1.90\nTOTAL EUR 10.60\nORDER 23F7H", match.RawText);
+        Assert.DoesNotContain('\n', match.Text);
+        Assert.Empty(match.Number);
+        Assert.Equal(70, match.Confidence);
+
+        // With a format the value is the match; the raw text is still the whole area, in rows.
+        var order = TextMatcher.MatchAll(lines, ExpectedText.WithFormat("##@#@"));
+        Assert.Equal("23F7H", order.Text);
+        Assert.Equal(match.RawText, order.RawText);
+        var price = TextMatcher.MatchAll(lines, ExpectedText.WithFormat("##.##"));
+        Assert.Equal("10.60", price.Text);
+        Assert.Equal("10.6", price.Number);
+        Assert.Equal(["10.60"], price.AllMatches);
+    }
+
+    [Fact]
+    public void ANumberOnItsOwnStaysANumberWhateverItsRows()
+    {
+        Assert.Equal("815", TextMatcher.MatchAll([Line("00815", 0.1, 0.1)], ExpectedText.AnyText).Number);
+
+        // Two rows are no number, as before: the value is "00815 kWh".
+        var two = TextMatcher.MatchAll([Line("00815", 0.1, 0.1), Line("kWh", 0.1, 0.2)], ExpectedText.AnyText);
+        Assert.Equal("00815 kWh", two.Text);
+        Assert.Equal("00815\nkWh", two.RawText);
+        Assert.Empty(two.Number);
+    }
+
+    [Fact]
+    public void ATextFoundTwiceIsReadOnceButAFormatStillLooksAtBothLines()
+    {
+        // The tile overlap: the price found whole and once more cut ("5.80" and ".80"); a wide piece "ORDER 23F" cut by a
+        // tile's edge over the whole code "23F7H".
+        var lines = new[]
+        {
+            Line("2x Espresso", 0.1, 0.1), Line("5.80", 0.60, 0.1, width: 0.10), Line(".80", 0.63, 0.101, width: 0.07),
+            Line("ORDER 23F", 0.1, 0.3, width: 0.25), Line("23F7H", 0.25, 0.301, width: 0.15),
+        };
+
+        var any = TextMatcher.MatchAll(lines, ExpectedText.AnyText);
+        Assert.Equal("2x Espresso 5.80\nORDER 23F", any.RawText);
+        Assert.Equal("2x Espresso 5.80 ORDER 23F", any.Text);
+
+        var order = TextMatcher.MatchAll(lines, ExpectedText.WithFormat("##@#@"));
+        Assert.Equal("23F7H", order.Text);
+        Assert.Equal(any.RawText, order.RawText);
     }
 
     [Fact]
@@ -158,7 +220,7 @@ public sealed class TextMatcherTests
 
         Assert.True(match.MatchesFormat);
         Assert.Equal(value, match.Text);
-        Assert.Equal(text, match.TextRead);
+        Assert.Equal(text, match.RawText);
     }
 
     [Theory]
@@ -176,7 +238,7 @@ public sealed class TextMatcherTests
 
         Assert.False(match.MatchesFormat);
         Assert.Equal(string.Empty, match.Text);
-        Assert.Equal(text, match.TextRead);
+        Assert.Equal(text, match.RawText);
         Assert.Empty(match.Number);
     }
 

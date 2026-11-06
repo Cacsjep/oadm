@@ -171,7 +171,10 @@ public sealed partial class ResultRow : ObservableObject
 
     public string Area { get; }
 
-    /// <summary>The value; with a format and no match nothing (docs/spec/ocr.md "Expected text": the raw text stays in Text read).</summary>
+    /// <summary>
+    /// The value; without a format the area's rows, one per line (docs/spec/ocr.md "Several lines"); with a format and no
+    /// match nothing ("Expected text": the raw text stays in Text read).
+    /// </summary>
     public string Text { get; }
 
     public double Confidence { get; }
