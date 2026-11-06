@@ -256,8 +256,9 @@ public sealed class OpcUaSession : IRecipientSession, IOpcUaWriter
     {
         var secured = _options.Mode != MessageSecurityMode.None;
 
-        // The pool disposes its certificates after the session; the stack disposes its own, so this one is a second handle.
-        using var own = _options.ClientCertificate.Count > 0 ? Certificate.From(new X509Certificate2(_options.ClientCertificate[0].Handle)) : null;
+        // The pool disposes its certificates after the session; the stack disposes its own, so this one is a copy. A copy
+        // made from the handle has no private key on Linux.
+        using var own = _options.ClientCertificate.Count > 0 ? Certificate.From(new X509Certificate2(_options.ClientCertificate[0])) : null;
         var telemetry = new OpcUaTelemetry(_logger);
         var url = new Uri(_options.Endpoint);
         _certificates = new OpcUaCertificates(url, _options.AllowUntrusted || !secured, _options.TrustedCa, own);
