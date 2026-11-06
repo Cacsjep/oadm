@@ -131,8 +131,8 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
     /// <summary>How often the page asks for the state while a read runs (its progress events may be missed).</summary>
     public static TimeSpan StatePollInterval { get; set; } = TimeSpan.FromSeconds(1);
 
-    /// <summary>Wait before watching the events again after the stream broke (tests shorten it).</summary>
-    public static TimeSpan ReconnectDelay { get; set; } = PluginEventWatch.DefaultRetryDelay;
+    /// <summary>The waits of the event watch (again after the stream ended or broke); a test passes its own.</summary>
+    public PluginEventWatchOptions EventWatch { get; init; } = new();
 
     /// <summary>Set by the view; null in tests that do not open dialogs.</summary>
     public IRuleDialogs? Dialogs { get; set; }
@@ -166,7 +166,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
             return;
         }
 
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var ct = _active?.Token ?? CancellationToken.None;
             var rows = devices.Select(d => _rows.GetValueOrDefault(d)).OfType<DeviceRulesRow>().Append(source.Device).ToList();
@@ -176,12 +176,10 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
             {
                 await InvokeRunAsync(ActionRulesMethods.Deploy, new DeployRequest(source.Device.DeviceId, source.Rule.Id, source.Rule.Version, devices, patch.IsEmpty ? null : patch)).ConfigureAwait(true);
             }
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex) when (ex is not OperationCanceledException)
-#pragma warning restore CA1031
+        }, GuardedCancel.Throw).ConfigureAwait(true);
+        if (error is not null)
         {
-            ErrorText = ServerErrors.Message(ex);
+            ErrorText = error;
         }
     }
 
@@ -199,7 +197,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
             return;
         }
 
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var ct = _active?.Token ?? CancellationToken.None;
             var rows = devices.Select(d => _rows.GetValueOrDefault(d)).OfType<DeviceRulesRow>().ToList();
@@ -209,12 +207,10 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
             {
                 await InvokeRunAsync(ActionRulesMethods.Build, new BuildRequest(devices, rule)).ConfigureAwait(true);
             }
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex) when (ex is not OperationCanceledException)
-#pragma warning restore CA1031
+        }, GuardedCancel.Throw).ConfigureAwait(true);
+        if (error is not null)
         {
-            ErrorText = ServerErrors.Message(ex);
+            ErrorText = error;
         }
     }
 
@@ -347,7 +343,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
             return;
         }
 
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var rows = devices.Select(d => _rows.GetValueOrDefault(d)).OfType<DeviceRulesRow>().ToList();
             var (sets, _) = await PrepareAsync(rows, null, _active?.Token ?? CancellationToken.None).ConfigureAwait(true);
@@ -357,12 +353,10 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
                 await InvokeRunAsync(ActionRulesMethods.RecipientNew, new NewRecipientRequest(devices, kind.Token, patch.Name ?? string.Empty,
                     patch.Parameters ?? new Dictionary<string, string>())).ConfigureAwait(true);
             }
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex) when (ex is not OperationCanceledException)
-#pragma warning restore CA1031
+        }, GuardedCancel.Throw).ConfigureAwait(true);
+        if (error is not null)
         {
-            ErrorText = ServerErrors.Message(ex);
+            ErrorText = error;
         }
     }
 
@@ -388,19 +382,14 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
     /// <summary>Starts a run; its progress shows in the tasks pane, each device is read again when its task ends.</summary>
     private async Task InvokeRunAsync(string method, object request)
     {
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             await _ctx.InvokeAsync(method, ActionRulesJson.Serialize(request), _active?.Token ?? CancellationToken.None).ConfigureAwait(true);
             ErrorText = null;
-        }
-        catch (OperationCanceledException)
+        }, GuardedCancel.Ignore).ConfigureAwait(true);
+        if (error is not null)
         {
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            ErrorText = ServerErrors.Message(ex);
+            ErrorText = error;
         }
     }
 
@@ -461,7 +450,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
 
         _active = new CancellationTokenSource();
         var token = _active.Token;
-        _ = _ctx.RunAsync(HandleEvent, ReconnectDelay, token);
+        _ = _ctx.RunAsync(null, HandleEvent, EventWatch, token);
         _ = ReadAsync(token);
     }
 
@@ -534,7 +523,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
             return;
         }
 
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var ct = _active?.Token ?? CancellationToken.None;
             var devices = targets.Select(t => t.Device).DistinctBy(d => d.DeviceId).ToList();
@@ -544,12 +533,10 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
             {
                 await RunAsync(ActionRulesMethods.Edit, targets, patch).ConfigureAwait(true);
             }
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex) when (ex is not OperationCanceledException)
-#pragma warning restore CA1031
+        }, GuardedCancel.Throw).ConfigureAwait(true);
+        if (error is not null)
         {
-            ErrorText = ServerErrors.Message(ex);
+            ErrorText = error;
         }
     }
 
@@ -577,7 +564,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
             return;
         }
 
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var ct = _active?.Token ?? CancellationToken.None;
             var runs = ActionRulesJson.Deserialize<List<UndoRun>>(await _ctx.InvokeAsync(ActionRulesMethods.UndoRuns, null, ct).ConfigureAwait(true));
@@ -592,12 +579,10 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
                 await _ctx.InvokeAsync(ActionRulesMethods.Undo, ActionRulesJson.Serialize(new UndoRequest(runId)), ct).ConfigureAwait(true);
                 ErrorText = null;
             }
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex) when (ex is not OperationCanceledException)
-#pragma warning restore CA1031
+        }, GuardedCancel.Throw).ConfigureAwait(true);
+        if (error is not null)
         {
-            ErrorText = ServerErrors.Message(ex);
+            ErrorText = error;
         }
     }
 
@@ -841,19 +826,14 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
         var request = new RunRequest(
             [.. targets.GroupBy(t => t.Device.DeviceId).Select(g => new DeviceTargets(g.Key, [.. g.Select(m => new RuleRef(m.Rule.Id, m.Rule.Version))]))],
             patch);
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             await _ctx.InvokeAsync(method, ActionRulesJson.Serialize(request), _active?.Token ?? CancellationToken.None).ConfigureAwait(true);
             ErrorText = null;
-        }
-        catch (OperationCanceledException)
+        }, GuardedCancel.Ignore).ConfigureAwait(true);
+        if (error is not null)
         {
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            ErrorText = ServerErrors.Message(ex);
+            ErrorText = error;
         }
     }
 
