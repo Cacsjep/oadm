@@ -92,7 +92,7 @@ public sealed partial class FirmwareOverviewViewModel : ObservableObject, IDispo
                     : new RefreshRequest(false, [.. Devices.Resolve().Select(d => d.Id)]);
                 return _ctx.InvokeAsync(FirmwareOverview.Refresh, JsonSerializer.Serialize(request, FirmwareOverview.Json), _stop.Token);
             },
-            GuardedCancel.Throw);
+            GuardedCancel.Ignore);
     }
 
     private bool CanRefresh() => !IsReading && !Devices.IsEmpty;

@@ -176,7 +176,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
             {
                 await InvokeRunAsync(ActionRulesMethods.Deploy, new DeployRequest(source.Device.DeviceId, source.Rule.Id, source.Rule.Version, devices, patch.IsEmpty ? null : patch)).ConfigureAwait(true);
             }
-        }, GuardedCancel.Throw).ConfigureAwait(true);
+        }, GuardedCancel.Ignore).ConfigureAwait(true);
         if (error is not null)
         {
             ErrorText = error;
@@ -207,7 +207,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
             {
                 await InvokeRunAsync(ActionRulesMethods.Build, new BuildRequest(devices, rule)).ConfigureAwait(true);
             }
-        }, GuardedCancel.Throw).ConfigureAwait(true);
+        }, GuardedCancel.Ignore).ConfigureAwait(true);
         if (error is not null)
         {
             ErrorText = error;
@@ -353,7 +353,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
                 await InvokeRunAsync(ActionRulesMethods.RecipientNew, new NewRecipientRequest(devices, kind.Token, patch.Name ?? string.Empty,
                     patch.Parameters ?? new Dictionary<string, string>())).ConfigureAwait(true);
             }
-        }, GuardedCancel.Throw).ConfigureAwait(true);
+        }, GuardedCancel.Ignore).ConfigureAwait(true);
         if (error is not null)
         {
             ErrorText = error;
@@ -533,7 +533,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
             {
                 await RunAsync(ActionRulesMethods.Edit, targets, patch).ConfigureAwait(true);
             }
-        }, GuardedCancel.Throw).ConfigureAwait(true);
+        }, GuardedCancel.Ignore).ConfigureAwait(true);
         if (error is not null)
         {
             ErrorText = error;
@@ -579,7 +579,7 @@ public sealed partial class ActionRulesViewModel : ObservableObject, IDisposable
                 await _ctx.InvokeAsync(ActionRulesMethods.Undo, ActionRulesJson.Serialize(new UndoRequest(runId)), ct).ConfigureAwait(true);
                 ErrorText = null;
             }
-        }, GuardedCancel.Throw).ConfigureAwait(true);
+        }, GuardedCancel.Ignore).ConfigureAwait(true);
         if (error is not null)
         {
             ErrorText = error;
