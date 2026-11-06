@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 
 using Oadm.Sdk.Events;
 using Oadm.Sdk.Layout;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Dashboards;
 
@@ -121,11 +122,7 @@ public static class DashboardsPluginInfo
 
     public const string ButtonField = "button";
 
-    public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter() },
-    };
+    public static readonly JsonSerializerOptions Json = PluginJson.CreateOptions(PluginJsonEnums.Names);
 }
 
 /// <summary>Page backend methods and the live topics.</summary>

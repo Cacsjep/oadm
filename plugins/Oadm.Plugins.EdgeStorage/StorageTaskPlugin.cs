@@ -78,7 +78,7 @@ public sealed class StorageTaskPlugin : ITaskPlugin
             var payload = EdgeStorageJson.Deserialize<TaskPayload>(payloadJson);
             return StorageActions.TaskName(payload.Action, payload.RetentionDays);
         }
-        catch (System.Text.Json.JsonException)
+        catch (ArgumentException)
         {
             return EdgeStorageInfo.DisplayName;
         }

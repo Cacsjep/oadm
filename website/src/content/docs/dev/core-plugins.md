@@ -70,6 +70,20 @@ Throw the exception that says what went wrong; its message reaches the page:
 | `InvalidOperationException` | FAILED_PRECONDITION: a wrong state |
 | anything else | INTERNAL |
 
+Read and write the JSON of your methods with `PluginJson` (`Oadm.Sdk.Plugins`). A missing or broken payload becomes an
+`ArgumentException` with a plain text ("The request is empty.", "The request cannot be read."), so the page gets a
+refusal and never the reader's own error. Create the options once and keep them in a static field of your plugin, and
+use the same ones in the client part:
+
+```csharp
+public static readonly JsonSerializerOptions Json = PluginJson.CreateOptions(PluginJsonEnums.CamelCase);
+
+var request = PluginJson.Parse<SaveRequest>(payloadJson, Json);        // the payload must be there
+var filter = PluginJson.ParseOrEmpty<ListRequest>(payloadJson, Json);  // no payload reads like {}
+var saved = PluginJson.TryParse<Config>(storedText, Json);             // stored text: null when missing or damaged
+return PluginJson.Serialize(reply, Json);
+```
+
 Keep each answer small. Hand out large results in parts and run long work as a background job that the page watches
 through events or polls.
 

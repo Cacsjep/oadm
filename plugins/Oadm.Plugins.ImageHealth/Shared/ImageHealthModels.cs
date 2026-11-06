@@ -1,5 +1,6 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
+
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.ImageHealth;
 
@@ -166,14 +167,10 @@ public sealed record RowsEvent(IReadOnlyList<ImageHealthRow> Rows, IReadOnlyList
 /// <summary>JSON of the page contract (camelCase, like the other core plugins).</summary>
 public static class ImageHealthJson
 {
-    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    public static readonly JsonSerializerOptions Options = PluginJson.CreateOptions();
 
-    public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+    public static string Serialize<T>(T value) => PluginJson.Serialize(value, Options);
 
-    public static T Deserialize<T>(string? json) =>
-        JsonSerializer.Deserialize<T>(string.IsNullOrWhiteSpace(json) ? "{}" : json, Options)
-        ?? throw new ArgumentException("Missing payload.", nameof(json));
+    /// <summary>A call without a payload reads as an empty one; broken JSON is an <see cref="ArgumentException"/> (<see cref="PluginJson.ParseOrEmpty{T}"/>).</summary>
+    public static T Deserialize<T>(string? json) => PluginJson.ParseOrEmpty<T>(json, Options);
 }

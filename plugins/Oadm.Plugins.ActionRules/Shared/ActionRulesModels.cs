@@ -1,10 +1,10 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 using Oadm.Plugins.ActionRules.Device;
 using Oadm.Plugins.ActionRules.Rules;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.ActionRules;
 
@@ -380,14 +380,10 @@ public sealed record UndoRun(Guid RunId, DateTimeOffset CreatedUtc, string Descr
 /// <summary>The page's JSON (camelCase, nulls left out).</summary>
 public static class ActionRulesJson
 {
-    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    public static readonly JsonSerializerOptions Options = PluginJson.CreateOptions();
 
-    public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+    public static string Serialize<T>(T value) => PluginJson.Serialize(value, Options);
 
-    public static T Deserialize<T>(string? json) =>
-        JsonSerializer.Deserialize<T>(string.IsNullOrWhiteSpace(json) ? "{}" : json, Options)
-        ?? throw new ArgumentException("The request is empty.", nameof(json));
+    /// <summary>A call without a payload reads as an empty one; broken JSON is an <see cref="ArgumentException"/> (<see cref="PluginJson.ParseOrEmpty{T}"/>).</summary>
+    public static T Deserialize<T>(string? json) => PluginJson.ParseOrEmpty<T>(json, Options);
 }

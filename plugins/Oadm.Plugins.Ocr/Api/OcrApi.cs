@@ -1,7 +1,7 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 using Oadm.Plugins.Ocr.Model;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Ocr.Api;
 
@@ -630,15 +630,10 @@ public sealed record PreviewEvent
 /// <summary>The JSON of the page's calls and events (web names, enums as names).</summary>
 public static class OcrJson
 {
-    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter() },
-    };
+    public static readonly JsonSerializerOptions Options = PluginJson.CreateOptions(PluginJsonEnums.Names);
 
-    public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+    public static string Serialize<T>(T value) => PluginJson.Serialize(value, Options);
 
-    public static T Deserialize<T>(string? json) =>
-        JsonSerializer.Deserialize<T>(string.IsNullOrWhiteSpace(json) ? "{}" : json, Options)
-        ?? throw new ArgumentException("Missing payload.", nameof(json));
+    /// <summary>A call without a payload reads as an empty one; broken JSON is an <see cref="ArgumentException"/> (<see cref="PluginJson.ParseOrEmpty{T}"/>).</summary>
+    public static T Deserialize<T>(string? json) => PluginJson.ParseOrEmpty<T>(json, Options);
 }

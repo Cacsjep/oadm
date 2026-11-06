@@ -1,5 +1,6 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
+
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.EdgeRecordingExport;
 
@@ -21,10 +22,7 @@ public static class EdgeRecordingInfo
     /// <summary>Recordings whose size the camera estimates per search; more are extrapolated by their duration.</summary>
     public const int SizeSamples = 40;
 
-    public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    public static readonly JsonSerializerOptions Json = PluginJson.CreateOptions();
 }
 
 /// <summary>The page methods.</summary>

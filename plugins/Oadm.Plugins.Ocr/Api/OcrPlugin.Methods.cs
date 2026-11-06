@@ -45,7 +45,7 @@ public sealed partial class OcrPlugin
                 return OcrJson.Serialize(Visible(store, caller, payloadJson) with { OwnerScopeKey = null });
             case OcrMethods.SaveReader:
             {
-                var incoming = OcrJson.Deserialize<SaveReaderRequest>(payloadJson).Reader ?? throw new ArgumentException("Missing payload.", nameof(payloadJson));
+                var incoming = OcrJson.Deserialize<SaveReaderRequest>(payloadJson).Reader ?? throw new ArgumentException(PluginJson.EmptyRequest);
                 Reader saved;
                 Reader? before;
                 try
@@ -115,7 +115,7 @@ public sealed partial class OcrPlugin
             case OcrMethods.StartPreview:
             {
                 var request = OcrJson.Deserialize<PreviewRequest>(payloadJson);
-                var draft = ReaderRules.PreviewOf(request.Reader ?? throw new ArgumentException("Missing payload.", nameof(payloadJson)));
+                var draft = ReaderRules.PreviewOf(request.Reader ?? throw new ArgumentException(PluginJson.EmptyRequest));
                 if (draft.Id.Length > 0 && store.FindVisible(caller, draft.Id) is null)
                 {
                     throw new ArgumentException(ReaderRules.Gone);

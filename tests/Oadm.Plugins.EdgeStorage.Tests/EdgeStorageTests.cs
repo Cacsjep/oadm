@@ -101,6 +101,16 @@ public sealed class TaskTests
         Assert.Equal("Format SD card", new StorageTaskPlugin(null).GetTaskName(EdgeStorageJson.Serialize(new TaskPayload(StorageActions.Format))));
     }
 
+    [Fact]
+    public void A_payload_that_cannot_be_read_names_the_task_by_the_plugin_and_is_refused_plainly()
+    {
+        const string Broken = "{ \"action\": ";
+
+        Assert.Equal(EdgeStorageInfo.DisplayName, new StorageTaskPlugin(null).GetTaskName(Broken));
+        var ex = Assert.Throws<ArgumentException>(() => EdgeStorageJson.Deserialize<TaskPayload>(Broken));
+        Assert.Equal("The request cannot be read.", ex.Message);
+    }
+
     [Theory]
     [InlineData(StorageActions.Check, "Check the SD card", "checkdisk.cgi")]
     [InlineData(StorageActions.Repair, "Repair the SD card", "repair.cgi")]

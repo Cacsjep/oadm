@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 
 using Oadm.Plugins.Network.Model;
 using Oadm.Sdk.Network;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.DhcpServer;
 
@@ -195,28 +196,10 @@ public sealed record LeasesEvent(long Version, IReadOnlyList<LeaseInfo> Changed,
 
 public static class DhcpJson
 {
-    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    public static readonly JsonSerializerOptions Options = PluginJson.CreateOptions();
 
-    public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+    public static string Serialize<T>(T value) => PluginJson.Serialize(value, Options);
 
-    /// <summary>Throws <see cref="ArgumentException"/> (INVALID_ARGUMENT) for missing or unreadable JSON.</summary>
-    public static T Deserialize<T>(string? json)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            throw new ArgumentException("The request is empty.", nameof(json));
-        }
-
-        try
-        {
-            return JsonSerializer.Deserialize<T>(json, Options) ?? throw new ArgumentException("The request is empty.", nameof(json));
-        }
-        catch (JsonException ex)
-        {
-            throw new ArgumentException("The request cannot be read: " + ex.Message, nameof(json), ex);
-        }
-    }
+    /// <summary>A missing or broken payload is an <see cref="ArgumentException"/> (<see cref="PluginJson.Parse{T}"/>).</summary>
+    public static T Deserialize<T>(string? json) => PluginJson.Parse<T>(json, Options);
 }

@@ -1,10 +1,10 @@
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Network;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Radius.Api;
 
@@ -537,24 +537,10 @@ public static class RadiusRules
 /// <summary>JSON of the page calls, the events and the stored settings: camelCase, enums as camelCase strings.</summary>
 public static class RadiusJson
 {
-    public static JsonSerializerOptions Options { get; } = new(JsonSerializerDefaults.Web)
-    {
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
-    };
+    public static JsonSerializerOptions Options { get; } = PluginJson.CreateOptions(PluginJsonEnums.CamelCase, writeNulls: true);
 
-    public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+    public static string Serialize<T>(T value) => PluginJson.Serialize(value, Options);
 
-    /// <summary>The value of <paramref name="json"/>; an empty or unreadable request is an <see cref="ArgumentException"/>.</summary>
-    public static T Deserialize<T>(string? json)
-    {
-        try
-        {
-            return (string.IsNullOrWhiteSpace(json) ? default : JsonSerializer.Deserialize<T>(json, Options))
-                ?? throw new ArgumentException("The request is empty.", nameof(json));
-        }
-        catch (JsonException ex)
-        {
-            throw new ArgumentException("The request cannot be read.", nameof(json), ex);
-        }
-    }
+    /// <summary>A missing or broken payload is an <see cref="ArgumentException"/> (<see cref="PluginJson.Parse{T}"/>).</summary>
+    public static T Deserialize<T>(string? json) => PluginJson.Parse<T>(json, Options);
 }

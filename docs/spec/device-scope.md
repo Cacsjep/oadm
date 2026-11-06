@@ -177,7 +177,7 @@ The host side is in `docs/spec/plugins.md` "Host side of the call context".
   (`UploadOwner`); `FileService.Delete`, a backup restore and the tasks of another user or session answer like an unknown
   id; tasks the system starts (no caller) read any upload. Uploads without an owner (older ones, the system's) belong to
   nobody.
-- **Bundled plugins:** every bundled plugin sets `minSdkVersion` 0.4.0 in its plugin.json and runs a `PluginCanary` in its
+- **Bundled plugins:** every bundled plugin sets `minSdkVersion` 0.4.0 or later in its plugin.json and runs a `PluginCanary` in its
   tests, or `CanaryTests.PluginsConverted` gives the reason it needs none (`CanaryTests.EveryBundledPluginIsConvertedOrListed`).
   Plugin testing: `Oadm.Sdk.Testing` has a fake call with a group and the canary.
 

@@ -205,6 +205,37 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   (`StorageFormat`, "59.3 GB") and the SD card compliance check counts in GB like its setting.
   `Oadm.Sdk.Client.FileSizeText.Format` stays for plugins built before 0.12.0 and gives the same text. Tests:
   `tests/Oadm.Core.Tests/Formatting/ByteSizeTests`.
+- Plugin JSON (SDK 0.12.0): `Oadm.Sdk.Plugins.PluginJson` is the one JSON helper of page calls, events, task payloads
+  and stored settings, for the server and the client part of a plugin.
+  - `CreateOptions(enums, writeNulls)` makes the common options: camelCase names, names read in any case, numbers also
+    read from strings, null values left out (`writeNulls: true` writes them); enums as numbers
+    (`PluginJsonEnums.Numbers`), as names (`Names`) or as camelCase names (`CamelCase`). A plugin creates them once and
+    keeps them in a static of its own, never shared with the host or another plugin: the serializer remembers the
+    plugin's types in the options, and they must go away when the plugin is unloaded. That is why each plugin keeps one
+    small class (`DhcpJson`, `OcrJson`, ...) that holds its options and names what a call without a payload means; its
+    members only forward to `PluginJson`, so no call site can pick other options.
+  - `Serialize(value, options)`; `Parse<T>` for a text that must be there (no text, blank or `null`:
+    "The request is empty."); `ParseOrEmpty<T>` for one that may be left out (it reads like `{}`, every member at its
+    default); `TryParse<T>` for stored text that may be missing or damaged (null, never throws for the text).
+  - One error rule: broken JSON is an `ArgumentException` "The request cannot be read." without a parameter name and
+    without the reader's own error (it names .NET types and positions; a payload may hold a password). The server
+    answers an `ArgumentException` of a page call as INVALID_ARGUMENT (`PluginGrpcService.ToRpc`), of a task dialog
+    query as `TaskQueryError.InvalidArgument`; a `JsonException` that escapes a page call is INTERNAL
+    "Plugin <id> failed: ...". Code that reads stored text and goes on without it uses `TryParse` or catches
+    `ArgumentException`.
+  - Which method each bundled plugin uses (what its callers relied on before): `Parse` in DHCP server, NTP server, PKI,
+    EST server, 802.1X server, Dashboards, Live view and Edge recording export; `ParseOrEmpty` in Action Rule Editor,
+    Application management, Device triggers, Edge storage, Hardening scan, Image Health, I/O monitor, Load test,
+    Metadata monitor, Text recognition, Snapshot report, System report and the page API of VAPIX commander. Options
+    that differ from the common ones stay as they were on the wire: camelCase enums in Applications (ACAP),
+    Application management, Device triggers, Network and Users; enum names in Dashboards, Load test and Text
+    recognition; nulls written in EST server, 802.1X server and Users.
+  - Not moved, on purpose: the task payloads with their own "Nothing was changed." texts (`UsersJson.ParsePayload`,
+    `AcapPayload`, `DateTimePayload.Parse`, `FirmwarePayload.Parse`, `NetworkPayload`, the configuration payloads;
+    Users, Network and Applications (ACAP) take only their options from the helper), the strict library and export
+    files of VAPIX commander (`CommandJson.Strict`, unknown properties are errors, `JsonException` for the file dialog)
+    and the JSON of device answers. Tests: `tests/Oadm.Core.Tests/Plugins/PluginJsonTests`,
+    `tests/Oadm.Server.Tests/PluginJsonRefusalTests`.
 
 Task plugin names and groups: `DisplayName` is at most `TaskPluginNames.MaxDisplayNameLength` (32) characters and never
 ends with "..." (dialog tasks too); it is the menu and toolbar name only, the tasks pane shows `GetTaskName`. The server
@@ -396,9 +427,13 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
   packages keep their own hand-written `plugin.json`: 0.4.0, or the version of the newest member a package uses at run time
-  (0.12.0: PKI `IRecipientCertificates` and `IRecipientCertificateUse`, Modbus, MQTT and OPC UA `RecipientType.Sessions`, and `ByteSize` in Applications (ACAP), Application management, the configuration tasks, Edge recording export, Edge storage, Upgrade AXIS OS, System report and VAPIX commander; 0.11.0: Notifications `ActionField.Recipient`; 0.10.0: Text recognition the rail group `CorePluginGroup.Vision` and `EventTypeInfo.FixedDeviceId`, `SplitField`, Dashboards `EventTypeInfo.Path`, `FixedDeviceId`, `SplitField`,
-  `IEventPublisher.IsUsedByRule`, `ICorePlugin.AuditDetail`, Device triggers `EventTypeInfo.Path`; constants such as `AxisOsTexts.Name` are
-  compiled in and need none). Earlier: 0.5.0 for Upgrade AXIS OS (`ShowForDevicesAsync`).
+  (0.12.0: `PluginJson` or `ByteSize` in Action Rule Editor, Applications (ACAP), Application management, the
+  configuration tasks, Dashboards, Device triggers, DHCP server, Edge recording export, Edge storage, Hardening scan,
+  Image Health, I/O monitor, Live view, Load test, Metadata monitor, Network, NTP server, PKI with the EST and 802.1X
+  servers, Snapshot report, System report, Text recognition, Upgrade AXIS OS, Users and VAPIX commander; PKI also
+  `IRecipientCertificates` and `IRecipientCertificateUse`; Modbus, MQTT and OPC UA `RecipientType.Sessions`; 0.11.0:
+  Notifications `ActionField.Recipient`; constants such as `AxisOsTexts.Name` are compiled in and need none; 0.4.0:
+  Date and time, Outputs, Restart, Web View).
 - Defaults a plugin built for an older SDK notices: `ui:FileRow.IsSingleButton` is true (the button alone, without the
   "No file chosen" line; false for the older row); `ui:ToolbarButton.IsPrimary` adds the class `main` and never fills the
   button (toolbars have no filled buttons); `IPluginEvents.Publish(topic, payload)` without an audience reaches only

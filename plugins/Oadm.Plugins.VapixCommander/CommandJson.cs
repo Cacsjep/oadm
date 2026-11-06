@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Oadm.Sdk.Plugins;
+
 namespace Oadm.Plugins.VapixCommander;
 
 /// <summary>JSON shape of commands, library files and the page API (camelCase), shared by server and client part.</summary>
@@ -16,11 +18,8 @@ public static class CommandJson
         WriteIndented = false,
     };
 
-    /// <summary>Page API messages: tolerant reading, compact writing.</summary>
-    public static readonly JsonSerializerOptions Api = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    /// <summary>Page API messages: tolerant reading, compact writing (the common plugin options).</summary>
+    public static readonly JsonSerializerOptions Api = PluginJson.CreateOptions();
 
     /// <summary>Export files: indented, like the library files.</summary>
     public static readonly JsonSerializerOptions Indented = new(Strict) { WriteIndented = true };
@@ -44,11 +43,10 @@ public static class CommandJson
         return JsonSerializer.Serialize(file, Indented);
     }
 
+    /// <summary>A page API message; a call without a payload reads as an empty one, broken JSON is an <see cref="ArgumentException"/> (<see cref="PluginJson.ParseOrEmpty{T}"/>).</summary>
     public static T Read<T>(string? json)
-        where T : class, new()
-    {
-        return string.IsNullOrWhiteSpace(json) ? new T() : JsonSerializer.Deserialize<T>(json, Api) ?? new T();
-    }
+        where T : class, new() =>
+        PluginJson.ParseOrEmpty<T>(json, Api);
 
-    public static string Write<T>(T value) => JsonSerializer.Serialize(value, Api);
+    public static string Write<T>(T value) => PluginJson.Serialize(value, Api);
 }

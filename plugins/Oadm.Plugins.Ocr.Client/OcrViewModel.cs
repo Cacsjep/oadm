@@ -494,7 +494,7 @@ public sealed partial class OcrViewModel : ObservableObject, IDisposable
                     break;
             }
         }
-        catch (System.Text.Json.JsonException)
+        catch (ArgumentException)
         {
             // A malformed event changes nothing; the next one or a reload brings the state.
         }

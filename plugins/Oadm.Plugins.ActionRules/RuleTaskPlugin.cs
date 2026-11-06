@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 
 using Oadm.Plugins.ActionRules.Device;
 using Oadm.Plugins.ActionRules.Rules;
@@ -62,7 +61,7 @@ public sealed partial class RuleTaskPlugin : ITaskPlugin
         {
             return ActionRulesJson.Deserialize<RuleTaskPayload>(payloadJson).Description;
         }
-        catch (JsonException)
+        catch (ArgumentException)
         {
             return ActionRulesInfo.DisplayName;
         }

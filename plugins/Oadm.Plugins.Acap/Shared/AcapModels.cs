@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Oadm.Sdk.Plugins;
+
 namespace Oadm.Plugins.Acap;
 
 /// <summary>Constants shared by the server task and the client dialog.</summary>
@@ -16,11 +18,7 @@ public static class AcapPlugin
     /// <summary>Read-only query: installed applications plus the device facts needed for compatibility checks.</summary>
     public const string ListApplicationsMethod = "listApplications";
 
-    public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
-    };
+    public static readonly JsonSerializerOptions Json = PluginJson.CreateOptions(PluginJsonEnums.CamelCase);
 }
 
 public enum AcapAction

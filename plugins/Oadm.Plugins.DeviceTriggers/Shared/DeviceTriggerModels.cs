@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.DeviceTriggers;
 
@@ -306,15 +307,10 @@ public static class TriggerValidation
 /// <summary>JSON of the page contract (camelCase, enums as text).</summary>
 public static class TriggerJson
 {
-    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
-    };
+    public static readonly JsonSerializerOptions Options = PluginJson.CreateOptions(PluginJsonEnums.CamelCase);
 
-    public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+    public static string Serialize<T>(T value) => PluginJson.Serialize(value, Options);
 
-    public static T Deserialize<T>(string? json) =>
-        JsonSerializer.Deserialize<T>(string.IsNullOrWhiteSpace(json) ? "{}" : json, Options)
-        ?? throw new ArgumentException("The request is empty.");
+    /// <summary>A call without a payload reads as an empty one; broken JSON is an <see cref="ArgumentException"/> (<see cref="PluginJson.ParseOrEmpty{T}"/>).</summary>
+    public static T Deserialize<T>(string? json) => PluginJson.ParseOrEmpty<T>(json, Options);
 }

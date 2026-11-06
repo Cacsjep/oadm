@@ -58,6 +58,17 @@ public sealed class RobustnessTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_payload_that_cannot_be_read_names_the_task_by_the_plugin_and_is_refused_plainly()
+    {
+        const string Broken = "{ \"action\": ";
+        var task = (RuleTaskPlugin)_plugin.TaskPlugins[0];
+
+        Assert.Equal(ActionRulesInfo.DisplayName, task.GetTaskName(Broken));
+        var refused = await Assert.ThrowsAsync<ArgumentException>(() => _plugin.InvokeAsync(ActionRulesMethods.Events, Broken, CancellationToken.None));
+        Assert.Equal("The request cannot be read.", refused.Message); // the server answers it as a refusal, not as a failure of the plugin
+    }
+
+    [Fact]
     public async Task A_removal_that_fails_after_a_recreate_takes_the_new_rule_out()
     {
         var camera = new RuleCamera("os10") { RefuseRequest = "SOAP RemoveActionRule", RefuseTimes = 1 };

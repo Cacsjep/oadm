@@ -1,5 +1,6 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
+
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Network.Model;
 
@@ -127,9 +128,5 @@ public sealed class NetworkValidationException : Exception
 
 internal static class PayloadJson
 {
-    public static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
-    {
-        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    public static readonly JsonSerializerOptions Options = PluginJson.CreateOptions(PluginJsonEnums.CamelCase);
 }

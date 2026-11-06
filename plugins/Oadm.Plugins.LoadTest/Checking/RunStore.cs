@@ -47,7 +47,7 @@ internal sealed class RunStore
             {
                 runs.Add(LoadTestJson.Deserialize<StoredRun>(json));
             }
-            catch (JsonException)
+            catch (ArgumentException)
             {
                 // A record OADM cannot read is left out (it is deleted with the next retention).
             }

@@ -68,6 +68,7 @@ internal static class Guides
         ["IPluginEvents"] = Core,
         ["ISecretProtector"] = Core,
         ["ICorePluginDownloads"] = Core,
+        ["PluginJson"] = Core,
         ["ITaskRunner"] = Core,
         ["ICorePluginPage"] = Core,
         ["ICorePluginClientContext"] = Core,

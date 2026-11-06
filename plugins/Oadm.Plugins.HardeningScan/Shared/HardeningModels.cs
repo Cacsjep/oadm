@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using Oadm.Sdk.Plugins;
+
 namespace Oadm.Plugins.HardeningScan;
 
 /// <summary>Ids, limits and defaults shared by the server and the client part.</summary>
@@ -143,31 +145,14 @@ public static class CheckStateCodes
 /// <summary>JSON of all payloads: camelCase, enums as strings, nulls left out.</summary>
 public static class HardeningJson
 {
-    public static JsonSerializerOptions Options { get; } = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    public static JsonSerializerOptions Options { get; } = PluginJson.CreateOptions();
 
-    public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+    public static string Serialize<T>(T value) => PluginJson.Serialize(value, Options);
 
-    /// <summary>Deserializes a payload; an empty payload is a new <typeparamref name="T"/>, invalid JSON an ArgumentException.</summary>
+    /// <summary>A call without a payload reads as an empty one; broken JSON is an <see cref="ArgumentException"/> (<see cref="PluginJson.ParseOrEmpty{T}"/>).</summary>
     public static T Deserialize<T>(string? json)
-        where T : new()
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return new T();
-        }
-
-        try
-        {
-            return JsonSerializer.Deserialize<T>(json, Options) ?? new T();
-        }
-        catch (JsonException ex)
-        {
-            throw new ArgumentException("The request could not be read: " + ex.Message, nameof(json), ex);
-        }
-    }
+        where T : new() =>
+        PluginJson.ParseOrEmpty<T>(json, Options);
 }
 
 /// <summary>One row of the guide: a checked column, or an item that cannot be checked remotely (<see cref="IsInfo"/>).</summary>

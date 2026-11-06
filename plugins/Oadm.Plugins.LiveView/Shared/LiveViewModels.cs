@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using Oadm.Sdk.Layout;
+using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.LiveView;
 
@@ -38,10 +39,7 @@ public static class LiveViewPluginInfo
     /// <summary>The event with the whole <see cref="ViewList"/> after every change.</summary>
     public const string ViewsTopic = "views";
 
-    public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    public static readonly JsonSerializerOptions Json = PluginJson.CreateOptions();
 }
 
 /// <summary>One camera of a view: a device's channel on a rectangle of grid cells.</summary>
