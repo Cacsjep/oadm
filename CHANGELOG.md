@@ -25,7 +25,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - The client's first start after an install or update takes under a second instead of about 5.
 - The client removes the folders older versions left in the temp folder.
 - Event rules: long actions such as a pulse run beside the short ones, and one rule can hold at most half of the action slots.
-- Event rules: an action that waited a minute for a free slot is skipped and the event log says so; turning something off is never skipped.
+- Event rules: an action that cannot start within a minute because too many actions are running is skipped and the event log says so; an action that started runs on all its devices, and turning something off is never skipped.
 - Event rules: Send HTTP request no longer follows a redirect; the action and the recipient's Test name the address it points to.
 - Event rules: names of rules and recipients no longer take line breaks or tabs.
 - Login: after 50 failed logins from one address in 5 minutes, that address waits until the 5 minutes end.
