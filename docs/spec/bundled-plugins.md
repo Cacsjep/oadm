@@ -80,7 +80,10 @@ behavior: plugin `README.md`.
   ("The devices may become unreachable"); conflicts block Apply / Finish; a new static address is probed before the first
   write; the address family OADM connects with is written last; after a new static address OADM follows the device (90 s,
   serial verified, `UpdateDeviceAddressAsync`; otherwise a Warning and the record stays); with DHCP the periodic re-find
-  moves the record.
+  moves the record. A write the device never answered is never "Nothing was changed.": the address write is followed to
+  the new address the same way (found there: the record moves; still at the old address: Failed, not changed; at neither:
+  Failed, "The change may have been applied", with the address to look at), any other fails with "The change may have
+  been applied.".
 - Device groups: `checkAddresses` of a user with a device group names only the group's devices; an address another
   managed device on the route has comes back "In use" (`AddressStatus.UsedByDevice`, from
   `ITaskQueryContext.ManagedAddressesAsync`), never with its name or id. The tasks refuse such an address before the

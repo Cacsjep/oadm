@@ -181,6 +181,10 @@ not even DNS. Skipped "DHCP: no static address is set" / "No static address is s
    `DeviceNotCompatibleException` before the first write.
 4. Write in order **host name, DNS, IPv6, IPv4**: the address family OADM connects with is always last (over IPv6:
    host name, DNS, IPv4, IPv6). Each step is logged with `ctx.Log`; a failing step names the steps already applied.
+   A refusal (the device answers with an error, `NetworkApiException`) of the first write ends "... Nothing was changed.".
+   A write without an answer (a timeout, a lost connection) proves nothing: it fails with "... The change may have been
+   applied." and never with "Nothing was changed."; the write that moves the device to a new static address is followed
+   instead (table, "no answer to the write"). A Cancel stays a cancel.
 5. After the write that affects the connection: log "The device will be re-addressed from A to B", **Wait for the
    settings to apply** (5 s), then:
 
@@ -191,6 +195,7 @@ not even DNS. Skipped "DHCP: no static address is set" / "No static address is s
 | ... another serial at B | Skipped | Done | **Warning** "Another device answers at B (serial ..., expected ...). The address may be in use." | Skipped "The device at the new address is not this device." |
 | ... OADM uses the host name (`Devices.UseHostName`) | Skipped | Done | Done | Skipped "OADM reaches the device by host name H; the host name is kept." |
 | ... server refuses (serial check on the server) | Skipped | Done | Done | **Warning** with the server's message |
+| ... no answer to the write (the device may have moved before it answered) | Skipped | the write step is Done "No answer; the device is checked at B". The device answers at B: Done, the task goes on as above and the record moves. No answer at B, the device (same serial) still answers at A: **Failed** "...: the device did not answer. It still answers at A: the address was not changed.". Neither answers: **Failed** "... It answers at neither A nor B within 90 s. The change may have been applied. Look for the device at B; OADM keeps A." | another serial at B: **Failed** "... Another device answers at B (...). The change may have been applied. OADM keeps A." | as above |
 | DHCP (new address unknown) | watches A for 45 s; **Warning** when A stops answering ("... OADM finds the device again at its new address.") | Skipped | Skipped | Skipped "OADM finds the device again at its new address." |
 | Same address | watches A; Done, or **Warning** "check the subnet mask and default router" | Skipped "The address does not change." | Skipped | Skipped |
 | Change does not affect OADM's connection | Skipped | Skipped | Skipped | Skipped |
@@ -232,5 +237,6 @@ dialog probes on the route of the query's device (the first selected).
 ## Tests
 
 `tests/Oadm.Plugins.Network.Tests`: parsers from recorded answers (`Fixtures/`, MAC and serial anonymized), request
-building, validation, address assignment, following the device (`FollowAddressTests`), the task with fakes, the dialog
+building, validation, address assignment, following the device (`FollowAddressTests`, also a write without an answer:
+applied, not applied, nobody at either address, a refusal, a cancel), the task with fakes, the dialog
 view models, device groups, Perf scale tests and headless dialog screenshots. No write was ever sent to a real device.
