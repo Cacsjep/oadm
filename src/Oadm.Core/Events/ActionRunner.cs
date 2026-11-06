@@ -32,6 +32,21 @@ public sealed class ActionRunnerOptions
     /// <summary>Action runs (targets) at the same time, all rules together.</summary>
     public int MaxParallel { get; init; } = 16;
 
+    /// <summary>
+    /// Runs at the same time whose action asked for more than <see cref="ActionTimeout"/> (<c>IActionPlugin.MaxRunTime</c>,
+    /// a pulse): their own lane, so they never hold the slots of the others.
+    /// </summary>
+    public int MaxParallelLong { get; init; } = 16;
+
+    /// <summary>
+    /// A run that waited this long for a free slot is skipped and logged. A run of a "turns off" edge always waits: skipping
+    /// it could leave a relay on.
+    /// </summary>
+    public TimeSpan MaxWait { get; init; } = TimeSpan.FromMinutes(1);
+
+    /// <summary>The device list read for actions on tags, all devices or many devices is dropped after this long without a use.</summary>
+    public TimeSpan DeviceListIdle { get; init; } = TimeSpan.FromMinutes(1);
+
     /// <summary>One action run on one target.</summary>
     public TimeSpan ActionTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
@@ -44,8 +59,12 @@ public sealed class ActionRunnerOptions
 /// a subject's "turns off" never overtakes its "turns on"); edges that run actions on chosen / tag / all devices are also
 /// ordered among themselves. Edges of other subjects do not wait for each other (one device that does not answer never
 /// delays another). Within an edge the actions run in the listed order, each on its targets in parallel (at most
-/// <see cref="ActionRunnerOptions.MaxParallel"/> runs at once, all rules together). A failed action is logged and the next
-/// one still runs (no retry). Every run is a line in the event log. Nothing runs before <see cref="PluginsStarted"/>:
+/// <see cref="ActionRunnerOptions.MaxParallel"/> runs at once, all rules together; runs that asked for a longer time have
+/// <see cref="ActionRunnerOptions.MaxParallelLong"/> slots of their own). A run that waited
+/// <see cref="ActionRunnerOptions.MaxWait"/> for its slot is skipped, except on a "turns off" edge. A failed action is
+/// logged and the next one still runs (no retry). Every run is a line in the event log. The device list of actions on
+/// tags, all devices or many devices is read once per version of the device table and shared. Nothing runs before
+/// <see cref="PluginsStarted"/>:
 /// edges of the start-up evaluation wait for the core plugins whose actions they use. The fields of a chosen recipient are
 /// merged into the settings of a run and of a test; an action without its recipient fails with
 /// <see cref="ActionSettings.ChooseRecipient"/>.
@@ -62,7 +81,15 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private readonly ActionRunnerOptions _options;
+    private readonly TimeProvider _time;
+    private readonly Devices.DeviceChangeFeed? _deviceFeed;
     private readonly SemaphoreSlim _slots;
+    private readonly SemaphoreSlim _longSlots;
+    private readonly SemaphoreSlim _deviceListGate = new(1, 1);
+    private readonly ITimer _deviceListRelease;
+    private volatile DeviceList? _deviceList;
+    private int _deviceListReads;
+    private int _waiting;
     private readonly Dictionary<TailKey, Task> _tails = [];
     private readonly TaskCompletionSource _pluginsStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenSource _stop = new();
@@ -78,7 +105,9 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         IVapixClientFactory vapix,
         IPluginSettingsProvider settings,
         ILoggerFactory? loggerFactory = null,
-        ActionRunnerOptions? options = null)
+        ActionRunnerOptions? options = null,
+        TimeProvider? time = null,
+        Devices.IDeviceChangeFeed? deviceFeed = null)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -90,8 +119,18 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _logger = _loggerFactory.CreateLogger<ActionRunner>();
         _options = options ?? new ActionRunnerOptions();
+        _time = time ?? TimeProvider.System;
+        _deviceFeed = deviceFeed as Devices.DeviceChangeFeed; // without its version every edge reads the devices itself
         _slots = new SemaphoreSlim(_options.MaxParallel, _options.MaxParallel);
+        _longSlots = new SemaphoreSlim(_options.MaxParallelLong, _options.MaxParallelLong);
+        _deviceListRelease = _time.CreateTimer(_ => _deviceList = null, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
+
+    /// <summary>Runs waiting for a free slot now (tests).</summary>
+    public int Waiting => Volatile.Read(ref _waiting);
+
+    /// <summary>How often the whole device table was read for the targets of an action (tests).</summary>
+    public int DeviceListReads => Volatile.Read(ref _deviceListReads);
 
     /// <summary>Chains still running or waiting (tests).</summary>
     public int PendingChains
@@ -202,8 +241,12 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         {
         }
 
+        await _deviceListRelease.DisposeAsync().ConfigureAwait(false);
+        _deviceList = null;
         _stop.Dispose();
         _slots.Dispose();
+        _longSlots.Dispose();
+        _deviceListGate.Dispose();
     }
 
     private void RemoveTail(Task finished, TailKey subjectKey, TailKey? aggregateKey)
@@ -321,7 +364,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         if (!plugin.NeedsDevice)
         {
             // Actions without devices run with every edge (an email per camera), like actions on the event's device.
-            await RunOneAsync(job, catalogAction, settings, recipientIds, null, null, ct).ConfigureAwait(false);
+            await RunOneAsync(job, catalogAction, settings, recipientIds, null, null, null, ct).ConfigureAwait(false);
             return;
         }
 
@@ -351,7 +394,24 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             return;
         }
 
-        await Task.WhenAll(targets.Select(target => RunOneAsync(job, catalogAction, settings, recipientIds, target.Id, target.Device, ct))).ConfigureAwait(false);
+        // Runs of many targets that got no slot in time are one line with their count, never one line per device.
+        var late = targets.Count > 1 ? new LateRuns() : null;
+        await Task.WhenAll(targets.Select(target => RunOneAsync(job, catalogAction, settings, recipientIds, target.Id, target.Device, late, ct))).ConfigureAwait(false);
+        if (late is { Count: > 0 })
+        {
+            Write(job, null, plugin.DisplayName, EventLogResult.Skipped,
+                string.Create(CultureInfo.InvariantCulture, $"{WaitedTooLong} ({late.Count:N0} of {targets.Count:N0} devices)"));
+        }
+    }
+
+    /// <summary>The runs of one action on many targets that waited too long for a slot.</summary>
+    private sealed class LateRuns
+    {
+        private int _count;
+
+        public int Count => Volatile.Read(ref _count);
+
+        public void Add() => Interlocked.Increment(ref _count);
     }
 
     /// <summary>
@@ -425,7 +485,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             return [.. selector.DeviceIds.Distinct().Select(id => (id, (IDeviceInfo?)null))];
         }
 
-        var all = await _devices.ListAsync(ct).ConfigureAwait(false);
+        var all = await AllDevicesAsync(ct).ConfigureAwait(false);
         if (selector.Mode == DeviceSelectorMode.All)
         {
             return [.. all.Select(d => (d.Id, (IDeviceInfo?)d))];
@@ -467,8 +527,81 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         return targets;
     }
 
+    /// <summary>
+    /// Every device, read once per version of the device table (<see cref="Devices.DeviceChangeFeed.Version"/>): edges that
+    /// ask at the same time share one read, and at most one read runs at a time. An edge never gets a list read before the
+    /// last change published when it asked.
+    /// </summary>
+    private async Task<IReadOnlyList<IDeviceInfo>> AllDevicesAsync(CancellationToken ct)
+    {
+        if (_deviceFeed is not { } feed)
+        {
+            Interlocked.Increment(ref _deviceListReads);
+            return await _devices.ListAsync(ct).ConfigureAwait(false);
+        }
+
+        var asked = feed.Version;
+        if (_deviceList is { } known && known.Version >= asked)
+        {
+            _deviceListRelease.Change(_options.DeviceListIdle, Timeout.InfiniteTimeSpan);
+            return known.Devices;
+        }
+
+        await _deviceListGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            if (_deviceList is { } read && read.Version >= asked)
+            {
+                return read.Devices; // read while this edge waited, after it asked
+            }
+
+            // The version before the devices: a change in between makes the next edge read again.
+            var version = feed.Version;
+            Interlocked.Increment(ref _deviceListReads);
+            var devices = await _devices.ListAsync(ct).ConfigureAwait(false);
+            _deviceList = new DeviceList(version, devices);
+            _deviceListRelease.Change(_options.DeviceListIdle, Timeout.InfiniteTimeSpan);
+            return devices;
+        }
+        finally
+        {
+            _deviceListGate.Release();
+        }
+    }
+
+    private sealed record DeviceList(long Version, IReadOnlyList<IDeviceInfo> Devices);
+
+    /// <summary>
+    /// Waits for a slot of the lane. False: the run waited <see cref="ActionRunnerOptions.MaxWait"/> and is skipped. A
+    /// "turns off" run waits as long as it takes (never skipped: a relay would stay on).
+    /// </summary>
+    private async Task<bool> WaitForSlotAsync(SemaphoreSlim slots, ActionEdge edge, CancellationToken ct)
+    {
+        if (await slots.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false))
+        {
+            return true; // a free slot: nothing to wait for
+        }
+
+        using var late = edge == ActionEdge.TurnedOff ? null : new CancellationTokenSource(_options.MaxWait, _time);
+        using var either = late is null ? null : CancellationTokenSource.CreateLinkedTokenSource(ct, late.Token);
+        Interlocked.Increment(ref _waiting);
+        try
+        {
+            await slots.WaitAsync(either?.Token ?? ct).ConfigureAwait(false);
+            return true;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return false;
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _waiting);
+        }
+    }
+
     private async Task RunOneAsync(
-        RuleEdgeJob job, CatalogAction action, JsonElement settings, IReadOnlyDictionary<string, Guid> recipientIds, Guid? deviceId, IDeviceInfo? known, CancellationToken ct)
+        RuleEdgeJob job, CatalogAction action, JsonElement settings, IReadOnlyDictionary<string, Guid> recipientIds, Guid? deviceId, IDeviceInfo? known, LateRuns? late, CancellationToken ct)
     {
         var plugin = action.Plugin;
         IDeviceInfo? device = null;
@@ -499,25 +632,41 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
             textDevice = await _devices.FindAsync(eventDevice, ct).ConfigureAwait(false);
         }
 
-        await _slots.WaitAsync(ct).ConfigureAwait(false);
+        // A run that asked for a longer time (a pulse) takes a slot of the long lane: it never holds a slot of the others.
+        var limit = _options.ActionTimeout;
+        var slots = _slots;
+        try
+        {
+            if (plugin.MaxRunTime(settings) is { } longer && longer > limit)
+            {
+                limit = longer < TimeSpan.FromHours(2) ? longer : TimeSpan.FromHours(2);
+                slots = _longSlots;
+            }
+        }
+#pragma warning disable CA1031 // Plugin code is untrusted: the default applies.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
+
+        if (!await WaitForSlotAsync(slots, job.Edge, ct).ConfigureAwait(false))
+        {
+            if (late is null)
+            {
+                Write(job, deviceId, plugin.DisplayName, EventLogResult.Skipped, WaitedTooLong, device);
+            }
+            else
+            {
+                late.Add();
+            }
+
+            return;
+        }
+
         var lines = new List<string>();
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            var limit = _options.ActionTimeout;
-            try
-            {
-                if (plugin.MaxRunTime(settings) is { } longer && longer > limit)
-                {
-                    limit = longer < TimeSpan.FromHours(2) ? longer : TimeSpan.FromHours(2);
-                }
-            }
-#pragma warning disable CA1031 // Plugin code is untrusted: the default applies.
-            catch (Exception)
-#pragma warning restore CA1031
-            {
-            }
-
             timeout.CancelAfter(limit);
             IVapixClient? vapix = null;
             if (device is not null)
@@ -557,7 +706,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         }
         finally
         {
-            _slots.Release();
+            slots.Release();
         }
     }
 
@@ -758,6 +907,9 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     }
 
     private const string RecipientUnreadable = "The recipient cannot be read";
+
+    /// <summary>The event log's text of a run that got no slot within <see cref="ActionRunnerOptions.MaxWait"/>.</summary>
+    public const string WaitedTooLong = "Waited too long: too many actions are running";
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Event rule {Rule}: action {Action}{On} failed: {Reason}")]
     private partial void LogActionFailed(Exception? ex, string rule, string action, string on, string reason);

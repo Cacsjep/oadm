@@ -564,7 +564,9 @@ public static partial class OadmServerHost
             sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
             sp.GetRequiredService<Sdk.Vapix.IVapixClientFactory>(),
             sp.GetRequiredService<IPluginSettingsProvider>(),
-            sp.GetRequiredService<ILoggerFactory>()));
+            sp.GetRequiredService<ILoggerFactory>(),
+            time: sp.GetRequiredService<TimeProvider>(),
+            deviceFeed: sp.GetRequiredService<IDeviceChangeFeed>()));
         services.AddSingleton(sp => new RecipientSessionPool(
             sp.GetRequiredService<EventCatalog>(),
             sp.GetRequiredService<RecipientStore>(),
