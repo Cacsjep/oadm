@@ -156,6 +156,29 @@ public sealed class ImportTaskTests
     }
 
     [Fact]
+    public void The_payload_of_a_run_is_parsed_once_for_all_its_devices()
+    {
+        // 5,000 devices get the same payload string with 5,000 entries: read once, each device looks up its own entry.
+        var devices = Enumerable.Range(0, 5000).Select(_ => Guid.NewGuid()).ToList();
+        var json = new ImportPayload
+        {
+            FileId = "up1",
+            FileName = "site.zip",
+            IsZip = true,
+            Sections = ["time.v2"],
+            Files = devices.ToDictionary(id => id, id => id.ToString("N") + "_config.json"),
+        }.ToJson();
+
+        var first = ImportPayload.ParseShared(json);
+        Assert.Same(first, ImportPayload.ParseShared(json));
+        Assert.NotSame(first, ImportPayload.Parse(json));
+        Assert.NotSame(first, ImportPayload.ParseShared(new string(json.AsSpan()))); // another run: its own string
+        Assert.Equal(devices[4999].ToString("N") + "_config.json", first.Files[devices[4999]]);
+        Assert.Throws<ArgumentException>(() => ImportPayload.ParseShared(null));
+        Assert.Throws<ArgumentException>(() => ImportPayload.ParseShared("{}"));
+    }
+
+    [Fact]
     public async Task An_area_OADM_does_not_know_is_never_sent()
     {
         // A file with an area OADM has no identity rules for, and a payload (an older client, or one made by hand) that asks for it.

@@ -240,7 +240,7 @@ public sealed class DeleteCertificatesTask(Func<PkiService?> service) : PkiTaskB
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
-        var payload = PkiJson.Deserialize<DeletePayload>(payloadJson);
+        var payload = PkiJson.DeserializeShared<DeletePayload>(payloadJson); // one entry per device: parsed once per run
         var chosen = payload.Devices.TryGetValue(device.Id, out var list) ? list.DistinctBy(r => (r.Alias, r.Ca)).ToList() : [];
         var deleteSteps = chosen.Select(r => "Delete certificate " + r.Alias).ToArray();
         ctx.PlanSteps([PkiSteps.CheckCompatibility, PkiSteps.ReadCertificates, .. deleteSteps, PkiSteps.Verify]);
@@ -368,13 +368,13 @@ public sealed class InstallCertificatesTask(Func<PkiService?> service) : PkiTask
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
-        var payload = PkiJson.Deserialize<InstallPayload>(payloadJson);
+        var payload = PkiJson.DeserializeShared<InstallPayload>(payloadJson); // one file per device: parsed and indexed once per run
         var purpose = payload.Purpose;
 
         // HTTPS / 802.1X: the one file matched to this device. CA only: every file for this device or for all (Guid.Empty).
         var files = purpose == InstallPurpose.CaOnly
-            ? payload.Files.Where(f => f.DeviceId == device.Id || f.DeviceId == Guid.Empty).ToList()
-            : payload.Files.Where(f => f.DeviceId == device.Id).Take(1).ToList();
+            ? payload.FilesFor(device.Id).Concat(payload.FilesFor(Guid.Empty)).OrderBy(f => f.Index).Select(f => f.File).ToList()
+            : payload.FilesFor(device.Id).Take(1).Select(f => f.File).ToList();
         string[] purposeSteps = purpose switch
         {
             InstallPurpose.Https => [PkiSteps.ReadWebServer, PkiSteps.InstallCertificate, PkiSteps.SwitchWebServer, PkiSteps.VerifyHttps],

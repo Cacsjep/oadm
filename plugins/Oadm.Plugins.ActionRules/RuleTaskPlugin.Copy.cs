@@ -369,7 +369,7 @@ public sealed partial class RuleTaskPlugin
     private static async Task ChangeSchedulesAsync(Run run)
     {
         var delete = run.Payload.Action == RuleTaskActions.ScheduleDelete;
-        var chosenRules = run.Payload.Rules?.FirstOrDefault(t => t.DeviceId == run.Device.Id)?.Rules ?? [];
+        var chosenRules = run.ChosenRules;
         var work = new List<(DeviceSchedule Schedule, List<DeviceRule> Rules)>();
         foreach (var target in run.Targets)
         {

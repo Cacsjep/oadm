@@ -70,7 +70,7 @@ public sealed class ImportConfigTask : ITaskPlugin
 
     /// <summary>Every import needs "import"; one with the connection settings area also "connection".</summary>
     public IReadOnlyList<string>? RequiredPermissions(string? payloadJson) =>
-        ImportPayload.Parse(payloadJson).Sections.Contains(ConfigSections.Connection)
+        ImportPayload.ParseShared(payloadJson).Sections.Contains(ConfigSections.Connection)
             ? [DeviceConfigPermissions.Import, DeviceConfigPermissions.Connection]
             : [DeviceConfigPermissions.Import];
 
@@ -90,7 +90,7 @@ public sealed class ImportConfigTask : ITaskPlugin
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
-        var payload = ImportPayload.Parse(payloadJson);
+        var payload = ImportPayload.ParseShared(payloadJson); // one entry per device: parsed once per run, not per device
         if (!payload.Files.TryGetValue(device.Id, out var entry))
         {
             using var leftOut = ctx.BeginStep(Steps.CheckCompatibility);

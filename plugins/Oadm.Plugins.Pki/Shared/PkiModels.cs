@@ -659,6 +659,35 @@ public static class PkiJson
         }
     }
 
+    /// <summary>
+    /// <see cref="Deserialize{T}"/> once per payload string, for task payloads with an entry per device: the engine hands the
+    /// same string to every task of a run, so 5,000 devices parse it once, not 5,000 times. The result is shared between the
+    /// tasks: never change it.
+    /// </summary>
+    public static T DeserializeShared<T>(string? json)
+        where T : class
+    {
+        if (json is null)
+        {
+            return Deserialize<T>(json);
+        }
+
+        if (Shared<T>.Parsed.TryGetValue(json, out var cached))
+        {
+            return cached;
+        }
+
+        var value = Deserialize<T>(json);
+        Shared<T>.Parsed.AddOrUpdate(json, value);
+        return value;
+    }
+
+    private static class Shared<T>
+        where T : class
+    {
+        public static readonly System.Runtime.CompilerServices.ConditionalWeakTable<string, T> Parsed = new();
+    }
+
     /// <summary>Like <see cref="Deserialize{T}"/> but null for empty or unreadable JSON (stored settings).</summary>
     public static T? TryDeserialize<T>(string? json)
         where T : class

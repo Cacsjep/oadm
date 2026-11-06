@@ -183,6 +183,16 @@ public sealed record InstallPayload
 
     public IReadOnlyList<InstallFile> Files { get; init; } = [];
 
+    // Kept beside the record (not a field of it): two payloads with the same values stay equal.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<InstallPayload, ILookup<Guid, (InstallFile File, int Index)>> ByDevice = new();
+
+    /// <summary>
+    /// The files of one device in the order of <see cref="Files"/> (<see cref="Guid.Empty"/>: the files for every device,
+    /// "CA certificates only"). Indexed once per payload: thousands of devices do not search thousands of files each.
+    /// </summary>
+    public IEnumerable<(InstallFile File, int Index)> FilesFor(Guid deviceId) =>
+        ByDevice.GetValue(this, static payload => payload.Files.Select((file, index) => (file, index)).ToLookup(f => f.file.DeviceId))[deviceId];
+
     /// <summary>
     /// IEEE 802.1X: the IEEE 802.1X certificate policy whose settings and RADIUS server CA the run sets (the file brings the
     /// certificate). Null (older payloads): the first of the kind.

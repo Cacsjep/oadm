@@ -147,6 +147,53 @@ public sealed class InstallFileCheckTests
         Assert.True(vm.Files[0].IsError);
     }
 
+    [Fact]
+    public void The_payload_of_a_run_is_parsed_and_indexed_once_for_all_its_devices()
+    {
+        // 5,000 devices get the same payload string with 5,000 files: read once, each device looks up its own file.
+        var devices = Enumerable.Range(0, 5000).Select(_ => Guid.NewGuid()).ToList();
+        var files = devices.Select((id, i) => new InstallFile(id, "f" + i, "cam" + i + ".pfx")).ToList();
+        files.Insert(1, new InstallFile(Guid.Empty, "all", "ca.p12"));
+        files.Add(new InstallFile(devices[0], "again", "cam0-again.pfx"));
+        var json = PkiJson.Serialize(new InstallPayload { Purpose = InstallPurpose.CaOnly, Password = "secret", Files = files });
+
+        var payload = PkiJson.DeserializeShared<InstallPayload>(json);
+        Assert.Same(payload, PkiJson.DeserializeShared<InstallPayload>(json));
+        Assert.NotSame(payload, PkiJson.Deserialize<InstallPayload>(json));
+        Assert.NotSame(payload, PkiJson.DeserializeShared<InstallPayload>(new string(json.AsSpan()))); // another run: its own string
+
+        Assert.Equal(["cam4999.pfx"], payload.FilesFor(devices[4999]).Select(f => f.File.FileName));
+        Assert.Equal(["cam0.pfx", "cam0-again.pfx"], payload.FilesFor(devices[0]).Select(f => f.File.FileName)); // in the payload's order
+        Assert.Equal(["ca.p12"], payload.FilesFor(Guid.Empty).Select(f => f.File.FileName));
+        Assert.Empty(payload.FilesFor(Guid.NewGuid()));
+        Assert.Same(PkiJson.DeserializeShared<DeletePayload>(json), PkiJson.DeserializeShared<DeletePayload>(json));
+        Assert.Throws<ArgumentException>(() => PkiJson.DeserializeShared<InstallPayload>(null));
+    }
+
+    [Fact]
+    public async Task Ca_only_installs_the_files_of_the_device_and_the_files_for_all_in_the_payloads_order()
+    {
+        await using var h = await TaskHarness.StartAsync();
+        using var first = TestCa.Root("First CA");
+        using var second = TestCa.Root("Second CA");
+        using var firstPublic = X509CertificateLoader.LoadCertificate(first.RawData);
+        using var secondPublic = X509CertificateLoader.LoadCertificate(second.RawData);
+        var payload = PkiJson.Serialize(new InstallPayload
+        {
+            Purpose = InstallPurpose.CaOnly,
+            Password = "secret",
+            Files = [new InstallFile(Guid.Empty, "all", "all.p12"), new InstallFile(Guid.NewGuid(), "other", "other.p12"), new InstallFile(h.Device.Id, "own", "own.p12")],
+        });
+        var ctx = new PkiTaskContext(h.Camera);
+        ctx.MemoryFiles.Files["all"] = ("all.p12", TestCa.Pfx("secret", firstPublic));
+        ctx.MemoryFiles.Files["own"] = ("own.p12", TestCa.Pfx("secret", secondPublic));
+        h.Context = ctx;
+
+        await Oadm.Sdk.Testing.StepRun.RunAsync(ctx.Steps, () => h.Pki.Plugin.TaskPlugins.Single(t => t.Id == PkiTaskIds.Install).ExecuteAsync(ctx, h.Device, payload, CancellationToken.None));
+
+        Assert.Equal("all.p12, own.p12 · 2 certificates", h.Detail(PkiSteps.ReadFile));
+    }
+
     // ------------------------------------------------------------ keys over HTTP
 
     [Theory]
