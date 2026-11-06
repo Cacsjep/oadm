@@ -306,7 +306,7 @@ public sealed partial class ImportCaViewModel : PkiDialogViewModel
 
     private static string Describe(byte[] data)
     {
-        var size = data.Length < 1024 ? $"{data.Length} bytes" : string.Create(CultureInfo.InvariantCulture, $"{data.Length / 1024.0:0.0} KB");
+        var size = Oadm.Sdk.Formatting.ByteSize.Text(data.Length);
         if (CaCertificates.LooksLikePem(data))
         {
             return CaImporter.NeedsKeyFile(data) ? $"{size} · certificate, choose its private key below" : $"{size} · certificate with private key";

@@ -195,6 +195,16 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
 - Compliance: `IComplianceCheckType` (standalone in a `*.Server.dll`, or through `IComplianceSource` of a core plugin),
   `IComplianceContext` with shared `Reads`, `ComplianceResult`; `ActionField.File` and `ChoicesFromDevice` for its
   settings (`docs/spec/compliance.md`). Tests: `Oadm.Sdk.Testing.FakeComplianceContext`.
+- Byte sizes (SDK 0.12.0): `Oadm.Sdk.Formatting.ByteSize` is the one text of a number of bytes, for the server and the
+  client. `Text(bytes)`: "512 bytes", "1 byte", "412 KB", "87.0 MB", "1.2 GB"; `Progress(done, total)`: "37.0 of 82.4 MB",
+  both numbers in the unit of the total. Steps of 1,024; bytes and KB whole, one decimal from MB on; the decimal point on
+  every computer (a step detail written on the server reads the same in every client); a number that rounds up to 1,024
+  moves to the next unit (never "1024 KB"); a negative number keeps its sign. The host and the bundled plugins write
+  every measured size with it; nothing formats one by itself. Kept apart on purpose: a limit in a sentence names its
+  round number ("The file is larger than 1 MB."), Edge storage shows a card in decimal units like the card's label
+  (`StorageFormat`, "59.3 GB") and the SD card compliance check counts in GB like its setting.
+  `Oadm.Sdk.Client.FileSizeText.Format` stays for plugins built before 0.12.0 and gives the same text. Tests:
+  `tests/Oadm.Core.Tests/Formatting/ByteSizeTests`.
 
 Task plugin names and groups: `DisplayName` is at most `TaskPluginNames.MaxDisplayNameLength` (32) characters and never
 ends with "..." (dialog tasks too); it is the menu and toolbar name only, the tasks pane shows `GetTaskName`. The server
@@ -386,7 +396,7 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
   packages keep their own hand-written `plugin.json`: 0.4.0, or the version of the newest member a package uses at run time
-  (0.12.0: PKI `IRecipientCertificates` and `IRecipientCertificateUse`, Modbus, MQTT and OPC UA `RecipientType.Sessions`; 0.11.0: Notifications `ActionField.Recipient`; 0.10.0: Upgrade AXIS OS `AxisOsTexts.Version`, Text recognition the rail group `CorePluginGroup.Vision` and `EventTypeInfo.FixedDeviceId`, `SplitField`, Dashboards `EventTypeInfo.Path`, `FixedDeviceId`, `SplitField`,
+  (0.12.0: PKI `IRecipientCertificates` and `IRecipientCertificateUse`, Modbus, MQTT and OPC UA `RecipientType.Sessions`, and `ByteSize` in Applications (ACAP), Application management, the configuration tasks, Edge recording export, Edge storage, Upgrade AXIS OS, System report and VAPIX commander; 0.11.0: Notifications `ActionField.Recipient`; 0.10.0: Text recognition the rail group `CorePluginGroup.Vision` and `EventTypeInfo.FixedDeviceId`, `SplitField`, Dashboards `EventTypeInfo.Path`, `FixedDeviceId`, `SplitField`,
   `IEventPublisher.IsUsedByRule`, `ICorePlugin.AuditDetail`, Device triggers `EventTypeInfo.Path`; constants such as `AxisOsTexts.Name` are
   compiled in and need none). Earlier: 0.5.0 for Upgrade AXIS OS (`ShowForDevicesAsync`).
 - Defaults a plugin built for an older SDK notices: `ui:FileRow.IsSingleButton` is true (the button alone, without the

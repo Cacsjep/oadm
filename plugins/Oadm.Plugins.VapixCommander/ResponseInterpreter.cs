@@ -7,6 +7,7 @@ using System.Xml;
 using System.Xml.Linq;
 
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Formatting;
 using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.VapixCommander;
@@ -82,16 +83,11 @@ public static partial class ResponseInterpreter
         return type.Length == 0 && probe.IndexOf((byte)0) >= 0;
     }
 
-    /// <summary>"image/jpeg, 123.4 KB".</summary>
+    /// <summary>"image/jpeg, 123 KB".</summary>
     public static string DescribeBinary(string? contentType, long length)
     {
-        var size = length < 1024
-            ? string.Create(CultureInfo.InvariantCulture, $"{length} bytes")
-            : length < 1024 * 1024
-                ? string.Create(CultureInfo.InvariantCulture, $"{length / 1024.0:0.0} KB")
-                : string.Create(CultureInfo.InvariantCulture, $"{length / 1024.0 / 1024.0:0.0} MB");
         var type = string.IsNullOrWhiteSpace(contentType) ? "binary data" : contentType.Split(';')[0].Trim();
-        return type + ", " + size;
+        return type + ", " + ByteSize.Text(length);
     }
 
     /// <summary>Readable text of a non-success HTTP status.</summary>

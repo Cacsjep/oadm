@@ -268,8 +268,8 @@ starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
   version of their product and major (about 40 bytes per named device: 100,000 named devices are about 4 MB, below the
   server's 16 MB message limit); the usual select (Recommended, Latest LTS, Latest active) names none.
 - **Download AXIS OS from axis.com** (task step before Upload AXIS OS to the device, Skipped "A file was chosen." for a chosen file): the host's
-  `DownloadAsync` with progress ("68 of 225 MB", the step's percent); tasks of the same file share one download, a second
-  run within 7 days takes it from the cache (detail "From the cache, checksum matches axis.com"; else "225 MB from
+  `DownloadAsync` with progress ("68.0 of 225.5 MB", the step's percent); tasks of the same file share one download, a second
+  run within 7 days takes it from the cache (detail "From the cache, checksum matches axis.com"; else "225.5 MB from
   axis.com, checksum matches"). It runs after Validate file (the decision table first: nothing is downloaded for a device
   that is up to date or refused) and before Read the AXIS OS status. An `AxisDownloadException` ends the task with its
   message (ending with "Nothing was changed."); the file is uploaded with `AxisDownloadedFile.OpenRead` and its real `Length` (never the rounded size of the
@@ -289,16 +289,16 @@ Pending).
 | Check compatibility | status OK, fresh `getApiList` + `Require("fwmgr", "1.0")`; detail "fwmgr 1.10" |
 | Read device info | `basicdeviceinfo`; detail "AXIS P3265-V, AXIS OS 11.11.160" |
 | Validate file | uploaded files present, the file for the device (`ChooseFor`: its version from axis.com, read again from the listing once per run, after the MyAxis sign-in check, else `Choose`), name and size checks (never the content), decision table. No file for this model or already up to date: Warning and all later steps Skipped |
-| Download AXIS OS from axis.com | a version from axis.com: the host's download with the user's MyAxis sign-in ("68 of 225 MB"); Skipped "A file was chosen." |
+| Download AXIS OS from axis.com | a version from axis.com: the host's download with the user's MyAxis sign-in ("68.0 of 225.5 MB"); Skipped "A file was chosen." |
 | Read the AXIS OS status | fwmgr `status`: no uncommitted previous upgrade (else Failed: "Wait until the device has rolled back by itself, or restart it, then try again.", OADM has no commit action; the same advice for the device's answer 412) |
-| Upload AXIS OS to the device | `ctx.Files.OpenReadAsync` streamed in 80 KB chunks (`FirmwareStreamContent`), Content-Length set, never buffered; reopened if the HTTP stack resends after a Digest challenge; `Expect: 100-continue` so the 401 comes before the body. Progress in bytes ("12 of 80 MB"). Request timeout 20 min (`VapixRequestOptions.Timeout`). Settings kept: `autoCommit=never`, `autoRollback=30` (minutes, longer than the 15 min wait), so the device reverts by itself if OADM never verifies. Factory default: `autoCommit=started`, `autoRollback=never`, because the reset removes OADM's credentials |
+| Upload AXIS OS to the device | `ctx.Files.OpenReadAsync` streamed in 80 KB chunks (`FirmwareStreamContent`), Content-Length set, never buffered; reopened if the HTTP stack resends after a Digest challenge; `Expect: 100-continue` so the 401 comes before the body. Progress in bytes ("12.0 of 80.4 MB"). Request timeout 20 min (`VapixRequestOptions.Timeout`). Settings kept: `autoCommit=never`, `autoRollback=30` (minutes, longer than the 15 min wait), so the device reverts by itself if OADM never verifies. Factory default: `autoCommit=started`, `autoRollback=never`, because the reset removes OADM's credentials |
 | Install AXIS OS | anonymous `basicdeviceinfo getAllUnrestrictedProperties` every 5 s (works after a factory default) until the device goes offline (or already answers with another version) |
 | Wait for the device to come back | same probe until it answers with another version. Both waits share one timeout of **15 min**. One missed probe (a timeout, a site link) looks like a restart while the device still installs, so an answer with the old version keeps waiting ("The device installs AXIS OS"; an image of the version the device already runs is the exception). Still the old version at the timeout: fwmgr `status` decides. The new image is the inactive one (`inactiveFirmwareVersion`): rolled back, the step ends Done and Verify version fails. No new image: Failed "The device did not restart within 15 minutes after the upload and still runs X.". Status not readable: Failed "The device still runs X 15 minutes after the upload: the new version is not running." |
 | Verify version | version after restart == `firmwareVersion` from the upgrade answer (or the file name). Old version again = the device rolled back: Failed |
 | Read commit state / Commit AXIS OS | settings kept only: `status`, then `commit` unless already committed (Commit Skipped); 3 attempts with "Wait before retrying the commit" (10 s) between them, retries named "... (attempt 2)". While the device answers "The system hasn't finished booting yet." Commit AXIS OS asks again every 10 s for up to **5 min** (`BootWait`), not counted as an attempt. Factory default: both Skipped ("The device commits a factory default upgrade by itself.") and Done with warning (set a password, check the address) |
 
 Failure messages say what the device runs now and what happens next: upload refused or interrupted ("The upload was
-interrupted after 120 of 225 MB: the connection to the device was lost. The device still runs X."; the reason in plain
+interrupted after 120.0 of 225.5 MB: the connection to the device was lost. The device still runs X."; the reason in plain
 words: the AXIS OS file changed while it was sent, the device did not answer in time, the connection was lost; the
 exception only in the server log),
 did not restart, did not come back (with the auto-rollback time or the hard-reset address hint), rolled back, not

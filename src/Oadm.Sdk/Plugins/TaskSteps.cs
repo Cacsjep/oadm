@@ -68,7 +68,7 @@ public interface ITaskStep : IDisposable
     /// <summary>The current state.</summary>
     TaskStepState State { get; }
 
-    /// <summary>Progress of this step (0-100) and an optional detail shown next to it, e.g. "12 of 80 MB".</summary>
+    /// <summary>Progress of this step (0-100) and an optional detail shown next to it, e.g. "12.0 of 80.4 MB" (<see cref="Oadm.Sdk.Formatting.ByteSize.Progress"/>).</summary>
     void ReportProgress(int percent, string? detail = null);
 
     /// <summary>Ends the step as Done, with an optional result detail ("AXIS OS 12.11.77").</summary>

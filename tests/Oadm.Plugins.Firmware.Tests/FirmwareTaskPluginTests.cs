@@ -104,7 +104,7 @@ public sealed class FirmwareTaskPluginTests
             StepRun.Lines(ctx.Steps));
         Assert.Equal("fwmgr 1.10", StepRun.Detail(ctx.Steps, "Check compatibility"));
         Assert.Equal("AXIS P3265-V, AXIS OS 11.11.160", StepRun.Detail(ctx.Steps, "Read device info"));
-        Assert.Equal("2 MB, device accepted AXIS OS 12.11.77", StepRun.Detail(ctx.Steps, "Upload AXIS OS to the device"));
+        Assert.Equal("2.0 MB, device accepted AXIS OS 12.11.77", StepRun.Detail(ctx.Steps, "Upload AXIS OS to the device"));
         Assert.Equal("Answers with AXIS OS 12.11.77", StepRun.Detail(ctx.Steps, "Wait for the device to come back"));
         Assert.Equal("AXIS OS 12.11.77", StepRun.Detail(ctx.Steps, "Verify version"));
         Assert.Equal("Not committed yet", StepRun.Detail(ctx.Steps, "Read commit state"));

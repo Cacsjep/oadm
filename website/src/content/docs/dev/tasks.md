@@ -95,7 +95,7 @@ await ctx.StepAsync("Check compatibility", async _ =>
 using (var step = ctx.BeginStep("Upload AXIS OS to the device"))
 {
     // ...
-    step.ReportProgress(45, "37 of 82 MB");
+    step.ReportProgress(45, ByteSize.Progress(sent, size)); // "37.0 of 82.4 MB"
 }                                                 // returns: Done; throws: Failed with the message
 
 ctx.SkipStep("Factory default", "Keep settings"); // a step that does not apply
@@ -107,6 +107,8 @@ ctx.SkipStep("Factory default", "Keep settings"); // a step that does not apply
 - Beginning the next step ends the running one. Planned steps never reached end Skipped.
 - When the task succeeds, OADM adds the final step **Completed** itself.
 - Names are short imperatives with the article: "Read users", "Set the name", "Wait for the device to come back".
+- A size in a detail comes from `ByteSize` (`Oadm.Sdk.Formatting`): `ByteSize.Progress(sent, size)` writes "37.0 of 82.4 MB",
+  `ByteSize.Text(size)` "82.4 MB".
 
 Progress comes from the steps by themselves. `ctx.ReportProgress(percent, message)` overrides it, and `ctx.Log(level,
 message)` writes to the task log in the task details. Never log a secret.

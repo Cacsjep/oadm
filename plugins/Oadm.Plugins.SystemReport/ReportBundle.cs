@@ -2,6 +2,8 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 
+using Oadm.Sdk.Formatting;
+
 namespace Oadm.Plugins.SystemReport;
 
 /// <summary>One device of a bundle: its facts, and the report file on disk or the error.</summary>
@@ -103,7 +105,7 @@ public static class ReportBundle
                 if (names[i] is { } name)
                 {
                     var d = entries[i].Device;
-                    text.Append(c, $"  {name}  {d.Address}  {d.Serial}  {d.Model ?? "-"}  {Size(d.Size)}  mode {entries[i].Mode}\r\n");
+                    text.Append(c, $"  {name}  {d.Address}  {d.Serial}  {d.Model ?? "-"}  {ByteSize.Text(d.Size)}  mode {entries[i].Mode}\r\n");
                 }
             }
         }
@@ -123,10 +125,6 @@ public static class ReportBundle
 
         return text.ToString();
     }
-
-    private static string Size(long bytes) => bytes >= 1024 * 1024
-        ? string.Create(CultureInfo.InvariantCulture, $"{bytes / 1024.0 / 1024.0:0.0} MB")
-        : string.Create(CultureInfo.InvariantCulture, $"{Math.Max(1, (bytes + 1023) / 1024)} KB");
 
     private static string Unique(string name, HashSet<string> used)
     {

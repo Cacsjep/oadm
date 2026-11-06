@@ -56,7 +56,7 @@ public sealed class ClientTests : IDisposable
 
         Assert.Null(vm.ErrorMessage);
         Assert.Equal(("Done", true), (vm.Rows[0].StateText, vm.Rows[0].IsOk));
-        Assert.EndsWith("KB", vm.Rows[0].Detail, StringComparison.Ordinal);
+        Assert.EndsWith(" bytes", vm.Rows[0].Detail, StringComparison.Ordinal);
         Assert.Equal(("Failed", true, "Password not set - the device is in factory default"), (vm.Rows[1].StateText, vm.Rows[1].IsError, vm.Rows[1].Detail));
         Assert.Equal("Saved C:/reports/oadm-system-reports-2026-10-08.zip", vm.ProgressText);
         Assert.Equal("1 system report saved, 1 failed. summary.txt in the file lists the failures.", vm.ResultText);

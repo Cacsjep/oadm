@@ -86,7 +86,7 @@ public sealed class ViewModelTests
             Directory.GetFiles(dir).Select(Path.GetFileName).Order());
         Assert.All(Directory.GetFiles(dir), f => Assert.Equal(10_000, new FileInfo(f).Length));
         Assert.Equal("3 downloaded", vm.Rows[0].StatusText);
-        Assert.StartsWith("Download finished: 3 downloaded · 29.3 KB in ", vm.SummaryText, StringComparison.Ordinal);
+        Assert.StartsWith("Download finished: 3 downloaded · 29 KB in ", vm.SummaryText, StringComparison.Ordinal);
 
         await vm.DownloadCommand.ExecuteAsync(null); // a second run: everything is there
         Assert.Equal("Already there: 3", "Already there: " + vm.Rows[0].Skipped);
@@ -193,7 +193,7 @@ public sealed class ViewModelTests
     [Fact]
     public void Sizes_and_times_read_well()
     {
-        Assert.Equal(("about 48 GB", "Unknown", "512 bytes"), (EdgeRecordingFormat.AboutSize(48L * 1024 * 1024 * 1024), EdgeRecordingFormat.AboutSize(null), EdgeRecordingFormat.Size(512)));
+        Assert.Equal(("about 48.0 GB", "Unknown", "about 512 bytes"), (EdgeRecordingFormat.AboutSize(48L * 1024 * 1024 * 1024), EdgeRecordingFormat.AboutSize(null), EdgeRecordingFormat.AboutSize(512)));
         var local = EdgeRecordingFormat.Combine(new DateTimeOffset(new DateTime(2026, 10, 12)), TimeSpan.FromHours(8));
         Assert.Equal(new DateTimeOffset(new DateTime(2026, 10, 12, 8, 0, 0, DateTimeKind.Local)), local);
         Assert.Null(EdgeRecordingFormat.Combine(null, TimeSpan.FromHours(8)));

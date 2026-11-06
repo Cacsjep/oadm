@@ -40,7 +40,7 @@ public sealed partial class ExportDeviceRow : ObservableObject
 
     public void Exporting() => (StateText, Detail, IsAccent) = ("Exporting", null, true);
 
-    public void Done(long bytes) => (StateText, Detail, IsOk, IsError, IsAccent) = ("Done", FileSizeText(bytes), true, false, false);
+    public void Done(long bytes) => (StateText, Detail, IsOk, IsError, IsAccent) = ("Done", Oadm.Sdk.Formatting.ByteSize.Text(bytes), true, false, false);
 
     public void Failed(string reason) => (StateText, Detail, IsOk, IsError, IsAccent) = ("Failed", reason, false, true, false);
 
@@ -52,10 +52,6 @@ public sealed partial class ExportDeviceRow : ObservableObject
             (StateText, Detail, IsAccent) = ("Not exported", null, false);
         }
     }
-
-    internal static string FileSizeText(long bytes) => bytes < 1024 * 1024
-        ? string.Create(CultureInfo.InvariantCulture, $"{bytes / 1024.0:0.#} KB")
-        : string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024.0 * 1024):0.#} MB");
 }
 
 /// <summary>

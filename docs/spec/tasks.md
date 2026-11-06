@@ -25,7 +25,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   throws, the running step (or the one its `using` just ended) ends Failed with the exception message and
   pending ones Skipped ("Not run: an earlier step failed." / "... the task was cancelled."; a cancelled
   running step is Failed "Cancelled."). The running step is also the device message ("Upload AXIS OS to the device -
-  12 of 80 MB"). When the task succeeds (Done or Done with warnings) the engine appends a final step
+  12.0 of 80.4 MB"). When the task succeeds (Done or Done with warnings) the engine appends a final step
   **Completed** (Done, `TaskStepList.CompletedStepName`, also for plugins without own steps), so the
   tasks pane reads just "Completed"; Failed and Cancelled tasks get none (the failed step stays
   current). Overall progress = steps with equal weights, the running one with its own progress,

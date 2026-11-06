@@ -51,7 +51,7 @@ The payload stays in memory only; password values are never logged and are maske
   `VapixRequestOptions.Timeout` (default 15 s, at most 600 s). Paths must stay on the device
   (`CommandValidator.IsDevicePath`, checked again after the fields are filled in).
 - `CommandExecutor` sends with the factory's cached client (never disposed by the plugin), decodes the body as UTF-8
-  (Axis sends `charset=utf8`), shows binary answers as "image/jpeg, 123.4 KB", pretty-prints JSON / XML (cut at 256 KB)
+  (Axis sends `charset=utf8`), shows binary answers as "image/jpeg, 123 KB", pretty-prints JSON / XML (cut at 256 KB)
   and interprets the answer per response kind (`ResponseInterpreter`): Axis devices often answer an error with HTTP 200.
 - Errors: the device text (`# Error: ...` line, JSON `message (code N)`, REST error / problem+json, SOAP fault, Axis
   `GeneralError`, first text line, HTML title) or the shared transport texts of `DeviceMessages` ("Timeout after 15 s",

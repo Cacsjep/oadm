@@ -5,6 +5,7 @@ using System.Text.Json;
 using Oadm.Plugins.Firmware.Online;
 using Oadm.Plugins.Shared;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Formatting;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
 
@@ -310,7 +311,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 pathAdvice = note;
             }
 
-            step.Complete(Invariant($"{image.FileName}, {size / (1024 * 1024)} MB: {check.Message}"));
+            step.Complete($"{image.FileName}, {ByteSize.Text(size)}: {check.Message}");
         }
 
         // The version from axis.com, downloaded by the host with the user's MyAxis sign-in; disposed after the upload.
@@ -357,7 +358,6 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
     {
         using var step = ctx.BeginStep(Steps.Download);
         var downloads = ctx.AxisDownloads ?? throw new InvalidOperationException(OnlineFirmware.SignInText + " Nothing was changed.");
-        var totalMb = online.Size / (1024 * 1024);
         var lastPercent = -1;
         var progress = new SyncProgress(received =>
         {
@@ -365,7 +365,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             if (percent != lastPercent)
             {
                 lastPercent = percent;
-                step.ReportProgress(percent, Invariant($"{received / (1024 * 1024)} of {totalMb} MB"));
+                step.ReportProgress(percent, ByteSize.Progress(received, online.Size));
             }
         });
 
@@ -386,7 +386,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
 
         step.Complete(result.FromCache
             ? "From the cache, checksum matches axis.com"
-            : Invariant($"{result.Length / (1024 * 1024)} MB from axis.com, checksum matches"));
+            : ByteSize.Text(result.Length) + " from axis.com, checksum matches");
         return result;
     }
 
@@ -603,7 +603,6 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             : new FwmgrUpgradeOptions(mode, "started", "never");
 
         using var step = ctx.BeginStep(Steps.Upload);
-        var totalMb = size / (1024 * 1024);
         var lastPercent = -1;
         using var content = new FirmwareStreamContent(
             open,
@@ -614,7 +613,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 if (percent != lastPercent)
                 {
                     lastPercent = percent;
-                    step.ReportProgress(percent, Invariant($"{sent / (1024 * 1024)} of {totalMb} MB"));
+                    step.ReportProgress(percent, ByteSize.Progress(sent, size));
                 }
             });
 
@@ -623,7 +622,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
         {
             var version = await fwmgr.UpgradeAsync(content, image.FileName, options, _timings.UploadTimeout, ct).ConfigureAwait(false);
             ctx.Log(TaskLogLevel.Info, $"Device accepted the image (version {version ?? "not reported"}).");
-            step.Complete(Invariant($"{totalMb} MB, device accepted AXIS OS {version ?? "(version not reported)"}"));
+            step.Complete($"{ByteSize.Text(size)}, device accepted AXIS OS {version ?? "(version not reported)"}");
             return version;
         }
         catch (FwmgrException ex) when (ex.NothingInstalled)
@@ -646,7 +645,7 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             // The plain reason for the task; the exception with its .NET texts only in the server log.
             LogUploadError(ctx.Logger, ex);
             throw new InvalidOperationException(
-                Invariant($"The upload was interrupted after {content.BytesSent / (1024 * 1024)} of {totalMb} MB: {UploadFailure(ex)}. The device still runs {oldVersion}."), ex);
+                $"The upload was interrupted after {ByteSize.Progress(content.BytesSent, size)}: {UploadFailure(ex)}. The device still runs {oldVersion}.", ex);
         }
     }
 

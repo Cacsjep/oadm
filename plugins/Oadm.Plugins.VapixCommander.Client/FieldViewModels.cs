@@ -113,9 +113,7 @@ public sealed partial class FieldViewModel : ValidatingViewModel
     public string? FileName => File?.Name;
 
     /// <summary>"2 KB" of the chosen file.</summary>
-    public string? FileDetails => File is null ? null
-        : File.Data.Length < 1024 ? string.Create(CultureInfo.CurrentCulture, $"{File.Data.Length:N0} bytes")
-        : string.Create(CultureInfo.CurrentCulture, $"{File.Data.Length / 1024d:N0} KB");
+    public string? FileDetails => File is null ? null : Oadm.Sdk.Formatting.ByteSize.Text(File.Data.Length);
 
     /// <summary>Opens the file picker (the page's) and takes the chosen file.</summary>
     [RelayCommand]

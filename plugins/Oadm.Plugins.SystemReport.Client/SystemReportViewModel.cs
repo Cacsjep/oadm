@@ -44,7 +44,7 @@ public sealed partial class DeviceReportRow : ObservableObject
         (StateText, Detail, IsOk, IsError, IsAccent) = status.State switch
         {
             DeviceReportStates.Downloading => ("Downloading", (string?)null, false, false, true),
-            DeviceReportStates.Done => ("Done", FileSizeText.Format(status.Size), true, false, false),
+            DeviceReportStates.Done => ("Done", Oadm.Sdk.Formatting.ByteSize.Text(status.Size), true, false, false),
             DeviceReportStates.Failed => ("Failed", status.Error, false, true, false),
             _ => ("Waiting", null, false, false, false),
         };

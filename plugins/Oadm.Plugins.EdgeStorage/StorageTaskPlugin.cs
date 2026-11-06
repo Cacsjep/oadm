@@ -5,6 +5,7 @@ using System.Text;
 using Oadm.Plugins.EdgeStorage.Device;
 using Oadm.Plugins.EdgeStorage.Disks;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Formatting;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
 
@@ -308,7 +309,7 @@ public sealed class StorageTaskPlugin : ITaskPlugin
 /// <summary>Sizes as the page and the tasks show them ("57.9 GB").</summary>
 public static class StorageFormat
 {
-    /// <summary>The camera's kB (1,024 bytes) in decimal units like the card's label.</summary>
+    /// <summary>The camera's kB (1,024 bytes) in decimal units like the card's label (a "64 GB" card reads "59.3 GB"); below 1 MB the shared <see cref="ByteSize"/> text.</summary>
     public static string Size(long kb)
     {
         var bytes = kb * 1024.0;
@@ -317,7 +318,7 @@ public static class StorageFormat
             >= 1e12 => string.Create(CultureInfo.CurrentCulture, $"{bytes / 1e12:0.0} TB"),
             >= 1e9 => string.Create(CultureInfo.CurrentCulture, $"{bytes / 1e9:0.0} GB"),
             >= 1e6 => string.Create(CultureInfo.CurrentCulture, $"{bytes / 1e6:0} MB"),
-            _ => string.Create(CultureInfo.CurrentCulture, $"{kb:N0} kB"),
+            _ => ByteSize.Text(kb * 1024),
         };
     }
 }

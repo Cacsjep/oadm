@@ -11,6 +11,7 @@ using Oadm.Contracts.V1;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
 using Oadm.Sdk.Client.Validation;
+using Oadm.Sdk.Formatting;
 
 namespace Oadm.Client.Backup;
 
@@ -23,7 +24,7 @@ public sealed record ServerBackupRow(ServerBackup Backup)
 
     public string KindText => Backup.Kind == "before-restore" ? "Before a restore" : "Automatic";
 
-    public string SizeText => FileSizeText.Format(Backup.Size);
+    public string SizeText => ByteSize.Text(Backup.Size);
 }
 
 /// <summary>
@@ -378,7 +379,7 @@ public sealed partial class BackupViewModel : ValidatingViewModel
                 if (download.Length is > 0 and var total)
                 {
                     Progress = Math.Min(100, 100.0 * copied / total);
-                    Show($"{what}: {FileSizeText.Format(copied)} of {FileSizeText.Format(total)}");
+                    Show($"{what}: {ByteSize.Progress(copied, total)}");
                 }
             }
         }

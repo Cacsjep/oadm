@@ -482,7 +482,7 @@ public sealed partial class AcapDialogViewModel : ObservableObject, IDisposable
                 var files = _files.Paths;
                 var read = new List<(string FileName, EapManifest Package)>(files.Count);
                 var several = files.Count > 1;
-                PackageFileDetails = FileSizeText.Format(files.Sum(p => new FileInfo(p).Length));
+                PackageFileDetails = Oadm.Sdk.Formatting.ByteSize.Text(files.Sum(p => new FileInfo(p).Length));
                 foreach (var path in files)
                 {
                     try
