@@ -46,7 +46,7 @@ src/
                        plugins inside this repository; Oadm.Plugin.Versions.props = the host's versions
   Oadm.Sdk.Client/     client-side plugin SDK: dialog/page/toolbar interfaces, ITaskDialogContext, IToolbarContext, the
                        shared controls (Controls/, about 40: docs/spec/visual-style.md "Shared controls"), LiveVideo
-                       (ILiveVideoAccess), DeviceTexts, ServerErrors, PluginEventWatch, form validation (Validation/:
+                       (ILiveVideoAccess), DeviceTexts, ServerErrors, GuardedRun, PluginEventWatch, form validation (Validation/:
                        ValidatingViewModel, FormValidator), Network/InterfaceSelection,
                        Collections/RangeObservableCollection (bulk list of the host grids and plugin pages)
   Oadm.Core/           domain model, VAPIX client, discovery, task engine, persistence (EF Core)
