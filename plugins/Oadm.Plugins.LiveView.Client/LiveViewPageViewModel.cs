@@ -397,49 +397,37 @@ public sealed partial class LiveViewPageViewModel : ObservableObject, IDisposabl
         return model;
     }
 
-    private async Task LoadAndWatchAsync(CancellationToken ct)
-    {
-        var delay = TimeSpan.FromSeconds(1);
-        while (!ct.IsCancellationRequested)
+    // Subscribe first: nothing between the read and the watch is lost. A failed read or a dropped watch is retried (after
+    // 1 s, then twice as long each time up to 15 s; an older host without events is read at that pace); the reason shows
+    // below the list.
+    private Task LoadAndWatchAsync(CancellationToken ct) => _ctx.RunAsync(
+        ReadViewsAsync,
+        HandleEvent,
+        new PluginEventWatchOptions
         {
-            try
-            {
-                var json = await _ctx.InvokeAsync("list", null, ct).ConfigureAwait(true);
-                Apply(JsonSerializer.Deserialize<ViewList>(json ?? "null", LiveViewPluginInfo.Json));
-                LoadError = null;
-                IsLoaded = true;
-                delay = TimeSpan.FromSeconds(1);
-                await foreach (var item in _ctx.WatchEventsAsync(ct).ConfigureAwait(true))
-                {
-                    if (item.Topic == LiveViewPluginInfo.ViewsTopic && item.PayloadJson is { } payload)
-                    {
-                        Apply(JsonSerializer.Deserialize<ViewList>(payload, LiveViewPluginInfo.Json));
-                    }
-                }
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                return;
-            }
-#pragma warning disable CA1031 // A failed read or a dropped watch is retried; the reason shows below the list.
-            catch (Exception ex)
-#pragma warning restore CA1031
+            RetryDelay = TimeSpan.FromSeconds(1),
+            MaxRetryDelay = TimeSpan.FromSeconds(15),
+            Failed = ex =>
             {
                 LoadError = LiveViewTexts.LoadFailed(ServerErrors.Message(ex));
                 IsLoaded = true;
-            }
+            },
+        },
+        ct);
 
-            // The watch ended (older host: no events) or failed: read again after a while.
-            try
-            {
-                await Task.Delay(delay, ct).ConfigureAwait(true);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
+    private async Task ReadViewsAsync(CancellationToken ct)
+    {
+        var json = await _ctx.InvokeAsync("list", null, ct).ConfigureAwait(true);
+        Apply(JsonSerializer.Deserialize<ViewList>(json ?? "null", LiveViewPluginInfo.Json));
+        LoadError = null;
+        IsLoaded = true;
+    }
 
-            delay = TimeSpan.FromSeconds(Math.Min(delay.TotalSeconds * 2, 15));
+    private void HandleEvent(PluginEvent item)
+    {
+        if (item.Topic == LiveViewPluginInfo.ViewsTopic && item.PayloadJson is { } payload)
+        {
+            Apply(JsonSerializer.Deserialize<ViewList>(payload, LiveViewPluginInfo.Json));
         }
     }
 
