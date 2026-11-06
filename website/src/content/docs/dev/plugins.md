@@ -96,6 +96,8 @@ reserved for the plugins of OADM.
 
 - The server looks in `plugins/<id>/` next to its exe, in `<data folder>/plugins/<id>/` and, in a checkout of OADM, in
   `artifacts/plugins/<id>/`. The client looks in the same three places.
+- An installed service that finds its data folder writable by other users fixes the permissions and moves
+  `<data folder>/plugins` to `plugins-not-loaded-<time>` instead of loading it. Check the plugins and move them back.
 - `--Oadm:PluginDir=<folder>` (server) and `--plugin-dir <folder>` (client) load one plugin folder straight from a build,
   before the others: the development server and `oadm debug --installed` use them. An installed service ignores them.
 - Each plugin folder loads in its own load context. Your private dependencies (NuGet packages the host does not have) go into

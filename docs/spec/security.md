@@ -330,7 +330,12 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   with a load error (`PluginLoader.FolderCheck`). The development plugin folder
   (`artifacts/plugins`) is used only outside service mode. Optional plugins (`<datafolder>/addons/<id>/`,
   `docs/spec/add-ons.md`) are plugin folders too: checked like them before they load, and a folder put in by hand is not
-  taken up when the data folder had to be fixed at this start (until then others could write it).
+  taken up when the data folder had to be fixed at this start (until then others could write it). The installed plugins
+  (`<datafolder>/plugins`) follow the same rule (`InstalledPluginsTrust`): when the data folder had to be fixed, the whole
+  folder is moved to `<datafolder>/plugins-not-loaded-<UTC time>` before the loader runs, outside the plugin roots, with
+  one warning in the server log (an administrator checks the plugins and moves them back); a folder that cannot be moved
+  is left out of the roots and the file `<datafolder>/plugins-not-trusted` keeps it out at the next starts until the move
+  works. A start that fixed nothing changes nothing. Tests: `ServiceSecurityTests`.
 
 ## Optional plugins: trust
 

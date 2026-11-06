@@ -662,6 +662,14 @@ public static partial class OadmServerHost
         var addOns = sp.GetRequiredService<AddOns.AddOnInstaller>();
         if (folderGuard is not null)
         {
+            // The installed plugins of a data folder that had to be fixed at this start may come from anyone: they are
+            // moved aside before anything looks at them (a normal start changes nothing).
+            if (!InstalledPluginsTrust.Check(paths.DataDirectory, dataFolderFixed, sp.GetRequiredService<TimeProvider>(), logger))
+            {
+                var installed = Path.GetFullPath(PluginPaths.Installed(paths.DataDirectory));
+                roots = [.. roots.Where(r => !string.Equals(Path.GetFullPath(r), installed, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))];
+            }
+
             // The add-on folders too (docs/spec/add-ons.md "Server"): each addons/<id> is a plugin folder the service loads.
             var refused = await folderGuard.CheckPluginFoldersAsync([.. roots, addOns.Root], ct).ConfigureAwait(false);
             loader.FolderCheck = folder => refused.GetValueOrDefault(Path.GetFullPath(folder));

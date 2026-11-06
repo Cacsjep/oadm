@@ -226,6 +226,94 @@ public sealed class ServiceSecurityTests : IDisposable
         Assert.StartsWith("Skipped: the plugin folder can be changed by users other than administrators (Everyone can write it)", error.Message, StringComparison.Ordinal);
     }
 
+    private static string PlantPlugin(string data)
+    {
+        var plugin = Path.Combine(PluginPaths.Installed(data), "oadm.planted");
+        Directory.CreateDirectory(plugin);
+        File.WriteAllText(Path.Combine(plugin, PluginLoader.ManifestFileName), """{ "id": "oadm.planted", "version": "1.0.0", "minSdkVersion": "0.1.0" }""");
+        return plugin;
+    }
+
+    private static bool Knows(WebApplication app, string packageId) =>
+        app.Services.GetRequiredService<PluginLoader>().Packages.Any(p => p.Manifest.Id == packageId)
+        || app.Services.GetRequiredService<PluginRegistry>().Errors.Any(e => e.Source.Contains(packageId, StringComparison.Ordinal));
+
+    [Fact]
+    public async Task InstalledPluginsOfADataFolderThatHadToBeFixedAreMovedAsideAndNotLoaded()
+    {
+        var data = Path.Combine(_dir, "data");
+        PlantPlugin(data); // put there while everybody could write the data folder
+        var permissions = new FakePermissions();
+        permissions.Problems[data] = "BUILTIN\\Users can write it";
+        await using var app = BuildServer(serviceMode: true, data, permissions, pluginRoots: [PluginPaths.Installed(data)]);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.Equal([data], permissions.Fixed);
+            Assert.False(Knows(app, "oadm.planted"));
+            Assert.False(Directory.Exists(PluginPaths.Installed(data)));
+            var aside = Assert.Single(Directory.GetDirectories(data, InstalledPluginsTrust.AsidePrefix + "*"));
+            Assert.True(File.Exists(Path.Combine(aside, "oadm.planted", PluginLoader.ManifestFileName))); // kept for the administrator
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Fact]
+    public async Task InstalledPluginsOfASecureDataFolderStayAndAreLoaded()
+    {
+        var data = Path.Combine(_dir, "data");
+        var plugin = PlantPlugin(data);
+        await using var app = BuildServer(serviceMode: true, data, new FakePermissions(), pluginRoots: [PluginPaths.Installed(data)]);
+
+        await OadmServerHost.StartAsync(app);
+        try
+        {
+            Assert.True(Knows(app, "oadm.planted")); // the loader took the folder (it holds no code: a package or its load error)
+            Assert.True(Directory.Exists(plugin));
+            Assert.Empty(Directory.GetDirectories(data, InstalledPluginsTrust.AsidePrefix + "*"));
+        }
+        finally
+        {
+            await OadmServerHost.StopAsync(app);
+        }
+    }
+
+    [Fact]
+    public void InstalledPluginsThatCannotBeMovedStayUnloadedUntilTheMoveWorks()
+    {
+        var data = Path.Combine(_dir, "data");
+        var plugin = PlantPlugin(data);
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(new DateTimeOffset(2026, 11, 6, 8, 0, 0, TimeSpan.Zero));
+        var logger = NullLogger.Instance;
+        static void Locked(string from, string to) => throw new IOException("The folder is in use.");
+
+        // The start that fixed the data folder: somebody holds a file, the folder cannot be moved.
+        Assert.False(InstalledPluginsTrust.Check(data, dataFolderFixed: true, time, logger, Locked));
+        Assert.True(Directory.Exists(plugin));
+
+        // The next start finds the data folder in order, and still does not load them.
+        Assert.False(InstalledPluginsTrust.Check(data, dataFolderFixed: false, time, logger, Locked));
+
+        // Once the move works they are set aside and the folder is free for plugins again.
+        Assert.True(InstalledPluginsTrust.Check(data, dataFolderFixed: false, time, logger));
+        Assert.True(File.Exists(Path.Combine(data, InstalledPluginsTrust.AsidePrefix + "20261106-080000", "oadm.planted", PluginLoader.ManifestFileName)));
+        Assert.False(Directory.Exists(PluginPaths.Installed(data)));
+        Assert.True(InstalledPluginsTrust.Check(data, dataFolderFixed: false, time, logger, Locked)); // a normal start: nothing is moved
+        Assert.Single(Directory.GetDirectories(data, InstalledPluginsTrust.AsidePrefix + "*"));
+
+        // A second incident in the same second gets its own folder; an empty plugins folder is left alone.
+        PlantPlugin(data);
+        Assert.True(InstalledPluginsTrust.Check(data, dataFolderFixed: true, time, logger));
+        Assert.True(Directory.Exists(Path.Combine(data, InstalledPluginsTrust.AsidePrefix + "20261106-080000-2")));
+        Directory.CreateDirectory(PluginPaths.Installed(data));
+        Assert.True(InstalledPluginsTrust.Check(data, dataFolderFixed: true, time, logger, Locked));
+        Assert.True(Directory.Exists(PluginPaths.Installed(data)));
+    }
+
     [Fact]
     public void ServiceNeverUsesTheDevelopmentPluginFolder()
     {
@@ -308,11 +396,11 @@ public sealed class ServiceSecurityTests : IDisposable
 
     private static FolderGuard Guard(IFolderPermissions permissions) => new(permissions, NullLogger<FolderGuard>.Instance);
 
-    private WebApplication BuildServer(bool serviceMode, string? dataDirectory = null, IFolderPermissions? permissions = null) =>
+    private WebApplication BuildServer(bool serviceMode, string? dataDirectory = null, IFolderPermissions? permissions = null, IReadOnlyList<string>? pluginRoots = null) =>
         OadmServerHost.Build([], new OadmServerHostOptions
         {
             DataDirectory = dataDirectory ?? Path.Combine(_dir, "data-" + Guid.NewGuid().ToString("N")),
-            PluginRoots = [],
+            PluginRoots = pluginRoots ?? [],
             LogToConsole = false,
             ServiceMode = serviceMode,
             ConfigureBuilder = b => b.WebHost.UseTestServer(),

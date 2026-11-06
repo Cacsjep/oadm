@@ -369,7 +369,8 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
   (`PluginPaths.Development`) on startup, loads each `*.Server.dll` in its own collectible `AssemblyLoadContext`, resolves
   `ITaskPlugin` and `ICorePlugin` implementations via reflection, then registers the core plugins' `TaskPlugins` too.
   Client does the same for `*.Client.dll` (only one that references `Oadm.Sdk.Client`: `ClientPluginLoader.IsClientPart`) with `ITaskPluginDialog`, `ICorePluginPage` and `IToolbarPlugin` over the same
-  three roots (`ClientPluginLoader.DefaultRoots`).
+  three roots (`ClientPluginLoader.DefaultRoots`). The installed service does not load `<datafolder>/plugins` at a start
+  that had to fix the data folder's permissions: the folder is moved aside (`docs/spec/security.md` "Folders").
 - Plugin development without installing (developer guide `website/src/content/docs/dev/plugin-sdk.md`: NuGet packages,
   templates, the `oadm` tool): server `--Oadm:PluginDir=<folder>` (several separated by ";", `OadmServerHost.PluginDirKey`)
   and client `--plugin-dir <folder>` (repeatable, `AppOptions.PluginDirs`) load a plugin package straight from a build
