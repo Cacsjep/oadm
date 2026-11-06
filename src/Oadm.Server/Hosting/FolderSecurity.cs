@@ -14,6 +14,12 @@ public interface IFolderPermissions
     Task<string?> FindProblemAsync(string path, CancellationToken ct);
 
     /// <summary>
+    /// Like <see cref="FindProblemAsync"/> for the folder or file itself only, not for what is below it: null when only
+    /// administrators / root can change it (a folder: create, replace or remove the entries in it).
+    /// </summary>
+    Task<string?> FindOwnProblemAsync(string path, CancellationToken ct);
+
+    /// <summary>
     /// Makes the folder and everything below it admin-only (owner Administrators / root, no write access for anyone
     /// else). <paramref name="readableByUsers"/> keeps read access for users (program folders). Throws when it cannot.
     /// </summary>
@@ -37,6 +43,35 @@ public enum FolderVerdict
 public sealed record FolderCheck(string Path, FolderVerdict Verdict, string? Problem = null, string? FixError = null);
 
 /// <summary>
+/// What the folder check of a start found about the installed plugins (<c>&lt;datafolder&gt;/plugins</c>), before it fixed
+/// the data folder: which of them others could change until now (<see cref="InstalledPluginsTrust"/> sets those aside).
+/// </summary>
+/// <param name="All">
+/// The data folder or the plugins folder itself was loose: others could create, replace or remove anything in it, so
+/// nothing in it can be trusted.
+/// </param>
+/// <param name="Entries">
+/// Else the entries directly in the plugins folder (a plugin folder, a file) that were loose or held something loose, as
+/// full paths. A loose file elsewhere in the data folder (backups, logs, the database) is not among them.
+/// </param>
+public sealed record LoosePlugins(bool All, IReadOnlyList<string> Entries)
+{
+    /// <summary>Nothing about the installed plugins was loose.</summary>
+    public static LoosePlugins None { get; } = new(false, []);
+
+    /// <summary>Nothing in the plugins folder can be trusted.</summary>
+    public static LoosePlugins Everything { get; } = new(true, []);
+}
+
+/// <param name="Fixed">Something in a server folder was loose and was fixed.</param>
+/// <param name="Plugins">What was loose about the installed plugins.</param>
+public sealed record ServerFoldersCheck(bool Fixed, LoosePlugins Plugins)
+{
+    /// <summary>A start that checked nothing (a console run) or found nothing.</summary>
+    public static ServerFoldersCheck Untouched { get; } = new(false, LoosePlugins.None);
+}
+
+/// <summary>
 /// Checks the folders the server runs code or keeps secrets from (data folder, native library extraction folder, plugin
 /// folders) when it runs as the installed service (SYSTEM / root): writable only by administrators / root, else the
 /// permissions are reset, else the folder is refused. Spec: docs/spec/security.md, folders.
@@ -44,7 +79,11 @@ public sealed record FolderCheck(string Path, FolderVerdict Verdict, string? Pro
 public sealed partial class FolderGuard(IFolderPermissions permissions, ILogger<FolderGuard> logger)
 {
     /// <summary>Checks the folder and everything below it; fixes it when needed. Missing folders count as secure.</summary>
-    public async Task<FolderCheck> EnsureAsync(string path, bool readableByUsers, CancellationToken ct)
+    public Task<FolderCheck> EnsureAsync(string path, bool readableByUsers, CancellationToken ct) =>
+        EnsureAsync(path, readableByUsers, beforeFix: null, ct);
+
+    /// <param name="beforeFix">Runs when a problem was found, before the fix wipes the facts (who owned what).</param>
+    private async Task<FolderCheck> EnsureAsync(string path, bool readableByUsers, Func<Task>? beforeFix, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         if (!Directory.Exists(path))
@@ -56,6 +95,11 @@ public sealed partial class FolderGuard(IFolderPermissions permissions, ILogger<
         if (problem is null)
         {
             return new FolderCheck(path, FolderVerdict.Secure);
+        }
+
+        if (beforeFix is not null)
+        {
+            await beforeFix().ConfigureAwait(false);
         }
 
         try
@@ -81,15 +125,21 @@ public sealed partial class FolderGuard(IFolderPermissions permissions, ILogger<
 
     /// <summary>
     /// The data folder (database, master key) and the extraction folder: the server refuses to start when insecure. Returns
-    /// whether a folder had to be fixed (others could write it until now: what is in it may come from anyone).
+    /// whether a folder had to be fixed and, read before the fix, what was loose about the installed plugins in
+    /// <paramref name="pluginsFolder"/> (inside one of the folders): a loose file elsewhere says nothing about them.
     /// </summary>
-    public async Task<bool> EnsureServerFoldersAsync(IEnumerable<string> folders, CancellationToken ct)
+    public async Task<ServerFoldersCheck> EnsureServerFoldersAsync(IEnumerable<string> folders, string pluginsFolder, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(folders);
+        ArgumentException.ThrowIfNullOrWhiteSpace(pluginsFolder);
         var fixedAny = false;
+        var plugins = LoosePlugins.None;
         foreach (var folder in folders)
         {
-            var check = await EnsureAsync(folder, readableByUsers: false, ct).ConfigureAwait(false);
+            Func<Task>? beforeFix = IsBelow(pluginsFolder, folder)
+                ? async () => plugins = await FindLoosePluginsAsync(folder, pluginsFolder, ct).ConfigureAwait(false)
+                : null;
+            var check = await EnsureAsync(folder, readableByUsers: false, beforeFix, ct).ConfigureAwait(false);
             fixedAny |= check.Verdict == FolderVerdict.Fixed;
             if (check.Verdict == FolderVerdict.Insecure)
             {
@@ -99,7 +149,74 @@ public sealed partial class FolderGuard(IFolderPermissions permissions, ILogger<
             }
         }
 
-        return fixedAny;
+        return new ServerFoldersCheck(fixedAny, plugins);
+    }
+
+    /// <summary>
+    /// What is loose about the plugins in <paramref name="pluginsFolder"/>, asked while <paramref name="dataFolder"/> still
+    /// is as it was found. Everything when a folder on the way from the data folder to the plugins folder is loose itself
+    /// (others could put anything there), or when the facts cannot be read; else each entry of the plugins folder that is
+    /// loose or holds something loose.
+    /// </summary>
+    private async Task<LoosePlugins> FindLoosePluginsAsync(string dataFolder, string pluginsFolder, CancellationToken ct)
+    {
+        try
+        {
+            for (var folder = Path.GetFullPath(pluginsFolder); IsBelow(folder, dataFolder) || IsSame(folder, dataFolder); folder = Path.GetDirectoryName(folder)!)
+            {
+                if (Directory.Exists(folder) && await permissions.FindOwnProblemAsync(folder, ct).ConfigureAwait(false) is { } own)
+                {
+                    LogAllPluginsLoose(logger, pluginsFolder, own);
+                    return LoosePlugins.Everything;
+                }
+            }
+
+            if (!Directory.Exists(pluginsFolder))
+            {
+                return LoosePlugins.None;
+            }
+
+            // A plugins folder that is one plugin itself (plugin.json directly in it): loose as a whole or not at all.
+            if (File.Exists(Path.Combine(pluginsFolder, Core.Plugins.PluginLoader.ManifestFileName)))
+            {
+                if (await permissions.FindProblemAsync(pluginsFolder, ct).ConfigureAwait(false) is not { } whole)
+                {
+                    return LoosePlugins.None;
+                }
+
+                LogAllPluginsLoose(logger, pluginsFolder, whole);
+                return LoosePlugins.Everything;
+            }
+
+            var loose = new List<string>();
+            foreach (var entry in Directory.GetFileSystemEntries(pluginsFolder).Order(StringComparer.OrdinalIgnoreCase))
+            {
+                var problem = Directory.Exists(entry)
+                    ? await permissions.FindProblemAsync(entry, ct).ConfigureAwait(false)
+                    : await permissions.FindOwnProblemAsync(entry, ct).ConfigureAwait(false);
+                if (problem is not null)
+                {
+                    LogPluginLoose(logger, entry, problem);
+                    loose.Add(Path.GetFullPath(entry));
+                }
+            }
+
+            return new LoosePlugins(false, loose);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException
+                                       or PrivilegeNotHeldException or TimeoutException or System.ComponentModel.Win32Exception)
+        {
+            LogPluginsNotChecked(logger, ex, pluginsFolder);
+            return LoosePlugins.Everything;
+        }
+    }
+
+    private static bool IsSame(string path, string folder) => Path.GetRelativePath(Path.GetFullPath(folder), Path.GetFullPath(path)) == ".";
+
+    private static bool IsBelow(string path, string folder)
+    {
+        var relative = Path.GetRelativePath(Path.GetFullPath(folder), Path.GetFullPath(path));
+        return relative != "." && relative != ".." && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) && !Path.IsPathRooted(relative);
     }
 
     /// <summary>
@@ -154,6 +271,15 @@ public sealed partial class FolderGuard(IFolderPermissions permissions, ILogger<
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Folder {Path} can be changed by users other than administrators ({Problem}) and could not be fixed: {Error}")]
     private static partial void LogInsecure(ILogger logger, string path, string problem, string error);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Nothing in the plugin folder {Folder} can be trusted: {Problem}")]
+    private static partial void LogAllPluginsLoose(ILogger logger, string folder, string problem);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The plugin folder {Entry} could be changed by users other than administrators: {Problem}")]
+    private static partial void LogPluginLoose(ILogger logger, string entry, string problem);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "The plugin folder {Folder} could not be checked; nothing in it is trusted")]
+    private static partial void LogPluginsNotChecked(ILogger logger, Exception ex, string folder);
 }
 
 /// <summary>
@@ -203,6 +329,15 @@ public sealed class WindowsFolderPermissions : IFolderPermissions
         }
 
         return Task.FromResult(problem);
+    }
+
+    public Task<string?> FindOwnProblemAsync(string path, CancellationToken ct)
+    {
+        const AccessControlSections sections = AccessControlSections.Access | AccessControlSections.Owner;
+        FileSystemSecurity security = Directory.Exists(path)
+            ? new DirectoryInfo(path).GetAccessControl(sections)
+            : new FileInfo(path).GetAccessControl(sections);
+        return Task.FromResult(Problem(security, path));
     }
 
     public Task FixAsync(string path, bool readableByUsers, CancellationToken ct)
@@ -286,9 +421,16 @@ public sealed class UnixFolderPermissions(ICommandRunner runner) : IFolderPermis
     public static IReadOnlyList<string> FindArguments(string path) =>
         [path, "!", "-type", "l", "(", "!", "-user", "0", "-o", "-perm", "-0020", "-o", "-perm", "-0002", ")", "-print"];
 
-    public async Task<string?> FindProblemAsync(string path, CancellationToken ct)
+    /// <summary>The same test for <paramref name="path"/> itself only (<c>-maxdepth 0</c>).</summary>
+    public static IReadOnlyList<string> FindOwnArguments(string path) => [path, "-maxdepth", "0", .. FindArguments(path).Skip(1)];
+
+    public Task<string?> FindProblemAsync(string path, CancellationToken ct) => FindAsync(path, FindArguments(path), ct);
+
+    public Task<string?> FindOwnProblemAsync(string path, CancellationToken ct) => FindAsync(path, FindOwnArguments(path), ct);
+
+    private async Task<string?> FindAsync(string path, IReadOnlyList<string> arguments, CancellationToken ct)
     {
-        var result = await runner.RunAsync("find", FindArguments(path), ct).ConfigureAwait(false);
+        var result = await runner.RunAsync("find", arguments, ct).ConfigureAwait(false);
         if (!result.Succeeded)
         {
             return $"cannot check {path}: {result.Output}";

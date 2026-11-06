@@ -96,8 +96,11 @@ reserved for the plugins of OADM, which write their `plugin.json` by hand.
 
 - The server looks in `plugins/<id>/` next to its exe, in `<data folder>/plugins/<id>/` and, in a checkout of OADM, in
   `artifacts/plugins/<id>/`. The client looks in the same three places.
-- An installed service that finds its data folder writable by other users fixes the permissions and moves
-  `<data folder>/plugins` to `plugins-not-loaded-<time>` instead of loading it. Check the plugins and move them back.
+- An installed service loads a folder of `<data folder>/plugins` only when nobody but administrators could change it.
+  One that other users could change (a folder moved in with its old owner) is made admin-only and moved to
+  `<data folder>/plugins-not-loaded-<time>/` instead of being loaded: check it, move it back and restart the server. The
+  other plugins load. When other users could change the data folder or `plugins` itself, the whole `plugins` folder is
+  moved. Copy or unpack a plugin there as an administrator and nothing is moved.
 - `--Oadm:PluginDir=<folder>` (server) and `--plugin-dir <folder>` (client) load one plugin folder straight from a build,
   before the others: the development server and `oadm debug --installed` use them. An installed service ignores them.
 - The server loads `*.Server.dll`, the client every `*.Client.dll` that references `Oadm.Sdk.Client`.

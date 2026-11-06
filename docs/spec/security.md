@@ -348,12 +348,24 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   with a load error (`PluginLoader.FolderCheck`). The development plugin folder
   (`artifacts/plugins`) is used only outside service mode. Optional plugins (`<datafolder>/addons/<id>/`,
   `docs/spec/add-ons.md`) are plugin folders too: checked like them before they load, and a folder put in by hand is not
-  taken up when the data folder had to be fixed at this start (until then others could write it). The installed plugins
-  (`<datafolder>/plugins`) follow the same rule (`InstalledPluginsTrust`): when the data folder had to be fixed, the whole
-  folder is moved to `<datafolder>/plugins-not-loaded-<UTC time>` before the loader runs, outside the plugin roots, with
-  one warning in the server log (an administrator checks the plugins and moves them back); a folder that cannot be moved
-  is left out of the roots and the file `<datafolder>/plugins-not-trusted` keeps it out at the next starts until the move
-  works. A start that fixed nothing changes nothing. Tests: `ServiceSecurityTests`.
+  taken up when the data folder had to be fixed at this start (until then others could write it; anything fixed in it
+  counts, `ServerFoldersCheck.Fixed`). The installed plugins (`<datafolder>/plugins`) are judged by what was loose and
+  where, read before the fix wipes it (`FolderGuard.EnsureServerFoldersAsync` returns `LoosePlugins`;
+  `IFolderPermissions.FindOwnProblemAsync` asks about one folder or file itself, Unix `find <entry> -maxdepth 0 ...`):
+  - The data folder itself or the plugins folder itself was loose (others could create, replace or remove entries in
+    it, the case of a plugin planted before OADM was installed), or the facts could not be read: nothing in it is
+    trusted, the whole plugins folder is moved to `<datafolder>/plugins-not-loaded-<UTC time>` before the loader runs,
+    outside the plugin roots. The same for a plugins folder that is one plugin itself and holds something loose.
+  - Else each entry directly in the plugins folder that was loose or held something loose (a plugin moved in with its
+    old owner: `sudo mv`, `tar x` as root, a move on the same Windows volume) is moved into that folder, and only it:
+    the other plugins load. The moved folder is already fixed, so moving it back loads it at the next start.
+  - Something loose elsewhere (backups, logs, the database, the extraction folder) is fixed and changes nothing for the
+    installed plugins.
+
+  One warning per moved folder in the server log (an administrator checks the plugin and moves it back). While something
+  cannot be moved, the plugins folder is left out of the roots, and the file `<datafolder>/plugins-not-trusted` keeps it
+  out at the next starts until the move works (after its first line it names the entries still to move; no names: the
+  whole folder). A start that fixed nothing changes nothing (`InstalledPluginsTrust`). Tests: `ServiceSecurityTests`.
 
 ## Optional plugins: trust
 

@@ -143,6 +143,9 @@ like the plugin, for example `acme.site-reports`:
    | Linux | `/var/lib/oadm/plugins` |
    | macOS | `/Library/Application Support/OADM/plugins` |
 
+   Do this as an administrator (Linux and macOS: with `sudo`), and copy or unpack the plugin there. A folder you move
+   there still belongs to your user, and OADM [does not load it](#plugin-folders-other-users-could-change).
+
 2. When the plugin has a dialog or a page, unpack it on every computer with the client too, into
    `%LOCALAPPDATA%\Oadm\plugins` (Windows), `~/.local/share/Oadm/plugins` (Linux) or
    `~/Library/Application Support/Oadm/plugins` (macOS).
@@ -155,7 +158,18 @@ Install only plugins you trust, as you would any program on the server:
   logged in with the stored passwords (it never sees the passwords themselves).
 - **Off** on this page stops what the plugin runs and hides it, but its code stays loaded until the server restarts.
   To remove a plugin, delete its folder and restart the server and the clients.
-- As a service, OADM makes every plugin folder writable only by administrators when it starts. A folder it cannot fix
-  is not loaded, and the server log names it.
 - Plugins that come with OADM are reviewed and tested with every release. For one from somewhere else, ask for its
   source and who checked it.
+
+### Plugin folders other users could change
+
+As a service, OADM loads a plugin folder only when nobody but administrators could change it. It checks this at every
+start.
+
+- A plugin folder that other users could change is not loaded. OADM makes it writable only by administrators and moves
+  it to `plugins-not-loaded-<time>` next to the `plugins` folder. The server log names it. The other plugins load as
+  usual.
+- When other users could change the `plugins` folder itself or the folder above it, OADM moves the whole `plugins`
+  folder there: anyone could have put a plugin into it.
+
+Check the plugin, move its folder back into `plugins` and restart the OADM server service. It loads then.
