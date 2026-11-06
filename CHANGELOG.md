@@ -81,6 +81,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Two clients started at the same time no longer lose a settings save.
 - The client settings file is saved safely and is readable only by its owner on Linux and macOS.
 - A service that finds a plugin folder other users could change no longer loads it and moves it aside; the other plugins load.
+- Optional plugins such as Text recognition are no longer deleted at a server start because of a loose file elsewhere in the data folder, only when other users could change the plugin's own folder; the Plugins page then says why.
 - A damaged request to a plugin page is refused with a plain text instead of a plugin error.
 
 ## [4.11.0] - 2026-11-05
