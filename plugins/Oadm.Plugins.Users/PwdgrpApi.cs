@@ -126,7 +126,8 @@ public static partial class PwdgrpApi
 
     /// <summary>
     /// Checks a write response. pwdgrp.cgi answers 200 with "Created account x.", "Modified account x."
-    /// or "Removed account x." on success and 200 with "Error: ..." on failure.
+    /// or "Removed account x." on success and 200 with "Error: ..." on failure. The word "error" inside the
+    /// answer is no refusal: it may be the user name.
     /// </summary>
     public static void EnsureWriteSucceeded(int statusCode, string body, string expectedVerb)
     {
@@ -142,7 +143,14 @@ public static partial class PwdgrpApi
             throw new UserManagementException($"The device answered HTTP {statusCode}: {shortText}");
         }
 
-        if (text.Contains("error", StringComparison.OrdinalIgnoreCase))
+        // Success first: the answer starts with the verb and names the account, and a name may contain "error"
+        // ("Created account errorlog1."). A refusal starts with "Error"; "Error:" never is part of a name.
+        if (text.StartsWith(expectedVerb, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        if (text.StartsWith("Error", StringComparison.OrdinalIgnoreCase) || text.Contains("Error:", StringComparison.OrdinalIgnoreCase))
         {
             throw new UserManagementException($"The device refused the change: {shortText}");
         }

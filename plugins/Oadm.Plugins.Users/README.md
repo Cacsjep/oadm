@@ -24,6 +24,9 @@ The client references the server project for the shared payload, roles and valid
   access groups), `comment`, `strict_pwd`.
   Answers are plain text with HTTP 200 for success **and** for most errors:
   `Created account joe.`, `Modified account joe.`, `Removed account joe.`, `Error: ...`.
+  `PwdgrpApi.EnsureWriteSucceeded` looks for the success text first (the answer starts with Created / Modified /
+  Removed); a refusal starts with `Error` or contains `Error:`. The word inside the answer is no refusal: it may be the
+  user name ("Created account errorlog1."). Write answers were never recorded on hardware.
 - `action=get` returns `admin="..."`, `operator="..."`, `viewer="..."`, `ptz="..."`,
   `digusers="..."` (all accounts). An administrator is listed in admin, operator and viewer.
 - The device-config REST API `/config/rest/user-management/v2` (listed only in `/config/discover`,
