@@ -124,6 +124,12 @@ command**. Command format: `Schema/command-format.md` + `command.schema.json` (t
   checks every command first (nothing starts on an error), writes need a confirmation, dangerous commands a second one,
   and each device re-checks a fresh API list before a write ("Missing API x. Nothing was sent."). The response kind
   decides how success, errors and values are read (Axis devices answer errors with HTTP 200).
+- What a request does is decided on the server from the request itself (`RequestSafety`, one class for the server and
+  the page): a read is a GET, or a POST with a JSON read method or a SOAP `Get*`, on a path that changes nothing; the
+  paths that restart, reset, upgrade, change accounts or the network are always dangerous. A command's `writes` and
+  `dangerous` only add to it. `tryRequest`, `rollout`, the rollout task (from its own payload) and Run VAPIX command
+  refuse a change without the user's confirmation and a dangerous request without the second one, both carried in the
+  request ("... were not confirmed. Nothing was changed."); the page sends only the answers the user gave.
 - Saved commands: plugin setting `savedCommands`, at most 500, shared by all clients, export / import as library files.
 - Roles: methods are Operator; `tryRequest` and `rollout` are audited. Scale: target devices at the device limit, every list action
   under 1 s (Perf test).

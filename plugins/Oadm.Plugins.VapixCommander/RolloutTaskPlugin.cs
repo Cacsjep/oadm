@@ -11,6 +11,8 @@ namespace Oadm.Plugins.VapixCommander;
 /// The rollout task contributed by the VAPIX Commander: runs the selected commands on one device, one named step
 /// per command ("Check compatibility" first). Started only from the Commander page (<see cref="ShowInMenus"/> false).
 /// Compatibility is checked against the cached API list for read-only rollouts and a fresh one before the first write.
+/// What a command does comes from its request (<see cref="RequestSafety"/>), never from its flags alone: a payload whose
+/// commands change devices without the user's confirmation is refused before any step.
 /// A failed command fails its step with the device's error text; the task fails at the end with the first error.
 /// With "Stop on first error" the first failure stops the whole rollout (see <see cref="RolloutRegistry"/>).
 /// </summary>
@@ -130,7 +132,20 @@ public sealed class RolloutTaskPlugin : ITaskPlugin
             throw new InvalidOperationException(ForeignRolloutText); // before any step or request
         }
 
+        // A task started by hand carries its own payload: what its requests do decides, and the answers must be in it.
         var commands = payload.Commands.Select(c => c.Command).ToList();
+        var requests = payload.Commands.ConvertAll(Prepare);
+        if (requests.Exists(r => r.Level == SafetyLevel.Dangerous) && !(payload.Confirmed && payload.ConfirmedDangerous))
+        {
+            throw new InvalidOperationException(CommanderTexts.RolloutDangerousNotConfirmed); // before any step or request
+        }
+
+        var writes = requests.Exists(r => r.Level != SafetyLevel.Read);
+        if (writes && !payload.Confirmed)
+        {
+            throw new InvalidOperationException(CommanderTexts.RolloutNotConfirmed);
+        }
+
         var names = StepNames(commands);
         ctx.PlanSteps([CompatibilityStep, .. names]);
         try
@@ -140,7 +155,7 @@ public sealed class RolloutTaskPlugin : ITaskPlugin
                 StopBecauseOfOtherDevice(ctx, owner, [CompatibilityStep, .. names], ct);
             }
 
-            var compatibility = await CheckCompatibilityAsync(ctx, device, commands, ct).ConfigureAwait(false);
+            var compatibility = await CheckCompatibilityAsync(ctx, device, commands, writes, ct).ConfigureAwait(false);
             var failures = new List<string>();
             for (var i = 0; i < commands.Count; i++)
             {
@@ -149,7 +164,7 @@ public sealed class RolloutTaskPlugin : ITaskPlugin
                     StopBecauseOfOtherDevice(ctx, owner, names.Skip(i), ct);
                 }
 
-                var error = await RunCommandAsync(ctx, payload.Commands[i], names[i], compatibility[i], ct).ConfigureAwait(false);
+                var error = await RunCommandAsync(ctx, payload.Commands[i], requests[i], names[i], compatibility[i], ct).ConfigureAwait(false);
                 if (error is null)
                 {
                     continue;
@@ -186,15 +201,32 @@ public sealed class RolloutTaskPlugin : ITaskPlugin
         }
     }
 
+    /// <summary>A command's request with its values filled in, or why it cannot be sent, and what it does to the device.</summary>
+    private sealed record Prepared(RenderedRequest? Request, string? Problem, SafetyLevel Level);
+
+    /// <summary>Fills in one command. A command that cannot be filled in sends nothing; its level is that of its definition.</summary>
+    private static Prepared Prepare(RolloutPayloadCommand item)
+    {
+        try
+        {
+            var request = CommandRenderer.Render(item.Command, item.Values);
+            return new Prepared(request, null, RequestSafety.Of(item.Command, request));
+        }
+        catch (CommandValidationException ex)
+        {
+            return new Prepared(null, ex.Message + " Nothing was sent.", RequestSafety.Of(item.Command));
+        }
+    }
+
     /// <summary>
     /// One step: reads the API list (fresh when a command writes or nothing is cached) and checks every command.
     /// Returns null per compatible command, else the reason. A failed read fails the task: nothing was sent.
     /// </summary>
-    private static async Task<string?[]> CheckCompatibilityAsync(ITaskExecutionContext ctx, IDeviceInfo device, List<CommandDefinition> commands, CancellationToken ct)
+    private static async Task<string?[]> CheckCompatibilityAsync(ITaskExecutionContext ctx, IDeviceInfo device, List<CommandDefinition> commands, bool writes, CancellationToken ct)
     {
         using var step = ctx.BeginStep(CompatibilityStep);
         IReadOnlyList<DeviceApi> apis = device.Apis;
-        var fresh = commands.Any(c => c.Writes) || apis.Count == 0;
+        var fresh = writes || apis.Count == 0;
         if (fresh)
         {
             try
@@ -229,7 +261,7 @@ public sealed class RolloutTaskPlugin : ITaskPlugin
     }
 
     /// <summary>Runs one command step. Returns null on success, else the error text (the step is already Failed).</summary>
-    private static async Task<string?> RunCommandAsync(ITaskExecutionContext ctx, RolloutPayloadCommand item, string name, string? incompatible, CancellationToken ct)
+    private static async Task<string?> RunCommandAsync(ITaskExecutionContext ctx, RolloutPayloadCommand item, Prepared prepared, string name, string? incompatible, CancellationToken ct)
     {
         using var step = ctx.BeginStep(name);
         if (incompatible is not null)
@@ -239,14 +271,9 @@ public sealed class RolloutTaskPlugin : ITaskPlugin
             return incompatible;
         }
 
-        RenderedRequest request;
-        try
+        if (prepared.Request is not { } request)
         {
-            request = CommandRenderer.Render(item.Command, item.Values);
-        }
-        catch (CommandValidationException ex)
-        {
-            var text = ex.Message + " Nothing was sent.";
+            var text = prepared.Problem ?? "Nothing was sent.";
             step.Fail(text);
             ctx.Log(TaskLogLevel.Error, $"{name}: {text}");
             return text;

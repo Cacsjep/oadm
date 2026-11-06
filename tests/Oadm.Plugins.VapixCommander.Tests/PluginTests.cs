@@ -199,6 +199,7 @@ public sealed class PluginTests
         {
             DeviceIds = [Guid.NewGuid()],
             Commands = [new RolloutCommand { Command = new CommandRef { Source = CommandSources.Saved, Id = "custom.pw" } }],
+            Confirmed = true, // a POST with a form changes the device, whatever the command says
         });
         Assert.Contains("Stored1!", ((RecordingRunner)ctx.Tasks).Runs.Single().Payload!, StringComparison.Ordinal);
     }

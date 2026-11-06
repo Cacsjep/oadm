@@ -19,8 +19,12 @@ public sealed partial class LibraryNodeViewModel : ObservableObject
     {
         Title = title;
         Item = item;
+        _level = item is null ? SafetyLevel.Read : RequestSafety.Of(item.Command);
         Children = [.. children];
     }
+
+    /// <summary>What the command does, from its request (the same rule the server enforces), never from its flags alone.</summary>
+    private readonly SafetyLevel _level;
 
     public string Title { get; }
 
@@ -32,16 +36,16 @@ public sealed partial class LibraryNodeViewModel : ObservableObject
 
     public bool IsGroup => Item is null;
 
-    public bool IsWrite => Item?.Command is { Writes: true, Dangerous: false };
+    public bool IsWrite => _level == SafetyLevel.Write;
 
-    public bool IsDangerous => Item?.Command.Dangerous == true;
+    public bool IsDangerous => _level == SafetyLevel.Dangerous;
 
     public bool IsSaved => Item?.Source == CommandSources.Saved;
 
     /// <summary>"Write · dangerous" (kind of a changing command) and the description.</summary>
     public string? Tooltip => Item is null ? null
-        : Item.Command.Writes || Item.Command.Dangerous
-            ? (Item.Command.Dangerous ? "Write · dangerous" : "Write") + (string.IsNullOrEmpty(Item.Command.Description) ? string.Empty : Environment.NewLine + Item.Command.Description)
+        : _level != SafetyLevel.Read
+            ? (IsDangerous ? "Write · dangerous" : "Write") + (string.IsNullOrEmpty(Item.Command.Description) ? string.Empty : Environment.NewLine + Item.Command.Description)
             : Item.Command.Description;
 
     /// <summary>Commands below this node.</summary>

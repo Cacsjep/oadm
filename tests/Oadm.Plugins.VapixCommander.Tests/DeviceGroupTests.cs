@@ -147,7 +147,7 @@ public sealed class DeviceGroupTests
         // The password typed: it runs with the typed one.
         var typed = new RolloutCommand { Command = saved.Command, Values = Samples.Values(("pwd", "Typed2!")) };
         var started = CommandJson.Read<RolloutReply>(await plugin.InvokeAsync(group, CommanderMethods.Rollout,
-            CommandJson.Write(new RolloutRequest { DeviceIds = [device.Id], Commands = [typed] }), CancellationToken.None));
+            CommandJson.Write(new RolloutRequest { DeviceIds = [device.Id], Commands = [typed], Confirmed = true }), CancellationToken.None));
         Assert.Null(started.Error);
         var payload = Assert.Single(users.TaskRuns).PayloadJson!;
         Assert.Contains("Typed2!", payload, StringComparison.Ordinal);
@@ -155,7 +155,7 @@ public sealed class DeviceGroupTests
 
         // A user with all devices still uses the stored one.
         var admin = users.CallAsAllDevices();
-        await plugin.InvokeAsync(admin, CommanderMethods.Rollout, CommandJson.Write(new RolloutRequest { DeviceIds = [device.Id], Commands = [saved] }), CancellationToken.None);
+        await plugin.InvokeAsync(admin, CommanderMethods.Rollout, CommandJson.Write(new RolloutRequest { DeviceIds = [device.Id], Commands = [saved], Confirmed = true }), CancellationToken.None);
         Assert.Contains("Stored1!", users.TaskRuns[^1].PayloadJson!, StringComparison.Ordinal);
     }
 

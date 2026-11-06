@@ -126,8 +126,11 @@ public sealed class TryCommandRequest
 
     public Dictionary<string, JsonElement> Values { get; set; } = [];
 
-    /// <summary>Must be true for commands that write; the page asks the user first.</summary>
+    /// <summary>Must be true for a request that changes the device (<see cref="RequestSafety"/> decides); the page asks the user first.</summary>
     public bool Confirmed { get; set; }
+
+    /// <summary>Must be true as well for a dangerous request: the user's answer to the dangerous question.</summary>
+    public bool ConfirmedDangerous { get; set; }
 }
 
 public sealed class TryCommandReply
@@ -136,6 +139,9 @@ public sealed class TryCommandReply
     public string? Error { get; set; }
 
     public bool NeedsConfirmation { get; set; }
+
+    /// <summary>With <see cref="NeedsConfirmation"/>: the request is dangerous and needs <see cref="TryCommandRequest.ConfirmedDangerous"/>.</summary>
+    public bool Dangerous { get; set; }
 
     public TryOutcome? Outcome { get; set; }
 }
@@ -237,8 +243,11 @@ public sealed class RolloutRequest
 
     public bool StopOnFirstError { get; set; }
 
-    /// <summary>Must be true when a command writes; the page shows the confirmation summary first.</summary>
+    /// <summary>Must be true when a command changes the devices (<see cref="RequestSafety"/> decides); the page shows the confirmation summary first.</summary>
     public bool Confirmed { get; set; }
+
+    /// <summary>Must be true as well when a command is dangerous: the user's answer to the dangerous question.</summary>
+    public bool ConfirmedDangerous { get; set; }
 
     public string? Owner { get; set; }
 }
@@ -247,7 +256,14 @@ public sealed class RolloutReply
 {
     public string? Error { get; set; }
 
+    /// <summary>Nothing was started: a confirmation is missing; <see cref="Error"/> says which and <see cref="ConfirmCommands"/> for what.</summary>
     public bool NeedsConfirmation { get; set; }
+
+    /// <summary>With <see cref="NeedsConfirmation"/>: the missing one is <see cref="RolloutRequest.ConfirmedDangerous"/>.</summary>
+    public bool Dangerous { get; set; }
+
+    /// <summary>With <see cref="NeedsConfirmation"/>: the names of the commands the confirmation is for.</summary>
+    public List<string> ConfirmCommands { get; set; } = [];
 
     public Guid RolloutId { get; set; }
 
@@ -260,6 +276,12 @@ internal sealed class RolloutPayload
     public Guid RolloutId { get; set; }
 
     public bool StopOnFirstError { get; set; }
+
+    /// <summary>The user confirmed the commands that change the devices; the task refuses them without it.</summary>
+    public bool Confirmed { get; set; }
+
+    /// <summary>The user confirmed the dangerous commands; the task refuses them without it.</summary>
+    public bool ConfirmedDangerous { get; set; }
 
     public List<RolloutPayloadCommand> Commands { get; set; } = [];
 
@@ -278,4 +300,17 @@ public static class CommanderTexts
 {
     /// <summary>A user with a device group (or a rule of a group) ran a saved command whose stored passwords it would use.</summary>
     public const string SavedPasswordsRefused = "Only users with all devices can use the saved passwords. Enter the passwords.";
+
+    /// <summary>A rollout with commands that change the devices came without the user's confirmation.</summary>
+    public const string RolloutNotConfirmed = "These commands change the devices and were not confirmed. Nothing was changed.";
+
+    /// <summary>A rollout with dangerous commands came without the user's answer to the dangerous question.</summary>
+    public const string RolloutDangerousNotConfirmed =
+        "These commands can restart devices, reset them or cut them off the network, and were not confirmed. Nothing was changed.";
+
+    /// <summary>A single request that changes the device came without the user's confirmation.</summary>
+    public const string NotConfirmed = "The command changes the device and was not confirmed.";
+
+    /// <summary>A single dangerous request came without the user's answer to the dangerous question.</summary>
+    public const string DangerousNotConfirmed = "The command can restart or reset the device or cut it off the network, and was not confirmed.";
 }

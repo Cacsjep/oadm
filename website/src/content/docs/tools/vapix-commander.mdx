@@ -154,6 +154,8 @@ event: type `{carID}`, `{port}` or `{device}` (single braces) as the field's val
 - Commands that send and rollouts are written to the audit log.
 - **Changes the device** and **Dangerous** are two different marks. Dangerous commands (restart, factory default,
   AXIS OS rollback, network settings) need a second confirmation and, in event rules, **Allow dangerous commands**.
+- OADM reads both marks from the request itself. A request that restarts, resets or changes users is dangerous even
+  when the command does not say so, and you cannot clear a mark the request asks for.
 
 <Aside>
 Operators can use VAPIX Commander. No administrator rights are needed.

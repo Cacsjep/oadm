@@ -321,7 +321,14 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
             return new TryCommandReply { Error = $"{cached.Text}. Nothing was sent." };
         }
 
-        if (command.Writes && !request.Confirmed)
+        // The request itself says what it does; the command's flags can only add to it.
+        var level = RequestSafety.Of(command, rendered);
+        if (level == SafetyLevel.Dangerous && !(request.Confirmed && request.ConfirmedDangerous))
+        {
+            return new TryCommandReply { NeedsConfirmation = true, Dangerous = true };
+        }
+
+        if (level != SafetyLevel.Read && !request.Confirmed)
         {
             return new TryCommandReply { NeedsConfirmation = true };
         }
@@ -337,7 +344,7 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
         }
 
         // The factory owns (and caches) the client: never dispose it here.
-        if (command.Writes)
+        if (level != SafetyLevel.Read)
         {
             // Device safety: a fresh API list before the first write.
             try
@@ -451,8 +458,16 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
             return new RolloutReply { Error = string.Create(CultureInfo.InvariantCulture, $"At most {RolloutTaskPlugin.MaxCommands} commands per rollout.") };
         }
 
-        var payload = new RolloutPayload { RolloutId = Guid.NewGuid(), StopOnFirstError = request.StopOnFirstError };
+        var payload = new RolloutPayload
+        {
+            RolloutId = Guid.NewGuid(),
+            StopOnFirstError = request.StopOnFirstError,
+            Confirmed = request.Confirmed,
+            ConfirmedDangerous = request.Confirmed && request.ConfirmedDangerous,
+        };
         var problems = new List<string>();
+        var writes = new List<string>();
+        var dangerous = new List<string>();
         for (var i = 0; i < request.Commands.Count; i++)
         {
             CommandDefinition? resolved = null;
@@ -460,8 +475,20 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
             {
                 var (command, values) = await ResolveAsync(request.Commands[i].Command, request.Commands[i].Values, caller?.HasAllDevices ?? true, ct).ConfigureAwait(false);
                 resolved = command;
-                _ = CommandRenderer.Render(command, values); // validation only: nothing is sent when a value is wrong
+                var rendered = CommandRenderer.Render(command, values); // nothing is sent when a value is wrong
                 payload.Commands.Add(new RolloutPayloadCommand { Command = command, Values = values });
+
+                // The request itself says what it does; the command's flags can only add to it.
+                var level = RequestSafety.Of(command, rendered);
+                if (level != SafetyLevel.Read)
+                {
+                    writes.Add(command.Name);
+                }
+
+                if (level == SafetyLevel.Dangerous)
+                {
+                    dangerous.Add(command.Name);
+                }
             }
             catch (CommandValidationException ex)
             {
@@ -475,9 +502,14 @@ public sealed partial class VapixCommanderPlugin : ICorePlugin, Oadm.Sdk.Actions
             return new RolloutReply { Error = string.Join(Environment.NewLine, problems) };
         }
 
-        if (payload.Commands.Any(c => c.Command.Writes) && !request.Confirmed)
+        if (dangerous.Count > 0 && !payload.ConfirmedDangerous)
         {
-            return new RolloutReply { NeedsConfirmation = true };
+            return new RolloutReply { NeedsConfirmation = true, Dangerous = true, ConfirmCommands = dangerous, Error = CommanderTexts.RolloutDangerousNotConfirmed };
+        }
+
+        if (writes.Count > 0 && !payload.Confirmed)
+        {
+            return new RolloutReply { NeedsConfirmation = true, ConfirmCommands = writes, Error = CommanderTexts.RolloutNotConfirmed };
         }
 
         var rollout = Rollouts.Get(payload.RolloutId, payload.StopOnFirstError, caller?.UserName);

@@ -219,12 +219,16 @@ public sealed partial class RolloutCommandViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(item);
         Item = item;
+        _level = RequestSafety.Of(item.Command);
         Fields = [.. item.Command.Fields.Select(f => new FieldViewModel(f, item.StoredSecretFields.Contains(f.Name), pickFile))];
         foreach (var field in Fields)
         {
             field.ValueChanged += (_, _) => OnPropertyChanged(nameof(IsValid));
         }
     }
+
+    /// <summary>What the command does, from its request (the same rule the server enforces), never from its flags alone.</summary>
+    private readonly SafetyLevel _level;
 
     public CommandListItem Item { get; }
 
@@ -242,16 +246,16 @@ public sealed partial class RolloutCommandViewModel : ObservableObject
     };
 
     /// <summary>"Read", "Write" or "Write · dangerous".</summary>
-    public string KindText => Command.Dangerous ? "Write · dangerous" : Command.Writes ? "Write" : "Read";
+    public string KindText => Dangerous ? "Write · dangerous" : Writes ? "Write" : "Read";
 
     /// <summary>Header text of the selected command: kind of a changing command, then the description.</summary>
-    public string? Detail => Command.Writes || Command.Dangerous
+    public string? Detail => Writes
         ? string.IsNullOrEmpty(Command.Description) ? KindText : KindText + " · " + Command.Description
         : Command.Description;
 
-    public bool Writes => Command.Writes;
+    public bool Writes => _level != SafetyLevel.Read;
 
-    public bool Dangerous => Command.Dangerous;
+    public bool Dangerous => _level == SafetyLevel.Dangerous;
 
     public ObservableCollection<FieldViewModel> Fields { get; }
 

@@ -416,6 +416,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
         _original = command.Clone();
         _dropped.Clear();
         SyncFields();
+        ApplyPathDefaults(); // a request that changes the device shows so, whatever the saved boxes say
         Validation.Reset();
         Validation.Validate();
     }
@@ -485,6 +486,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
         if (!_suppressEdits)
         {
             SyncFields();
+            ApplyPathDefaults(); // the body says what a POST does
         }
     }
 
@@ -494,7 +496,50 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
 
     partial void OnResponseKindChanged(string value) => _kindEdited |= !_suppressEdits;
 
-    partial void OnWritesChanged(bool value) => _writesEdited |= !_suppressEdits;
+    partial void OnWritesChanged(bool value)
+    {
+        _writesEdited |= !_suppressEdits;
+        if (!value && !_suppressEdits && RequestLevel() != SafetyLevel.Read)
+        {
+            Writes = true; // the request changes the device whatever the box says
+        }
+    }
+
+    partial void OnDangerousChanged(bool value)
+    {
+        if (!value && !_suppressEdits && RequestLevel() == SafetyLevel.Dangerous)
+        {
+            Dangerous = true;
+        }
+    }
+
+    /// <summary>What the request as it stands does to a device, by the rule the server enforces.</summary>
+    private SafetyLevel RequestLevel()
+    {
+        var request = new CommandRequest
+        {
+            Method = Method,
+            Path = (Path ?? string.Empty).Trim(),
+            Query = QueryRows.Where(r => !string.IsNullOrWhiteSpace(r.Key)).GroupBy(r => r.Key.Trim()).ToDictionary(g => g.Key, g => g.Last().Value ?? string.Empty, StringComparer.Ordinal),
+            BodyType = BodyType == BodyTypes.None ? null : BodyType,
+        };
+        try
+        {
+            request.Body = BodyType switch
+            {
+                BodyTypes.Json or BodyTypes.Multipart => string.IsNullOrWhiteSpace(BodyText) ? null : JsonNode.Parse(BodyText),
+                BodyTypes.Form => new JsonObject(ParseForm(BodyText).Select(p => new KeyValuePair<string, JsonNode?>(p.Key, JsonValue.Create(p.Value)))),
+                BodyTypes.Text or BodyTypes.Xml => JsonValue.Create(BodyText),
+                _ => null,
+            };
+        }
+        catch (Exception ex) when (ex is JsonException or ArgumentException)
+        {
+            request.Body = null; // a body that does not parse yet: not a read
+        }
+
+        return RequestSafety.Of(new CommandDefinition { Request = request });
+    }
 
     [RelayCommand]
     private void AddQueryRow() => QueryRows.Add(new KeyValueRowViewModel());
@@ -646,6 +691,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
 
         // A saved command keeps what the editor does not show (further requirements, docs, extracts of the same kind).
         var original = forSave ? _original : null;
+        var level = RequestLevel();
         var requires = string.IsNullOrWhiteSpace(RequiresApi) ? new List<ApiRequirement>() : [new ApiRequirement { Api = RequiresApi.Trim(), MinVersion = RequiresVersion.Trim() }];
         requires.AddRange(original?.Requires.Skip(1) ?? []);
         var response = new CommandResponse { Kind = ResponseKind };
@@ -666,8 +712,8 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
             Category = forSave ? SaveCategory : CommandCategories.Custom,
             Description = forSave && !string.IsNullOrWhiteSpace(SaveDescription) ? SaveDescription.Trim() : null,
             Requires = requires,
-            Writes = Writes,
-            Dangerous = Dangerous,
+            Writes = Writes || Dangerous || level != SafetyLevel.Read,
+            Dangerous = Dangerous || level == SafetyLevel.Dangerous,
             Fields = [.. Fields.Select(ToField)],
             Request = new CommandRequest
             {
@@ -816,11 +862,16 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
                 ResponseKind = known?.Kind ?? (path.StartsWith("/vapix/", StringComparison.OrdinalIgnoreCase) ? ResponseKinds.Xml : ResponseKinds.Text);
             }
 
-            if (!_writesEdited)
+            // What the request does is the server's rule (RequestSafety): the boxes can only add to it.
+            var level = RequestLevel();
+            if (!_writesEdited || level != SafetyLevel.Read)
             {
-                var action = QueryRows.FirstOrDefault(r => r.Key == "action")?.Value ?? string.Empty;
-                Writes = Method != "GET" && !path.EndsWith("basicdeviceinfo.cgi", StringComparison.OrdinalIgnoreCase)
-                    || action is "update" or "add" or "remove" or "set" or "start" or "stop";
+                Writes = level != SafetyLevel.Read;
+            }
+
+            if (level == SafetyLevel.Dangerous)
+            {
+                Dangerous = true;
             }
         }
         finally
@@ -835,6 +886,7 @@ public sealed partial class RawEditorViewModel : ValidatingViewModel
         if (!_suppressEdits)
         {
             SyncFields();
+            ApplyPathDefaults(); // a row more or less changes what the request does
         }
     }
 
