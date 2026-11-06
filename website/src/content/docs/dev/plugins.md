@@ -90,7 +90,7 @@ other packages go into the plugin folder with your plugin. What OADM provides: [
 | `OadmBannedApis` | (none) | `warning` (default): the banned-API analyzer warns (RS0030) when your code opens its own socket, HTTP handler or DNS lookup; `none` turns it off. Inside the OADM repository plugins build with `error`, see [Sites](../sites/) |
 
 A `plugin.json` of your own in the server project is used as it is instead. `alwaysOn` (it cannot be turned off) is
-reserved for the plugins of OADM.
+reserved for the plugins of OADM, which write their `plugin.json` by hand.
 
 ## How plugins load
 
@@ -100,8 +100,9 @@ reserved for the plugins of OADM.
   `<data folder>/plugins` to `plugins-not-loaded-<time>` instead of loading it. Check the plugins and move them back.
 - `--Oadm:PluginDir=<folder>` (server) and `--plugin-dir <folder>` (client) load one plugin folder straight from a build,
   before the others: the development server and `oadm debug --installed` use them. An installed service ignores them.
+- The server loads `*.Server.dll`, the client every `*.Client.dll` that references `Oadm.Sdk.Client`.
 - Each plugin folder loads in its own load context. Your private dependencies (NuGet packages the host does not have) go into
-  the plugin folder with it.
+  the plugin folder with it; what the host has (the SDK, Avalonia, the MVVM toolkit) is never copied.
 - The loader finds every public class that implements a plugin interface and has a public parameterless constructor.
   Contributed task plugins and actions come from their core plugin instead.
 - A plugin that fails to load or throws is logged and skipped. It never stops the server or the client.

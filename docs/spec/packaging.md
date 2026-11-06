@@ -324,6 +324,11 @@ cacsjep.github.io/oadm addresses redirect). Texts follow "Wording".
 - **Diagrams:** ```mermaid blocks render in the browser (`astro-mermaid` 2.1.0 + mermaid 11, before Starlight in the
   integrations, theme `base` dark with the site colors); used for the architecture, plugin kinds, task runs, event rules
   and the tutorials.
+- **One SDK guide:** the developer pages (`website/src/content/docs/dev/`) are the only guide to the plugin SDK. A new
+  or changed SDK member is explained there, with a short example. `plugins/README.md` holds only what a plugin inside
+  this repository needs and a table that leads to the pages; `docs/spec/plugins.md` keeps the rules, limits and
+  decisions, never a how-to. Host services (`dev/host-services.md`): settings, records, network interfaces, ports and
+  the firewall, trust anchors, adding devices, services between plugins, protected tags.
 - **Developer pages** also cover debugging (`dev/debugging.md`) and SDK versions (`dev/compatibility.md`); the admin page
   Plugins has "Plugins from others" (plugins run with the server's rights). Developers > **Develop with the .NET SDK**
   (`dev/plugin-sdk.md`): the packages, the templates, the project SDK's properties, the development server, debugging,

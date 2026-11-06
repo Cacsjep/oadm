@@ -27,8 +27,8 @@ leaves its pages out. See [SDK versions](../compatibility/).
   request), `caller.SessionId` (opaque, for events and jobs), `caller.DeviceScopeKey` ("all" or the group's id).
 - **Fail closed.** In the call of a user with a group, `ctx.Devices`, `ctx.Vapix`, `ctx.Tasks`, `ctx.EventStreams`,
   `ctx.AutoAdd` and `ctx.System` throw `DeviceAccessRefusedException` (PERMISSION_DENIED "Only users with all devices
-  can do this."). This also holds in a `Task.Run` or timer started from the call. So a method nobody moved to the call
-  cannot reach a device outside the group. For users with all devices `ctx.*` works as before.
+  can do this."). This also holds in a `Task.Run` or timer started from the call and in that user's jobs. So a method
+  nobody moved to the call cannot reach a device outside the group. For users with all devices `ctx.*` works as before.
 - Background work (sweeps, servers, timers started in `StartAsync`) never carries a user and keeps the full `ctx.*`.
 
 ## Implement the overloads with the call
@@ -44,7 +44,8 @@ ones (they may throw).
 | `ITaskExecutionContext` | `Caller`: the user who started the task; null for tasks the system started |
 
 A task touches only its own device through `ctx.Vapix`. A task or query that reads other devices (a source device) goes
-through the call. For an address-in-use check, ask `ITaskQueryContext.ManagedAddressesAsync(candidates)`: it checks
+through the call. Keep secrets that are for everyone (the passwords of a saved command) only when
+`caller.HasAllDevices`. For an address-in-use check, ask `ITaskQueryContext.ManagedAddressesAsync(candidates)`: it checks
 every device on the route and never names one. Name only devices the user sees. Probe addresses that are not devices only
 on a route the user's group names: `caller.CoversRoute(device.SiteId)` (null = the server's own network). A task that sets a static address asks
 `ITaskExecutionContext.ManagedAddressesAsync(addresses)` again before its first write and refuses an address in use
@@ -79,9 +80,19 @@ Work that outlives the call (a report, a scan, an export, a monitor) runs as a j
   `job.Owner`, the owner's call, also after the call ended.
 - A job ends with its work, on `job.Cancel()`, when the plugin stops, and when the owner's devices, role or session
   change. At most 50 per user and plugin.
+- After a change of devices or role its id answers like an unknown id, also once it finished: a report made for the old
+  devices is gone. When devices move into or out of the owner's group (a tag or site change), its finished jobs are
+  forgotten, a running one once it ended.
 - Every method and download that takes a job id looks it up with `ctx.Jobs.Find(caller, id)` and throws the same
-  `KeyNotFoundException` for null as for an unknown id. Another user's id then answers NOT_FOUND. Never keep your own id
-  table.
+  `KeyNotFoundException` for null as for an unknown id. Another user's or session's id then answers NOT_FOUND. Never
+  keep your own id table.
+- Tasks that the job or the call starts with `job.Owner.Tasks` / `caller.Tasks` belong to the user and check the user's
+  devices again when they leave the queue.
+- **One job per group.** Work kept once per device group (one scan of a group's devices) starts with
+  `ctx.Jobs.StartShared(caller, "scan", ...)`. `Find` and `List` then answer every user with the owner's
+  `DeviceScopeKey`, so any of them follows it and stops it with `job.Cancel()`. It still runs with the owner's call.
+- A `Start` or `StartShared` in a call whose user's devices, role or session changed meanwhile throws
+  `DeviceAccessRefusedException` ("Your devices changed. Connect again."): let it pass.
 
 ## Events
 
@@ -104,7 +115,13 @@ Dashboards, saved views, triggers and sweeps belong to a group:
 
 - Store `caller.DeviceScopeKey` with the object and run it on `ctx.DeviceScopes.Devices(key)`.
 - `ctx.DeviceScopes.Exists(key)` is false for a deleted group: its objects are off until an administrator gives them
-  another owner. `Changed` tells about changed and deleted groups.
+  another owner. `Changed` tells about changed and deleted groups at once and, about a second later, about groups whose
+  devices may have changed (devices added, removed, moved or tagged): prune there.
+- In the call and the jobs of a user with a group, `ctx.DeviceScopes` answers only for `caller.DeviceScopeKey`; any
+  other key is refused like `ctx.Devices`. Methods with a `SystemAccessReason` also reach `Exists` and `Contains` of
+  other groups.
+- A user without devices has a scope key that is no group's id. Never share a job, a slot or a saved object by such a
+  key.
 - A table page uses `DeviceSweeps<TRow>` (`plugins/Shared/DeviceSweep.cs` in the OADM repository): `sweeps.For(caller)`
   is the sweep of the caller's group (null for a deleted group); publish its rows with `PluginEventAudience.DeviceScope(key)`.
 - A device can leave a group (a tag or site change) before `Changed` comes: check `ctx.DeviceScopes.Contains(key, id)`
@@ -175,9 +192,13 @@ public async Task NoMethodReachesADeviceOutsideTheUsersGroup()
 ```
 
 With the outside device and with an unknown id each case must answer `DevicesNotAvailableException` with the same text,
-create no VAPIX client for the outside device, start no task on it and change no setting or record. With the inside
-device it must not be refused. Job cases compare another user's job id with an unknown one. Any use of `ctx.*` in a
-group call fails the case and names the access.
+create no VAPIX client for the outside device, send it no request, start no task on it and change no setting or record.
+With the inside device it must not be refused. Job cases compare another user's job id with an unknown one. Any use of
+`ctx.*` in a group call fails the case and names the access.
+
+A package without a core plugin (only task plugins or actions) runs the canary on a `TaskPluginCanaryHost`: its tasks
+are started through the call, its actions run on one device of the call. The
+[task plugin tutorial](../tutorial-task/#7-the-tests) shows it.
 
 ## Reference
 
