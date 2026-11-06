@@ -49,8 +49,9 @@ the version and commits it.
   the decision table runs in the dialog and again on the server before the upload; downgrades need "Allow downgrade" and
   a factory default; a device with an uncommitted earlier upgrade is not touched; tasks start only for devices that
   install a file (none for up to date, no file for their model or refused); the device rolls back by itself unless OADM
-  verified and committed (Commit AXIS OS waits up to 5 minutes while AXIS OS has not finished booting); at most 4
-  devices at a time.
+  verified and committed (Commit AXIS OS waits up to 5 minutes while AXIS OS has not finished booting); an answer with
+  the old version after the upload is never a rollback by itself (the wait goes on, at the timeout the device's status
+  decides); a cancel after the upload says that the device rolls back by itself and restarts; at most 4 devices at a time.
 - Upgrade path (README "Upgrade path"): advice only, never refused; "Not recommended" only when an upgrade jumps over
   an LTS track, leaving the device's LTS track is a note in Details (OADM does not know the latest version of a track). A
   major version with breaking changes (13) shows one line with the Axis guide below the list, never one per device.

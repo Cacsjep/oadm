@@ -290,10 +290,10 @@ Pending).
 | Read device info | `basicdeviceinfo`; detail "AXIS P3265-V, AXIS OS 11.11.160" |
 | Validate file | uploaded files present, the file for the device (`ChooseFor`: its version from axis.com, read again from the listing once per run, after the MyAxis sign-in check, else `Choose`), name and size checks (never the content), decision table. No file for this model or already up to date: Warning and all later steps Skipped |
 | Download AXIS OS from axis.com | a version from axis.com: the host's download with the user's MyAxis sign-in ("68 of 225 MB"); Skipped "A file was chosen." |
-| Read the AXIS OS status | fwmgr `status`: no uncommitted previous upgrade |
+| Read the AXIS OS status | fwmgr `status`: no uncommitted previous upgrade (else Failed: "Wait until the device has rolled back by itself, or restart it, then try again.", OADM has no commit action; the same advice for the device's answer 412) |
 | Upload AXIS OS to the device | `ctx.Files.OpenReadAsync` streamed in 80 KB chunks (`FirmwareStreamContent`), Content-Length set, never buffered; reopened if the HTTP stack resends after a Digest challenge; `Expect: 100-continue` so the 401 comes before the body. Progress in bytes ("12 of 80 MB"). Request timeout 20 min (`VapixRequestOptions.Timeout`). Settings kept: `autoCommit=never`, `autoRollback=30` (minutes, longer than the 15 min wait), so the device reverts by itself if OADM never verifies. Factory default: `autoCommit=started`, `autoRollback=never`, because the reset removes OADM's credentials |
 | Install AXIS OS | anonymous `basicdeviceinfo getAllUnrestrictedProperties` every 5 s (works after a factory default) until the device goes offline (or already answers with another version) |
-| Wait for the device to come back | same probe until it answers again. Both waits share one timeout of **15 min** |
+| Wait for the device to come back | same probe until it answers with another version. Both waits share one timeout of **15 min**. One missed probe (a timeout, a site link) looks like a restart while the device still installs, so an answer with the old version keeps waiting ("The device installs AXIS OS"; an image of the version the device already runs is the exception). Still the old version at the timeout: fwmgr `status` decides. The new image is the inactive one (`inactiveFirmwareVersion`): rolled back, the step ends Done and Verify version fails. No new image: Failed "The device did not restart within 15 minutes after the upload and still runs X.". Status not readable: Failed "The device still runs X 15 minutes after the upload: the new version is not running." |
 | Verify version | version after restart == `firmwareVersion` from the upgrade answer (or the file name). Old version again = the device rolled back: Failed |
 | Read commit state / Commit AXIS OS | settings kept only: `status`, then `commit` unless already committed (Commit Skipped); 3 attempts with "Wait before retrying the commit" (10 s) between them, retries named "... (attempt 2)". While the device answers "The system hasn't finished booting yet." Commit AXIS OS asks again every 10 s for up to **5 min** (`BootWait`), not counted as an attempt. Factory default: both Skipped ("The device commits a factory default upgrade by itself.") and Done with warning (set a password, check the address) |
 
@@ -305,6 +305,11 @@ did not restart, did not come back (with the auto-rollback time or the hard-rese
 committed ("rolls back to X by itself 30 minutes after booting unless it is committed"). If the upload answer
 is lost after the whole body was sent (the device may already reboot), the task goes on and decides by the version after
 the restart.
+
+Cancel after the device accepted the image does not stop the device. The step the cancel stops and a Warning in the task
+log say what the device does now (`AfterCancel`): settings kept, "Cancelled. The upgrade was not committed: the device
+rolls back to X by itself 30 minutes after booting and restarts."; factory default, "Cancelled. The device still installs
+the new AXIS OS version and resets to factory default.". A cancel before that stays "Cancelled.".
 
 `MaxParallelDevices = 4`: the engine uses the smaller of 4 and `Tasks.MaxParallelPerPlugin` (default 16). Each upgrade
 streams a 100-250 MB image from the server; more parallel uploads share the server's uplink, get slower and run into the
@@ -341,7 +346,8 @@ server `DeviceGroups/CanaryTests`.
 ## Tests
 
 `tests/Oadm.Plugins.Firmware.Tests`: decision table, file checks, upgrade path, the fwmgr client from recorded fixtures,
-the task with a fake device (steps, rollback, commit retries, the boot wait on a fake clock, several files), the dialog
+the task with a fake device (steps, a lost probe while the device installs, rollback and "did not restart" at the
+timeout on a stepping clock, cancel after the upload, commit retries, the boot wait, several files), the dialog
 view model (files per model, a device without a file, two files for one model) and scale tests. Firmware
 online: `OnlineListingTests` and `OnlineLookupTests` from the recorded pages in `Fixtures/Online` (2026-11-02, trimmed
 roots; `FakeAxisSite` makes up other version folders), `OnlineRulesTests` (match, tracks, the three rules),
@@ -351,4 +357,5 @@ lookup, the three entries of the select, one device's choice), headless screensh
 
 Never run against hardware: upload, commit, any factory default. Still to verify on a test device: numeric
 `autoRollback` as a JSON string (`"30"`), the exact answer timing of `upgrade` (before or after flashing), anonymous
-`basicdeviceinfo` right after a factory default.
+`basicdeviceinfo` right after a factory default, `status` of a device that rolled back (`inactiveFirmwareVersion` = the
+new image) and that a restart rolls an uncommitted upgrade back.

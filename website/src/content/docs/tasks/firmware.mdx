@@ -103,6 +103,9 @@ The device waits up to 30 minutes for the commit. If OADM never confirms the new
 old version by itself. After a factory default the device commits by itself and the task ends with a warning: set a
 password or check the address.
 
+**Cancel** after the upload does not stop the device. It still starts the new version, rolls back to the old version by
+itself 30 minutes later and restarts. With a factory default it installs the new version and resets.
+
 <Aside>
 At most 4 devices upgrade at the same time, because every upload sends 100 to 250 MB from the server. The other tasks
 wait in **Queued**.

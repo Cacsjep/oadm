@@ -19,6 +19,9 @@ public sealed class FirmwareTaskPluginTests
 
     private static FirmwareTaskPlugin Plugin(FirmwareTaskTimings? timings = null) => new(timings ?? Fast, TimeProvider.System);
 
+    /// <summary>The production timings on a clock that only moves when the task waits: a timeout counts probes, not real time.</summary>
+    private static FirmwareTaskPlugin SteppedPlugin() => new(new FirmwareTaskTimings { ProbeTimeout = TimeSpan.FromSeconds(30) }, new SteppingClock());
+
     private static readonly string[] Prepare = ["Check compatibility: Done", "Read device info: Done", "Validate file: Done", "Download AXIS OS from axis.com: Skipped", "Read the AXIS OS status: Done"];
 
     /// <summary>Runs the task the way the server does, so its steps end like in the task engine.</summary>
@@ -275,6 +278,9 @@ public sealed class FirmwareTaskPluginTests
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, payload, new FakeDevice(), Plugin(), CancellationToken.None));
 
         Assert.Contains("not committed", ex.Message, StringComparison.Ordinal);
+        // OADM has no commit action: the text only names what the user can do.
+        Assert.DoesNotContain("commit it", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Wait until the device has rolled back by itself, or restart it, then try again. Nothing was changed.", ex.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("upgrade", device.Methods);
         Assert.Equal("Read the AXIS OS status: Failed", StepRun.Lines(ctx.Steps)[4]);
         Assert.Equal("Upload AXIS OS to the device: Skipped", StepRun.Lines(ctx.Steps)[5]);
@@ -360,18 +366,88 @@ public sealed class FirmwareTaskPluginTests
     }
 
     [Fact]
+    public async Task A_lost_probe_while_the_device_installs_is_not_a_rollback()
+    {
+        // One probe gets lost, the old version answers twice more, then the device restarts and answers with the new one.
+        var (ctx, device, payload, _) = Setup();
+        device.LostProbes = 1;
+
+        await Run(ctx, payload, new FakeDevice(), SteppedPlugin(), CancellationToken.None);
+
+        Assert.Equal("12.11.77", device.Version);
+        Assert.Equal(1, device.Commits);
+        Assert.True(device.Committed);
+        Assert.Equal(1 + 2 + device.DownProbes + 1, device.Probes);
+        Assert.Empty(ctx.Warnings);
+        Assert.Equal(
+            Then("Upload AXIS OS to the device: Done", "Install AXIS OS: Done", "Wait for the device to come back: Done", "Verify version: Done", "Read commit state: Done", "Commit AXIS OS: Done", "Completed: Done"),
+            StepRun.Lines(ctx.Steps));
+        Assert.Equal("Answers with AXIS OS 12.11.77", StepRun.Detail(ctx.Steps, "Wait for the device to come back"));
+    }
+
+    [Fact]
+    public async Task A_lost_probe_and_then_the_new_version_at_once_commits_too()
+    {
+        var (ctx, device, payload, _) = Setup();
+        device.LostProbes = 1;
+        device.DownProbes = 0;
+
+        await Run(ctx, payload, new FakeDevice(), SteppedPlugin(), CancellationToken.None);
+
+        Assert.Equal(1 + 2 + 1, device.Probes);
+        Assert.Equal(1, device.Commits);
+        Assert.Equal(["Commit AXIS OS: Done", "Completed: Done"], StepRun.Lines(ctx.Steps)[^2..]);
+    }
+
+    [Fact]
     public async Task Device_that_comes_back_with_the_old_version_fails_with_rollback_info()
     {
+        // The old version answers until the wait is over; the firmware manager then holds the new image as the inactive one.
         var (ctx, device, payload, _) = Setup();
         device.After = AfterUpgrade.RollBack;
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, payload, new FakeDevice(), Plugin(), CancellationToken.None));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, payload, new FakeDevice(), SteppedPlugin(), CancellationToken.None));
 
         Assert.Contains("came back with its previous AXIS OS version 11.11.160", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("rolled back", ex.Message, StringComparison.Ordinal);
         Assert.Equal(0, device.Commits);
+        Assert.Equal("status", device.Methods[^1]);
         Assert.Equal(
             Then("Upload AXIS OS to the device: Done", "Install AXIS OS: Done", "Wait for the device to come back: Done", "Verify version: Failed", "Read commit state: Skipped", "Commit AXIS OS: Skipped"),
             StepRun.Lines(ctx.Steps));
+    }
+
+    [Fact]
+    public async Task Old_version_until_the_timeout_without_a_rollback_says_the_device_did_not_restart()
+    {
+        // A lost probe, then the old version for good: the firmware manager has no new image, so nothing rolled back.
+        var (ctx, device, payload, _) = Setup();
+        device.LostProbes = 1;
+        device.After = AfterUpgrade.NeverDown;
+
+        var ex = await Assert.ThrowsAsync<TimeoutException>(() => Run(ctx, payload, new FakeDevice(), SteppedPlugin(), CancellationToken.None));
+
+        Assert.Equal("The device did not restart within 15 minutes after the upload and still runs 11.11.160.", ex.Message);
+        Assert.DoesNotContain("rolled back", ex.Message, StringComparison.Ordinal);
+        Assert.Equal(0, device.Commits);
+        Assert.Equal("status", device.Methods[^1]);
+        Assert.Equal(
+            Then("Upload AXIS OS to the device: Done", "Install AXIS OS: Done", "Wait for the device to come back: Failed", "Verify version: Skipped", "Read commit state: Skipped", "Commit AXIS OS: Skipped"),
+            StepRun.Lines(ctx.Steps));
+        Assert.Equal(ex.Message, StepRun.Detail(ctx.Steps, "Wait for the device to come back"));
+    }
+
+    [Fact]
+    public async Task Old_version_until_the_timeout_with_an_unreadable_status_claims_no_rollback()
+    {
+        var (ctx, device, payload, _) = Setup();
+        device.After = AfterUpgrade.RollBack;
+        device.StatusFailsAfterUpgrade = true;
+
+        var ex = await Assert.ThrowsAsync<TimeoutException>(() => Run(ctx, payload, new FakeDevice(), SteppedPlugin(), CancellationToken.None));
+
+        Assert.Equal("The device still runs 11.11.160 15 minutes after the upload: the new version is not running.", ex.Message);
+        Assert.Equal("Wait for the device to come back: Failed", StepRun.Lines(ctx.Steps)[7]);
     }
 
     [Fact]
@@ -500,7 +576,7 @@ public sealed class FirmwareTaskPluginTests
     }
 
     [Fact]
-    public async Task Cancellation_while_waiting_surfaces_as_cancellation()
+    public async Task Cancel_after_the_upload_says_that_the_device_rolls_back()
     {
         var (ctx, device, payload, _) = Setup();
         device.After = AfterUpgrade.NeverBack;
@@ -511,9 +587,44 @@ public sealed class FirmwareTaskPluginTests
         await cts.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
 
+        // The device accepted the image and is never committed: the step and the log say what it does now.
+        const string RollsBack = "The upgrade was not committed: the device rolls back to 11.11.160 by itself 30 minutes after booting and restarts.";
         Assert.Equal("Wait for the device to come back: Failed", StepRun.Lines(ctx.Steps)[7]);
-        Assert.Equal("Cancelled.", StepRun.Detail(ctx.Steps, "Wait for the device to come back"));
+        Assert.Equal("Cancelled. " + RollsBack, StepRun.Detail(ctx.Steps, "Wait for the device to come back"));
         Assert.Equal("Not run: the task was cancelled.", StepRun.Detail(ctx.Steps, "Verify version"));
+        Assert.Contains((TaskLogLevel.Warning, RollsBack), ctx.Logs);
+        Assert.Equal(0, device.Commits);
+    }
+
+    [Fact]
+    public async Task Cancel_after_the_upload_of_a_factory_default_upgrade_says_that_the_device_still_installs()
+    {
+        var (ctx, device, payload, _) = Setup(mode: FactoryDefaultMode.Soft);
+        device.After = AfterUpgrade.NeverBack;
+        using var cts = new CancellationTokenSource();
+
+        var run = Task.Run(() => Run(ctx, payload, new FakeDevice(), Plugin(Fast with { RestartTimeout = TimeSpan.FromMinutes(1) }), cts.Token));
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => StepRun.Lines(ctx.Steps).Contains("Wait for the device to come back: Running"), "the wait for the device");
+        await cts.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+
+        const string Installs = "The device still installs the new AXIS OS version and resets to factory default.";
+        Assert.Equal("Cancelled. " + Installs, StepRun.Detail(ctx.Steps, "Wait for the device to come back"));
+        Assert.Contains((TaskLogLevel.Warning, Installs), ctx.Logs);
+    }
+
+    [Fact]
+    public async Task Cancel_before_the_upload_stays_a_plain_cancel()
+    {
+        var (ctx, device, payload, _) = Setup();
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Run(ctx, payload, new FakeDevice(), Plugin(), cts.Token));
+
+        Assert.DoesNotContain("upgrade", device.Methods);
+        Assert.Equal("Cancelled.", StepRun.Detail(ctx.Steps, "Read the AXIS OS status"));
+        Assert.DoesNotContain(ctx.Logs, l => l.Message.Contains("rolls back", StringComparison.Ordinal));
     }
 
     [Fact]
