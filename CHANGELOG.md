@@ -71,6 +71,9 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Web View on macOS: the page of one device can no longer send requests to another open device.
 - Web View: the debug log no longer holds the query of a request, which can carry a password.
 - Web View: when the server refuses a request, the tab says why.
+- Web View: a device page can open at most one website in your browser every 5 seconds.
+- Dashboards and Live View no longer show a load error after you leave the page.
+- Two clients started at the same time no longer lose a settings save.
 - The client settings file is saved safely and is readable only by its owner on Linux and macOS.
 - A service that finds a plugin folder other users could change no longer loads it and moves it aside; the other plugins load.
 - A damaged request to a plugin page is refused with a plain text instead of a plugin error.
