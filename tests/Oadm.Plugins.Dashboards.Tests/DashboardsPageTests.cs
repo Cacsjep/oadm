@@ -147,10 +147,11 @@ public sealed partial class DashboardsPageTests
 
     /// <summary>
     /// A text value with line breaks in a Text widget (Text read of Text recognition holds an area's rows,
-    /// docs/spec/ocr.md "Several lines"): the widget gets the value as it is. The picture is for looking.
+    /// docs/spec/ocr.md "Several lines"): the widget gets the value as it is and every row stays inside the widget, also
+    /// in a wide, low one. The picture is for looking.
     /// </summary>
     [Fact]
-    public Task A_text_value_with_line_breaks_reaches_the_widget_as_it_is() => OnUi(() =>
+    public Task A_text_value_with_line_breaks_stays_inside_the_widget() => OnUi(() =>
     {
         const string Rows = "1x Water 1.90\nTOTAL EUR 10.60\nORDER 23F7H";
         var widget = new Widget { Kind = WidgetKind.Text, TypeId = Types.TextRead, Field = "textRead", Name = "Receipt" };
@@ -178,6 +179,12 @@ public sealed partial class DashboardsPageTests
 
         Assert.Equal(Rows, large.Display.Text);
         Assert.Equal("ORDER 23F7H", oneLine.Display.Text);
+        foreach (var view in new[] { large, wide, small, oneLine })
+        {
+            var text = Assert.Single(view.GetVisualDescendants().OfType<FitText>(), t => t.IsVisible);
+            Assert.True(text.RenderedHeight > 0 && text.RenderedHeight <= text.Bounds.Height, $"{text.RenderedHeight} in {text.Bounds.Height}");
+        }
+
         Headless.Capture(window, "plugin-dashboards-text-rows.png");
         window.Close();
         return Task.CompletedTask;
