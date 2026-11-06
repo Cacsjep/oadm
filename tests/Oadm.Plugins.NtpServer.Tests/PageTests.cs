@@ -271,18 +271,9 @@ public sealed class PageViewModelTests : IAsyncLifetime
     {
         var reads = 0;
         var polling = new PollingContext(_plugin, () => reads++);
-        var before = NtpServerViewModel.ReconnectDelay;
-        NtpServerViewModel.ReconnectDelay = TimeSpan.FromMilliseconds(50);
-        try
-        {
-            using var vm = new NtpServerViewModel(polling);
-            vm.Activate();
-            await Wait.UntilAsync(() => reads >= 3);
-        }
-        finally
-        {
-            NtpServerViewModel.ReconnectDelay = before;
-        }
+        using var vm = new NtpServerViewModel(polling) { EventWatch = new() { RetryDelay = TimeSpan.FromMilliseconds(50) } };
+        vm.Activate();
+        await Wait.UntilAsync(() => reads >= 3);
     }
 
     /// <summary>A host without WatchEventsAsync (SDK default: empty sequence).</summary>
