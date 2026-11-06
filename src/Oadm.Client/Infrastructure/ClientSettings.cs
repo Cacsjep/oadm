@@ -178,11 +178,19 @@ public sealed partial class JsonClientSettingsStore : IClientSettingsStore
     private readonly string _path;
     private readonly ILogger<JsonClientSettingsStore> _logger;
     private readonly Lock _gate = new();
+    private readonly TimeProvider _time;
 
-    public JsonClientSettingsStore(AppOptions options, ILogger<JsonClientSettingsStore> logger)
+    /// <summary>
+    /// A temporary file younger than this may belong to another client that saves right now (two clients share the
+    /// data folder): it stays at the start.
+    /// </summary>
+    internal static readonly TimeSpan LeftoverAge = TimeSpan.FromMinutes(1);
+
+    public JsonClientSettingsStore(AppOptions options, ILogger<JsonClientSettingsStore> logger, TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         _logger = logger;
+        _time = time ?? TimeProvider.System;
         _path = Path.Combine(options.DataFolder, "client-settings.json");
         Current = Load();
     }
@@ -263,7 +271,7 @@ public sealed partial class JsonClientSettingsStore : IClientSettingsStore
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // Removed at the next start (Load).
+                // Removed at a later start (Load).
             }
 
             throw;
@@ -314,7 +322,10 @@ public sealed partial class JsonClientSettingsStore : IClientSettingsStore
         }
     }
 
-    /// <summary>The temporary files of saves that never finished (the client was ended meanwhile): they hold the tokens too.</summary>
+    /// <summary>
+    /// The temporary files of saves that never finished (the client was ended meanwhile): they hold the tokens too. Only
+    /// those older than <see cref="LeftoverAge"/>: a younger one may be the save of another client, which would fail.
+    /// </summary>
     private void RemoveLeftovers()
     {
         string? folder = Path.GetDirectoryName(_path);
@@ -333,11 +344,15 @@ public sealed partial class JsonClientSettingsStore : IClientSettingsStore
             return; // the settings are still read
         }
 
+        DateTime oldest = _time.GetUtcNow().UtcDateTime - LeftoverAge;
         foreach (string leftover in leftovers)
         {
             try
             {
-                File.Delete(leftover);
+                if (File.GetLastWriteTimeUtc(leftover) < oldest)
+                {
+                    File.Delete(leftover);
+                }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

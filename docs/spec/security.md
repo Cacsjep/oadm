@@ -194,7 +194,8 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   not show it). Host pages (Settings, Permissions, Credentials, About) read again on every connect.
 - The client settings file (`client-settings.json`: session tokens of Remember me, the pinned servers) is written as a
   whole into a temporary file in the same folder that then replaces it (`JsonClientSettingsStore.Replace`; what an
-  interrupted save left is removed at the next start). On Linux and macOS it is created with mode 0600 and an older file
+  interrupted save left is removed at a start once it is older than a minute: a younger temporary file may be the save
+  of another client of the same user). On Linux and macOS it is created with mode 0600 and an older file
   is limited to its owner once at the start; on Windows it has the rights of the user's data folder.- The title bar shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out; a
   click on the user opens **Your role** (`Shell/MyRoleWindow`, `MyRoleViewModel`, `RoleService.Mine`): the role's name
   and what it allows, grouped like the matrix, read-only. `UserSession` keeps role name and permission keys

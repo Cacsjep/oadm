@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 using Oadm.Client.Infrastructure;
 
@@ -22,7 +23,7 @@ public sealed class ClientSettingsFileTests : IDisposable
         }
     }
 
-    private JsonClientSettingsStore Store() => new(new AppOptions { DataFolder = _folder }, NullLogger<JsonClientSettingsStore>.Instance);
+    private JsonClientSettingsStore Store(TimeProvider? time = null) => new(new AppOptions { DataFolder = _folder }, NullLogger<JsonClientSettingsStore>.Instance, time);
 
     [Fact]
     public void Save_replaces_the_file_and_leaves_nothing_else_in_the_folder()
@@ -66,16 +67,41 @@ public sealed class ClientSettingsFileTests : IDisposable
     {
         Directory.CreateDirectory(_folder);
         File.WriteAllText(SettingsPath, """{ "ServerAddress": "cam:5080" }""");
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 11, 6, 12, 0, 0, TimeSpan.Zero));
         string leftover = SettingsPath + ".0123456789abcdef.tmp"; // the client was ended while it saved: tokens inside
         File.WriteAllText(leftover, """{ "RememberedLogins": { "cam:5080": { "Token": "token-1" } } }""");
+        File.SetLastWriteTimeUtc(leftover, time.GetUtcNow().UtcDateTime - JsonClientSettingsStore.LeftoverAge - TimeSpan.FromSeconds(1));
         string other = Path.Combine(_folder, "notes.tmp");
         File.WriteAllText(other, "not ours");
+        File.SetLastWriteTimeUtc(other, time.GetUtcNow().UtcDateTime - TimeSpan.FromDays(1));
 
-        JsonClientSettingsStore store = Store();
+        JsonClientSettingsStore store = Store(time);
 
         Assert.Equal("cam:5080", store.Current.ServerAddress);
         Assert.False(File.Exists(leftover));
         Assert.True(File.Exists(other));
+    }
+
+    [Fact]
+    public void The_temporary_file_of_another_client_that_saves_right_now_stays()
+    {
+        Directory.CreateDirectory(_folder);
+        File.WriteAllText(SettingsPath, """{ "ServerAddress": "cam:5080" }""");
+        var time = new FakeTimeProvider(new DateTimeOffset(2026, 11, 6, 12, 0, 0, TimeSpan.Zero));
+        string saving = SettingsPath + ".fedcba9876543210.tmp"; // written, not yet in the place of the settings file
+        File.WriteAllText(saving, """{ "ServerAddress": "other:5080" }""");
+        File.SetLastWriteTimeUtc(saving, time.GetUtcNow().UtcDateTime - JsonClientSettingsStore.LeftoverAge + TimeSpan.FromSeconds(1));
+
+        JsonClientSettingsStore store = Store(time);
+
+        Assert.Equal("cam:5080", store.Current.ServerAddress);
+        Assert.True(File.Exists(saving));
+
+        // The other client was ended there: a start after the minute removes it.
+        time.Advance(TimeSpan.FromSeconds(2));
+        _ = Store(time);
+
+        Assert.False(File.Exists(saving));
     }
 
     [Fact]
