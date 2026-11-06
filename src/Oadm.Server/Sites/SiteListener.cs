@@ -15,15 +15,20 @@ namespace Oadm.Server.Sites;
 /// clients' endpoint, open only while Accept site nodes is on. Every connection goes through TLS with the server's site
 /// identity (any node key: the manager decides by fingerprint and Hello), each handshake within
 /// <see cref="SiteTls.HandshakeTimeout"/>, at most a fixed number at once and a few per address (IPv6 per /64), so one
-/// address cannot hold all of them. The roles then turn: the server is the gRPC client on the connection
-/// (<see cref="NodeLink"/>). <see cref="DisposeAsync"/> waits for every handshake: none hands over a link afterwards.
+/// address cannot hold all of them. Some more places are kept for connections from the address a bound site's node last
+/// connected from (taken first by those): silent connections from other addresses, which hold a handshake until its
+/// timeout, never keep the sites' own nodes from connecting again. The roles then turn: the server is the gRPC client on
+/// the connection (<see cref="NodeLink"/>). <see cref="DisposeAsync"/> waits for every handshake: none hands over a link
+/// afterwards.
 /// </summary>
 [SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The site listener: connections of site nodes to the server, never to devices.")]
 internal sealed partial class SiteListener : IAsyncDisposable
 {
     private readonly TcpListener _listener;
     private readonly Func<X509Certificate2> _identity;
-    private readonly SemaphoreSlim _handshakes;
+    private readonly SemaphoreSlim _handshakes; // for any address
+    private readonly SemaphoreSlim? _reserved; // only for the addresses of bound sites
+    private readonly Func<IPAddress, bool>? _siteAddress;
     private readonly Action<NodeLink> _accepted;
     private readonly ILogger _logger;
     private readonly AddressRateLimiter? _connections;
@@ -34,6 +39,7 @@ internal sealed partial class SiteListener : IAsyncDisposable
     private readonly Dictionary<string, int> _perAddress = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Task, byte> _running = new();
     private int _refusedPerAddress;
+    private int _refusedFull;
     private readonly TimeSpan _handshakeTimeout;
     private int _handshakesRunning;
     private int _disposed;
@@ -44,8 +50,17 @@ internal sealed partial class SiteListener : IAsyncDisposable
     /// </param>
     /// <param name="maxHandshakesPerAddress">Handshakes in progress from one address (IPv6 per /64) at most.</param>
     /// <param name="handshakeTimeout">How long a TLS handshake may take; null = <see cref="SiteTls.HandshakeTimeout"/>.</param>
-    public SiteListener(string url, Func<X509Certificate2> identity, int maxHandshakes, Action<NodeLink> accepted, ILogger logger, AddressRateLimiter? connections = null, int maxHandshakesPerAddress = int.MaxValue, TimeSpan? handshakeTimeout = null)
+    /// <param name="maxHandshakes">Handshakes in progress from any address at most.</param>
+    /// <param name="reservedHandshakes">
+    /// Handshakes in progress on top of <paramref name="maxHandshakes"/>, only for connections <paramref name="siteAddress"/>
+    /// knows; such a connection takes one of these first.
+    /// </param>
+    /// <param name="siteAddress">True for the address a bound site's node last connected from; asked once per connection.</param>
+    public SiteListener(string url, Func<X509Certificate2> identity, int maxHandshakes, Action<NodeLink> accepted, ILogger logger, AddressRateLimiter? connections = null, int maxHandshakesPerAddress = int.MaxValue, TimeSpan? handshakeTimeout = null,
+        int reservedHandshakes = 0, Func<IPAddress, bool>? siteAddress = null)
     {
+        _reserved = reservedHandshakes > 0 && siteAddress is not null ? new SemaphoreSlim(reservedHandshakes, reservedHandshakes) : null;
+        _siteAddress = siteAddress;
         _handshakeTimeout = handshakeTimeout ?? SiteTls.HandshakeTimeout;
         _connections = connections;
         _stopping = _stop.Token;
@@ -75,6 +90,9 @@ internal sealed partial class SiteListener : IAsyncDisposable
 
     /// <summary>Connections refused because their address had too many handshakes in progress (tests).</summary>
     internal int RefusedPerAddress => Volatile.Read(ref _refusedPerAddress);
+
+    /// <summary>Connections refused because every handshake place they may take was in use (tests).</summary>
+    internal int RefusedFull => Volatile.Read(ref _refusedFull);
 
     public void Start()
     {
@@ -147,18 +165,33 @@ internal sealed partial class SiteListener : IAsyncDisposable
                 continue;
             }
 
-            if (!_handshakes.Wait(0, CancellationToken.None))
+            if (Place(from) is not { } place)
             {
+                Interlocked.Increment(ref _refusedFull);
                 LeaveAddress(key);
                 socket.Dispose();
                 continue;
             }
 
             Interlocked.Increment(ref _handshakesRunning);
-            var handshake = Task.Run(() => HandshakeAsync(socket, key), CancellationToken.None);
+            var handshake = Task.Run(() => HandshakeAsync(socket, key, place), CancellationToken.None);
             _running.TryAdd(handshake, 0);
             _ = handshake.ContinueWith(t => _running.TryRemove(t, out _), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         }
+    }
+
+    /// <summary>
+    /// The handshake place of a new connection, null when none is free: from a bound site's address a reserved one first
+    /// (the places for any address stay for the others), then one for any address like everyone else.
+    /// </summary>
+    private SemaphoreSlim? Place(IPAddress? from)
+    {
+        if (_reserved is not null && from is not null && _siteAddress!(from) && _reserved.Wait(0, CancellationToken.None))
+        {
+            return _reserved;
+        }
+
+        return _handshakes.Wait(0, CancellationToken.None) ? _handshakes : null;
     }
 
     private bool EnterAddress(string key)
@@ -192,7 +225,7 @@ internal sealed partial class SiteListener : IAsyncDisposable
     }
 
     // Never throws (it runs unobserved): the socket or TLS stream is disposed on every way out except the hand-over.
-    private async Task HandshakeAsync(Socket socket, string key)
+    private async Task HandshakeAsync(Socket socket, string key, SemaphoreSlim place)
     {
         IPEndPoint? remote = null;
         SslStream? tls = null;
@@ -220,7 +253,7 @@ internal sealed partial class SiteListener : IAsyncDisposable
         }
         finally
         {
-            _handshakes.Release();
+            place.Release();
             LeaveAddress(key);
             if (!handedOver)
             {

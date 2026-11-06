@@ -1,3 +1,5 @@
+using System.Net;
+
 using Grpc.Core;
 
 using Oadm.Contracts.SiteNode;
@@ -149,6 +151,28 @@ public sealed partial class SiteManager
             return null;
         }
     }
+
+    private HashSet<string>? _siteAddresses; // under the lock; null = built again from the sites (SiteAddressesChanged)
+
+    /// <summary>
+    /// True when the node of a bound site last connected from <paramref name="address"/> (<c>Site.Address</c>, IPv6 per
+    /// /64): the listener keeps handshake places for these. One set lookup per connection; the set is built again only
+    /// after a site or its address changed.
+    /// </summary>
+    internal bool IsSiteAddress(IPAddress address)
+    {
+        var key = AddressRateLimiter.KeyOf(address);
+        lock (_lock)
+        {
+            _siteAddresses ??= [.. _sites.Values
+                .Where(e => !e.Row.NotBound && IPAddress.TryParse(e.Row.Address, out _))
+                .Select(e => AddressRateLimiter.KeyOf(IPAddress.Parse(e.Row.Address!)))];
+            return _siteAddresses.Contains(key);
+        }
+    }
+
+    // Under the lock: a site was added or removed, its node's address changed, or it is bound or not bound now.
+    private void SiteAddressesChanged() => _siteAddresses = null;
 
     private int _pendingLinks;
 

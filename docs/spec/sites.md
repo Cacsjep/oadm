@@ -49,11 +49,13 @@ side.
   applies; removed when off or stopped.
 - **Limits before a site is bound:** 120 new connections a minute per address before TLS (IPv6 per /64,
   `Oadm.Sites.Transport.AddressRateLimiter`: full = the oldest address makes room); handshake timeout 5 s
-  (`SiteOptions.HandshakeTimeout`, tests wait longer); 64 handshakes at once and 8 per address, closing waits for every
-  handshake; 64 links of unknown keys before Hello (5 s; a bound site's key is not capped); 16 KB answers until a link
-  carries a bound site's key (`NodeLink.Trust`); Hello checked by `HelloRules`; 10 new unknown connections a minute per
-  address; 50 waiting nodes kept by key fingerprint, 3 per address, full = the one waiting longest makes room, dropped
-  after 24 h.
+  (`SiteOptions.HandshakeTimeout`, tests wait longer); 192 handshakes at once from any address and 64 more only for the
+  address a bound site's node last connected from (`Site.Address`, IPv6 per /64; `SiteOptions.ReservedHandshakes`, taken
+  first by those, `SiteManager.IsSiteAddress`), 8 per address, so silent connections never hold every handshake and
+  keep the sites' own nodes out; closing waits for every handshake; 64 links of unknown keys before Hello (5 s; a bound
+  site's key is not capped); 16 KB answers until a link carries a bound site's key (`NodeLink.Trust`); Hello checked by
+  `HelloRules`; 10 new unknown connections a minute per address; 50 waiting nodes kept by key fingerprint, 3 per
+  address, full = the one waiting longest makes room, dropped after 24 h.
 - **Binding** with J-PAKE (`Oadm.Sites.Binding`): one at a time; the node's Bind runs to its end whatever the caller does;
   Unbind when the site cannot be stored or Bind's answer was lost; a node that accepted a new server identity binds its
   site again with the code.

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -62,6 +63,83 @@ public sealed class SiteListenerLimitTests
 
             await listener.DisposeAsync();
         }
+    }
+
+    [Fact]
+    public async Task SilentConnectionsNeverKeepANodeFromABoundSitesAddressOut()
+    {
+        using var identity = SiteTls.CreateIdentity("server");
+        var loopback = PrivateLoopback();
+        var fromSite = false; // every connection here comes from loopback: whether that is a bound site's address now
+        var links = new ConcurrentQueue<NodeLink>();
+        var listener = new SiteListener(new IPEndPoint(loopback, 0).ToString(), () => identity, maxHandshakes: 2, links.Enqueue, NullLogger.Instance,
+            handshakeTimeout: TimeSpan.FromMinutes(5), // the silent connections hold their places for the whole test
+            reservedHandshakes: 1, siteAddress: _ => Volatile.Read(ref fromSite));
+        listener.Start();
+        var clients = new List<TcpClient>();
+        async Task<TcpClient> SilentAsync()
+        {
+            var client = new TcpClient(loopback.AddressFamily);
+            clients.Add(client);
+            await client.ConnectAsync(loopback, listener.Port);
+            return client;
+        }
+
+        try
+        {
+            // Connections that never start TLS, from other addresses: they hold every place an address like theirs gets.
+            await SilentAsync();
+            await SilentAsync();
+            await Eventually.TrueAsync(() => listener.HandshakesRunning == 2, "two silent handshakes");
+            var refused = await SilentAsync();
+            await Eventually.TrueAsync(() => listener.RefusedFull == 1, "the third finds no place");
+            Assert.True(await ClosedByServerAsync(refused), "closed without a handshake");
+
+            // A node from the address a bound site's node last connected from still gets a place and its link.
+            Volatile.Write(ref fromSite, true);
+            await using var node = await RogueNode.StartAsync(SiteTls.CreateIdentity("node"));
+            await node.ConnectAsync(loopback, listener.Port);
+            await Eventually.TrueAsync(() => links.Count == 1 && listener.HandshakesRunning == 2, "the node's link handed over, its place free again");
+
+            // The kept places are a fixed number too: a silent connection from that address takes the one, the next none.
+            await SilentAsync();
+            await Eventually.TrueAsync(() => listener.HandshakesRunning == 3, "the kept place taken");
+            await SilentAsync();
+            await Eventually.TrueAsync(() => listener.RefusedFull == 2, "no place left");
+            Assert.Single(links);
+        }
+        finally
+        {
+            foreach (var client in clients)
+            {
+                client.Dispose();
+            }
+
+            await listener.DisposeAsync();
+            foreach (var link in links)
+            {
+                await link.DisposeAsync();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TheAddressOfABoundSiteIsKnownUntilTheSiteIsRemoved()
+    {
+        await using var server = await SiteServer.StartAsync();
+        await using var node = await SiteTestNode.StartAsync(c => c.ServerAddress = server.Address);
+        await server.WaitingAsync(node.NodeId);
+        Assert.False(server.Manager.IsSiteAddress(IPAddress.Loopback)); // a node waiting to be bound is no site
+
+        var id = await server.BindAsync(node);
+
+        Assert.True(server.Manager.IsSiteAddress(IPAddress.Loopback));
+        Assert.True(server.Manager.IsSiteAddress(IPAddress.Parse("::ffff:127.0.0.1")));
+        Assert.False(server.Manager.IsSiteAddress(IPAddress.Parse("127.0.0.2")));
+
+        await server.Client.RemoveSiteAsync(new Proto.RemoveSiteRequest { Id = id.ToString(), KeepDevices = false });
+
+        Assert.False(server.Manager.IsSiteAddress(IPAddress.Loopback));
     }
 
     [Fact]
@@ -171,7 +249,7 @@ public sealed class SiteListenerLimitTests
     // The site nodes of other tests keep dialing the 127.0.0.1 port their server had; the OS may hand that port to this
     // listener, and such a node would take a place of this address or even be handed over. IPv6 loopback is a port space
     // no site test uses; 127.0.0.1 only where the system has no IPv6 loopback.
-    private static IPAddress PrivateLoopback()
+    internal static IPAddress PrivateLoopback()
     {
         try
         {

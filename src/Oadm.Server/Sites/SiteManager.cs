@@ -135,6 +135,8 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                     LastAnswer = now,
                 };
             }
+
+            SiteAddressesChanged();
         }
 
         await _acceptLock.WaitAsync(ct).ConfigureAwait(false);
@@ -376,6 +378,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 entry.LastAnswer = now;
                 reset = !entry.Row.NotBound;
                 entry.Row.NotBound = true;
+                SiteAddressesChanged();
             }
             else
             {
@@ -433,6 +436,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             {
                 entry.Row.NotBound = true;
                 notBound = entry.Row;
+                SiteAddressesChanged();
             }
         }
 
@@ -971,7 +975,8 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         var url = await ListenUrlAsync(ct).ConfigureAwait(false);
         _listenPort = SiteListener.Parse(url).Port;
         var listener = new SiteListener(url, () => _identity.Current, _options.MaxHandshakes, link => _ = AcceptLinkAsync(link), _logger,
-            new AddressRateLimiter(_options.ConnectionsPerMinute, 0, TimeSpan.FromMinutes(1), Time), _options.MaxHandshakesPerAddress, _options.HandshakeTimeout);
+            new AddressRateLimiter(_options.ConnectionsPerMinute, 0, TimeSpan.FromMinutes(1), Time), _options.MaxHandshakesPerAddress, _options.HandshakeTimeout,
+            _options.ReservedHandshakes, IsSiteAddress);
         try
         {
             listener.Start();
@@ -1126,6 +1131,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                     entry.Row.LastSeenUtc = now;
                     entry.Row.Version = version;
                     entry.Row.Address = link.RemoteHost;
+                    SiteAddressesChanged();
                 }
             }
         }
@@ -1185,6 +1191,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             if (_sites.TryGetValue(siteId, out var entry))
             {
                 entry.Row.NotBound = true;
+                SiteAddressesChanged();
                 Evaluate(entry, Time.GetTimestamp(), edges);
             }
         }
