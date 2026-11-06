@@ -20,8 +20,8 @@ public enum PlaceholderEscape
     Url = 3,
 
     /// <summary>
-    /// Control characters removed (line breaks, tabs, NUL), so a value never adds a line: the message of a text protocol
-    /// where a line is a command.
+    /// One line: a line break becomes a space (CR LF one space), every other control character (tabs, NUL) is removed, so a
+    /// value never adds a line: the message of a text protocol where a line is a command.
     /// </summary>
     SingleLine = 4,
 }
@@ -122,9 +122,33 @@ public static partial class ActionPlaceholders
             PlaceholderEscape.Json => JsonEncodedText.Encode(value, System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping).ToString(),
             PlaceholderEscape.Xml => XmlEscape(value),
             PlaceholderEscape.Url => Uri.EscapeDataString(value),
-            PlaceholderEscape.SingleLine => value.Any(char.IsControl) ? string.Concat(value.Where(c => !char.IsControl(c))) : value,
+            PlaceholderEscape.SingleLine => value.Any(char.IsControl) ? OneLine(value) : value,
             _ => value,
         };
+    }
+
+    /// <summary>A line break as one space (CR LF is one break), no other control character.</summary>
+    private static string OneLine(string value)
+    {
+        var builder = new StringBuilder(value.Length);
+        for (var i = 0; i < value.Length; i++)
+        {
+            var c = value[i];
+            if (c is '\r' or '\n')
+            {
+                builder.Append(' ');
+                if (c == '\r' && i + 1 < value.Length && value[i + 1] == '\n')
+                {
+                    i++;
+                }
+            }
+            else if (!char.IsControl(c))
+            {
+                builder.Append(c);
+            }
+        }
+
+        return builder.ToString();
     }
 
     private static string XmlEscape(string value)

@@ -145,6 +145,51 @@ public sealed partial class DashboardsPageTests
         return Task.CompletedTask;
     });
 
+    /// <summary>
+    /// A text value with line breaks in a Text widget (Text read of Text recognition holds an area's rows,
+    /// docs/spec/ocr.md "Several lines"): the widget gets the value as it is and every row stays inside the widget, also
+    /// in a wide, low one. The picture is for looking.
+    /// </summary>
+    [Fact]
+    public Task A_text_value_with_line_breaks_stays_inside_the_widget() => OnUi(() =>
+    {
+        const string Rows = "1x Water 1.90\nTOTAL EUR 10.60\nORDER 23F7H";
+        var widget = new Widget { Kind = WidgetKind.Text, TypeId = Types.TextRead, Field = "textRead", Name = "Receipt" };
+        WidgetView Text(string value, int width, int height)
+        {
+            var view = new WidgetView { Width = width, Height = height };
+            view.Show(widget, WidgetDisplay.Of(widget, Snapshot(Types.TextRead, data: ("textRead", value))));
+            return view;
+        }
+
+        var large = Text(Rows, 360, 260);
+        var wide = Text(Rows, 360, 130);
+        var small = Text(Rows, 200, 130);
+        var oneLine = Text("ORDER 23F7H", 360, 260);
+        var row = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 12 };
+        foreach (var view in new[] { large, wide, small, oneLine })
+        {
+            // A thin frame shows where each widget ends.
+            row.Children.Add(new Border { BorderBrush = Avalonia.Media.Brushes.Gray, BorderThickness = new Thickness(1), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top, Child = view });
+        }
+
+        var window = Headless.Host(new Border { Classes = { "card" }, Padding = new Thickness(12), Child = row });
+        window.Show();
+        Headless.Pump();
+
+        Assert.Equal(Rows, large.Display.Text);
+        Assert.Equal("ORDER 23F7H", oneLine.Display.Text);
+        foreach (var view in new[] { large, wide, small, oneLine })
+        {
+            var text = Assert.Single(view.GetVisualDescendants().OfType<FitText>(), t => t.IsVisible);
+            Assert.True(text.RenderedHeight > 0 && text.RenderedHeight <= text.Bounds.Height, $"{text.RenderedHeight} in {text.Bounds.Height}");
+        }
+
+        Headless.Capture(window, "plugin-dashboards-text-rows.png");
+        window.Close();
+        return Task.CompletedTask;
+    });
+
     // ------------------------------------------------------------------ page
 
     private static (PluginHost Host, TestContext Ctx, DashboardsPageViewModel Vm, TestDevice Camera, TestDevice Io) Page()

@@ -1125,8 +1125,12 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         _ => "Rule fired",
     };
 
+    /// <summary>
+    /// The result and the action's lines as one line: an event value an action logs or fails with never adds a line to the
+    /// event log or the server log.
+    /// </summary>
     private static string Joined(List<string> lines, string result) =>
-        lines.Count == 0 ? result : result + ": " + string.Join(" · ", lines);
+        (lines.Count == 0 ? result : result + ": " + string.Join(" · ", lines)).ReplaceLineEndings(" ");
 
     /// <summary>
     /// One action run in the event log; failures also reach the server log as warnings (with the exception when the action

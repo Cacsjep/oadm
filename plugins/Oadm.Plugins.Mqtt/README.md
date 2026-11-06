@@ -5,7 +5,7 @@ Event rule action **Publish MQTT message** and the recipient type **MQTT**, spec
 - Library MQTTnet. One connection per recipient, shared by its rules (`RecipientSessionPool`); the plugin never reconnects by itself.
 - Output only: nothing subscribes, and no received message is handled.
 - QoS 1 and 2 wait for the broker's acknowledge; a refusal fails the action. A failed action is not sent later.
-- The topic is filled per placeholder: a value with `/`, `+`, `#` or NUL, a leading `$` or no text sends nothing, because it would change the topic level (`{category}` of an I/O module holds a `/`). The filled topic is checked again: empty, `+`, `#` or NUL sends nothing.
+- The topic is filled per placeholder: a value with `/`, `+`, `#`, a line break or another control character, a leading `$` or no text sends nothing, because it would change the topic level or make the broker close the connection (`{category}` of an I/O module holds a `/`). The filled topic is checked again: empty, `+`, `#` or NUL sends nothing.
 - An unknown placeholder and a payload whose placeholders came out empty send nothing. An empty Payload field is allowed; with Retain it clears the topic on the broker.
 - JSON payloads escape the placeholder values, never the text around them.
 - TLS is off by default. `MqttCertificateCheck` is always the certificate check, because the fix of MQTTnet's own check (#2254) is not in 5.2.0:

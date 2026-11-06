@@ -26,13 +26,23 @@ public sealed class ActionPlaceholderTests
     }
 
     [Fact]
-    public void SingleLineRemovesControlCharactersFromTheValuesOnly()
+    public void SingleLineKeepsAValueOnOneLineAndTouchesTheValuesOnly()
     {
         const string Value = "7\r\nOPEN\tgate\0 é\u0085";
 
-        Assert.Equal("ALARM\n7OPENgate é\tend", ActionPlaceholders.Fill("ALARM\n{v}\tend", _ => Value, PlaceholderEscape.SingleLine));
-        Assert.Equal("7OPENgate é", ActionPlaceholders.Escape(Value, PlaceholderEscape.SingleLine));
+        Assert.Equal("ALARM\n7 OPENgate é\tend", ActionPlaceholders.Fill("ALARM\n{v}\tend", _ => Value, PlaceholderEscape.SingleLine));
+        Assert.Equal("7 OPENgate é", ActionPlaceholders.Escape(Value, PlaceholderEscape.SingleLine));
         Assert.Equal("plain", ActionPlaceholders.Escape("plain", PlaceholderEscape.SingleLine));
+    }
+
+    [Theory]
+    [InlineData("10.60\nORDER 23F7H", "10.60 ORDER 23F7H")]
+    [InlineData("10.60\r\nORDER 23F7H", "10.60 ORDER 23F7H")]
+    [InlineData("10.60\rORDER 23F7H", "10.60 ORDER 23F7H")]
+    [InlineData("a\n\nb", "a  b")]
+    public void SingleLineTurnsALineBreakIntoOneSpace(string value, string expected)
+    {
+        Assert.Equal(expected, ActionPlaceholders.Escape(value, PlaceholderEscape.SingleLine));
     }
 
     [Fact]

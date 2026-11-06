@@ -67,7 +67,7 @@ them and logs what happened. Implementation `Oadm.Core.Events`, gRPC `EventServi
   dialog shows the Placeholders list), `Validate`, `Describe`,
   `RunsOn(edge)`, `ExecuteAsync(IActionContext, ActionInvocation)`; `IActionContext` gives a pre-authenticated `Vapix` for
   the target, the plugin's settings, `Log`, `SessionAsync<T>` (the open connection of a persistent recipient) and `Text(text)` / `Text(text, PlaceholderEscape)` (None, Json, Xml, Url: each
-  value escaped for the format it goes into; SingleLine: control characters removed, a value never adds a line). The placeholders are one list,
+  value escaped for the format it goes into; SingleLine: a line break becomes a space, other control characters removed, a value never adds a line; the host keeps what `Log` gets and an action's failure text on one line in the event log and the server log). The placeholders are one list,
   `Oadm.Sdk.Actions.ActionPlaceholders.Fixed` (everything OADM knows): {rule} {event} {state}
   {time} {date} {timeUtc}, device {device} {address} {hostName} {model} {serial} {mac} {firmware} {category} {tags}
   {status} {site} {webUrl} (the action's device, else the event's device), then every value of the event by its name; filled in

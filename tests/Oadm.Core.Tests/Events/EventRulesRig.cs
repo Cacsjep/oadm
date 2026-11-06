@@ -281,6 +281,9 @@ public sealed class RecordingAction(string id, bool needsDevice, bool supportsTu
 
     public string? FailWith { get; set; }
 
+    /// <summary>A line the action writes to the event log before it ends.</summary>
+    public string? Say { get; set; }
+
     public TimeSpan Delay { get; set; }
 
     /// <summary>Runs on these devices wait for the task first (a device that does not answer).</summary>
@@ -318,6 +321,11 @@ public sealed class RecordingAction(string id, bool needsDevice, bool supportsTu
         }
 
         Runs.Enqueue((invocation.Edge, invocation.Device?.Id, ctx.Text(invocation.Get("text")) + "|" + invocation.Get("secret"), invocation.RuleId));
+        if (Say is { } line)
+        {
+            ctx.Log(line);
+        }
+
         if (FailWith is { } message)
         {
             throw new InvalidOperationException(message);

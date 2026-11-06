@@ -216,8 +216,8 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   SDK 0.12.0 OpcEndpoint; `ActionFormats` is the one check of server and client), `Hint`, `Default`, `Min` / `Max`,
   `MaxLength`, `VisibleWhenKey` / `VisibleWhenValue` (several values as "a|b"), `AlsoVisibleWhenKey` /
   `AlsoVisibleWhenValue` (SDK 0.12.0: a second condition, either one shows the field) and `OffEdge`; placeholders:
-  `ActionPlaceholders.Fixed`, `FirstUnknown(text, ctx)`, `PlaceholderEscape` Json, Xml, Url and `SingleLine` (the control
-  characters of a value removed, for a text protocol where a line is a command; never the text around it); recipients (SDK 0.11.0,
+  `ActionPlaceholders.Fixed`, `FirstUnknown(text, ctx)`, `PlaceholderEscape` Json, Xml, Url and `SingleLine` (a line break of a value
+  becomes a space, its other control characters are removed, for a text protocol where a line is a command; never the text around it); recipients (SDK 0.11.0,
   [recipients.md](recipients.md)): `ActionField.Recipient`, `RecipientType`, `IActionPlugin.RecipientTypes`, `ActionInvocation.RecipientIds`; persistent recipients (SDK 0.12.0, [recipient-sessions.md](recipient-sessions.md)): `RecipientType.Sessions`, `IRecipientSessionFactory`, `IRecipientSession`, `IActionContext.SessionAsync<T>`, `ActionField.ClientCertificate`, `ActionField.TrustedCertificate`, `RecipientSessionRequest.CertificatesOf`; an event's
   folders (`EventTypeInfo.Path`, SDK 0.10.0) are at most 4 (`PluginRegistry.MaxEventFolders`), none blank, else the path
   is dropped with a load error and the group is the folder; no path and no group: "Other". Tests:

@@ -100,8 +100,8 @@ cancelled after sending, resets the connection (linger 0) and drops the session:
 holds. A closed session resets too (a changed or deleted recipient, a stop), since every write waits for its reply. TCP keep alive shows an idle connection that was cut after about a minute. A reply counts only with the session's unit id and exactly
 the echo of the request.
 
-**Placeholders in a Publish MQTT message:** the topic is filled per placeholder, and a value with `/`, `+`, `#` or NUL, a leading `$` or no text
-is refused ("Nothing was sent."): a value must never change the topic level or reach a system topic. An unknown {name} is never sent literally, in
+**Placeholders in a Publish MQTT message:** the topic is filled per placeholder, and a value with `/`, `+`, `#`, a line break or another control character, a leading `$` or no text
+is refused ("Nothing was sent."): a value must never change the topic level or reach a system topic, and a broker may close the connection on a control character. An unknown {name} is never sent literally, in
 the topic or the payload, and a payload whose placeholders came out empty is not sent. An empty Payload field is allowed; with Retain it clears the topic.
 
 **Write OPC UA value** refuses an unknown {name} and a Text value that came out empty ("Nothing was written."), and a number too small for its

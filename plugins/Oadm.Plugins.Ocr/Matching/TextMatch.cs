@@ -13,14 +13,15 @@ public sealed record TextMatch
 
     /// <summary>
     /// The event field Text: with a format the chosen match (written in the format's form, look-alikes fixed; empty without
-    /// a match), else all lines joined for the events (<see cref="TextRead"/>).
+    /// a match), else all lines joined to one line with a space (a line ending "-" without one), at most 500 characters.
+    /// Never a line break: rule checks, the change check, the vote and Number work on it.
     /// </summary>
     public string Text { get; init; } = string.Empty;
 
-    /// <summary>The event field Text read: all lines joined with a space (a line ending "-" without one), at most 500 characters.</summary>
-    public string TextRead { get; init; } = string.Empty;
-
-    /// <summary>All lines in reading order, joined with line breaks (the page shows one line per row).</summary>
+    /// <summary>
+    /// The event field Text read: the whole area in rows (<see cref="LineOrder"/>), one row per line, the lines of a row
+    /// joined with a space; at most 500 characters.
+    /// </summary>
     public string RawText { get; init; } = string.Empty;
 
     /// <summary>Every different match of the format in reading order, at most <see cref="TextMatcher.MaxMatches"/>; empty without a format.</summary>
@@ -42,7 +43,7 @@ public sealed record TextMatch
     /// <summary>The event field Matches format: the area's format matched; always false for Any text (no format to match).</summary>
     public bool MatchesFormat { get; init; }
 
-    /// <summary>The area's lines in reading order: top to bottom, left to right.</summary>
+    /// <summary>The area's lines in reading order, row by row; for Any text without the lines found twice.</summary>
     public IReadOnlyList<TextLine> Lines { get; init; } = [];
 
     /// <summary>Where <see cref="Text"/> was read (the union of its lines' boxes, for the page's cut-out); null without text.</summary>

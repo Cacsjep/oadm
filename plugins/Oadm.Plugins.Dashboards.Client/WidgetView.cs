@@ -130,8 +130,8 @@ public sealed class WidgetView : Border
 
 /// <summary>
 /// A value as large as its share of the space allows: the font size is <see cref="Share"/> of the height, made smaller
-/// until the text (and the unit, at half the size) fits the width; still too long at the smallest size, it is cut with
-/// "…". Whole-pixel sizes only.
+/// until the text (and the unit, at half the size) fits the width and, for a value of several lines, the height; still
+/// too long at the smallest size, it is cut with "…". Whole-pixel sizes only.
 /// </summary>
 public sealed class FitText : Control
 {
@@ -174,6 +174,9 @@ public sealed class FitText : Control
     /// <summary>The font size the text got at the last render (tests).</summary>
     internal double RenderedSize { get; private set; }
 
+    /// <summary>The height of the text at the last render (tests).</summary>
+    internal double RenderedHeight { get; private set; }
+
     public override void Render(DrawingContext context)
     {
         if (string.IsNullOrEmpty(Text) || Bounds.Width <= 0 || Bounds.Height <= 0)
@@ -197,12 +200,14 @@ public sealed class FitText : Control
             value = Format(text, typeface, size, brush);
             unit = string.IsNullOrEmpty(Unit) ? null : Format(" " + Unit, typeface, Math.Max(MinSize, Math.Floor(size / 2)), brush);
             var width = value.Width + (unit?.Width ?? 0);
-            if (width <= Bounds.Width || size <= MinSize)
+            if ((width <= Bounds.Width && value.Height <= Bounds.Height) || size <= MinSize)
             {
                 break;
             }
 
-            size = Math.Max(MinSize, Math.Floor(size * Math.Max(0.5, Bounds.Width / width)));
+            // One line is never higher than the space (its size is a share of the height): only several lines get here by their height.
+            var fit = Math.Min(Bounds.Width / width, Bounds.Height / value.Height);
+            size = Math.Max(MinSize, Math.Floor(size * Math.Max(0.5, fit)));
         }
 
         // Still too long at the smallest size: cut with "…".
@@ -213,6 +218,7 @@ public sealed class FitText : Control
         }
 
         RenderedSize = size;
+        RenderedHeight = value.Height;
         var total = value.Width + (unit?.Width ?? 0);
         var x = Math.Round((Bounds.Width - total) / 2);
         var y = Math.Round((Bounds.Height - value.Height) / 2);

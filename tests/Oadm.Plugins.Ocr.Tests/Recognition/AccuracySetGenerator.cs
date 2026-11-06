@@ -166,6 +166,38 @@ internal static class AccuracySetGenerator
         return list;
     }
 
+    /// <summary>
+    /// A receipt of the set on its counter, in the middle of a full HD picture, as JPEG (the rows measurement,
+    /// <see cref="RowsSweepTests"/>): turned by <paramref name="degrees"/>, or laid by <paramref name="pose"/> (the
+    /// receipt's size in, its drawing matrix out); <paramref name="priceGap"/> more characters between an article and its
+    /// price (a wide table).
+    /// </summary>
+    public static byte[] ReceiptPicture(string code, float degrees, float scale, int seed, int priceGap = 0, Func<SKBitmap, SKMatrix>? pose = null)
+    {
+        var random = new Random(seed);
+        using var scene = Counter(1920, 1080, random);
+        using var receipt = Receipt(code, random, priceGap);
+        using (var canvas = new SKCanvas(scene))
+        {
+            if (pose is not null)
+            {
+                canvas.SetMatrix(pose(receipt));
+            }
+            else
+            {
+                canvas.Translate(960, 540);
+                canvas.RotateDegrees(degrees);
+                canvas.Scale(scale);
+            }
+
+            using var image = SKImage.FromBitmap(receipt);
+            canvas.DrawImage(image, -receipt.Width / 2f, -receipt.Height / 2f, new SKSamplingOptions(SKCubicResampler.Mitchell));
+        }
+
+        using var data = scene.Encode(SKEncodedImageFormat.Jpeg, 80);
+        return data.ToArray();
+    }
+
     /// <summary>An order code of the format ##A#A ("36F1A").</summary>
     private static string OrderCode(Random random)
     {
@@ -211,25 +243,30 @@ internal static class AccuracySetGenerator
         return bitmap;
     }
 
-    private static SKBitmap Receipt(string code, Random random)
+    /// <summary>The receipt's articles and their prices: what a row must keep together.</summary>
+    public static readonly (string Article, string Price)[] ReceiptPairs =
+        [("2x Espresso", "5.80"), ("1x Croissant", "2.90"), ("1x Water", "1.90"), ("TOTAL EUR", "10.60")];
+
+    private static SKBitmap Receipt(string code, Random random, int priceGap = 0)
     {
-        const int Width = 340;
+        var gap = new string(' ', priceGap);
+        var width = 340 + (11 * priceGap);
         string[] lines =
         [
             "CAFE CENTRAL",
             "Hauptstrasse 12",
             "--------------------",
-            "2x Espresso     5.80",
-            "1x Croissant    2.90",
-            "1x Water        1.90",
-            "TOTAL EUR      10.60",
+            $"2x Espresso     {gap}5.80",
+            $"1x Croissant    {gap}2.90",
+            $"1x Water        {gap}1.90",
+            $"TOTAL EUR      {gap}10.60",
             string.Empty,
             $"ORDER {code}",
             string.Empty,
             "Thank you!",
         ];
         var height = 40 + lines.Length * 34;
-        var bitmap = new SKBitmap(Width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
+        var bitmap = new SKBitmap(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
         using var canvas = new SKCanvas(bitmap);
         canvas.Clear(new SKColor(248, 247, 240));
         using var typeface = SKTypeface.FromFamilyName("Consolas", SKFontStyle.Normal);

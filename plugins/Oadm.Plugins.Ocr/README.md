@@ -18,6 +18,7 @@ only for devices. Spec: [Text recognition](../../docs/spec/ocr.md), [Add-ons](..
 | Speed | Only the part of the JPEG the areas need is decoded; rented model buffers and scores, outputs read in place; on the CPU one thread per call on one shared session, every line a call of its own; a reader overlaps up to 4 frames while there is room, results in order; on the card two lanes and shared calls of few sizes (spec "GPU", "Measured: one reader"). |
 | Confidence | A line's confidence is the lowest probability of its characters (of its format match when it has one); lines whose mean is below 50 % are dropped. The area's confidence is the lowest of the lines that make its value. |
 | Format | Format-guided CTC decoding (digits where `#`, letters where `@`), the ISO 6346 check digit for formats starting `@@@U ###### #` (also `@@@J`, `@@@Z`, `@@@?` for any of them) (`ContainerCheck`, one rule for decoder and matcher; a wrong check digit is no match, never repaired), then `TextMatcher` (look-alikes by position, two neighbouring lines, every match). A dash of the format must be a dash in the text: the decoder may pass one by, but `LineReader.Accept` drops such a match, and a match with dashes must hold exactly the dashes of the free reading in its frames; spaces stay optional. A fixed-place strip with a format and no match is read once more as one line. |
+| Rows | `Matching/LineOrder` puts an area's lines in rows from their rotated boxes (`TextLine.Turn`), at any turn, always on, no model: blocks by direction (15 degrees), one axis per block, rows by the centres across it (0.55 of the smaller height), a text found twice read once. `Text` is one line and never holds a line break (rule checks, the change check, the vote and `Number` work on it); `Text read` and a results row without a format hold the rows with line breaks, at most 500 characters. `TextReadEvents.Join` makes one line for `Number` and for the log line of Read text. The recognition keeps every line, in the same order (one box per line found). Rules and numbers: spec "Several lines". |
 | Use read text as format | The area's ⋯ menu: the format field takes the shape of the text read now, digits `#`, letters `@`, the rest as written, a container number with a fitting check digit gets `@@@?` and a message asks to check it (`TextFormat.FromText`). Live and paused, from the current frame, never from a row. |
 | Vote | `FrameVote` per area of a watching reader: the last 5 frames character by character, weighted by confidence; published once the vote holds 2 frames in a row and only on change; an area left with no text at all publishes No text read once. Each candidate keeps a reference to its frame, box and turn (`ValueFrame`), at most the 5 frames of the window, so a row shows the frame its value was read in. |
 | Moving objects | `Reader.MovingObjects`, only while Watching: `TwoFrames` replaces the vote: a value counts once read in 2 frames in a row, from the second one, a value seen once is ignored. Previews follow the setting with no events; with it off a preview stays without a vote. Rules: spec "Moving objects". |
@@ -51,7 +52,7 @@ only for devices. Spec: [Text recognition](../../docs/spec/ocr.md), [Add-ons](..
 | `Recognition/GpuSessionBudget.cs` | The graphics card's memory: each session estimated by its input pixels (measured on an RTX 5070 Ti), held for its call, on DirectML at most 80 % of the card's memory together (4 GB when it does not tell), least recently used out, idle 2 minutes freed; a Search split into calls of at most half the cap (`TilesPerCall`). Numbers: spec "GPU" |
 | `Recognition/StageClock.cs` | Time per stage for the speed measurements |
 | `Recognition/PictureCutter.cs` | The value's cut-out for the page, within 640 px and 64 KB |
-| `Matching/` | `TextMatcher`, `TextFormat`, `LineOrder`, `FrameVote`, `TwoFrames` |
+| `Matching/` | `TextMatcher`, `TextFormat`, `LineOrder` (the rows), `FrameVote`, `TwoFrames` |
 | `Frames/` | `VapixFrameSource` (reopen pause 1 s doubling to 1 min, stall 3 s, request 15 s), `MjpegParser` |
 | `Events/` | The events "Text read", "No text read" and "Reader problem" per reader, "Any reader problem", the action "Read text" |
 
@@ -83,8 +84,9 @@ all devices and to the reader's owner scope (a preview: the scope that started i
 ## Tests
 
 `tests/Oadm.Plugins.Ocr.Tests`: `Recognition/` (the real models on the CPU: geometry, decoding, workers, the accuracy set
-with its baseline, the model sources, partial decode, unchanged areas; `RecognitionSpeedTests` and `RecognitionBenchmarkTests`
-are Perf), `Matching/`, `Frames/` (recorded MJPEG,
+with its baseline, a receipt's rows at five turns, the model sources, partial decode, unchanged areas; `RecognitionSpeedTests`,
+`RecognitionBenchmarkTests` and `RowsSweepTests` are Perf), `Matching/` (`LineOrderTests`: the rows from constructed boxes;
+`LineOrderSpeedTests` is Perf), `Frames/` (recorded MJPEG,
 `FakeTimeProvider`), `Readers/` and `Events/` (fakes of the parts: watching, the vote, limits, the action, the preview),
 `DeviceGroupTests`, `PageMethodsTests`, `EndToEndTests` (the real parts with recorded pictures), `Client/` (the page with
 a fake live video, moving and resizing areas, the preview's draft,

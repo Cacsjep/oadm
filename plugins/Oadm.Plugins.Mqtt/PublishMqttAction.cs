@@ -173,9 +173,12 @@ public sealed class PublishMqttAction : IActionPlugin
         }
     }
 
-    /// <summary>A value stays inside one topic level: no separator, no wildcard, no system topic, and it holds a level at all.</summary>
+    /// <summary>
+    /// A value stays inside one topic level: no separator, no wildcard, no system topic, no control character (a line break:
+    /// a broker may close the connection on one), and it holds a level at all.
+    /// </summary>
     private static bool FitsInTopic(string value) =>
-        value.Length > 0 && value[0] != '$' && value.AsSpan().IndexOfAny("/+#\0") < 0;
+        value.Length > 0 && value[0] != '$' && value.AsSpan().IndexOfAny("/+#") < 0 && !value.Any(char.IsControl);
 
     /// <summary>Why a broker would never take this topic; null when it can.</summary>
     private static string? TopicProblem(string topic)

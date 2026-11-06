@@ -7,7 +7,7 @@ namespace Oadm.Plugins.Ocr.Tests.Matching;
 public sealed class FrameVoteTests
 {
     private static TextMatch Read(string text, double confidence = 90) =>
-        text.Length == 0 ? TextMatch.Empty : new TextMatch { Text = text, TextRead = text, Confidence = confidence, MatchesFormat = true };
+        text.Length == 0 ? TextMatch.Empty : new TextMatch { Text = text, RawText = text, Confidence = confidence, MatchesFormat = true };
 
     /// <summary>Feeds the readings and returns what each published (null: nothing).</summary>
     private static List<string?> Feed(FrameVote vote, params TextMatch[] readings) =>

@@ -449,6 +449,26 @@ public sealed class RuleEngineTests
     }
 
     [Fact]
+    public async Task AnActionsLinesAndFailureTextStayOnOneLineInTheLogs()
+    {
+        await using var rig = await EventRulesRig.StartAsync();
+        var camera = await rig.AddDeviceAsync("10.0.0.1");
+        rig.OnDevice.Say = "TOTAL 10.60\nORDER 23F7H";
+        rig.OnDevice.FailWith = "Refused: 1x Water\r\n2026-11-06 [ERR] faked";
+        rig.NoDevice.Say = "first\nsecond";
+        await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.Pulse, rig.OnEventDevice(), rig.WithoutDevice()));
+
+        rig.Publisher.Fire(EventRulesRig.Pulse, camera.Id);
+        await rig.SettleAsync();
+
+        var actions = (await rig.LogLinesAsync()).Where(l => l.Kind == EventLogKind.Action).ToList();
+        Assert.Equal("Refused: 1x Water 2026-11-06 [ERR] faked: TOTAL 10.60 ORDER 23F7H", actions[0].Message);
+        Assert.Equal("Rule fired: first second", actions[1].Message);
+        Assert.DoesNotContain(rig.ServerLog.Lines, l => l.Text.Contains('\n', StringComparison.Ordinal) || l.Text.Contains('\r', StringComparison.Ordinal));
+        Assert.Contains(rig.ServerLog.Lines, l => l.Text.Contains("Refused: 1x Water 2026-11-06 [ERR] faked", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task ActionsRunInOrderAndAFailureDoesNotStopTheNext()
     {
         await using var rig = await EventRulesRig.StartAsync();

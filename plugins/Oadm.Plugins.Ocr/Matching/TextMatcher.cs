@@ -4,9 +4,10 @@ namespace Oadm.Plugins.Ocr.Matching;
 
 /// <summary>
 /// Makes an area's value from its lines (docs/spec/ocr.md "Several lines", "Expected text", "Events and the rule action").
-/// Orders the lines (<see cref="LineOrder"/>); without a format the value is all lines joined; with one the matches are
-/// looked for in each line on its own, then in neighbouring lines joined (a number split over two lines). Of several
-/// matches the value is the one read with the highest confidence, on a tie the larger text. Pure and thread-safe.
+/// Puts the lines in rows (<see cref="LineOrder"/>); without a format the value is all lines joined to one line; with one the
+/// matches are looked for in each line on its own, then in neighbouring lines joined (a number split over two lines). Of
+/// several matches the value is the one read with the highest confidence, on a tie the larger text. The value never holds a
+/// line break; the raw text holds the rows. Pure and thread-safe.
 /// </summary>
 public sealed class TextMatcher : ITextMatcher
 {
@@ -21,36 +22,44 @@ public sealed class TextMatcher : ITextMatcher
     {
         ArgumentNullException.ThrowIfNull(lines);
         ArgumentNullException.ThrowIfNull(expected);
-        var ordered = LineOrder.Order(lines);
-        var texts = ordered.Select(l => l.Text.Trim()).ToList();
-        var textRead = LineOrder.JoinForEvents(texts);
-        var raw = string.Join('\n', texts);
-        if (ordered.Count == 0)
+        var rows = LineOrder.Rows(lines);
+        if (rows.Count == 0)
         {
             return TextMatch.Empty;
         }
 
+        var raw = LineOrder.JoinRows(rows);
         if (expected.Kind != ExpectedTextKind.Format || string.IsNullOrWhiteSpace(expected.Format))
         {
-            // Any text: the value is everything read; Matches format stays No (there is no format to match).
+            // Any text: the value is everything read, on one line; Matches format stays No (there is no format to match).
+            var read = new List<TextLine>(lines.Count);
+            foreach (var row in rows)
+            {
+                read.AddRange(row);
+            }
+
+            var text = LineOrder.JoinForEvents(read.Select(l => l.Text));
             return new TextMatch
             {
-                Text = textRead,
-                TextRead = textRead,
+                Text = text,
                 RawText = raw,
-                Number = NumberText.Of(textRead),
-                Confidence = ordered.Min(l => l.Confidence),
-                Lines = ordered,
-                TextBox = Union(ordered),
-                Turn = ordered.Count == 1 ? ordered[0].Turn : null,
+                Number = NumberText.Of(text),
+                Confidence = read.Min(l => l.Confidence),
+                Lines = read,
+                TextBox = Union(read),
+                Turn = read.Count == 1 ? read[0].Turn : null,
             };
         }
 
+        // A format looks at every line found, also at one the rows left out as found twice: a tile's cut piece can be the
+        // wider one and the whole value the narrower.
+        var ordered = LineOrder.Order(lines);
+        var texts = ordered.Select(l => l.Text.Trim()).ToList();
         var format = TextFormat.Parse(expected.Format);
         var candidates = Candidates(ordered, texts, format);
         if (candidates.Count == 0)
         {
-            return new TextMatch { TextRead = textRead, RawText = raw, Lines = ordered };
+            return new TextMatch { RawText = raw, Lines = ordered };
         }
 
         var best = candidates
@@ -60,7 +69,6 @@ public sealed class TextMatcher : ITextMatcher
         return new TextMatch
         {
             Text = best.Value,
-            TextRead = textRead,
             RawText = raw,
             AllMatches = [.. candidates.Select(c => c.Value).Distinct(StringComparer.Ordinal).Take(MaxMatches)],
             Number = NumberText.Of(best.Value),
@@ -112,7 +120,7 @@ public sealed class TextMatcher : ITextMatcher
         return [.. found.OrderBy(f => f.Line).ThenBy(f => f.Start).Select(f => f.Match).DistinctBy(c => (c.Value, c.Box))];
     }
 
-    private static RelativeBox? Union(IReadOnlyList<TextLine> lines)
+    private static RelativeBox? Union(List<TextLine> lines)
     {
         if (lines.Count == 0)
         {
