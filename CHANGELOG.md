@@ -56,6 +56,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Text recognition: the package for Intel Macs has its recognition library, it was missing since 4.10.0.
 - Text recognition: a text found twice where two parts of a large area overlap is read once.
 - Event rules: what an action writes to the event log and the server log always stays on one line.
+- Dashboards: a text of several lines stays inside its widget.
 - Plugins page: Restart server waits while an update or another plugin's install runs.
 - Operators and custom roles can again use the Edge storage tools, Action Rule Editor runs and VAPIX Commander rollouts.
 - Logging in again after logging out from a plugin page works.
