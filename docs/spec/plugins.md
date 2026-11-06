@@ -270,6 +270,28 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
   `OpenDevicePageRequested` (`DevicePageRequest` {DeviceId, Path}, DIM never raised) on the Web View page's context, which
   opens or reuses the device's tab on that path (its preset when one has the path, else Custom). First user: Open app page
   of Applications.
+- **Watching the events** (`PluginEventWatch`, SDK 0.12.0 for the overloads with a read): a page never writes the loop
+  around `WatchEventsAsync` itself. `ctx.RunAsync(read, handle, options, ct)` subscribes first, runs `read` (the page's
+  whole state; null for a page that only applies events), hands every event to `handle` (an `Action<PluginEvent>`, or a
+  `Func<PluginEvent, Task>` whose event must end before the next one), and after a failed read, an event that could not
+  be applied or an ended or broken stream waits and does all of it again; a host without events is read at that pace. It
+  never throws and ends with `ct`, which the page cancels when it is hidden or disposed (a logout disposes every page).
+  `PluginEventWatchOptions` (one per page, never a static): `RetryDelay` (2 s, `PluginEventWatch.DefaultRetryDelay`),
+  `MaxRetryDelay` (null; set: the wait doubles up to it and starts again after a read that worked, Live View and
+  Dashboards 1 s to 15 s), `Failed` (the reason for a page that shows it), `Time` (a `TimeProvider`; tests pass a fake
+  one or a short `RetryDelay`). A failed read ends its own subscription before the wait. `ctx.RunAsync(handle,
+  retryDelay, ct)` (the first form) stays. Pages: NTP server, DHCP server, Hardening scan, PKI, Live View, Dashboards
+  (read and watch); I/O Monitor, Metadata Monitor, Action Rule Editor, Applications, Edge storage, Image Health
+  Dashboard, Load test, Text recognition, EST server, 802.1X server (watch only). Device triggers keeps its own loop: it
+  reads again only while no event arrives. Tests `Oadm.Client.Tests` `PluginEventWatchTests`.
+- **A guarded call** (`GuardedRun`, SDK 0.12.0): `await GuardedRun.RunAsync(work)` runs a server call of a page or
+  dialog and returns null, or the text to show when it failed (`ServerErrors.Message`: the server's reason, else the
+  exception's message); the one place of the catch-all with its `CA1031` reason. A cancellation is a failure with a text
+  unless the call says `GuardedCancel.Ignore` (no text) or `GuardedCancel.Throw` (the `OperationCanceledException` leaves
+  the run); with a token only a cancellation of that token counts, any other is a failure with a text. The page decides
+  where the text goes (a property, a field's `SetServerError`, the host's message). A catch that does more (several
+  fields, a row's state, its own text, a fallback value, a result) stays a `try` in the view model. Tests
+  `Oadm.Client.Tests` `GuardedRunTests`.
 - **Pages shown as tabs**: `ICorePluginPage.TabOf` (DIM null) names the core plugin whose page shows this page as a tab.
   The host then adds no rail entry for it; it creates the view as for a rail page (its own `ICorePluginClientContext`, its
   own plugin id for `InvokeAsync` and events) and hands it to the host page: `ICorePluginClientContext.Tabs`

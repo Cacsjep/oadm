@@ -159,8 +159,10 @@ model, so keep all state in the view model.
 
 <Code code={template(page)} lang="csharp" title="MyCoolPagePage.cs" />
 
-The view model holds the page's state. `RunAsync` is the subscribe, read, apply loop described above. The rows go into a
-`RangeObservableCollection` and are replaced in one step, which keeps the grid fast with thousands of rows.
+The view model holds the page's state. `RunAsync` is the subscribe, read, apply loop described above; the SDK runs it
+(`ctx.RunAsync` of `PluginEventWatch`: it waits 2 s after a drop and starts over). `GuardedRun.RunAsync` returns the
+text of a failed call instead of throwing. The rows go into a `RangeObservableCollection` and are replaced in one step,
+which keeps the grid fast with thousands of rows.
 
 `PageDeviceChoice` is the device choice of the page: it starts with the Devices page selection, else the last choice on
 this computer, else with nothing. While nothing is chosen the page reads nothing and Refresh is off. `ButtonText` is the

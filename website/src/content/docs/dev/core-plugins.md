@@ -92,8 +92,8 @@ The page's context, `ICorePluginClientContext`:
 
 | Member | Use |
 |---|---|
-| `InvokeAsync(method, payload, ct)` | Call the server part. Failures are `RpcException`; `ServerErrors.Message(ex)` gives the text |
-| `WatchEventsAsync(ct)` | The live events of the server part |
+| `InvokeAsync(method, payload, ct)` | Call the server part. Failures are `RpcException`; `ServerErrors.Message(ex)` gives the text, `GuardedRun.RunAsync` returns it instead of throwing |
+| `WatchEventsAsync(ct)` | The live events of the server part. `ctx.RunAsync(read, handle, options, ct)` reads the state and watches them for a page, again after a drop |
 | `OpenDownloadAsync(method, payload, ct)` | A file from the server part, see [Downloads](#downloads) |
 | `Devices`, `SelectedDevices`, `DevicesChanged` | The client's copy of the device table and the Devices page selection |
 | `Has(permission)`, `HasAllDevices`, `PermissionsChanged` | Hide or lock what the user's role does not allow, or what only users with all devices may do |
