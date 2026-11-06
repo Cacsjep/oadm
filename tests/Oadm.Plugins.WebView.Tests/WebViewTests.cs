@@ -177,6 +177,43 @@ public sealed class WebViewTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task A_tab_shows_only_its_device_and_other_websites_open_in_the_system_browser()
+    {
+        var (ctx, vm, a, b, _) = Page();
+        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == a.Id));
+        await Task.Yield();
+        var tab = vm.ActiveTab!;
+        var relay = ctx.Web.Sessions[0].Origin; // http://127.0.0.1:50001/
+
+        // The device's pages, through the tab's relay.
+        Assert.Equal(WebLinkTarget.Tab, tab.TargetOf(tab.Address));
+        Assert.Equal(WebLinkTarget.Tab, tab.TargetOf(new Uri(relay, "/camera/index.html#/apps")));
+
+        // A link, a script or a redirect of the page to another website: never under the device's tab title.
+        Assert.Equal(WebLinkTarget.Outside, tab.TargetOf(new Uri("https://www.axis.com/support")));
+        Assert.Equal(WebLinkTarget.Outside, tab.TargetOf(new Uri("http://evil.example.com/login")));
+        Assert.Equal(WebLinkTarget.Outside, tab.TargetOf(new Uri("http://10.0.0.48/"))); // the device itself, past the relay
+        Assert.Equal(WebLinkTarget.Outside, tab.TargetOf(new Uri("mailto:someone@example.com")));
+
+        // Another tab's relay or a service on this computer: not opened at all.
+        Assert.Equal(WebLinkTarget.Nowhere, tab.TargetOf(new Uri($"http://127.0.0.1:{relay.Port + 1}/axis-cgi/restart.cgi")));
+        Assert.Equal(WebLinkTarget.Nowhere, tab.TargetOf(new Uri($"https://127.0.0.1:{relay.Port}/")));
+        Assert.Equal(WebLinkTarget.Nowhere, tab.TargetOf(new Uri("http://localhost:8080/")));
+
+        // The browser's own pages are left alone.
+        Assert.Equal(WebLinkTarget.Browser, tab.TargetOf(new Uri("about:blank")));
+        Assert.Equal(WebLinkTarget.Browser, tab.TargetOf(new Uri("blob:http://127.0.0.1:50001/1a2b")));
+        Assert.Equal(WebLinkTarget.Browser, tab.TargetOf(null));
+
+        // A tab without a relay (refused device) opens no web address.
+        ctx.Web.Refused[b.Id] = DeviceMessages.CredentialsRequired;
+        vm.OpenDeviceCommand.Execute(vm.TreeRows.OfType<DeviceTreeDevice>().First(r => r.Device.Id == b.Id));
+        await Task.Yield();
+        Assert.Equal(WebLinkTarget.Nowhere, vm.ActiveTab!.TargetOf(new Uri(relay, "/")));
+        Assert.Equal(WebLinkTarget.Outside, vm.ActiveTab.TargetOf(new Uri("https://www.axis.com/")));
+    }
+
+    [Fact]
     public async Task A_refused_device_shows_the_reason_and_a_removed_device_closes_its_tab()
     {
         var (ctx, vm, a, b, _) = Page();

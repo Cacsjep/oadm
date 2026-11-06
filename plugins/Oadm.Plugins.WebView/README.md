@@ -42,8 +42,11 @@ and `Oadm.Client/DeviceWeb`.
   loopback; the link to the device is the server's). `DeviceWebAccess` is the page's `ICorePluginClientContext.DeviceWeb`
   and stops its relays when the page closes.
 - **Page** (`Oadm.Plugins.WebView.Client`): `WebViewPageViewModel` (tree rows in one reset, tabs, presets, Custom with
-  `ValidatingViewModel`), `WebViewPageView` (code-behind owns one `NativeWebView` per tab, kept alive while hidden; links
-  that open a new window open in the same tab). Back follows the browser's history: the web interfaces are single-page
+  `ValidatingViewModel`), `WebViewPageView` (code-behind owns one `NativeWebView` per tab, kept alive while hidden). A
+  tab shows only its device (`WebTab.TargetOf`): an address outside the tab's relay (a link, a script, a redirect) is
+  cancelled; a website or mail link opens in the system browser (`Oadm.Sdk.Client.EmbeddedBrowserLinks`, shared with
+  the Help window), another address on this computer (another tab's relay) nowhere. Links that open a new window open
+  in the same tab when they stay on the device. Back follows the browser's history: the web interfaces are single-page
   apps whose steps load no page, and the control passes on no history event, so after every page load a small script in
   the page reports pushState, replaceState, back / forward and hash changes through the control's message channel
   (`invokeCSharpAction`), and Back is checked then. No limit of our own: the browser keeps about 50 entries per tab.
@@ -78,6 +81,7 @@ with "1 device is no longer available." and its tab closes like the tab of a rem
   RFC example, SHA-256, Basic only over HTTPS, cookie merge).
 - `tests/Oadm.Client.Tests/DeviceWebRelayTests`: cookie and token, 403 / 400 for others, bodies with a length and chunked,
   WebSocket both ways, dispose, refusals.
-- `tests/Oadm.Plugins.WebView.Tests`: tree, tabs, Close all, Back, presets and Custom, refusals, removed devices, missing
+- `tests/Oadm.Plugins.WebView.Tests`: tree, tabs, Close all, Back, presets and Custom, refusals, removed devices, addresses
+  that leave the device, missing
   runtime, the device limit, the shared device icon, the device-group canary (`CanaryTests`); headless `web-view-page.png`, `web-view-custom-error.png`, `web-view-runtime-missing.png`
   (the native browser needs a real window: a stand-in shows where the page goes).

@@ -71,8 +71,8 @@ installed version.
   WebKitGTK, as the Web View plugin, the same WebView2 user data folder `LocalApplicationData/Oadm/WebView2` and options)
   on the docs server's start page, created by the window's code-behind (`HelpBrowser`; tests replace
   `HelpWindow.BrowserFactory`). Links that leave the docs server (another host or port, `mailto:`) are cancelled and open
-  in the system browser (`HelpWindowViewModel.LeavesDocs`, `IUrlLauncher`); links that ask for a new window open in the
-  same one.
+  in the system browser (`HelpWindowViewModel.LeavesDocs` on `Oadm.Sdk.Client.EmbeddedBrowserLinks`, shared with the
+  Web View tabs; `IUrlLauncher`); links that ask for a new window open in the same one.
 - **No docs**: "Help is not part of this build." (`HelpDocs.NotInBuild`, one secondary line); the browser is not checked.
 - **No embedded browser** (Linux without WebKitGTK, Windows without the WebView2 runtime; `Help/EmbeddedBrowser.Check`,
   the same check as the Web View page): the window says what to install with the same text as the Web View page

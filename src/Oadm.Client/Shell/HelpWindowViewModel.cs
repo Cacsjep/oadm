@@ -86,27 +86,7 @@ public sealed partial class HelpWindowViewModel : ObservableObject, IDisposable
     /// True when the browser should not open <paramref name="address"/> itself but hand it to the system browser: web
     /// addresses of another host than the docs server, and mail links. Other schemes (about:, data:, blob:) stay.
     /// </summary>
-    public bool LeavesDocs(Uri? address)
-    {
-        if (address is null || !address.IsAbsoluteUri)
-        {
-            return false;
-        }
-
-        if (address.Scheme == Uri.UriSchemeMailto)
-        {
-            return true;
-        }
-
-        if (address.Scheme != Uri.UriSchemeHttp && address.Scheme != Uri.UriSchemeHttps)
-        {
-            return false;
-        }
-
-        return StartAddress is not { } docs
-            || address.Scheme != docs.Scheme
-            || !string.Equals(address.Authority, docs.Authority, StringComparison.OrdinalIgnoreCase);
-    }
+    public bool LeavesDocs(Uri? address) => Oadm.Sdk.Client.EmbeddedBrowserLinks.Leaves(address, StartAddress);
 
     /// <summary>A link that leaves the docs: the system browser opens it.</summary>
     public async Task OpenOutsideAsync(Uri address)

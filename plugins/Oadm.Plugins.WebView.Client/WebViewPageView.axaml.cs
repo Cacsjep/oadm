@@ -200,6 +200,7 @@ internal sealed class WebTabBrowser : Panel, IDisposable
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Oadm", "WebView2");
             }
         };
+        _browser.NavigationStarted += OnNavigationStarted;
         _browser.NewWindowRequested += OnNewWindowRequested;
         _browser.NavigationCompleted += OnNavigationCompleted;
         Children.Add(_browser);
@@ -344,13 +345,53 @@ internal sealed class WebTabBrowser : Panel, IDisposable
         _status.Text = _tab.Error ?? (_tab.IsLoading ? "Opening" : string.Empty);
     }
 
-    /// <summary>Links that open a new window (target="_blank") open in the same tab: the device's page stays in OADM.</summary>
+    /// <summary>The tab shows only its device: an address that leaves it is cancelled; a website opens in the system browser.</summary>
+    private void OnNavigationStarted(object? sender, WebViewNavigationStartingEventArgs e)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var target = _tab.TargetOf(e.Request);
+        if (target is WebLinkTarget.Outside or WebLinkTarget.Nowhere)
+        {
+            e.Cancel = true;
+            if (target == WebLinkTarget.Outside)
+            {
+                OpenOutside(e.Request!);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Links that open a new window (target="_blank") open in the same tab when they stay on the device, a website in the
+    /// system browser.
+    /// </summary>
     private void OnNewWindowRequested(object? sender, WebViewNewWindowRequestedEventArgs e)
     {
         e.Handled = true;
-        if (e.Request is { } uri && _tab.Address is { } current && uri.Authority == current.Authority)
+        if (_disposed || e.Request is not { } uri)
         {
-            _browser.Navigate(uri);
+            return;
+        }
+
+        switch (_tab.TargetOf(uri))
+        {
+            case WebLinkTarget.Tab:
+                _browser.Navigate(uri);
+                break;
+            case WebLinkTarget.Outside:
+                OpenOutside(uri);
+                break;
+        }
+    }
+
+    private void OpenOutside(Uri address)
+    {
+        if (TopLevel.GetTopLevel(this) is { } window)
+        {
+            _ = window.Launcher.LaunchUriAsync(address);
         }
     }
 
@@ -365,6 +406,7 @@ internal sealed class WebTabBrowser : Panel, IDisposable
         _browser.WebMessageReceived -= OnWebMessageReceived;
         _tab.PropertyChanged -= OnTabChanged;
         _tab.NavigateRequested -= OnNavigateRequested;
+        _browser.NavigationStarted -= OnNavigationStarted;
         _browser.NewWindowRequested -= OnNewWindowRequested;
         _browser.NavigationCompleted -= OnNavigationCompleted;
         Children.Remove(_browser);

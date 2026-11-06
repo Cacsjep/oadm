@@ -228,7 +228,8 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
   shared tasks pane below the page). `ICorePluginClientContext`: `InvokeAsync`, `WatchEventsAsync` (PluginService.Watch),
   `Devices` + `DevicesChanged`, `SelectedDevices`, `OwnerName`, `ShowMessageAsync`, `ConfirmAsync`, `OpenAsync`, `Owner`,
   `DeviceWeb` (`IDeviceWebAccess`: a device's web interface for an embedded browser through the server, see "Web View" in
-  `docs/spec/bundled-plugins.md`), `LiveVideo` (`ILiveVideoAccess.Create(LiveVideoPlace)` -> `ILiveVideo` {View,
+  `docs/spec/bundled-plugins.md`; `EmbeddedBrowserLinks.Leaves(address, origin)`, SDK 0.12.0: true for an address the
+  browser must cancel because it leaves the session's `Origin`), `LiveVideo` (`ILiveVideoAccess.Create(LiveVideoPlace)` -> `ILiveVideo` {View,
   Start(device, camera), Close, Camera, CameraChosen}: the host's live video component,
   `Oadm.Client/LiveView/LiveVideoAccess`; the page's videos are disposed with the page; `docs/spec/live-view.md`),
   `OpenDownloadAsync(method, payload, ct)` (a file of the server part through `PluginService.Download`: `PluginDownload`
