@@ -35,21 +35,43 @@ The payload stays in memory only; password values are never logged and are maske
   be the `file` of a `multipart` part (`CommandValidator.ValidateFileUses`); the request line shows `file "profiles", 2
   KB`, never the bytes. Used by Siren and light **Upload siren and light profiles**.
 - `RequestSafety` decides what a request does to a device (`SafetyLevel` Read, Write, Dangerous), for the server and the
-  page alike; a command's `writes` and `dangerous` can only raise the level, never lower it. A request is a read only
-  when it is a GET, or a POST whose JSON `method` is a read (`get*`, `list*`, `status`, `systemready`) or whose SOAP
-  operation is `Get*`, and its path is not a changing one: a GET with an `action` other than a read (`list`, `get`,
-  `statusall`, ...), `param.cgi` without `action=list`, `ptz.cgi` / `ptzconfig.cgi` without `query`, the application,
-  clip and recording CGIs, and a file named after what it does (`set.cgi`, `activate.cgi`, `mount.cgi`). Always
-  dangerous: `restart.cgi`, `factorydefault.cgi`, `hardfactorydefault.cgi`, `firmwareupgrade.cgi`, `disks/format.cgi`,
-  `record/remove.cgi`, `pwdgrp.cgi` except `action=get`, `applications/control.cgi` except start / stop / restart,
-  `firmwaremanagement.cgi` except its reads and `commit`, every change through `network_settings.cgi` and
-  `capturemode.cgi`, and a `param.cgi` change of `Network.*` (except UPnP, QoS, Bonjour, ZeroConf), `HTTPS.*`,
-  `System.Boa*` or `IEEE8021X.*`. The path is compared decoded and in lower case. The server decides from the filled-in
+  page alike; a command's `writes` and `dangerous` can only raise the level, never lower it. **An unknown request
+  counts as changing**: a request is a read only when every sign it carries is known to read. A user's own harmless
+  GET may ask for a confirmation once. The signs:
+  - Method and body: a GET without a body, or a POST whose JSON `method` is a read (`get*`, `list*`, `status`,
+    `systemready`) or whose SOAP body is one `Get*` operation. A GET with a body is at least a write.
+  - Actions: every `action` of the query, of a form body and of a text body is a read (`list`, `get`, `statusall`,
+    ...), with every method. A text body is read as pairs like a query (`action=update&Network...` on `param.cgi`);
+    its pairs only add to the level.
+  - Path: not a changing one: `param.cgi` without `action=list`, `ptz.cgi` / `ptzconfig.cgi` without `query`, the
+    application and clip CGIs, `opticssetup.cgi`, `record/continuous/addconfiguration.cgi` and
+    `removeconfiguration.cgi`, `disks/checkdisk.cgi`, and a file whose name starts with what it does (`set`, `add`,
+    `remove`, `delete`, `update`, `create`, `check`, `format`, `clear`, `reset`, `start`, `stop`, `restart`, `enable`,
+    `disable`, `perform`, `apply`, `install`, `uninstall`, `upload`, `import`, `activate`, `mount`, ...:
+    `RequestSafety.ChangingNames`).
+  - Parameters: on a path without a rule of its own only names that choose what is read (`group`, `listformat`,
+    `responseformat`, `schemaversion`, `camera`, `resolution`, and per known CGI: `io/port.cgi` `check` /
+    `checkactive`, `serverreport.cgi` `mode`, ...); any name on `list*.cgi` / `get*.cgi` and on the image CGIs
+    (`jpg/image.cgi`, `bitmap/image.cgi`, `mjpg/video.cgi`). Any other name makes the request a write.
+
+  Always dangerous: `restart.cgi`, `factorydefault.cgi`, `hardfactorydefault.cgi`, `firmwareupgrade.cgi`,
+  `disks/format.cgi`, `record/remove.cgi`, `pwdgrp.cgi` except `action=get`, `applications/control.cgi` except start /
+  stop / restart, `firmwaremanagement.cgi` except its reads and `commit`, every change through `network_settings.cgi`
+  and `capturemode.cgi`, and a `param.cgi` change of `Network.*` (except UPnP, QoS, Bonjour, ZeroConf), `HTTPS.*`,
+  `System.Boa*` or `IEEE8021X.*`.
+
+  The path is judged as the device could read it (`RequestSafety.Target`): cut at `#` (never sent), decoded until
+  nothing changes, `\` as `/`, in lower case, `.` and `..` resolved, without `;` parameters, trailing dots and spaces;
+  the query is split at `&` and `;`. `CommandValidator.IsDevicePath` refuses most of these forms in a command (`#`,
+  `;`, `\`, `//`, `.` and `..` segments, a trailing dot, an encoded `/`, `\`, `.`, `%`, `#`, `?`, `;` or control
+  character), so the request that is judged is the request that is sent; the rule holds without the validator (tests
+  from the attacker's side: `RequestSafetyTests`, "A disguised reset ..."). The server decides from the filled-in
   request; the page from the definition, where a value still to be filled in counts as the worst case of its path. A
   test holds the rule against the bundled library: without the flags it finds the kind of every bundled command.
 - `CommandRenderer` fills the fields (rules in [command-format.md](Schema/command-format.md#placeholders)). Timeout via
-  `VapixRequestOptions.Timeout` (default 15 s, at most 600 s). Paths must stay on the device
-  (`CommandValidator.IsDevicePath`, checked again after the fields are filled in).
+  `VapixRequestOptions.Timeout` (default 15 s, at most 600 s). Paths must stay on the device and be sent as written
+  (`CommandValidator.IsDevicePath`; after the fields are filled in `IsFilledDevicePath`, which allows the escapes of
+  the values: "a/b" is sent as "a%2Fb").
 - `CommandExecutor` sends with the factory's cached client (never disposed by the plugin), decodes the body as UTF-8
   (Axis sends `charset=utf8`), shows binary answers as "image/jpeg, 123 KB", pretty-prints JSON / XML (cut at 256 KB)
   and interprets the answer per response kind (`ResponseInterpreter`): Axis devices often answer an error with HTTP 200.

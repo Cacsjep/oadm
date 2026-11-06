@@ -311,9 +311,12 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   a single upload may be up to `Uploads.MaxMegabytes`. Free space unknown (network share): only the quota applies.
 - Requests stay on the device: `VapixClient.SendAsync` refuses (before sending) an absolute URI with another scheme, host
   or port or with user info, and a relative URI with "\". VAPIX Commander paths must pass `CommandValidator.IsDevicePath`
-  (one leading "/", no "\", "//", "..", "@" before the query, spaces or control characters; "The path must start with /
-  and stay on the device: no "..", "//", "\" or host name.", `CommandValidator.PathProblem`), checked again after the
-  fields are filled in. Tests `DeviceLimitsTests`, `RendererTests` (`/\/host`, `//host/x`, an absolute URL).
+  (one leading "/", no "\", "//", "..", "@" before the query, spaces or control characters, and nothing that makes the
+  request sent differ from the one written: no "#", no ";", no "." segment or trailing dot, no encoded "/", "\", ".",
+  "%", "#", "?", ";" or control character; "The path must start with / and stay on the device: no "..", "//", "\", "#",
+  ";", encoded "/" or ".", or host name.", `CommandValidator.PathProblem`), checked again after the fields are filled in
+  (`IsFilledDevicePath`: the escapes of the values are allowed, `RequestSafety` reads them decoded). Tests
+  `DeviceLimitsTests`, `RendererTests` (`/\/host`, `//host/x`, an absolute URL), `RequestSafetyTests` (the disguises).
 
 ## Crash handling (client)
 

@@ -24,18 +24,20 @@ public enum SafetyLevel
 /// never lower it: a saved "GET /axis-cgi/factorydefault.cgi" marked as a read is dangerous.
 /// </summary>
 /// <remarks>
-/// A request is a read only when it is a GET, or a POST whose JSON method is a read (<c>get*</c>, <c>list*</c>,
-/// <c>status</c>, <c>systemready</c>) or whose SOAP operation is <c>Get*</c>, and its path is not one that changes the
-/// device. The changing paths cover every changing command of the bundled library (a test compares them) and the CGIs
-/// that restart, reset, upgrade or change accounts. What cannot be told (a value still to be filled in) counts as the
-/// most restricted case of its path.
+/// A request is a read only when it is known to read, by every sign it carries: the method and the body (a GET
+/// without a body, or a POST whose JSON method is a read (<c>get*</c>, <c>list*</c>, <c>status</c>,
+/// <c>systemready</c>) or whose SOAP operation is one <c>Get*</c>), every <c>action</c> of the query and of a form or
+/// text body, the path, and the names of the parameters. An unknown request counts as a change. The changing paths
+/// cover every changing command of the bundled library (a test compares them) and the CGIs that restart, reset,
+/// upgrade or change accounts. The path is judged as the device could read it (<see cref="Target"/>). What cannot be
+/// told (a value still to be filled in) counts as the most restricted case of its path.
 /// </remarks>
 public static class RequestSafety
 {
-    /// <summary>GET <c>action=</c> values that only read; every other action changes the device.</summary>
+    /// <summary><c>action=</c> values that only read; every other action changes the device.</summary>
     private static readonly HashSet<string> ReadActions = new(StringComparer.Ordinal)
     {
-        "list", "listdefinitions", "listall", "get", "getstatus", "status", "statusall", "query", "check", "download",
+        "list", "listdefinitions", "listall", "get", "getstatus", "status", "statusall", "query", "download",
     };
 
     /// <summary>CGIs that restart, reset or erase, whatever the method and the parameters.</summary>
@@ -51,14 +53,38 @@ public static class RequestSafety
     private static readonly string[] AlwaysWrite =
     [
         "applications/upload.cgi", "applications/config.cgi", "applications/license.cgi", "playclip.cgi", "stopclip.cgi",
+        "opticssetup.cgi", "record/continuous/addconfiguration.cgi", "record/continuous/removeconfiguration.cgi", "disks/checkdisk.cgi",
     ];
 
-    /// <summary>File names that say what they do ("geolocation/set.cgi", "virtualinput/activate.cgi", "disks/mount.cgi").</summary>
-    private static readonly HashSet<string> ChangingFileNames = new(StringComparer.Ordinal)
+    /// <summary>
+    /// Starts of file names that say what they do ("geolocation/set.cgi", "virtualinput/activate.cgi",
+    /// "disks/checkdisk.cgi", "removeconfiguration.cgi").
+    /// </summary>
+    private static readonly string[] ChangingNames =
+    [
+        "add", "modify", "remove", "delete", "set", "update", "create", "check", "activate", "deactivate", "start", "stop",
+        "record", "mount", "unmount", "format", "clear", "upload", "import", "install", "uninstall", "restart", "reboot",
+        "reset", "erase", "enable", "disable", "perform", "apply", "repair", "restore", "rollback", "commit", "configure",
+        "rename", "move", "run", "send", "write", "save", "change", "trigger", "test", "play",
+    ];
+
+    /// <summary>Parameter names that only choose what is read, on every path.</summary>
+    private static readonly HashSet<string> ReadNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        "add", "modify", "remove", "delete", "set", "update", "activate", "deactivate", "start", "stop", "record", "mount",
-        "unmount", "format", "upload", "install", "restart", "reboot", "reset", "erase", "clear",
+        "group", "listformat", "responseformat", "schemaversion", "camera", "resolution",
     };
+
+    /// <summary>CGIs known to read, with the further parameter names they take; null: any name (the image parameters).</summary>
+    private static readonly (string Cgi, string[]? Names)[] ReadCgis =
+    [
+        ("jpg/image.cgi", null), ("bitmap/image.cgi", null), ("mjpg/video.cgi", null),
+        ("io/port.cgi", ["check", "checkactive", "monitor"]),
+        ("privacymask.cgi", ["query"]),
+        ("auditlog.cgi", ["tail"]),
+        ("serverreport.cgi", ["mode"]),
+        ("systemlog.cgi", ["appname"]),
+        ("temperaturecontrol.cgi", ["device", "id"]),
+    ];
 
     /// <summary>param.cgi groups whose change can cut the device off or open it (lower case).</summary>
     private static readonly string[] DangerousParameters = ["network.", "https.", "system.boa", "ieee8021x."];
@@ -77,6 +103,7 @@ public static class RequestSafety
         var pairs = new List<KeyValuePair<string, string>>(request.Query ?? []);
         JsonNode? json = null;
         string? xml = null;
+        string? text = null;
         switch (request.EffectiveBodyType)
         {
             case BodyTypes.Json:
@@ -85,12 +112,16 @@ public static class RequestSafety
             case BodyTypes.Xml:
                 xml = StringOf(request.Body);
                 break;
+            case BodyTypes.Text:
+                text = StringOf(request.Body);
+                break;
             case BodyTypes.Form when request.Body is JsonObject form:
                 pairs.AddRange(form.Select(p => new KeyValuePair<string, string>(p.Key, StringOf(p.Value) ?? Placeholder)));
                 break;
         }
 
-        return Max(Flags(command), Classify(request.Method, request.Path, pairs, json, xml));
+        var hasBody = request.EffectiveBodyType != BodyTypes.None || request.Body is not null;
+        return Max(Flags(command), Classify(request.Method, request.Path ?? string.Empty, pairs, json, xml, text, hasBody));
     }
 
     /// <summary>The level of the request that is about to be sent: what the server enforces.</summary>
@@ -100,8 +131,10 @@ public static class RequestSafety
         ArgumentNullException.ThrowIfNull(rendered);
         JsonNode? json = null;
         string? xml = null;
-        if (rendered.Body is { } body && rendered.ContentType is { } contentType)
+        string? text = null;
+        if (rendered.Body is { } body)
         {
+            var contentType = rendered.ContentType ?? string.Empty;
             if (contentType.StartsWith("application/json", StringComparison.OrdinalIgnoreCase))
             {
                 json = ParseJson(body);
@@ -110,9 +143,14 @@ public static class RequestSafety
             {
                 xml = body;
             }
+            else
+            {
+                text = body;
+            }
         }
 
-        return Max(Flags(command), Classify(rendered.Method, "/" + rendered.RelativeUri, [.. rendered.Form ?? []], json, xml));
+        var hasBody = rendered.Body is not null || rendered.Form is not null || rendered.Parts is not null;
+        return Max(Flags(command), Classify(rendered.Method, "/" + rendered.RelativeUri, [.. rendered.Form ?? []], json, xml, text, hasBody));
     }
 
     /// <summary>The level the command's own flags ask for.</summary>
@@ -126,45 +164,111 @@ public static class RequestSafety
 
     private static bool IsOpen(string text) => text.Contains("{{", StringComparison.Ordinal);
 
-    private static SafetyLevel Classify(string method, string pathAndQuery, List<KeyValuePair<string, string>> pairs, JsonNode? json, string? xml)
+    private static bool IsAction(string name) => string.Equals(name, "action", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The path and the query of a request as the device could read them, for the rules. The path ends at "#" (never
+    /// sent) and is decoded until nothing changes, then cut where a decoded "?", "#" or NUL would end it, with "\" as
+    /// "/", in lower case, without empty and "." segments, ".." resolved, and each segment without its ";" parameters
+    /// and its trailing dots and spaces. So "/axis-cgi/x/%2e%2e/Restart.CGI;a#b" is "/axis-cgi/restart.cgi".
+    /// <see cref="CommandValidator.IsDevicePath"/> refuses most of these forms; the rules hold without it.
+    /// </summary>
+    internal static (string Path, string Query) Target(string pathAndQuery)
     {
-        var q = pathAndQuery.IndexOf('?', StringComparison.Ordinal);
-        var path = Unescape(q < 0 ? pathAndQuery : pathAndQuery[..q]).ToLowerInvariant();
-        if (q >= 0)
+        var hash = pathAndQuery.IndexOf('#', StringComparison.Ordinal);
+        if (hash >= 0)
         {
-            foreach (var part in pathAndQuery[(q + 1)..].Split('&', StringSplitOptions.RemoveEmptyEntries))
+            pathAndQuery = pathAndQuery[..hash];
+        }
+
+        var q = pathAndQuery.IndexOf('?', StringComparison.Ordinal);
+        var path = q < 0 ? pathAndQuery : pathAndQuery[..q];
+        var query = q < 0 ? string.Empty : pathAndQuery[(q + 1)..];
+        for (var round = 0; round < 4; round++)
+        {
+            var decoded = Unescape(path);
+            if (decoded == path)
             {
-                var eq = part.IndexOf('=', StringComparison.Ordinal);
-                pairs.Add(new(Unescape(eq < 0 ? part : part[..eq]), eq < 0 ? string.Empty : Unescape(part[(eq + 1)..])));
+                break;
+            }
+
+            path = decoded;
+        }
+
+        var end = path.IndexOfAny(['?', '#', '\0']);
+        if (end >= 0)
+        {
+            path = path[..end];
+        }
+
+        var segments = new List<string>();
+        foreach (var part in path.Replace('\\', '/').ToLowerInvariant().Split('/'))
+        {
+            var semicolon = part.IndexOf(';', StringComparison.Ordinal);
+            var segment = (semicolon < 0 ? part : part[..semicolon]).Trim();
+            var name = segment.TrimEnd('.', ' ');
+            if (name.Length > 0)
+            {
+                segments.Add(name);
+            }
+            else if (segment.Length >= 2 && segments.Count > 0)
+            {
+                segments.RemoveAt(segments.Count - 1); // ".."
             }
         }
 
+        return ("/" + string.Join('/', segments), query);
+    }
+
+    /// <summary>The pairs of a query, or of a body written like one ("action=update&amp;Network.x=1").</summary>
+    private static List<KeyValuePair<string, string>> PairsOf(string text)
+    {
+        var pairs = new List<KeyValuePair<string, string>>();
+        foreach (var part in text.Split(['&', ';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=', StringComparison.Ordinal);
+            var name = Unescape((eq < 0 ? part : part[..eq]).Replace('+', ' ')).Trim();
+            if (name.Length > 0)
+            {
+                pairs.Add(new(name, eq < 0 ? string.Empty : Unescape(part[(eq + 1)..].Replace('+', ' '))));
+            }
+        }
+
+        return pairs;
+    }
+
+    private static SafetyLevel Classify(
+        string method, string pathAndQuery, List<KeyValuePair<string, string>> pairs, JsonNode? json, string? xml, string? text, bool hasBody)
+    {
+        var (path, query) = Target(pathAndQuery);
+        pairs.AddRange(PairsOf(query));
+        var level = Level(method, path, pairs, json, xml, hasBody);
+
+        // A text body may be read like a query (param.cgi). Its pairs can only add to the level.
+        var loose = text ?? (xml is not null && !IsXml(xml) ? xml : null);
+        var bodyPairs = loose is null ? [] : PairsOf(loose);
+        return bodyPairs.Count == 0 ? level : Max(level, Level(method, path, [.. pairs, .. bodyPairs], json, xml, hasBody));
+    }
+
+    /// <summary>A read only when the method, the body, every action and the path all read.</summary>
+    private static SafetyLevel Level(string method, string path, List<KeyValuePair<string, string>> pairs, JsonNode? json, string? xml, bool hasBody)
+    {
         // A name still to be filled in could become "action".
-        var actions = pairs.Where(p => IsOpen(p.Key) || string.Equals(p.Key, "action", StringComparison.OrdinalIgnoreCase))
+        var actions = pairs.Where(p => IsOpen(p.Key) || IsAction(p.Key))
             .Select(p => IsOpen(p.Key) ? Placeholder : p.Value.ToLowerInvariant())
             .ToList();
         var readActions = actions.TrueForAll(ReadActions.Contains);
-        var jsonMethod = json is JsonObject obj && obj.TryGetPropertyValue("method", out var node) ? StringOf(node) : null;
+        var jsonMethod = MethodOf(json);
         var readMethod = jsonMethod is not null && IsReadMethod(jsonMethod);
 
-        SafetyLevel level;
-        if (string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase))
-        {
-            level = readActions && !IsOpen(path) ? SafetyLevel.Read : SafetyLevel.Write;
-        }
-        else if (string.Equals(method, "POST", StringComparison.OrdinalIgnoreCase))
-        {
-            level = readMethod || IsSoapRead(xml) ? SafetyLevel.Read : SafetyLevel.Write;
-        }
-        else
-        {
-            level = SafetyLevel.Write;
-        }
-
+        // A GET carries no body; a POST reads only with a body that is known to.
+        var reads = string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase) ? !hasBody
+            : string.Equals(method, "POST", StringComparison.OrdinalIgnoreCase) && (readMethod || IsSoapRead(xml));
+        var level = reads && readActions && !IsOpen(path) ? SafetyLevel.Read : SafetyLevel.Write;
         return Max(level, PathLevel(path, pairs, actions, readActions, jsonMethod, readMethod));
     }
 
-    /// <summary>The level a path asks for whatever the method: the list of changing paths.</summary>
+    /// <summary>The level a path and its parameters ask for whatever the method: the list of changing paths.</summary>
     private static SafetyLevel PathLevel(
         string path, List<KeyValuePair<string, string>> pairs, List<string> actions, bool readActions, string? jsonMethod, bool readMethod)
     {
@@ -183,12 +287,12 @@ public static class RequestSafety
 
         if (Is("firmwaremanagement.cgi"))
         {
-            return readMethod ? SafetyLevel.Read : jsonMethod == "commit" ? SafetyLevel.Write : SafetyLevel.Dangerous;
+            return readMethod ? Unknown() : jsonMethod == "commit" ? SafetyLevel.Write : SafetyLevel.Dangerous;
         }
 
         if (Array.Exists(DangerousUnlessRead, Is))
         {
-            return readMethod ? SafetyLevel.Read : SafetyLevel.Dangerous;
+            return readMethod ? Unknown() : SafetyLevel.Dangerous;
         }
 
         if (Is("applications/control.cgi"))
@@ -203,9 +307,7 @@ public static class RequestSafety
                 return SafetyLevel.Read;
             }
 
-            return pairs.Exists(p => !string.Equals(p.Key, "action", StringComparison.OrdinalIgnoreCase) && IsDangerousParameter(p.Key))
-                ? SafetyLevel.Dangerous
-                : SafetyLevel.Write;
+            return pairs.Exists(p => !IsAction(p.Key) && IsDangerousParameter(p.Key)) ? SafetyLevel.Dangerous : SafetyLevel.Write;
         }
 
         if (Is("ptz.cgi") || Is("ptzconfig.cgi"))
@@ -215,14 +317,49 @@ public static class RequestSafety
             return reads ? SafetyLevel.Read : SafetyLevel.Write;
         }
 
-        if (Array.Exists(AlwaysWrite, Is))
-        {
-            return SafetyLevel.Write;
-        }
+        return Array.Exists(AlwaysWrite, Is) ? SafetyLevel.Write : Unknown();
 
-        var file = path[(path.LastIndexOf('/') + 1)..];
-        var dot = file.IndexOf('.', StringComparison.Ordinal);
-        return ChangingFileNames.Contains(dot < 0 ? file : file[..dot]) ? SafetyLevel.Write : SafetyLevel.Read;
+        // A path without a rule of its own reads only when nothing says otherwise: its file is not named after a change
+        // and every parameter is one that chooses what to read.
+        SafetyLevel Unknown()
+        {
+            var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var file = Array.Find(segments, s => s.EndsWith(".cgi", StringComparison.Ordinal)) ?? (segments.Length > 0 ? segments[^1] : string.Empty);
+            if (Array.Exists(segments, s => (s == segments[^1] || s.EndsWith(".cgi", StringComparison.Ordinal)) && IsChangingName(s)))
+            {
+                return SafetyLevel.Write;
+            }
+
+            if (file.StartsWith("list", StringComparison.Ordinal) || file.StartsWith("get", StringComparison.Ordinal))
+            {
+                return SafetyLevel.Read; // "disks/list.cgi?diskid=all", "zipstream/getstatus.cgi?camera=1"
+            }
+
+            var known = Array.Find(ReadCgis, c => Is(c.Cgi));
+            if (known.Cgi is not null && known.Names is null)
+            {
+                return SafetyLevel.Read;
+            }
+
+            return pairs.TrueForAll(p => IsAction(p.Key) || ReadNames.Contains(p.Key) || known.Names?.Contains(p.Key, StringComparer.OrdinalIgnoreCase) == true)
+                ? SafetyLevel.Read
+                : SafetyLevel.Write;
+        }
+    }
+
+    private static bool IsChangingName(string file) => Array.Exists(ChangingNames, n => file.StartsWith(n, StringComparison.Ordinal));
+
+    /// <summary>The <c>method</c> of a JSON request; null when there is none or the body names it twice.</summary>
+    private static string? MethodOf(JsonNode? json)
+    {
+        try
+        {
+            return json is JsonObject obj && obj.TryGetPropertyValue("method", out var node) ? StringOf(node) : null;
+        }
+        catch (ArgumentException)
+        {
+            return null; // the same name twice: which one the device takes is not known
+        }
     }
 
     /// <summary>JSON methods that only read, as the library names them.</summary>
@@ -231,7 +368,7 @@ public static class RequestSafety
         && (method.StartsWith("get", StringComparison.Ordinal) || method.StartsWith("list", StringComparison.Ordinal)
             || method is "status" or "systemready");
 
-    /// <summary>A SOAP request whose operation (the first element of the body) is a <c>Get*</c>.</summary>
+    /// <summary>A SOAP request whose one operation (the only element of the one body) is a <c>Get*</c>.</summary>
     private static bool IsSoapRead(string? xml)
     {
         if (string.IsNullOrWhiteSpace(xml))
@@ -242,10 +379,21 @@ public static class RequestSafety
         try
         {
             var root = XDocument.Parse(xml).Root;
-            var operation = root?.Name.LocalName == "Envelope"
-                ? root.Elements().FirstOrDefault(e => e.Name.LocalName == "Body")?.Elements().FirstOrDefault()
-                : null;
-            return operation is not null && operation.Name.LocalName.StartsWith("Get", StringComparison.Ordinal);
+            var bodies = root?.Name.LocalName == "Envelope" ? root.Elements().Where(e => e.Name.LocalName == "Body").ToList() : [];
+            var operations = bodies.Count == 1 ? bodies[0].Elements().ToList() : [];
+            return operations.Count == 1 && operations[0].Name.LocalName.StartsWith("Get", StringComparison.Ordinal);
+        }
+        catch (XmlException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsXml(string text)
+    {
+        try
+        {
+            return XDocument.Parse(text).Root is not null;
         }
         catch (XmlException)
         {

@@ -18,8 +18,9 @@ public sealed class RequestSafetyTests
         var command = Samples.Parse($$"""
             { "id": "custom.raw", "version": 1, "name": "Raw", "category": "Custom", "requires": [ { "api": "param-cgi", "minVersion": "1.0" } ],
               "writes": false, "fields": [],
-              "request": { "method": "{{method}}", "path": "{{path}}" }, "response": { "kind": "text" } }
+              "request": { "method": "{{method}}", "path": "/x" }, "response": { "kind": "text" } }
             """);
+        command.Request.Path = path; // as it is written, "\" and "%" included
         command.Writes = writes;
         command.Dangerous = dangerous;
         if (body is not null)
@@ -76,7 +77,6 @@ public sealed class RequestSafetyTests
     [InlineData("/axis-cgi/restart.cgi")]
     [InlineData("/axis-cgi/admin/restart.cgi")]
     [InlineData("/axis-cgi/firmwareupgrade.cgi?type=normal")]
-    [InlineData("/axis-cgi/factorydefault%2Ecgi")]
     [InlineData("/axis-cgi/Restart.CGI")]
     [InlineData("/axis-cgi/pwdgrp.cgi?action=remove&user=root")]
     [InlineData("/axis-cgi/pwdgrp.cgi?action=update&user=root&pwd=x")]
@@ -168,6 +168,276 @@ public sealed class RequestSafetyTests
             bare.Dangerous = false;
             Assert.True(flags == RequestSafety.Of(bare), $"{command.Id}: the library says {flags}, the request {RequestSafety.Of(bare)}");
         }
+    }
+
+    // ------------------------------------------------------------ the attacker's side
+
+    /// <summary>Ways to write a destructive request so that it looks like another one.</summary>
+    public static TheoryData<string> Disguises()
+    {
+        var data = new TheoryData<string>();
+        foreach (var (file, query) in new[]
+                 {
+                     ("factorydefault.cgi", string.Empty), ("hardfactorydefault.cgi", string.Empty), ("restart.cgi", string.Empty),
+                     ("firmwareupgrade.cgi", "?type=normal"), ("pwdgrp.cgi", "?action=remove&user=root"),
+                 })
+        {
+            var encodedDot = file.Replace(".", "%2E", StringComparison.Ordinal);
+            string[] paths =
+            [
+                $"/axis-cgi/{file}#x{query}", // what follows "#" is never sent
+                $"/axis-cgi/{file}{query}#x",
+                $"/axis-cgi/{file}#{query}",
+                $"/axis-cgi/{file}%23x{query}",
+                $"/axis-cgi/{file}%3Fx=1{query}",
+                $"/axis-cgi\\{file}{query}",
+                $"/axis-cgi%2F{file}{query}",
+                $"/axis-cgi%5C{file}{query}",
+                $"/axis-cgi/{encodedDot}{query}",
+                $"/axis-cgi/{encodedDot.ToLowerInvariant()}{query}",
+                $"/axis-cgi/{file.Replace(".", "%252E", StringComparison.Ordinal)}{query}",
+                $"/axis-cgi/x/../{file}{query}",
+                $"/local/../axis-cgi/{file}{query}",
+                $"/axis-cgi/x/%2e%2e/{file}{query}",
+                $"/axis-cgi/x/.%2E/{file}{query}",
+                $"/axis-cgi/jpg/image.cgi/../../{file}{query}",
+                $"/axis-cgi/./{file}{query}",
+                $"/axis-cgi//{file}{query}",
+                $"/axis-cgi/{file.ToUpperInvariant()}{query}",
+                $"/AXIS-CGI/{char.ToUpperInvariant(file[0])}{file[1..]}{query}",
+                $"/axis-cgi/{file}.{query}",
+                $"/axis-cgi/{file}..{query}",
+                $"/axis-cgi/{file}%20{query}",
+                $"/axis-cgi/{file};x=1{query}",
+                $"/axis-cgi/{file};.jpg{query}",
+                $"/axis-cgi/{file}%3B.jpg{query}",
+                $"/axis-cgi/{file}%00.jpg{query}",
+                $"/axis-cgi/{file}/x.jpg{query}",
+                $"/axis-cgi/{file}/list.cgi{query}",
+            ];
+            foreach (var path in paths)
+            {
+                data.Add(path);
+            }
+        }
+
+        return data;
+    }
+
+    [Theory]
+    [MemberData(nameof(Disguises))]
+    public void A_disguised_reset_restart_upgrade_or_account_change_is_dangerous_or_refused(string path)
+    {
+        var command = Raw("GET", path);
+
+        // The rule alone sees through it, as a GET and as a POST with a read in its body.
+        Assert.Equal(SafetyLevel.Dangerous, RequestSafety.Of(command));
+        Assert.Equal(SafetyLevel.Dangerous, RequestSafety.Of(Raw("POST", path, ReadBody, BodyTypes.Json)));
+
+        // And what the validator lets through is dangerous when it is sent.
+        if (CommandValidator.IsDevicePath(path))
+        {
+            Assert.Equal(SafetyLevel.Dangerous, Sent(command));
+        }
+        else
+        {
+            Assert.Throws<CommandValidationException>(() => CommandRenderer.Render(command, Samples.Values()));
+        }
+    }
+
+    [Theory]
+    [InlineData("/axis-cgi/factorydefault.cgi#x")]
+    [InlineData("/axis-cgi/param.cgi?action=list#&action=update")]
+    [InlineData("/axis-cgi/restart.cgi%23x")]
+    [InlineData("/axis-cgi/restart.cgi%3Fx")]
+    [InlineData("/axis-cgi%2Frestart.cgi")]
+    [InlineData("/axis-cgi%5Crestart.cgi")]
+    [InlineData("/axis-cgi/restart%2Ecgi")]
+    [InlineData("/axis-cgi/restart%2ecgi")]
+    [InlineData("/axis-cgi/restart%252Ecgi")]
+    [InlineData("/axis-cgi/x/%2e%2e/restart.cgi")]
+    [InlineData("/axis-cgi/./restart.cgi")]
+    [InlineData("/axis-cgi/restart.cgi.")]
+    [InlineData("/axis-cgi/restart.cgi%20")]
+    [InlineData("/axis-cgi/restart.cgi;x=1")]
+    [InlineData("/axis-cgi/restart.cgi%3Bx")]
+    [InlineData("/axis-cgi/restart.cgi%00.jpg")]
+    [InlineData("/axis-cgi/restart.cgi%0A")]
+    [InlineData("/axis-cgi/restart%c0%aecgi")]
+    [InlineData("/axis-cgi/restart.cgi%")]
+    [InlineData("/axis-cgi/restart.cgi%2")]
+    [InlineData("/axis-cgi/restart.cgi%zz")]
+    public void A_path_that_is_not_sent_as_it_is_written_is_refused(string path)
+    {
+        Assert.False(CommandValidator.IsDevicePath(path));
+        Assert.Contains(CommandValidator.PathProblem, CommandValidator.Validate(Raw("GET", path)));
+    }
+
+    [Theory]
+    [InlineData("restart")]
+    [InlineData("RESTART")]
+    [InlineData("x/../restart")]
+    [InlineData("x%2F..%2Frestart")]
+    [InlineData("restart.cgi#")]
+    [InlineData("restart.cgi?x=")]
+    [InlineData("restart.cgi;")]
+    [InlineData("restart.cgi/x")]
+    public void A_value_in_the_path_is_sent_escaped_and_judged_as_the_device_could_read_it(string value)
+    {
+        var command = Samples.Parse("""
+            { "id": "custom.cgi", "version": 1, "name": "Call a CGI", "category": "Custom", "requires": [ { "api": "param-cgi", "minVersion": "1.0" } ],
+              "writes": false, "fields": [ { "name": "cgi", "label": "CGI", "type": "string" } ],
+              "request": { "method": "GET", "path": "/axis-cgi/{{cgi}}.cgi" }, "response": { "kind": "text" } }
+            """);
+
+        var rendered = CommandRenderer.Render(command, Samples.Values(("cgi", value)));
+
+        Assert.Equal("axis-cgi/" + Uri.EscapeDataString(value) + ".cgi", rendered.RelativeUri);
+        Assert.Equal(SafetyLevel.Dangerous, RequestSafety.Of(command, rendered));
+    }
+
+    [Theory]
+    [InlineData("/axis-cgi/param.cgi?action=list&group=root.Brand")]
+    [InlineData("/axis-cgi/io/port.cgi?action=1%3A%2F")]
+    [InlineData("/axis-cgi/Restart.CGI")]
+    [InlineData("/axis-cgi/restart.cgi/x.jpg")]
+    [InlineData("/config/rest/profiles/v1/Front%20door/state")]
+    [InlineData("/local/objectanalytics/control.cgi")]
+    public void An_accepted_path_is_sent_as_it_is_written(string path)
+    {
+        Assert.True(CommandValidator.IsDevicePath(path));
+        using var request = CommandRenderer.Render(Raw("GET", path), Samples.Values()).ToHttpRequest();
+
+        var sent = new Uri(new Uri("https://10.0.0.48/"), request.RequestUri!);
+        Assert.Equal(path, sent.PathAndQuery);
+        Assert.Empty(sent.Fragment);
+
+        // What the rule guards against: the client drops what follows a "#".
+        Assert.Equal("/axis-cgi/factorydefault.cgi", new Uri(new Uri("https://10.0.0.48/"), new Uri("axis-cgi/factorydefault.cgi#x", UriKind.Relative)).PathAndQuery);
+    }
+
+    [Theory]
+    [InlineData("/axis-cgi/pwdgrp.cgi?action=get&action=remove&user=root")]
+    [InlineData("/axis-cgi/pwdgrp.cgi?action=get;action=remove&user=root")]
+    [InlineData("/axis-cgi/pwdgrp.cgi?Action=remove&user=root")]
+    [InlineData("/axis-cgi/pwdgrp.cgi?action=get&%61ction=remove&user=root")]
+    [InlineData("/axis-cgi/pwdgrp.cgi?action=%72emove&user=root")]
+    [InlineData("/axis-cgi/pwdgrp.cgi?action=get&ACTION=")]
+    [InlineData("/axis-cgi/param.cgi?action=list&action=update&root.Network.eth0.IPAddress=10.0.0.9")]
+    [InlineData("/axis-cgi/param.cgi?action=list;action=update&HTTPS.Enabled=no")]
+    [InlineData("/axis-cgi/param.cgi?action=list&Action=update&%4Eetwork.Enabled=no")]
+    public void A_second_action_in_the_query_counts(string path)
+    {
+        var command = Raw("GET", path);
+
+        Assert.Equal(SafetyLevel.Dangerous, RequestSafety.Of(command));
+        Assert.Equal(SafetyLevel.Dangerous, Sent(command));
+    }
+
+    [Theory]
+    [InlineData("/axis-cgi/opticssetup.cgi?autofocus=perform")]
+    [InlineData("/axis-cgi/opticssetup.cgi?rzoom=100")]
+    [InlineData("/axis-cgi/opticssetup.cgi?rfocus=-0.1")]
+    [InlineData("/axis-cgi/opticssetup.cgi")]
+    [InlineData("/axis-cgi/record/continuous/addconfiguration.cgi?diskid=SD_DISK&options=camera%3D1")]
+    [InlineData("/axis-cgi/record/continuous/removeconfiguration.cgi?profile=1")]
+    [InlineData("/axis-cgi/disks/checkdisk.cgi?schemaversion=1&diskid=SD_DISK")]
+    [InlineData("/axis-cgi/unknown.cgi?speed=5")]
+    [InlineData("/axis-cgi/unknown.cgi?action=list&speed=5")]
+    [InlineData("/axis-cgi/unknown.cgi?action=check")]
+    [InlineData("/axis-cgi/io/port.cgi?checkactive=1&speed=5")]
+    [InlineData("/axis-cgi/enablething.cgi")]
+    [InlineData("/axis-cgi/some/SetThing.cgi?schemaversion=1")]
+    [InlineData("/axis-cgi/some/resetcounters.cgi")]
+    [InlineData("/axis-cgi/some/uninstall.cgi/list.cgi")]
+    [InlineData("/local/someapp/settings.cgi")]
+    [InlineData("/local/someapp/api.cgi?cmd=wipe")]
+    [InlineData("/config/rest/thing/v1?speed=5")]
+    public void A_get_that_is_not_known_to_read_is_a_write(string path)
+    {
+        var command = Raw("GET", path);
+
+        Assert.Equal(SafetyLevel.Write, RequestSafety.Of(command));
+        Assert.Equal(SafetyLevel.Write, Sent(command));
+    }
+
+    [Theory]
+    [InlineData("/axis-cgi/unknown.cgi")]
+    [InlineData("/axis-cgi/unknown.cgi?action=list&group=Brand")]
+    [InlineData("/axis-cgi/unknown.cgi?action=get&schemaversion=1&camera=2")]
+    [InlineData("/axis-cgi/some/list.cgi?anything=1")]
+    [InlineData("/axis-cgi/some/getinfo.cgi?id=1")]
+    [InlineData("/axis-cgi/jpg/image.cgi?resolution=640x480&compression=30&camera=2&rotation=180")]
+    [InlineData("/axis-cgi/mjpg/video.cgi?fps=5&resolution=1280x720")]
+    [InlineData("/axis-cgi/serverreport.cgi?mode=zip_with_image")]
+    [InlineData("/axis-cgi/io/port.cgi?check=1,2")]
+    [InlineData("/axis-cgi/temperaturecontrol.cgi?device=heater&id=0&action=query")]
+    [InlineData("/local/someapp/api.cgi")]
+    public void A_plain_get_stays_a_read(string path)
+    {
+        var command = Raw("GET", path);
+
+        Assert.Equal(SafetyLevel.Read, RequestSafety.Of(command));
+        Assert.Equal(SafetyLevel.Read, Sent(command));
+    }
+
+    private const string ReadBody = """{"apiVersion":"1.0","method":"getAllProperties"}""";
+
+    [Fact]
+    public void A_request_reads_only_when_its_method_its_query_and_its_body_all_read()
+    {
+        // A POST that reads by its body, with a query that changes.
+        Assert.Equal(SafetyLevel.Write, Sent(Raw("POST", "/axis-cgi/io/port.cgi?action=2%3A%2F", ReadBody, BodyTypes.Json)));
+        Assert.Equal(SafetyLevel.Write, Sent(Raw("POST", "/axis-cgi/basicdeviceinfo.cgi?speed=5", ReadBody, BodyTypes.Json)));
+        Assert.Equal(SafetyLevel.Dangerous, Sent(Raw("POST", "/axis-cgi/param.cgi?action=update&Network.Enabled=no", ReadBody, BodyTypes.Json)));
+        Assert.Equal(SafetyLevel.Read, Sent(Raw("POST", "/axis-cgi/basicdeviceinfo.cgi", ReadBody, BodyTypes.Json)));
+
+        // A GET with a body: the device may read the body.
+        Assert.Equal(SafetyLevel.Write, Sent(Raw("GET", "/axis-cgi/time.cgi", """{"apiVersion":"1.0","method":"setDateTime","params":{}}""", BodyTypes.Json)));
+        Assert.Equal(SafetyLevel.Write, Sent(Raw("GET", "/axis-cgi/time.cgi", ReadBody, BodyTypes.Json)));
+        Assert.Equal(SafetyLevel.Write, Sent(Raw("GET", "/axis-cgi/time.cgi", "anything", BodyTypes.Text)));
+        Assert.Equal(SafetyLevel.Dangerous, Sent(Raw("GET", "/axis-cgi/firmwaremanagement.cgi", """{"apiVersion":"1.0","method":"factoryDefault"}""", BodyTypes.Json)));
+        Assert.Equal(SafetyLevel.Dangerous, Sent(Raw("GET", "/axis-cgi/param.cgi?action=list", """{"action":"update","root.Network.eth0.IPAddress":"10.0.0.9"}""", BodyTypes.Form)));
+        Assert.Equal(SafetyLevel.Write, RequestSafety.Of(Raw("GET", "/axis-cgi/time.cgi", ReadBody, BodyTypes.Json))); // the page says the same
+    }
+
+    [Theory]
+    [InlineData("action=update&root.Network.eth0.IPAddress=10.0.0.9", SafetyLevel.Dangerous)]
+    [InlineData("action=update\nHTTPS.Enabled=no", SafetyLevel.Dangerous)]
+    [InlineData("action=update&System.Boa%47roupPolicy.admin=http", SafetyLevel.Dangerous)]
+    [InlineData("action=update&Image.I0.Text.String=x", SafetyLevel.Write)]
+    [InlineData("action=list&group=Brand", SafetyLevel.Write)] // a POST with a text body is never a read
+    public void A_text_body_on_param_cgi_is_read_like_a_query(string body, SafetyLevel expected)
+    {
+        var command = Raw("POST", "/axis-cgi/param.cgi", body, BodyTypes.Text);
+
+        Assert.Equal(expected, RequestSafety.Of(command));
+        Assert.Equal(expected, Sent(command));
+
+        // A read in the query does not cover it, and a body that only says it is XML is read the same way.
+        Assert.Equal(expected, Sent(Raw("POST", "/axis-cgi/param.cgi?action=list", body, BodyTypes.Text)));
+        Assert.Equal(expected, Sent(Raw("POST", "/axis-cgi/param.cgi", body, BodyTypes.Xml)));
+    }
+
+    [Fact]
+    public void A_body_never_lowers_what_its_path_says()
+    {
+        const string soap = "<s:Envelope xmlns:s=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:a=\"http://www.axis.com/vapix/ws/action1\">{0}</s:Envelope>";
+        string Soap(string inner) => string.Format(System.Globalization.CultureInfo.InvariantCulture, soap, inner);
+
+        // Accounts without an action in the query: a text body that names a read does not make it one.
+        Assert.Equal(SafetyLevel.Dangerous, Sent(Raw("POST", "/axis-cgi/pwdgrp.cgi", "action=get", BodyTypes.Text)));
+        Assert.Equal(SafetyLevel.Dangerous, Sent(Raw("POST", "/axis-cgi/restart.cgi", ReadBody, BodyTypes.Json)));
+
+        // One SOAP read is a read; a second operation or a second body is not.
+        Assert.Equal(SafetyLevel.Read, Sent(Raw("POST", "/vapix/services", Soap("<s:Body><a:GetActionRules/></s:Body>"), BodyTypes.Xml)));
+        Assert.Equal(SafetyLevel.Write, Sent(Raw("POST", "/vapix/services", Soap("<s:Body><a:GetActionRules/><a:RemoveActionRule/></s:Body>"), BodyTypes.Xml)));
+        Assert.Equal(SafetyLevel.Write, Sent(Raw("POST", "/vapix/services", Soap("<s:Body><a:GetActionRules/></s:Body><s:Body><a:RemoveActionRule/></s:Body>"), BodyTypes.Xml)));
+        Assert.Equal(SafetyLevel.Write, Sent(Raw("POST", "/vapix/services?action=remove", Soap("<s:Body><a:GetActionRules/></s:Body>"), BodyTypes.Xml)));
+
+        // A JSON method named in another case is not a known read.
+        Assert.Equal(SafetyLevel.Write, Sent(Raw("POST", "/axis-cgi/time.cgi", """{"method":"GetDateTimeInfo"}""", BodyTypes.Json)));
+        Assert.Equal(SafetyLevel.Write, Sent(Raw("POST", "/axis-cgi/time.cgi", """{"Method":"getDateTimeInfo"}""", BodyTypes.Json)));
     }
 
     // ------------------------------------------------------------ the server

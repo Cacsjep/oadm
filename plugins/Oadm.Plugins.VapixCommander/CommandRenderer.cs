@@ -175,7 +175,7 @@ public static class CommandRenderer
             });
 
         var renderedPath = Text(request.Path, Uri.EscapeDataString);
-        if (!CommandValidator.IsDevicePath(renderedPath))
+        if (!CommandValidator.IsFilledDevicePath(renderedPath))
         {
             throw new CommandValidationException(CommandValidator.PathProblem); // every request goes to the device itself
         }

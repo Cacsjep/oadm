@@ -14,26 +14,67 @@ public static partial class CommandValidator
     private static readonly string[] ForbiddenHeaders = ["Authorization", "Proxy-Authorization", "Cookie", "Host", "Content-Length"];
 
     /// <summary>Field error of a path that could leave the device.</summary>
-    public const string PathProblem = "The path must start with / and stay on the device: no \"..\", \"//\", \"\\\" or host name.";
+    public const string PathProblem = "The path must start with / and stay on the device: no \"..\", \"//\", \"\\\", \"#\", \";\", encoded \"/\" or \".\", or host name.";
 
     /// <summary>
-    /// Whether a path template stays on the device's own address: starts with one "/", no backslash, no "//" anywhere,
-    /// no scheme or authority ("://", "@" before the query), no ".." segment and no control characters or spaces.
+    /// Whether a path template stays on the device's own address and is sent as it is written: starts with one "/", no
+    /// backslash, no "//" and no "#" anywhere (what follows a "#" is never sent), no scheme or authority ("://", "@"
+    /// before the query), no "." or ".." segment, no control characters or spaces, and before the query no ";", no
+    /// segment that ends with a dot or a space, and no escape that hides a part of the path (<see cref="HasNoHidingEscape"/>).
+    /// So the request that is judged (<see cref="RequestSafety"/>) is the request the device gets.
     /// </summary>
-    public static bool IsDevicePath(string? path)
+    public static bool IsDevicePath(string? path) => path is not null && IsFilledDevicePath(path) && HasNoHidingEscape(path);
+
+    /// <summary>
+    /// <see cref="IsDevicePath"/> for a path with its fields filled in: a value is sent escaped ("a/b" as "a%2Fb"), so
+    /// an escape is allowed here. <see cref="RequestSafety"/> reads it decoded.
+    /// </summary>
+    public static bool IsFilledDevicePath(string? path)
     {
         if (string.IsNullOrEmpty(path) || path[0] != '/')
         {
             return false;
         }
 
-        var q = path.IndexOf('?', StringComparison.Ordinal);
-        var pathPart = q < 0 ? path : path[..q];
+        var pathPart = PathPart(path);
         return !path.Contains('\\', StringComparison.Ordinal)
             && !path.Contains("//", StringComparison.Ordinal)
+            && !path.Contains('#', StringComparison.Ordinal)
             && !pathPart.Contains('@', StringComparison.Ordinal)
+            && !pathPart.Contains(';', StringComparison.Ordinal)
             && !path.Any(c => char.IsControl(c) || char.IsWhiteSpace(c))
-            && !path.Split('/', '?').Contains("..");
+            && !path.Split('/', '?').Contains("..")
+            && !Array.Exists(pathPart.Split('/'), segment => segment.EndsWith('.') || segment.EndsWith("%20", StringComparison.Ordinal));
+    }
+
+    private static string PathPart(string path)
+    {
+        var q = path.IndexOf('?', StringComparison.Ordinal);
+        return q < 0 ? path : path[..q];
+    }
+
+    /// <summary>
+    /// Whether every "%" before the query is an escape of two hex digits that is not a "/", "\", ".", "%", "#", "?",
+    /// ";", a control character or a byte no text has (%C0, %C1): a path written by hand needs none of them.
+    /// </summary>
+    private static bool HasNoHidingEscape(string path)
+    {
+        var pathPart = PathPart(path);
+        for (var i = pathPart.IndexOf('%', StringComparison.Ordinal); i >= 0; i = pathPart.IndexOf('%', i + 1))
+        {
+            if (i + 2 >= pathPart.Length || !Uri.IsHexDigit(pathPart[i + 1]) || !Uri.IsHexDigit(pathPart[i + 2]))
+            {
+                return false;
+            }
+
+            var value = Convert.ToInt32(pathPart.Substring(i + 1, 2), 16);
+            if (value < 0x20 || value is 0x7F or 0xC0 or 0xC1 || "/\\.%#?;".Contains((char)value, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     [GeneratedRegex("^[a-z0-9]+(\\.[a-z0-9-]+)+$", RegexOptions.CultureInvariant)]

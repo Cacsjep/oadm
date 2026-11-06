@@ -59,7 +59,8 @@ does not follow the listed major (PTZ `ptz-control` 1.x / 2.x, `privacy-mask` 2.
 
 `CommandRenderer` fills `{{field}}`:
 
-- path: URL-escaped; the filled path must stay on the device (`CommandValidator.IsDevicePath`);
+- path: URL-escaped; the path must stay on the device and be sent as written (`CommandValidator.IsDevicePath`: no
+  `#`, `;`, `..`, `//`, `\`, no encoded `/` or `.`), also with its fields filled in (`IsFilledDevicePath`);
 - query: escaped, "," and ":" kept readable;
 - headers: as they are; `Authorization`, `Proxy-Authorization`, `Cookie`, `Host` and `Content-Length` are refused (OADM
   logs in);

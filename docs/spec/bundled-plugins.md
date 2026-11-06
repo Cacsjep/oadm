@@ -126,9 +126,13 @@ command**. Command format: `Schema/command-format.md` + `command.schema.json` (t
   and each device re-checks a fresh API list before a write ("Missing API x. Nothing was sent."). The response kind
   decides how success, errors and values are read (Axis devices answer errors with HTTP 200).
 - What a request does is decided on the server from the request itself (`RequestSafety`, one class for the server and
-  the page): a read is a GET, or a POST with a JSON read method or a SOAP `Get*`, on a path that changes nothing; the
-  paths that restart, reset, upgrade, change accounts or the network are always dangerous. A command's `writes` and
-  `dangerous` only add to it. `tryRequest`, `rollout`, the rollout task (from its own payload) and Run VAPIX command
+  the page): an unknown request counts as changing. A read is a request whose every sign is known to read: a GET
+  without a body, or a POST with a JSON read method or one SOAP `Get*`; every `action` of the query and of a form or
+  text body; a path that changes nothing; only parameters that choose what is read. The paths that restart, reset,
+  upgrade, change accounts or the network are always dangerous. The path is judged as the device could read it (cut
+  at `#`, decoded, lower case, `..` resolved, no `;` parameters), and `CommandValidator.IsDevicePath` refuses a path
+  that is not sent as it is written (`#`, `;`, encoded `/` or `.`). A command's `writes` and `dangerous` only add to
+  it. `tryRequest`, `rollout`, the rollout task (from its own payload) and Run VAPIX command
   refuse a change without the user's confirmation and a dangerous request without the second one, both carried in the
   request ("... were not confirmed. Nothing was changed."); the page sends only the answers the user gave.
 - Saved commands: plugin setting `savedCommands`, at most 500, shared by all clients, export / import as library files.
