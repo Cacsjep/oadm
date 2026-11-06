@@ -98,8 +98,7 @@ public sealed class MergedPluginsTests : IAsyncLifetime
 
     [Theory]
     [InlineData("oadm.est")]
-    [InlineData("oadm.radius")]
-    [InlineData("OADM.Radius")]
+    [InlineData("OADM.Est")]
     public void AFolderOfAMergedPluginLeftFrom41IsSkipped(string id)
     {
         var root = Directory.CreateDirectory(Path.Combine(_temp, "plugins")).FullName;
@@ -146,7 +145,7 @@ public sealed class MergedPluginsTests : IAsyncLifetime
     public void TheMergedIdsAreKnown()
     {
         Assert.Equal("oadm.pki", MergedPlugins.MergedInto("oadm.est"));
-        Assert.Equal("oadm.pki", MergedPlugins.MergedInto("oadm.radius"));
+        Assert.Null(MergedPlugins.MergedInto("oadm.radius")); // never a package of its own in a release
         Assert.Null(MergedPlugins.MergedInto("oadm.pki"));
         Assert.Null(MergedPlugins.MergedInto("acme.est"));
         Assert.Null(MergedPlugins.MergedInto(null));
@@ -160,9 +159,8 @@ public sealed class MergedPluginsTests : IAsyncLifetime
 
         var taken = await MergedPlugins.TakeOverAsync(settings, "Plugins.Enabled", NullLogger.Instance, CancellationToken.None);
 
-        Assert.Equal(["oadm.est", "oadm.radius"], taken.Order());
+        Assert.Equal(["oadm.est"], taken);
         Assert.Equal("true", await settings.GetJsonAsync("Plugin:oadm.est:serverOn", CancellationToken.None)); // on when its plugin was on
-        Assert.Equal("false", await settings.GetJsonAsync("Plugin:oadm.radius:serverOn", CancellationToken.None));
         Assert.Equal(new Dictionary<string, bool> { ["oadm.live-view"] = true }, await EnabledAsync(settings));
         // Settings and records stay under the core plugin ids: they are PKI's now without a copy.
         foreach (var (key, value) in fixture.Where(f => f.Key.StartsWith("Plugin:", StringComparison.Ordinal)))
@@ -181,14 +179,13 @@ public sealed class MergedPluginsTests : IAsyncLifetime
     {
         var settings = _db.Get<ServerSettingsStore>();
         // A start that stopped after the setting was written, before the entry left Plugins.Enabled; or a choice made since.
-        await settings.SetJsonAsync("Plugins.Enabled", """{"oadm.est":true,"oadm.radius":true}""", CancellationToken.None);
+        await settings.SetJsonAsync("Plugins.Enabled", """{"oadm.est":true}""", CancellationToken.None);
         await settings.SetJsonAsync("Plugin:oadm.est:serverOn", "false", CancellationToken.None);
 
         var taken = await MergedPlugins.TakeOverAsync(settings, "Plugins.Enabled", NullLogger.Instance, CancellationToken.None);
 
-        Assert.Equal(["oadm.est", "oadm.radius"], taken.Order());
+        Assert.Equal(["oadm.est"], taken);
         Assert.Equal("false", await settings.GetJsonAsync("Plugin:oadm.est:serverOn", CancellationToken.None));
-        Assert.Equal("true", await settings.GetJsonAsync("Plugin:oadm.radius:serverOn", CancellationToken.None));
         Assert.Empty(await EnabledAsync(settings));
     }
 
@@ -201,7 +198,6 @@ public sealed class MergedPluginsTests : IAsyncLifetime
         Assert.Empty(await MergedPlugins.TakeOverAsync(settings, "Plugins.Enabled", NullLogger.Instance, CancellationToken.None));
 
         Assert.Null(await settings.GetJsonAsync("Plugin:oadm.est:serverOn", CancellationToken.None));
-        Assert.Null(await settings.GetJsonAsync("Plugin:oadm.radius:serverOn", CancellationToken.None));
         Assert.Equal(new Dictionary<string, bool> { ["oadm.live-view"] = false }, await EnabledAsync(settings));
     }
 

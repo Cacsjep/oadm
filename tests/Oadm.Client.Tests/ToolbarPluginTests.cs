@@ -36,11 +36,10 @@ public sealed class ToolbarPluginTests
 
     [Theory]
     [InlineData("oadm.est", false)]
-    [InlineData("oadm.radius", false)]
     [InlineData("acme.other", true)]
     public void A_client_folder_left_from_41_of_a_server_merged_into_pki_is_skipped(string id, bool loads)
     {
-        // docs/spec/pki.md "One plugin": the EST and 802.1X pages are PKI's now; an old folder never adds a second copy.
+        // docs/spec/pki.md "One plugin": the EST page is PKI's now; an old folder never adds a second copy.
         string root = Path.Combine(Path.GetTempPath(), "oadm-merged-client-" + Guid.NewGuid().ToString("N"));
         string folder = Directory.CreateDirectory(Path.Combine(root, id)).FullName;
         try

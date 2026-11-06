@@ -160,11 +160,11 @@ each app.
   oadm-site-node of the same version, Recommends pkexec, icon `oadm-site-node.png`); amd64 and arm64; notices
   `tools/Oadm.Notices --product site-node` (hand-written part `packaging/notices/site-node.md`, no LGPL part); no macOS
   package, no portable ZIP. The node only connects out: no firewall rule on either system.
-- **Plugin folders a version no longer ships** (`oadm.est` and `oadm.radius`, parts of PKI, `docs/spec/pki.md` "One
-  plugin") are removed on upgrade: the MSI removes the old version first (MajorUpgrade `afterInstallValidate`), dpkg
-  removes the old package's files and the server and client postinst remove what is left in those two folders, the .pkg's
-  server and client preinstall remove them (an installer upgrade keeps files the new package lacks). Server and client
-  skip such a folder anyway ("Merged into PKI").
+- **Plugin folders a version no longer ships** (`oadm.est`, a part of PKI, `docs/spec/pki.md` "One plugin") are removed
+  on upgrade: the MSI removes the old version first (MajorUpgrade `afterInstallValidate`), dpkg removes the old package's
+  files and the server and client postinst remove what is left in that folder, the .pkg's server and client preinstall
+  remove it (an installer upgrade keeps files the new package lacks). Server and client skip such a folder anyway
+  ("Merged into PKI").
 - **Service:** the server runs as root / LocalSystem (NTP and DHCP plugins need UDP 123 and 67). As a service the host
   integrates with the SCM and systemd (`Oadm.Server.Hosting.ServiceHosting`: `AddWindowsService`, `AddSystemd`, content
   root = app folder; no-ops on a console). `ServiceHosting.IsRunningAsService()` (Windows service, systemd, or macOS with

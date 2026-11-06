@@ -8,8 +8,8 @@ namespace Oadm.Core.Plugins;
 
 /// <summary>
 /// Plugin packages of OADM 4.1 that are parts of another package now (docs/spec/pki.md "One plugin"): the EST server
-/// (<c>oadm.est</c>) and the 802.1X server (<c>oadm.radius</c>) are core plugins of PKI (<c>oadm.pki</c>) with the same
-/// core plugin ids, so their settings, records, data folders, permissions and events keep their keys. A plugin folder of
+/// (<c>oadm.est</c>) is a core plugin of PKI (<c>oadm.pki</c>) with the same core plugin id, so its settings, records,
+/// data folder, permissions and events keep their keys. A plugin folder of
 /// such a package left from 4.1 is not loaded (<see cref="PluginLoader"/>, the client's loader keeps its own copy of the
 /// list); the package's on/off choice becomes the server's own stored choice once (<see cref="TakeOverAsync"/>).
 /// </summary>
@@ -28,7 +28,7 @@ public static partial class MergedPlugins
     public const string ServerOnSetting = "serverOn";
 
     /// <summary>The ids of the merged packages (= the ids of their core plugins).</summary>
-    public static IReadOnlyList<string> Ids { get; } = ["oadm.est", "oadm.radius"];
+    public static IReadOnlyList<string> Ids { get; } = ["oadm.est"];
 
     /// <summary>The package <paramref name="packageId"/> was merged into; null for every other package.</summary>
     public static string? MergedInto(string? packageId) =>

@@ -406,11 +406,11 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
   settings, records, data folder, events, permissions and services belong to the core plugin id, on/off and licenses to
   the package.
 - **Merged packages** (`Oadm.Core.Plugins.MergedPlugins`, the client's `ClientPluginLoader.MergedPackages`): a plugin
-  folder `oadm.est` or `oadm.radius` (the EST and 802.1X servers of OADM 4.1, now parts of PKI) is never loaded by the
-  server or the client, with one log line "... skipped: Merged into PKI" (not a load error; the installers remove such
-  folders). On every start, before the stored choices apply, `MergedPlugins.TakeOverAsync` moves an entry of either id in
-  `Plugins.Enabled` to the server's own choice (`Plugin:<id>:serverOn`, unless one is stored) and removes it from
-  `Plugins.Enabled` (idempotent).
+  folder `oadm.est` (the EST server of OADM 4.1, now a part of PKI) is never loaded by the server or the client, with one
+  log line "... skipped: Merged into PKI" (not a load error; the installers remove such a folder). On every start, before
+  the stored choices apply, `MergedPlugins.TakeOverAsync` moves its entry in `Plugins.Enabled` to the server's own choice
+  (`Plugin:oadm.est:serverOn`, unless one is stored) and removes it from `Plugins.Enabled` (idempotent). The 802.1X
+  server (`oadm.radius`) never shipped as a package of its own, so it is not in the list.
 
 ### Plugins on and off
 
