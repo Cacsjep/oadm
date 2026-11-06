@@ -32,7 +32,11 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Audit: failed logins with unknown user names are one entry per address and minute, with their count.
 - VAPIX Commander: the server decides whether a request changes a device or is dangerous, whatever the command says.
 - VAPIX Commander: a restart, reset, upgrade or user change always needs the dangerous confirmation, also in rollouts and event rules.
+- VAPIX Commander: a request OADM does not know counts as changing the device, so your own read may ask for a confirmation.
+- VAPIX Commander: a path with #, ; or an encoded / or . is refused; a saved command with such a path sends nothing until it is corrected.
+- Event rules: a VAPIX command that now counts as dangerous sends nothing until Allow dangerous commands is ticked.
 - Import configuration: settings areas OADM does not know are not imported, and the dialog names them.
+- Import configuration: users in a file are never imported, only the password policy.
 - Import configuration and Configure devices: DNS, network link, HTTPS ciphers and RTSP ports count as connection settings.
 - Install certificates: a private key goes to a device over HTTP only after Send the keys anyway was ticked.
 - Load test: a check ends when its device group changes, and a camera that leaves the group gets its exposure back at once.
@@ -59,6 +63,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Event log: stays within its size limit during a flood of events.
 - Event rules: a value of an event can no longer add a line to a Send TCP message.
 - Upgrade AXIS OS: one missed status check during the install is no longer reported as a rollback.
+- Upgrade AXIS OS: installing the version a device already runs is Done only after the device really restarted.
 - Upgrade AXIS OS: Cancel after the upload says that the device rolls back by itself and restarts.
 - Network settings and Assign IP address follow a device that changed its address before it answered.
 - Network settings and Assign IP address no longer say Nothing was changed when the device did not answer.
