@@ -651,8 +651,7 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
                             LogStreamProblem(_logger, problem);
                         }
 
-                        var picture = new Picture(image, frame.Codec, frame.Camera, decoder.UsesGpu);
-                        _ui.Post(() => OnPicture(session, picture));
+                        Offer(session, new Picture(image, frame.Codec, frame.Camera, decoder.UsesGpu));
                     }
                 }
 
@@ -696,6 +695,34 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
             {
                 decoder?.Dispose();
             }
+        }
+    }
+
+    /// <summary>
+    /// Stream thread: hands a decoded picture to the UI thread through the stream's one waiting place. A picture the UI
+    /// thread has not taken yet is replaced by the newer one and disposed, and only an empty place posts: while the UI
+    /// thread is busy one picture waits (about 8 MB at 1080p), never a queue of them.
+    /// </summary>
+    private void Offer(Session session, Picture picture)
+    {
+        Picture? replaced = Interlocked.Exchange(ref session.Waiting, picture);
+        if (replaced is null)
+        {
+            _ui.Post(() => ShowWaiting(session));
+        }
+        else
+        {
+            Interlocked.Increment(ref session.Skipped);
+            replaced.Image.Dispose();
+        }
+    }
+
+    /// <summary>UI thread: shows the stream's waiting picture (the newest one decoded).</summary>
+    private void ShowWaiting(Session session)
+    {
+        if (Interlocked.Exchange(ref session.Waiting, null) is { } picture)
+        {
+            OnPicture(session, picture);
         }
     }
 
@@ -785,7 +812,7 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
             return;
         }
 
-        _framesInWindow++;
+        _framesInWindow += 1 + Interlocked.Exchange(ref session.Skipped, 0); // the stream's rate: also the pictures a newer one replaced
         var elapsed = _time.GetElapsedTime(_windowStart, now);
         if (elapsed >= TimeSpan.FromSeconds(1))
         {
@@ -1025,6 +1052,12 @@ public sealed partial class LiveVideoViewModel : ObservableObject, IDisposable
     private sealed class Session(int id, LiveViewRequest request, StreamTarget target)
     {
         public long Bytes;
+
+        /// <summary>The decoded picture that waits for the UI thread; a newer one replaces it (<see cref="Offer"/>).</summary>
+        public Picture? Waiting;
+
+        /// <summary>Pictures a newer one replaced before the UI thread took them (counted into the details' frame rate).</summary>
+        public int Skipped;
 
         public int Id { get; } = id;
 

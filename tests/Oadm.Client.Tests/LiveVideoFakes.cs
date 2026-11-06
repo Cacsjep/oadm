@@ -134,14 +134,22 @@ internal sealed class LiveVideoFakes
 
         public string? GpuProblem { get; init; }
 
-        public LiveImage? Decode(LiveViewFrame frame) => new(new FakeImage(frame.Width, frame.Height), frame.Width, frame.Height);
+        /// <summary>Every picture this decoder produced, in order (filled on the stream thread).</summary>
+        public System.Collections.Concurrent.ConcurrentQueue<FakeImage> Images { get; } = new();
+
+        public LiveImage? Decode(LiveViewFrame frame)
+        {
+            var image = new FakeImage(frame.Width, frame.Height);
+            Images.Enqueue(image);
+            return new LiveImage(image, frame.Width, frame.Height);
+        }
 
         public void Dispose() => Disposed = true;
     }
 
     internal sealed class FakeImage(int width, int height) : IImage, IDisposable
     {
-        public bool Disposed { get; private set; }
+        public volatile bool Disposed;
 
         public Size Size => new(width, height);
 
@@ -149,6 +157,6 @@ internal sealed class LiveVideoFakes
         {
         }
 
-        public void Dispose() => Disposed = true;
+        public void Dispose() => Disposed = true; // a replaced picture: on the stream thread
     }
 }

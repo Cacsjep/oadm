@@ -144,7 +144,10 @@ web UI.
 - Client: FFmpeg decode on a background thread (low delay, slice threads), swscale to BGRA into a
   new `WriteableBitmap` (through `BgraConversion`: swscale writes into FFmpeg's own row-padded picture, then the rows are
   copied; straight into the bitmap it wrote 8 to 32 bytes past the buffer for widths not a multiple of 16, test
-  `SwscaleBoundsTests`), swapped on the UI thread, old bitmaps disposed. Reconnect with backoff
+  `SwscaleBoundsTests`), swapped on the UI thread, old bitmaps disposed. One picture per stream waits for the UI thread
+  (`LiveVideoViewModel.Offer`): a newer one replaces a waiting one, which is disposed, and only an empty place posts a
+  job, so a busy UI thread holds one bitmap (about 8 MB at 1080p), never a queue; the details' frame rate counts the
+  replaced pictures too. Reconnect with backoff
   1, 2, 4, 8, 10 s; permanent errors (unknown device, credentials, no common codec, certificate
   changed) stop with the server's message. If FFmpeg cannot be loaded the picture area shows
   "Video decoder not available on this platform" (no fallback).
@@ -167,7 +170,8 @@ web UI.
   (NVIDIA: d3d11va, dxva2, cuda decode both codecs). Tests: `GpuDecodingTests` (every device type decodes every picture or
   says why, the separate process and a crashing one), `LiveVideoViewModelTests`.
 - Tests: `LiveVideoViewModelTests` (resolution choice, Full, the silent swap, a failing or slow new stream, hidden and
-  shown, channels, reconnect and errors, details, controls and options, fullscreen), `LiveVideoViewHeadlessTests`
+  shown, channels, reconnect and errors, details, controls and options, fullscreen, one waiting picture while the UI
+  thread is busy), `LiveVideoViewHeadlessTests`
   (hover parts, controls, ring, error and no GPU warning, fullscreen and Esc), `LiveViewViewModelTests` (the side panel).
 - Fake mode replays recorded video of the development camera (H.265 or H.264) and reports two view areas for the
   P3265-V and four sensors plus quad view for the P3727-PLE.
