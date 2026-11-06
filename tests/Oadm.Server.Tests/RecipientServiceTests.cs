@@ -319,6 +319,7 @@ public sealed class RecipientServiceTests
         var rule = new RuleDefinition { Id = Guid.NewGuid(), Name = "Stop", Actions = [new RuleAction { ActionId = action.Id, Settings = new JsonObject { ["recipient"] = saved.Id } }] };
         var trigger = new ActionTrigger(string.Empty, "Test", null, null, null, true, DateTimeOffset.UtcNow, new Dictionary<string, string>());
 
+        Assert.Equal(TimeSpan.FromMinutes(5), host.Get<ActionRunner>().Options.StopWait); // the stop waits for the action, not for a clock
         host.Get<ActionRunner>().Dispatch(new RuleEdgeJob(rule, false, ActionEdge.Fired, null, true, trigger));
         await action.Running.Task.WaitAsync(TimeSpan.FromSeconds(30));
         await host.DisposeAsync();
