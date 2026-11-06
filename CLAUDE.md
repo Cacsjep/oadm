@@ -220,6 +220,8 @@ must never break.
   text or watching the MJPEG stream at 1 to 15 fps (watching readers by the CPU cores, 4 per site), on a usable graphics
   card, else on the CPU, which always works; the models are never in git (downloaded and checked at build); events Text
   read, No text read and Reader problem for the rules; read only, pictures never stored.
+- **[Text recognition: rows](docs/spec/ocr-multi-line.md)** (spec, not built): rows of an area from the rotated boxes, at any
+  turn, always on, no model; `Text read` carries the rows with line breaks, `Text` never does; no new event value.
 - **[Recipients](docs/spec/recipients.md)**: shared targets of event rule actions (HTTP, Email, TCP, MQTT, Modbus, OPC
   UA, declared by plugins, at most 200), for MQTT, Modbus and OPC UA one shared connection per recipient
   ([recipient sessions](docs/spec/recipient-sessions.md)); a rule keeps a link, the host merges the recipient's fields

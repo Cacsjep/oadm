@@ -171,6 +171,8 @@ model (later, as a choice per reader).
 
 ### Several lines
 
+Rows at any turn, with line breaks in `Text read`: [ocr-multi-line.md](ocr-multi-line.md) (spec, not built).
+
 An area can hold several lines. Its lines are ordered top to bottom, left to right; each keeps its box and confidence
 (shown on the page, one line per row). For the events the lines are joined with a space, a line ending in "-" joined
 without one ("DECAF-" and "FEINATO" give "DECAF-FEINATO"), so a rule's "contains" finds a word on any line; at most 500
