@@ -24,7 +24,9 @@ internal sealed class FakePlc : IAsyncDisposable
     public FakePlc()
     {
         _listener.Start();
-        _loop = Task.Run(RunAsync);
+
+        // Started here, not on another thread: the accept is waiting before a test can end and stop the listener.
+        _loop = RunAsync();
     }
 
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
