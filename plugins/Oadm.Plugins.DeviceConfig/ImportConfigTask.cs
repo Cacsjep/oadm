@@ -10,7 +10,8 @@ namespace Oadm.Plugins.DeviceConfig;
 
 /// <summary>
 /// "Import configuration" (Maintenance, dialog): imports a configuration file of the same model into the device, one settings
-/// area at a time, always as a merge and without the device's own network identity (<see cref="ConfigIdentity"/>). The device
+/// area at a time, always as a merge and without the device's own network identity (<see cref="ConfigIdentity"/>). Only the
+/// areas OADM knows are sent (<see cref="ConfigSections.Known"/>). The device
 /// validates each area itself; OADM shows its answer. Steps: Read configuration file, Check compatibility, Import &lt;area&gt;
 /// (one per area; a failing area does not stop the others), Import connection settings (only when chosen, always last: it can
 /// cut OADM off from the device), Verify configuration.
@@ -57,7 +58,10 @@ public sealed class ImportConfigTask : ITaskPlugin
 
     public string? NotSupportedReason(IDeviceInfo device) => DeviceConfigSupport.NotSupportedReason(device);
 
-    /// <summary>Importing the connection settings (HTTPS, ports, login method, 802.1X) is a right of its own.</summary>
+    /// <summary>
+    /// Importing the connection settings (HTTPS, ports, login method, 802.1X, DNS, the network link: every parameter of
+    /// <see cref="DangerousParameters"/>) is a right of its own.
+    /// </summary>
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
     [
         new(DeviceConfigPermissions.Import, "Import configuration", "Import settings from a configuration file, without the connection settings."),
@@ -125,7 +129,7 @@ public sealed class ImportConfigTask : ITaskPlugin
             }
 
             available = await ConfigApi.DiscoverAsync(ctx.Vapix, ct).ConfigureAwait(false);
-            if (!sections.Any(key => file.Data[ConfigSections.SourceKey(key)] is JsonObject && available.Contains(ConfigSections.SourceKey(key))))
+            if (!sections.Any(key => ConfigSections.IsKnown(key) && file.Data[ConfigSections.SourceKey(key)] is JsonObject && available.Contains(ConfigSections.SourceKey(key))))
             {
                 throw new ConfigDeviceException("None of the settings in the file exist on this device. Nothing was changed.");
             }
@@ -138,6 +142,13 @@ public sealed class ImportConfigTask : ITaskPlugin
         foreach (var key in sections)
         {
             var name = Steps.Import(key);
+            if (!ConfigSections.IsKnown(key))
+            {
+                // An area OADM does not know the identity values of: never sent, whatever the payload asks for.
+                ctx.SkipStep(name, ConfigSections.UnknownReason);
+                continue;
+            }
+
             var target = ConfigSections.SourceKey(key);
             if (file.Data[target] is not JsonObject section)
             {

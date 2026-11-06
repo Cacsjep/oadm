@@ -56,15 +56,22 @@ The export contains values that belong to **one device** and some that cannot be
 
 - Identity: `Network.HostName`, `Network.IPAddress`, `Network.SubnetMask`, `Network.DefaultRouter`, `Network.Broadcast`,
   `Network.BootProto`, `Network.Bonjour.FriendlyName`, `Network.UPnP.FriendlyName` (contains the MAC address),
-  `Network.VolatileHostName.*`. Imported as they are, one file would give every device the same host name and, with
-  `BootProto=none`, the same IP address.
+  `Network.VolatileHostName.*`, `Network.DNSUpdate.DNSName`. Imported as they are, one file would give every device the
+  same host name and, with `BootProto=none`, the same IP address.
 - Read-only or runtime: `Network.DHCP.VendorClass` (model and AXIS OS version), `SNMP.EngineBoots`, `SNMP.InitialUserPasswdSet`,
   `power-settings` `powerStatus`.
 - Derived from the MAC address: the multicast addresses `Network.RTPCollection.R<n>.VideoAddress` / `AudioAddress`.
-- **Connection settings** decide whether OADM can still reach and log in to the device: `HTTPS.Enabled`, `HTTPS.Port`,
-  `System.BoaPort` (HTTP port), `System.BoaGroupPolicy.*` (HTTP / HTTPS per user group), `System.WebInterfaceDisabled`,
-  `Network.HTTP.AuthenticationPolicy`, `Network.IPv6.Enabled`, `Network.InterfaceCollection.I<n>.dot1x.Enabled`
-  (`ConfigIdentity.ConnectionPaths`).
+- **Connection settings** decide whether OADM can still reach and log in to the device. They are the parameters of
+  `DangerousParameters`, the one table Configure devices warns about and asks its `dangerous` right for
+  (`ConfigIdentity.IsConnection`): `HTTPS.*` (ciphers too), `System.BoaPort` and `System.AlternateBoaPort` (HTTP ports),
+  `System.BoaGroupPolicy.*` (HTTP / HTTPS per user group), `System.HTTP2.*`, `System.WebInterfaceDisabled`,
+  `Network.HTTP.*`, `Network.IPv6.*`, `Network.Enabled`, `Network.Media`, DNS (`Network.DNSServer1` / `2`,
+  `Network.DomainName`, `Network.Resolver.*`), the RTSP and RTSPS port and on / off, `Network.Filter.*`, and of every
+  network interface `Link.*` (MTU) and `dot1x.*`. A value of `param.v2` is named like its parameter: the item `I0` of
+  `InterfaceCollection` is `Network.Interface.I0`. In the recorded export: 30 values.
+- **Areas OADM does not know**: only the seven areas above are imported (`ConfigSections.Known`). Any other
+  `<api>.v<n>` object of a file (another API, another major version) is never sent: OADM does not know its identity
+  values, and one file goes to many devices.
 
 ### Decisions
 
@@ -76,7 +83,8 @@ The export contains values that belong to **one device** and some that cannot be
 | Same model only | A device of another model than the file's `metadata.prodNbr` is refused ("Nothing was changed"). Other AXIS OS versions are allowed. |
 | The device validates | OADM only uses `$export` / `$import` and does not check the file against the device's OpenAPI schema; it removes the identity values, sends each area and shows the device's answer per step. |
 | Two import modes | One `.json` file applied to every selected device of its model, or the ZIP of a multi-device export where each device gets its own file back (matched by MAC address). |
-| Connection settings | Their own area, off by default: listed after the file's areas (unchecked) with a warning; unchecked, their values are left out of "Network and system settings" and of the verify like identity values; checked, they are written last in their own step and the confirmation warns. |
+| Connection settings | Their own area, off by default: listed after the file's areas (unchecked) with a warning; unchecked, their values are left out of "Network and system settings" and of the verify like identity values; checked, they are written last in their own step and the confirmation warns. Which values: `DangerousParameters`, shared with Configure devices, so both ask for their restricted right (`connection`, `dangerous`) for the same parameters. |
+| Known areas only | An area of a file that is not one of the seven is shown as not imported ("Not imported: firewall.v1. OADM does not import these settings.") and never sent; the task skips it too when a payload names it ("OADM does not import these settings"). |
 
 ### Export
 
@@ -107,12 +115,15 @@ The export contains values that belong to **one device** and some that cannot be
   Status ("Ready", "No file for this device", "Two files for this device", "Not a device configuration file",
   "Other model: the file is for AXIS P3265-V"). Read off the UI thread, matched entries only.
 - Settings card: one check box per area (all on except "Connection settings", in columns): "Network and system settings
-  (1,245 values)" for one file (values that would be imported), names only for a ZIP; "Connection settings (10 values)"
-  last when the parameters have connection values, with the warning chip "Connection settings (HTTPS, HTTP port, login
-  method, IEEE 802.1X, IPv6, web interface) can make the devices unreachable.". Notes below, only when they apply: "Host name, IP address and
+  (1,245 values)" for one file (values that would be imported), names only for a ZIP; "Connection settings (30 values)"
+  last when the parameters have connection values, with the warning chip "Connection settings (HTTPS, ports, login
+  method, IEEE 802.1X, IPv6, DNS, network link, web interface) can make the devices unreachable.". Only the areas OADM
+  knows are listed. Notes below, only when they apply: "Host name, IP address and
   device names stay as they are on each device." (parameters in the file), "The file has no passwords. Event recipients
-  that need one must get it again." (event recipients), "2 of 6 devices are other models and are left out." / "None of
-  the selected devices is an AXIS ...".
+  that need one must get it again." (event recipients), "Not imported: firewall.v1. OADM does not import these
+  settings." (areas OADM does not know), "2 of 6 devices are other models and are left out." / "None of
+  the selected devices is an AXIS ...". A file with no known area keeps Import disabled ("The file has no settings OADM
+  imports").
 - Import (primary, disabled with the reason as tooltip) asks in `ui:MessageWindow`: "Import the configuration into 4
   devices? The settings in the file replace the current ones." (+ " The devices may become unreachable." when Connection
   settings is checked), uploads the file (`ITaskDialogContext.UploadAsync`, progress
@@ -133,7 +144,8 @@ The export contains values that belong to **one device** and some that cannot be
    time zone, Import power settings, Import password policy): the area without identity and read-only values
    (`ConfigIdentity`), sent as `PATCH /config/rest/$import?importType=merge` with `{"data":{"<key>":{...}}}` (the export's
    own format, one area per request; 60 s). Skipped "Not in the file" / "This device does not have these settings" /
-   "Nothing to import". Device `warnings` -> step Warning with the first 3 (all in the task log); `information` -> the task
+   "Nothing to import" / "OADM does not import these settings" (an area that is not one of the seven, step "Import
+   <key>"). Device `warnings` -> step Warning with the first 3 (all in the task log); `information` -> the task
    log. An error (HTTP status or `"status":"error"`) fails the step with "<HTTP text>: <device message>", a timeout or lost
    connection with the shared device texts ("Timeout after 60 s", "Unreachable - ..."); the next areas still run and the
    task ends Failed "<area>: <error>" (+N more failed). A changed certificate stops the task (`DeviceMessages.CertificateChanged`):
@@ -184,7 +196,7 @@ strings and other names with "pass", "secret" or "community" are masked like pas
 | Values | From the source only (a device, default the first selected one, or a file), like ADM. A checked parameter writes that value to every device. Typing a value checks the parameter. |
 | Several models | Definitions are read once per model and AXIS OS of the selection (the source's group from its read): shown are the parameters every group has (check box "Show parameters that not every selected device has"), choices every group shares (info icon "Only the choices every selected device has."), ranges narrowed to the overlap. A group that cannot be read is a note; its devices check the settings when they run. |
 | Not configurable | Type flags `internal`, `hidden`, `readonly`, `const`, `writeonly`, and write level 7 (the last digit of `securityLevel`: Brand, AXIS OS version, serial number "7707"). AXIS P3265-V 12.11.77: 879 of 1,518 parameters; M3215-LVE 12.11.77: 874. |
-| Dangerous parameters | Every writable parameter is offered. `DangerousParameters` names the network identity (addresses, subnet, router, IPv6, host name, DNS, DHCP, device names) and the connection (HTTPS, `Network.HTTP.*`, 802.1X, RTSP port, the IP address filter `Network.Filter.*`): amber icon with the reason, the overview warns, Apply asks ("Apply anyway"), written last in their own step, permission `dangerous` (Operator no). |
+| Dangerous parameters | Every writable parameter is offered. `DangerousParameters` names the network identity (addresses, subnet, router, IPv6, host name, DNS, DHCP, device names) and the connection (HTTPS, `Network.HTTP.*`, 802.1X, RTSP port, the IP address filter `Network.Filter.*`): amber icon with the reason, the overview warns, Apply asks ("Apply anyway"), written last in their own step, permission `dangerous` (Operator no). Every network interface counts like the first (`Network.Interface.I1.dot1x.*` like `I0`). The same table decides the "Connection settings" area of Import configuration. |
 | The source device | When the source is one of the selected devices it keeps its own action rules, schedules and stream profiles (the task skips those steps there: "This is the source device", payload `SourceDeviceId`); writing them back would only remove and recreate them. Its parameters are set like on every device. With only the source selected, the two tabs offer nothing ("These are the own settings of 10.0.0.48; they are already on it."). |
 | Addresses and names | Values that must differ per device (`Network.IPAddress`, `Network.IPv6.IPAddress`, `Network.HostName`, the Bonjour, UPnP and DNS update names; `DangerousParameters.IsPerDevice`) are not offered when several devices are selected (no note, like ADM), and left out of a file with the note "Addresses and names differ per device: use Network settings or Assign IP address."; for one device they stay, with the warning. |
 | Passwords | The device never sends a password back: a checked password parameter needs a value ("Enter the password."), in the dialog and again on the device side, so an empty one never clears it on every device. |

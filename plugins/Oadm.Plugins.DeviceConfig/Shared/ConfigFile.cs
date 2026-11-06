@@ -36,9 +36,10 @@ public sealed partial class ConfigFile
         Data = data;
         Model = model;
         FirmwareVersion = firmware;
-        var sections = data.Where(p => IsSectionKey(p.Key) && p.Value is JsonObject)
+        var sections = data.Where(p => ConfigSections.IsKnown(p.Key) && p.Value is JsonObject)
             .Select(p => new ConfigSection(p.Key, ConfigSections.Name(p.Key), ConfigIdentity.CountImported(p.Key, p.Value!)))
             .ToList();
+        UnknownSections = [.. data.Where(p => IsSectionKey(p.Key) && p.Value is JsonObject && !ConfigSections.IsKnown(p.Key)).Select(p => p.Key)];
         if (data[ConfigSections.Param] is JsonObject param && ConfigIdentity.CountImported(ConfigSections.Connection, param) is > 0 and var count)
         {
             sections.Add(new ConfigSection(ConfigSections.Connection, ConfigSections.Name(ConfigSections.Connection), count));
@@ -56,8 +57,14 @@ public sealed partial class ConfigFile
     /// <summary><c>metadata.fwVersion</c>.</summary>
     public string? FirmwareVersion { get; }
 
-    /// <summary>Settings areas in file order, then <see cref="ConfigSections.Connection"/> when the parameters have connection values.</summary>
+    /// <summary>
+    /// The settings areas OADM imports (<see cref="ConfigSections.Known"/>) in file order, then
+    /// <see cref="ConfigSections.Connection"/> when the parameters have connection values.
+    /// </summary>
     public IReadOnlyList<ConfigSection> Sections { get; }
+
+    /// <summary>Areas of the file OADM does not know ("firewall.v1"): shown as not imported, never sent.</summary>
+    public IReadOnlyList<string> UnknownSections { get; }
 
     /// <summary>"From AXIS P3265-V, AXIS OS 12.11.77".</summary>
     public string SourceText => "From " + ModelNames.Display(Model) + (string.IsNullOrWhiteSpace(FirmwareVersion) ? string.Empty : ", AXIS OS " + FirmwareVersion);
@@ -147,9 +154,32 @@ public static class ConfigSections
 
     /// <summary>
     /// Not an area of the file: the values of <c>param.v2</c> that decide how OADM reaches the device
-    /// (<see cref="ConfigIdentity.ConnectionPaths"/>). Imported only when chosen, as an area of its own and last.
+    /// (<see cref="DangerousParameters"/>, the table of Configure devices). Imported only when chosen, as an area of its
+    /// own and last.
     /// </summary>
     public const string Connection = "connection";
+
+    /// <summary>
+    /// The areas OADM imports: the ones it knows the identity and read-only values of. Any other <c>&lt;api&gt;.v&lt;n&gt;</c> of a
+    /// file is never sent (<see cref="UnknownReason"/>): its values would go to every device unfiltered.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Known =
+    [
+        Param, ActionRules, "event-schedules.v2", "event-mqtt-bridge.v2", "time.v2", PowerSettings, "user-management.v2",
+    ];
+
+    /// <summary>Why an area of a file is not imported.</summary>
+    public const string UnknownReason = "OADM does not import these settings";
+
+    /// <summary>An area OADM imports, or <see cref="Connection"/>.</summary>
+    public static bool IsKnown(string key) => key == Connection || Known.Contains(key, StringComparer.Ordinal);
+
+    /// <summary>"Not imported: firewall.v1, ssh.v2. OADM does not import these settings."; null without unknown areas.</summary>
+    public static string? UnknownNote(IReadOnlyCollection<string> keys)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        return keys.Count == 0 ? null : "Not imported: " + string.Join(", ", keys) + ". " + UnknownReason + ".";
+    }
 
     public static string Name(string key) => key switch
     {
@@ -186,6 +216,7 @@ public static class ConfigIdentity
         ["Network", "Bonjour", "FriendlyName"],
         ["Network", "UPnP", "FriendlyName"],
         ["Network", "VolatileHostName"],
+        ["Network", "DNSUpdate", "DNSName"],
         ["Network", "DHCP", "VendorClass"],
         ["Network", "IPv6", "IPAddress"],
         ["Network", "IPv6", "DefaultRouter"],
@@ -208,21 +239,13 @@ public static class ConfigIdentity
     ];
 
     /// <summary>
-    /// Values of <c>param.v2</c> that decide whether OADM can still reach and log in to the device: HTTPS on and its port,
-    /// the HTTP port, which user groups may use HTTP or HTTPS, the web interface, the login method, IPv6 and IEEE 802.1X.
-    /// Left out of "Network and system settings" and of its verify; imported only as <see cref="ConfigSections.Connection"/>.
+    /// Whether a value of <c>param.v2</c> decides if OADM can still reach and log in to the device: HTTPS, the web server's
+    /// ports, which user groups may use HTTP or HTTPS, the web interface, the login method, IEEE 802.1X, RTSP, IPv6, DNS and
+    /// the network link. The one table of <see cref="DangerousParameters"/>, shared with Configure devices, by the
+    /// parameter's name ("Network.Interface.I0.dot1x.Enabled" for the item I0 of <c>InterfaceCollection</c>). Such values
+    /// are left out of "Network and system settings" and of its verify; imported only as <see cref="ConfigSections.Connection"/>.
     /// </summary>
-    public static readonly IReadOnlyList<string[]> ConnectionPaths =
-    [
-        ["HTTPS", "Enabled"],
-        ["HTTPS", "Port"],
-        ["System", "BoaPort"],
-        ["System", "BoaGroupPolicy"],
-        ["System", "WebInterfaceDisabled"],
-        ["Network", "HTTP", "AuthenticationPolicy"],
-        ["Network", "IPv6", "Enabled"],
-        ["Network", "InterfaceCollection", "*", "dot1x", "Enabled"],
-    ];
+    public static bool IsConnection(string parameterName) => DangerousParameters.IsDangerous(parameterName);
 
     /// <summary>
     /// Read-only parts of <c>power-settings.v2</c>. <c>poeAllocationRequest</c> is written: a Q3546-LVE (AXIS OS 12.11.118)
@@ -243,15 +266,152 @@ public static class ConfigIdentity
         ArgumentNullException.ThrowIfNull(section);
         if (key == ConfigSections.Connection)
         {
-            return Keep(Clean(ConfigSections.Param, section, ParamPaths), ConnectionPaths, 0) ?? new JsonObject();
+            return KeepConnection(Clean(ConfigSections.Param, section, ParamPaths), string.Empty) ?? new JsonObject();
         }
 
-        return Clean(key, section, key switch
+        var copy = Clean(key, section, key switch
         {
-            ConfigSections.Param => [.. ParamPaths, .. ConnectionPaths],
+            ConfigSections.Param => ParamPaths,
             ConfigSections.PowerSettings => PowerPaths,
             _ => [],
         });
+        if (key == ConfigSections.Param)
+        {
+            RemoveConnection(copy, string.Empty);
+        }
+
+        return copy;
+    }
+
+    private const string CollectionSuffix = "Collection";
+
+    /// <summary>The parameter name below <paramref name="parent"/>: "Network" + "HostName" = "Network.HostName".</summary>
+    private static string Join(string parent, string name) => parent.Length == 0 ? name : parent + "." + name;
+
+    /// <summary>
+    /// The parameter name of a collection item: the collection without "Collection" and the item's <c>groupId</c>
+    /// ("Network.Interface.I0" for <c>InterfaceCollection</c>, as param.cgi names it).
+    /// </summary>
+    private static string ItemName(string parent, string collection, JsonNode? item, int index)
+    {
+        var name = collection.EndsWith(CollectionSuffix, StringComparison.Ordinal) && collection.Length > CollectionSuffix.Length
+            ? collection[..^CollectionSuffix.Length]
+            : collection;
+        var id = item is JsonObject obj && obj[GroupId] is JsonValue value && value.TryGetValue<string>(out var text) && text.Length > 0
+            ? text
+            : "I" + index.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return Join(parent, name) + "." + id;
+    }
+
+    /// <summary>
+    /// Takes the connection values out of a copy of <c>param.v2</c>. Returns true when <paramref name="node"/> itself is
+    /// to be removed: a connection value, or a group or collection item that held nothing else.
+    /// </summary>
+    private static bool RemoveConnection(JsonNode? node, string name)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                var before = obj.Count;
+                foreach (var (key, value) in obj.ToList())
+                {
+                    if (key == GroupId)
+                    {
+                        continue;
+                    }
+
+                    var remove = value is JsonArray array ? RemoveConnection(array, name, key) : RemoveConnection(value, Join(name, key));
+                    if (remove)
+                    {
+                        obj.Remove(key);
+                    }
+                }
+
+                return obj.Count < before && obj.All(p => p.Key == GroupId);
+            case JsonArray:
+                return false; // an array is handled with its name
+            default:
+                return name.Length > 0 && IsConnection(name);
+        }
+    }
+
+    private static bool RemoveConnection(JsonArray array, string parent, string collection)
+    {
+        if (array.Count == 0)
+        {
+            return false;
+        }
+
+        if (!array.All(item => item is JsonObject))
+        {
+            return IsConnection(Join(parent, collection)); // a list of values is one parameter
+        }
+
+        for (var i = array.Count - 1; i >= 0; i--)
+        {
+            if (RemoveConnection(array[i], ItemName(parent, collection, array[i], i)))
+            {
+                array.RemoveAt(i);
+            }
+        }
+
+        return array.Count == 0;
+    }
+
+    /// <summary>
+    /// A copy with only the connection values, null when there are none. Collection items keep their <c>groupId</c>: the
+    /// device matches items by it.
+    /// </summary>
+    private static JsonNode? KeepConnection(JsonNode? node, string name)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                var result = new JsonObject();
+                foreach (var (key, value) in obj)
+                {
+                    if (key == GroupId)
+                    {
+                        continue;
+                    }
+
+                    var kept = value is JsonArray array ? KeepConnection(array, name, key) : KeepConnection(value, Join(name, key));
+                    if (kept is not null)
+                    {
+                        result[key] = kept;
+                    }
+                }
+
+                return result.Count == 0 ? null : result;
+            case null or JsonArray:
+                return null;
+            default:
+                return name.Length > 0 && IsConnection(name) ? node.DeepClone() : null;
+        }
+    }
+
+    private static JsonArray? KeepConnection(JsonArray array, string parent, string collection)
+    {
+        if (!array.All(item => item is JsonObject))
+        {
+            return array.Count > 0 && IsConnection(Join(parent, collection)) ? (JsonArray)array.DeepClone() : null;
+        }
+
+        var list = new JsonArray();
+        for (var i = 0; i < array.Count; i++)
+        {
+            if (KeepConnection(array[i], ItemName(parent, collection, array[i], i)) is JsonObject kept)
+            {
+                if (array[i] is JsonObject source && source[GroupId] is { } groupId)
+                {
+                    kept[GroupId] = groupId.DeepClone();
+                }
+
+                list.Add(kept);
+            }
+        }
+
+        return list.Count == 0 ? null : list;
     }
 
     private static JsonNode Clean(string key, JsonNode section, IReadOnlyList<string[]> paths)
@@ -317,54 +477,6 @@ public static class ConfigIdentity
     };
 
     private const string GroupId = "groupId";
-
-    /// <summary>
-    /// A copy with only the values on <paramref name="paths"/> ("*" = every collection item), null when there are none.
-    /// Collection items keep their <c>groupId</c>: the device matches items by it.
-    /// </summary>
-    private static JsonNode? Keep(JsonNode? node, IReadOnlyList<string[]> paths, int index)
-    {
-        switch (node)
-        {
-            case JsonObject obj:
-                var result = new JsonObject();
-                foreach (var (name, value) in obj)
-                {
-                    var below = paths.Where(p => p[index] == name).ToList();
-                    if (below.Count == 0)
-                    {
-                        continue;
-                    }
-
-                    var kept = below.Any(p => p.Length == index + 1) ? value?.DeepClone() : Keep(value, below, index + 1);
-                    if (kept is not null)
-                    {
-                        result[name] = kept;
-                    }
-                }
-
-                return result.Count == 0 ? null : result;
-            case JsonArray array:
-                var items = paths.Where(p => p[index] == "*" && p.Length > index + 1).ToList();
-                var list = new JsonArray();
-                foreach (var item in array)
-                {
-                    if (items.Count > 0 && Keep(item, items, index + 1) is JsonObject kept)
-                    {
-                        if (item is JsonObject source && source[GroupId] is { } groupId)
-                        {
-                            kept[GroupId] = groupId.DeepClone();
-                        }
-
-                        list.Add(kept);
-                    }
-                }
-
-                return list.Count == 0 ? null : list;
-            default:
-                return null;
-        }
-    }
 
     private static void Remove(JsonNode? node, string[] path, int index)
     {
