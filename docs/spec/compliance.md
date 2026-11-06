@@ -57,8 +57,7 @@ Built-in feature (not a plugin): which devices need attention at first glance. C
   order 5,000 per transaction, the client keeps ids and repeated texts once. Measured at 30,000 devices: server enable 5.4 s, results written in 19.5 s,
   1,000 device changes 0.6 s (`ComplianceScaleTests`); client 1.5 million results applied in 0.8 s, filter, tab, card and
   search 27 ms (`ComplianceTests`, Perf); read checks of 30,000 devices at 32 parallel take about 16 minutes a round.
-- Developer guide: website Developers > Compliance checks (`website/src/content/docs/dev/compliance-checks.md`);
-  `plugins/README.md` "Compliance check types".
+- Developer guide: website Developers > Compliance checks (`website/src/content/docs/dev/compliance-checks.md`).
 - Tests: `tests/Oadm.Core.Tests/Compliance` (+ Perf `ComplianceScaleTests` the device limit x 50 checks; `ComplianceOwnerTests`
   and Perf `ComplianceOwnerScaleTests`: the device limit, a group of half of it with 10 checks; measured at 30,000 devices: the group user's list 0.1 ms, the
   results snapshot filtered in 7 ms, a change of the group's rules moves 150,000 results in about 30 s),

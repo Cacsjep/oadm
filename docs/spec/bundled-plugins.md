@@ -96,8 +96,9 @@ behavior: plugin `README.md`.
 Reporting, icon `snapshot`), off by default. The yearly maintenance check: current snapshots of every video source of the
 chosen cameras, exported as a PDF report (PDFsharp + MigraDoc, MIT).
 
-- Devices: the "Selected cameras" command button in the page toolbar (`PageDeviceChoice`, `plugins/README.md` "Choose
-  devices first"); the page reads only the cameras of the choice and nothing before one.
+- Devices: the "Selected cameras" command button in the page toolbar (`PageDeviceChoice`,
+  `website/src/content/docs/dev/core-plugins.md` "Choose devices first"); the page reads only the cameras of the choice
+  and nothing before one.
 - Rules that must hold: read-only for devices (param.cgi reads and image.cgi snapshots with the stored credentials,
   server side); opening the page contacts no device (**Create snapshots** starts the first load); at most 4 device
   requests at a time, 3 s each; devices with Credentials required, Password not set or Certificate changed are one error

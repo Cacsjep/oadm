@@ -2,8 +2,8 @@
 
 Core plugin (+ `.Client`) with the rail page **NTP server** (group Servers, icon `metronome`), on by default; the server
 itself starts disabled. Own RFC 5905 server-mode implementation (SNTPv4 compatible), no library. Contributes the task
-**Use OADM as NTP server**. Spec: [Bundled plugins](../../docs/spec/bundled-plugins.md#ntp-server-core-plugin), host
-support for service plugins: [plugins/README.md](../README.md#host-support-for-service-plugins-ntp-dhcp-).
+**Use OADM as NTP server**. Spec: [Bundled plugins](../../docs/spec/bundled-plugins.md#ntp-server-core-plugin), what
+the host offers a service plugin: [Host services](../../website/src/content/docs/dev/host-services.md) of the SDK guide.
 
 ## How it works
 

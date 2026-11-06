@@ -20,7 +20,7 @@ Task plugin, server only, always on. Toolbar and context menu, no dialog. Task n
 
 The reference for the bundled plugins that reference the SDK by hand: `Oadm.Plugins.Restart.csproj` holds the
 `OadmPluginId` / `OadmPluginOutputDir` properties and the `OadmDeployPlugin` target (copy to
-`artifacts/plugins/oadm.restart/`). Layout, loading and deployment: [plugins/README.md](../README.md#project-layout).
+`artifacts/plugins/oadm.restart/`). Folders, project files and deployment: [plugins/README.md](../README.md#project-files).
 
 ## Device groups
 

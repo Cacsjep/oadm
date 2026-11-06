@@ -2,8 +2,8 @@
 
 Core plugin (+ `.Client`) with the rail page **DHCP server** (group Servers, icon `network`), on by default; the server
 itself starts disabled. Own RFC 2131 / RFC 2132 implementation (no library), IPv4 only, one interface, no relay agents.
-Spec: [Bundled plugins](../../docs/spec/bundled-plugins.md#dhcp-server-core-plugin), host support for service plugins:
-[plugins/README.md](../README.md#host-support-for-service-plugins-ntp-dhcp-).
+Spec: [Bundled plugins](../../docs/spec/bundled-plugins.md#dhcp-server-core-plugin), what the host offers a service
+plugin: [Host services](../../website/src/content/docs/dev/host-services.md) of the SDK guide.
 
 ## How it works
 

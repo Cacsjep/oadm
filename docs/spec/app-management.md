@@ -26,7 +26,7 @@ always-on `oadm.acap` stays as it is). The context menu dialog **Applications (A
    install kind and downgrade, license keys by MAC address, application id and expiry. A rule added there applies to the
    dialog, the page and the task at once.
 3. **Choose devices first.** Nothing is read before the user chooses devices (`PageDeviceChoice` first in the toolbar,
-   `plugins/README.md` "Choose devices first"); only devices of the user's device group.
+   `website/src/content/docs/dev/core-plugins.md` "Choose devices first"); only devices of the user's device group.
 4. **Read only on demand.** The installed applications are read when the user chooses devices or clicks **Refresh**, and
    after a task of the page ends on a device (that device only). No reads in polling; the results live in server memory
    per user session (gone after a server restart), never in the database.
