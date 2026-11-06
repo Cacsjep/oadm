@@ -176,12 +176,15 @@ public sealed class MqttSessionTests
     [Fact]
     public async Task AnUnreachableBrokerSaysSo()
     {
-        using var reserved = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp); // bound, so no other test gets the port; not listening
+        // Bound, so no other test gets the port; not listening. Windows and Linux refuse the connection, macOS leaves it unanswered.
+        using var reserved = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         reserved.Bind(new IPEndPoint(IPAddress.Loopback, 0));
         var port = ((IPEndPoint)reserved.LocalEndPoint!).Port;
         await using var session = new MqttSession(Sessions.Request(port));
         var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => session.ConnectAsync(Sessions.Patient));
-        Assert.StartsWith($"127.0.0.1:{port} cannot be reached", refused.Message, StringComparison.Ordinal);
+        Assert.True(
+            refused.Message.StartsWith($"127.0.0.1:{port} cannot be reached", StringComparison.Ordinal) || refused.Message == $"127.0.0.1:{port} did not answer.",
+            refused.Message);
     }
 
     [Fact]

@@ -536,7 +536,7 @@ public sealed class ModbusSessionTests
     [Fact]
     public async Task NoPortMeansAPlainReason()
     {
-        // Bound but not listening: the port refuses the connection and no other test can take it.
+        // Bound but not listening: nothing connects there (refused, on macOS unanswered) and no other test can take it.
         using var taken = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         taken.Bind(new IPEndPoint(IPAddress.Loopback, 0));
         var port = ((IPEndPoint)taken.LocalEndPoint!).Port;
