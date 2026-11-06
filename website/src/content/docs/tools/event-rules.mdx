@@ -188,7 +188,8 @@ action with its result. The newest entries come first and new ones appear live. 
   minute** (default 60 runs per minute for the whole rule): further events are skipped. Both protect against a flickering
   camera. The event log notes the first skipped run of a minute, then how many more there were.
 - When too many actions run at once, an action that waited a minute is skipped and the event log says so. Turning
-  something off is never skipped. A long pulse does not keep other actions waiting.
+  something off is never skipped. A long pulse does not keep other actions waiting, and a rule whose target does not
+  answer does not keep the other rules waiting.
 - After a server restart OADM checks every event again and runs only what changed while it was down.
 - A failed action is logged; the next action of the rule still runs. OADM does not retry.
 - Devices that need a login, have no password yet or have a changed certificate are skipped.

@@ -98,6 +98,89 @@ public sealed class EngineLoadTests(ITestOutputHelper output)
         Assert.Equal([ActionEdge.TurnedOn, ActionEdge.TurnedOff], rig.NoDevice.Edges.Select(e => e.Edge));
     }
 
+    [Fact]
+    public async Task ARuleThatFillsItsShareLeavesTheOtherSlotsToTheOtherRules()
+    {
+        var mail = new HeldAction("test.mail", null);
+        await using var rig = await EventRulesRig.StartAsync(beforeStart: r =>
+        {
+            r.Registry.RegisterActionPlugin(mail, r.ActionOrigin);
+            r.RunnerOptions = new ActionRunnerOptions { MaxParallel = 4, MaxPerRule = 2, MaxWait = TimeSpan.FromMinutes(1), ActionTimeout = TimeSpan.FromMinutes(10) };
+        });
+        var cameras = new[] { await rig.AddDeviceAsync("10.0.0.1"), await rig.AddDeviceAsync("10.0.0.2"), await rig.AddDeviceAsync("10.0.0.3") };
+        var busy = EventRulesRig.Rule(EventRulesRig.Pulse, new RuleAction { ActionId = mail.Id });
+        busy.MaxRunsPerMinute = 1000;
+        busy = await rig.SaveAsync(busy);
+        await rig.SaveAsync(EventRulesRig.Rule(EventRulesRig.ReadingSent, rig.WithoutDevice()));
+
+        // A target that does not answer: the rule holds its two slots, its third run waits in the rule's own queue.
+        rig.Publisher.Fire(EventRulesRig.Pulse, cameras[0].Id);
+        rig.Publisher.Fire(EventRulesRig.Pulse, cameras[1].Id);
+        await Eventually.TrueAsync(() => mail.Started == 2, "the rule holds its share");
+        rig.Publisher.Fire(EventRulesRig.Pulse, cameras[2].Id);
+        await rig.Engine.DrainAsync(CancellationToken.None);
+        await Eventually.TrueAsync(() => rig.Runner.Waiting == 1, "its third run waits");
+        Assert.Equal(2, mail.Started); // although two of the four slots are free
+
+        // Another rule's run starts at once, ahead of the waiting one.
+        rig.Publisher.Fire(EventRulesRig.ReadingSent, cameras[0].Id);
+        await Eventually.TrueAsync(() => rig.NoDevice.Runs.Count == 1, "the other rule ran");
+        Assert.Equal(1, rig.Runner.Waiting);
+
+        // The waiting run is skipped after the limit like any waiting run.
+        rig.Time.Advance(TimeSpan.FromMinutes(5));
+        await Eventually.TrueAsync(() => rig.Runner.Waiting == 0, "the third run gave up");
+        await Eventually.TrueAsync(
+            async () => (await rig.LogLinesAsync()).Any(l => l.Kind == EventLogKind.Action && l.Result == EventLogResult.Skipped && l.RuleId == busy.Id && l.Message == ActionRunner.WaitedTooLong),
+            "the skipped run is in the event log");
+
+        mail.Release.SetResult();
+        await rig.SettleAsync();
+        Assert.Equal(2, mail.Done.Count);
+    }
+
+    [Fact]
+    public async Task ATurnOffOfARuleThatFilledItsShareWaitsForASlotOfItAndRuns()
+    {
+        var relay = new HeldAction("test.relay", null, supportsTurnOff: true);
+        await using var rig = await EventRulesRig.StartAsync(beforeStart: r =>
+        {
+            r.Registry.RegisterActionPlugin(relay, r.ActionOrigin);
+            r.RunnerOptions = new ActionRunnerOptions { MaxParallel = 4, MaxPerRule = 2, MaxWait = TimeSpan.FromMinutes(1), ActionTimeout = TimeSpan.FromMinutes(10) };
+        });
+        var cameras = new[] { await rig.AddDeviceAsync("10.0.0.1"), await rig.AddDeviceAsync("10.0.0.2"), await rig.AddDeviceAsync("10.0.0.3"), await rig.AddDeviceAsync("10.0.0.4") };
+        rig.Publisher.ReplaceStates(EventRulesRig.Blur, []);
+        var rule = EventRulesRig.Rule(EventRulesRig.Blur, new RuleAction { ActionId = relay.Id });
+        rule.MaxRunsPerMinute = 1000;
+        await rig.SaveAsync(rule);
+
+        // The rule turned on for the third camera while there was room.
+        relay.Free[cameras[2].Id] = true;
+        rig.Publisher.SetState(EventRulesRig.Blur, cameras[2].Id, true);
+        await rig.SettleAsync();
+        Assert.Equal([ActionEdge.TurnedOn], relay.Done);
+
+        // Two runs that do not end hold the rule's share; its "turns off" and one more "turns on" wait in its queue.
+        rig.Publisher.SetState(EventRulesRig.Blur, cameras[0].Id, true);
+        rig.Publisher.SetState(EventRulesRig.Blur, cameras[1].Id, true);
+        await Eventually.TrueAsync(() => relay.Started == 2, "the rule holds its share");
+        rig.Publisher.SetState(EventRulesRig.Blur, cameras[2].Id, false);
+        rig.Publisher.SetState(EventRulesRig.Blur, cameras[3].Id, true);
+        await rig.Engine.DrainAsync(CancellationToken.None);
+        await Eventually.TrueAsync(() => rig.Runner.Waiting == 2, "both wait");
+
+        // After the limit the "turns on" gave up; the "turns off" still waits.
+        rig.Time.Advance(TimeSpan.FromMinutes(5));
+        await Eventually.TrueAsync(() => rig.Runner.Waiting == 1, "the turns on gave up");
+        Assert.Equal([ActionEdge.TurnedOn], relay.Done);
+
+        // A slot of the share is free again: the "turns off" runs.
+        relay.Release.SetResult();
+        await rig.SettleAsync();
+        Assert.Equal(2, relay.Started);
+        Assert.Single(relay.Done, e => e == ActionEdge.TurnedOff);
+    }
+
     // ---------- the device list of actions on tags ----------
     [Fact]
     public async Task TheDeviceListOfActionsOnTagsIsReadOncePerVersionOfTheDeviceTable()
@@ -413,9 +496,12 @@ public sealed class EngineLoadTests(ITestOutputHelper output)
     }
 
     /// <summary>An action without devices that runs until it is released; <paramref name="maxRunTime"/> is what it asks for.</summary>
-    private sealed class HeldAction(string id, TimeSpan? maxRunTime) : IActionPlugin
+    private sealed class HeldAction(string id, TimeSpan? maxRunTime, bool supportsTurnOff = false) : IActionPlugin
     {
         private int _started;
+
+        /// <summary>Runs of events of these devices, and every "turns off" run, end at once.</summary>
+        public ConcurrentDictionary<Guid, bool> Free { get; } = new();
 
         public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -431,7 +517,7 @@ public sealed class EngineLoadTests(ITestOutputHelper output)
 
         public bool NeedsDevice => false;
 
-        public bool SupportsTurnOff => false;
+        public bool SupportsTurnOff => supportsTurnOff;
 
         public IReadOnlyList<ActionField> Fields => [];
 
@@ -439,8 +525,12 @@ public sealed class EngineLoadTests(ITestOutputHelper output)
 
         public async Task ExecuteAsync(IActionContext ctx, ActionInvocation invocation, CancellationToken ct)
         {
-            Interlocked.Increment(ref _started);
-            await Release.Task.WaitAsync(ct);
+            if (invocation.Edge != ActionEdge.TurnedOff && !(invocation.Trigger.DeviceId is { } device && Free.ContainsKey(device)))
+            {
+                Interlocked.Increment(ref _started);
+                await Release.Task.WaitAsync(ct);
+            }
+
             Done.Enqueue(invocation.Edge);
         }
     }

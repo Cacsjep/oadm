@@ -39,7 +39,16 @@ public sealed class ActionRunnerOptions
     public int MaxParallelLong { get; init; } = 16;
 
     /// <summary>
-    /// A run that waited this long for a free slot is skipped and logged. A run of a "turns off" edge always waits: skipping
+    /// The share of one rule: it holds at most this many of the <see cref="MaxParallel"/> slots at a time (half by
+    /// default). Its further runs wait in its own queue without a slot, so the rest stays free for the other rules.
+    /// </summary>
+    public int MaxPerRule { get; init; } = 8;
+
+    /// <summary>The share of one rule of the <see cref="MaxParallelLong"/> slots (half by default).</summary>
+    public int MaxPerRuleLong { get; init; } = 8;
+
+    /// <summary>
+    /// A run that waited this long for a free slot (of its rule's share, then of the lane) is skipped and logged. A run of a "turns off" edge always waits: skipping
     /// it could leave a relay on.
     /// </summary>
     public TimeSpan MaxWait { get; init; } = TimeSpan.FromMinutes(1);
@@ -60,7 +69,8 @@ public sealed class ActionRunnerOptions
 /// ordered among themselves. Edges of other subjects do not wait for each other (one device that does not answer never
 /// delays another). Within an edge the actions run in the listed order, each on its targets in parallel (at most
 /// <see cref="ActionRunnerOptions.MaxParallel"/> runs at once, all rules together; runs that asked for a longer time have
-/// <see cref="ActionRunnerOptions.MaxParallelLong"/> slots of their own). A run that waited
+/// <see cref="ActionRunnerOptions.MaxParallelLong"/> slots of their own; one rule holds at most
+/// <see cref="ActionRunnerOptions.MaxPerRule"/> of them at a time). A run that waited
 /// <see cref="ActionRunnerOptions.MaxWait"/> for its slot is skipped, except on a "turns off" edge. A failed action is
 /// logged and the next one still runs (no retry). Every run is a line in the event log. The device list of actions on
 /// tags, all devices or many devices is read once per version of the device table and shared. Nothing runs before
@@ -83,8 +93,8 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     private readonly ActionRunnerOptions _options;
     private readonly TimeProvider _time;
     private readonly Devices.DeviceChangeFeed? _deviceFeed;
-    private readonly SemaphoreSlim _slots;
-    private readonly SemaphoreSlim _longSlots;
+    private readonly Lane _slots;
+    private readonly Lane _longSlots;
     private readonly SemaphoreSlim _deviceListGate = new(1, 1);
     private readonly ITimer _deviceListRelease;
     private volatile DeviceList? _deviceList;
@@ -121,10 +131,13 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         _options = options ?? new ActionRunnerOptions();
         _time = time ?? TimeProvider.System;
         _deviceFeed = deviceFeed as Devices.DeviceChangeFeed; // without its version every edge reads the devices itself
-        _slots = new SemaphoreSlim(_options.MaxParallel, _options.MaxParallel);
-        _longSlots = new SemaphoreSlim(_options.MaxParallelLong, _options.MaxParallelLong);
+        _slots = new Lane(_options.MaxParallel, _options.MaxPerRule);
+        _longSlots = new Lane(_options.MaxParallelLong, _options.MaxPerRuleLong);
         _deviceListRelease = _time.CreateTimer(_ => _deviceList = null, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
+
+    /// <summary>The limits in use.</summary>
+    public ActionRunnerOptions Options => _options;
 
     /// <summary>Runs waiting for a free slot now (tests).</summary>
     public int Waiting => Volatile.Read(ref _waiting);
@@ -572,32 +585,120 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     private sealed record DeviceList(long Version, IReadOnlyList<IDeviceInfo> Devices);
 
     /// <summary>
-    /// Waits for a slot of the lane. False: the run waited <see cref="ActionRunnerOptions.MaxWait"/> and is skipped. A
-    /// "turns off" run waits as long as it takes (never skipped: a relay would stay on).
+    /// Waits for a slot of the lane: first for one of the rule's share (in the rule's own queue, holding nothing), then for
+    /// one of the lane. Null: the run waited <see cref="ActionRunnerOptions.MaxWait"/> in all and is skipped. A "turns off"
+    /// run waits as long as it takes (never skipped: a relay would stay on). The caller gives the result back with
+    /// <see cref="Lane.Release"/>.
     /// </summary>
-    private async Task<bool> WaitForSlotAsync(SemaphoreSlim slots, ActionEdge edge, CancellationToken ct)
+    private async Task<RuleShare?> WaitForSlotAsync(Lane lane, RuleEdgeJob job, CancellationToken ct)
     {
-        if (await slots.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false))
-        {
-            return true; // a free slot: nothing to wait for
-        }
-
-        using var late = edge == ActionEdge.TurnedOff ? null : new CancellationTokenSource(_options.MaxWait, _time);
-        using var either = late is null ? null : CancellationTokenSource.CreateLinkedTokenSource(ct, late.Token);
-        Interlocked.Increment(ref _waiting);
+        var share = lane.Enter(job.Rule.Id);
+        var inShare = false;
+        var done = false;
         try
         {
-            await slots.WaitAsync(either?.Token ?? ct).ConfigureAwait(false);
-            return true;
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            return false;
+            inShare = await share.Slots.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false);
+            if (inShare && await lane.Slots.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false))
+            {
+                done = true;
+                return share; // free slots: nothing to wait for
+            }
+
+            using var late = job.Edge == ActionEdge.TurnedOff ? null : new CancellationTokenSource(_options.MaxWait, _time);
+            using var either = late is null ? null : CancellationTokenSource.CreateLinkedTokenSource(ct, late.Token);
+            var token = either?.Token ?? ct;
+            Interlocked.Increment(ref _waiting);
+            try
+            {
+                if (!inShare)
+                {
+                    await share.Slots.WaitAsync(token).ConfigureAwait(false);
+                    inShare = true;
+                }
+
+                await lane.Slots.WaitAsync(token).ConfigureAwait(false);
+                done = true;
+                return share;
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                return null;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _waiting);
+            }
         }
         finally
         {
-            Interlocked.Decrement(ref _waiting);
+            if (!done)
+            {
+                lane.Leave(job.Rule.Id, share, inShare);
+            }
         }
+    }
+
+    /// <summary>
+    /// The slots of one lane (all runs, or the runs that asked for a longer time) and each rule's share of them: one rule
+    /// holds at most <paramref name="perRule"/> slots at a time, so a rule whose target does not answer never takes the
+    /// lane from the others. No weights and no order between rules beyond that.
+    /// </summary>
+    private sealed class Lane(int size, int perRule) : IDisposable
+    {
+        private readonly int _perRule = Math.Clamp(perRule, 1, size);
+        private readonly Dictionary<Guid, RuleShare> _shares = [];
+
+        public SemaphoreSlim Slots { get; } = new(size, size);
+
+        /// <summary>The rule's share, kept while a run of the rule waits or runs.</summary>
+        public RuleShare Enter(Guid rule)
+        {
+            lock (_shares)
+            {
+                if (!_shares.TryGetValue(rule, out var share))
+                {
+                    _shares[rule] = share = new RuleShare(new SemaphoreSlim(_perRule, _perRule));
+                }
+
+                share.Runs++;
+                return share;
+            }
+        }
+
+        /// <summary>A run that gave up waiting leaves; <paramref name="inShare"/>: it held a slot of its rule's share.</summary>
+        public void Leave(Guid rule, RuleShare share, bool inShare)
+        {
+            if (inShare)
+            {
+                share.Slots.Release();
+            }
+
+            lock (_shares)
+            {
+                if (--share.Runs == 0)
+                {
+                    _shares.Remove(rule);
+                    share.Slots.Dispose();
+                }
+            }
+        }
+
+        /// <summary>A run ended: its slot of the lane and of its rule's share are free again.</summary>
+        public void Release(Guid rule, RuleShare share)
+        {
+            Slots.Release();
+            Leave(rule, share, inShare: true);
+        }
+
+        public void Dispose() => Slots.Dispose();
+    }
+
+    /// <summary>The slots one rule may hold in a lane, and how many of its runs wait or run (under the lane's lock).</summary>
+    private sealed class RuleShare(SemaphoreSlim slots)
+    {
+        public SemaphoreSlim Slots { get; } = slots;
+
+        public int Runs { get; set; }
     }
 
     private async Task RunOneAsync(
@@ -649,7 +750,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         {
         }
 
-        if (!await WaitForSlotAsync(slots, job.Edge, ct).ConfigureAwait(false))
+        if (await WaitForSlotAsync(slots, job, ct).ConfigureAwait(false) is not { } share)
         {
             if (late is null)
             {
@@ -706,7 +807,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         }
         finally
         {
-            slots.Release();
+            slots.Release(job.Rule.Id, share);
         }
     }
 
