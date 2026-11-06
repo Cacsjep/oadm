@@ -62,7 +62,7 @@ The file layout of every installer and the user-facing install notes are in `pac
   pinned Hugging Face revision into a local cache (`OADM_MODEL_CACHE`, else `%LOCALAPPDATA%\Oadm\model-cache` or
   `~/.cache/oadm/models`, one folder per SHA-256), checked against the SHA-256 of `Models/README.md` (another hash fails
   the build), then copied into the output's `Models/` and so into the add-on ZIP. A cached file is never downloaded again.
-  `pr.yml` and the `tests` and `installers` jobs of `release.yml` keep the cache with `actions/cache`, keyed by the OS and
+  `pr.yml`, `main.yml` and the `tests` and `installers` jobs of `release.yml` keep the cache with `actions/cache`, keyed by the OS and
   the hash of `Models.targets`.
 - **The ZIPs come before the server** (`docs/spec/add-ons.md` rule 2): the server holds the SHA-256 of each ZIP of its
   system. `manage package addons` writes `artifacts/publish/addons/<rid>/addon-hashes-<version>.txt` (one "`<id> <sha256> <fingerprint>`"
@@ -217,7 +217,9 @@ when the jobs it needs passed:
   write`, no API key in GitHub); skipped without the repository variable `NUGET_USER` and for a pre-release tag (nuget.org
   keeps every version forever).
 
-Other workflows: `pr.yml` builds and unit-tests every pull request on Linux (check "tests ubuntu-latest", the same filter
+Other workflows: `main.yml` builds and unit-tests every push to main on Windows, Linux and macOS (the steps of the `tests` job
+of `release.yml`; a newer push cancels the older run; the same paths as below start nothing), so a test that fails on one
+system shows before a release tag. `pr.yml` builds and unit-tests every pull request on Linux (check "tests ubuntu-latest", the same filter
 and blame options, artifact `test-results`); changes only in `website/`, `docs/`, Markdown files (`*.md`) or the release
 and Pages workflows skip CodeQL and the .NET build and tests (`pr.yml` still reports its required check, with the steps
 skipped); started by hand or by `vulnerabilities.yml` (workflow_dispatch) it always builds and tests. `codeql.yml` runs
