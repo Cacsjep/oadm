@@ -60,8 +60,8 @@ public sealed partial class EdgeStorageViewModel : ObservableObject, IDisposable
     /// <summary>How often the page asks for the state while a read runs (its progress events may be missed).</summary>
     public static TimeSpan StatePollInterval { get; set; } = TimeSpan.FromSeconds(1);
 
-    /// <summary>Wait before watching the events again after the stream broke (tests shorten it).</summary>
-    public static TimeSpan ReconnectDelay { get; set; } = PluginEventWatch.DefaultRetryDelay;
+    /// <summary>The waits of the event watch (again after the stream ended or broke); a test passes its own.</summary>
+    public PluginEventWatchOptions EventWatch { get; init; } = new();
 
     /// <summary>Set by the view; null in tests that do not open dialogs.</summary>
     public IStorageDialogs? Dialogs { get; set; }
@@ -143,7 +143,7 @@ public sealed partial class EdgeStorageViewModel : ObservableObject, IDisposable
 
         _active = new CancellationTokenSource();
         var token = _active.Token;
-        _ = _ctx.RunAsync(HandleEvent, ReconnectDelay, token);
+        _ = _ctx.RunAsync(null, HandleEvent, EventWatch, token);
         _ = ReadAsync(token);
     }
 
@@ -342,19 +342,14 @@ public sealed partial class EdgeStorageViewModel : ObservableObject, IDisposable
     /// <summary>Starts the tasks; their progress shows in the tasks pane, the rows are read again when each ends.</summary>
     private async Task RunAsync(string method, RunRequest request)
     {
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             await _ctx.InvokeAsync(method, EdgeStorageJson.Serialize(request with { Owner = _ctx.OwnerName }), _active?.Token ?? CancellationToken.None).ConfigureAwait(true);
             ErrorText = null;
-        }
-        catch (OperationCanceledException)
+        }, GuardedCancel.Ignore).ConfigureAwait(true);
+        if (error is not null)
         {
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            ErrorText = ServerErrors.Message(ex);
+            ErrorText = error;
         }
     }
 
