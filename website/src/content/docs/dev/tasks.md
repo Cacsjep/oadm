@@ -156,6 +156,7 @@ Cancel). The PKI tasks work this way.
 | `Has(permission)`, `HasAllDevices` | Hide choices the user's role does not allow, or that only users with all devices may make |
 | `AllDevices` | Every device, e.g. to copy settings from a device that is not selected |
 | `CanRunTasks`, `RunTaskAsync(deviceIds, payload, progress, ct)` | Keep the dialog open: start the task from it and show each device's step and result there (`progress` gets every task's `TaskRunState`, the call returns once all ended); then return null from `ShowAsync`, so nothing runs twice. Without `CanRunTasks` (an older host) return the payload. A task deleted while it ran is reported as `Cancelled` with an empty message |
+| `MyAxis` | SDK 0.9.0: the user's MyAxis sign-in (`IsSignedIn`, `Changed`, `SignInAsync(owner)`), e.g. to ask for it before a task downloads from axis.com; null on an older host |
 | `StartView` | SDK 0.7.0: the part of the dialog a core plugin page asked for (`ICorePluginClientContext.RunTaskAsync(..., startView, ct)`), a name your dialog defines; null or a name you do not know: open as usual |
 
 Failed calls throw `RpcException`; show `Status.Detail`, or use `ServerErrors.Message(ex)`.
