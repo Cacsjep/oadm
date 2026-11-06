@@ -189,7 +189,11 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   them again, so a page's form is always its own server's), plugin windows and Help close; a plugin list still being read
   for the old session brings no pages. `AppShell` then clears the closed window's `DataContext`: its views let go of the
   view model, and no plugin view stays in a window that is gone (a control has one parent; the next main window could
-  not show it). Host pages (Settings, Permissions, Credentials, About) read again on every connect.- The title bar shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out; a
+  not show it). Host pages (Settings, Permissions, Credentials, About) read again on every connect.
+- The client settings file (`client-settings.json`: session tokens of Remember me, the pinned servers) is written as a
+  whole into a temporary file in the same folder that then replaces it (`JsonClientSettingsStore.Replace`; what an
+  interrupted save left is removed at the next start). On Linux and macOS it is created with mode 0600 and an older file
+  is limited to its owner once at the start; on Windows it has the rights of the user's data folder.- The title bar shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out; a
   click on the user opens **Your role** (`Shell/MyRoleWindow`, `MyRoleViewModel`, `RoleService.Mine`): the role's name
   and what it allows, grouped like the matrix, read-only. `UserSession` keeps role name and permission keys
   (`Has(key)`, `PermissionsChanged`), fed by Login / Me and the session stream (`ServerConnection`); a server without
