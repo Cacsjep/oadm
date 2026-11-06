@@ -371,7 +371,7 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
         };
         IsSaving = true;
         ServerError = null;
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var reply = TriggerJson.Deserialize<SaveReply>(await _ctx.InvokeAsync(DeviceTriggersMethods.Save, TriggerJson.Serialize(new SaveRequest(trigger)), CancellationToken.None).ConfigureAwait(true));
             if (reply.Trigger is { } saved)
@@ -390,17 +390,13 @@ public sealed partial class TriggerEditorViewModel : ValidatingViewModel, IDispo
             }
 
             ServerError ??= reply.Error;
-        }
-#pragma warning disable CA1031 // Shown below the cards.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            ServerError = DeviceTriggersViewModel.Message(ex);
+            ServerError = error;
         }
-        finally
-        {
-            IsSaving = false;
-        }
+
+        IsSaving = false;
     }
 
     private IEnumerable<TriggerDeviceChoice> Chosen() => _devices.Where(d => d.IsChecked);
