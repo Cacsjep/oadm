@@ -99,8 +99,8 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
     /// <summary>Opens the device picker (set by the view); true when a choice was made.</summary>
     public Func<Task<bool>>? PickDevices { get; set; }
 
-    /// <summary>Wait before watching again after the event stream ended or failed (also the polling interval).</summary>
-    public static TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(2);
+    /// <summary>The waits of the event watch (again after the stream ended or broke); a test passes its own.</summary>
+    public PluginEventWatchOptions EventWatch { get; init; } = new();
 
     /// <summary>Raised after <see cref="Columns"/> changed (the view rebuilds the check columns).</summary>
     public event EventHandler? ColumnsChanged;
@@ -265,7 +265,7 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
     /// <summary>Reads the whole state (catalog, last results, running scan).</summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var json = await _ctx.InvokeAsync(HardeningMethods.GetState, null, ct).ConfigureAwait(true);
             if (json is not null)
@@ -275,16 +275,10 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
 
             ErrorText = string.Empty;
             _loaded = true;
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        }, GuardedCancel.Throw, ct).ConfigureAwait(true);
+        if (error is not null)
         {
-            throw;
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            ErrorText = "Cannot read the scan results: " + Message(ex);
+            ErrorText = "Cannot read the scan results: " + error;
         }
 
         IsLoading = false;
@@ -408,19 +402,17 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
     [RelayCommand(CanExecute = nameof(IsScanning))]
     private async Task StopAsync()
     {
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             var json = await _ctx.InvokeAsync(HardeningMethods.CancelScan, HardeningJson.Serialize(new CancelScanRequest { JobId = _jobId }), CancellationToken.None).ConfigureAwait(true);
             if (json is not null)
             {
                 ApplyProgress(HardeningJson.Deserialize<ScanJobStatus>(json));
             }
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            ErrorText = "The scan could not be stopped: " + Message(ex);
+            ErrorText = "The scan could not be stopped: " + error;
         }
     }
 
@@ -474,7 +466,7 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
         IsStarting = true;
         ProgressValue = 0;
         ProgressText = "Starting the scan";
-        try
+        var error = await GuardedRun.RunAsync(async () =>
         {
             ErrorText = string.Empty;
             var json = await _ctx.InvokeAsync(HardeningMethods.StartScan, HardeningJson.Serialize(new StartScanRequest { Level = Level, DeviceIds = deviceIds }), CancellationToken.None).ConfigureAwait(true);
@@ -482,17 +474,13 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
             {
                 ApplyProgress(HardeningJson.Deserialize<ScanJobStatus>(json));
             }
-        }
-#pragma warning disable CA1031 // Shown on the page.
-        catch (Exception ex)
-#pragma warning restore CA1031
+        }).ConfigureAwait(true);
+        if (error is not null)
         {
-            ErrorText = "The scan could not be started: " + Message(ex);
+            ErrorText = "The scan could not be started: " + error;
         }
-        finally
-        {
-            IsStarting = false;
-        }
+
+        IsStarting = false;
     }
 
     private void OnDevicesChanged(object? sender, EventArgs e) => SyncDevices();
@@ -725,53 +713,7 @@ public sealed partial class HardeningScanViewModel : ObservableObject, IDisposab
         }
     }
 
-    private async Task RunAsync(CancellationToken ct)
-    {
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                var events = _ctx.WatchEventsAsync(ct).GetAsyncEnumerator(ct);
-                try
-                {
-                    // Subscribe first, then read the state: nothing published in between is lost (older results are ignored).
-                    var next = events.MoveNextAsync();
-                    await LoadAsync(ct).ConfigureAwait(true);
-                    while (await next.ConfigureAwait(true))
-                    {
-                        HandleEvent(events.Current);
-                        next = events.MoveNextAsync();
-                    }
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    return;
-                }
-#pragma warning disable CA1031 // The connection dropped: read again and watch again after a short delay.
-                catch (Exception)
-#pragma warning restore CA1031
-                {
-                }
-                finally
-                {
-                    await events.DisposeAsync().ConfigureAwait(true);
-                }
-
-                await Task.Delay(ReconnectDelay, ct).ConfigureAwait(true);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // page hidden
-        }
-    }
-
-    /// <summary>gRPC errors carry the user message in Status.Detail; read it without a Grpc reference.</summary>
-    private static string Message(Exception ex)
-    {
-        var detail = ex.GetType().GetProperty("Status")?.GetValue(ex) is { } status
-            ? status.GetType().GetProperty("Detail")?.GetValue(status) as string
-            : null;
-        return string.IsNullOrEmpty(detail) ? ex.Message : detail;
-    }
+    // Subscribe first, then read the state: nothing published in between is lost (older results are ignored). After a
+    // drop the page waits, reads again and watches again.
+    private Task RunAsync(CancellationToken ct) => _ctx.RunAsync(LoadAsync, HandleEvent, EventWatch, ct);
 }
