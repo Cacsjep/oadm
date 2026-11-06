@@ -510,6 +510,22 @@ public sealed class AddOnsTests : IDisposable
     }
 
     [Fact]
+    public void What_an_older_client_fetched_without_a_pinned_certificate_goes_at_the_next_start()
+    {
+        // Older clients kept the parts of a plain HTTP server in "unpinned"; nothing loads from there any more.
+        string old = Path.Combine(_root, AddOnClientCache.OldUnpinnedFolder, FakeOadmApi.TextRecognitionAddOnId, "4.10.0");
+        Directory.CreateDirectory(old);
+        System.IO.File.WriteAllText(Path.Combine(old, "Oadm.Plugins.Ocr.Client.dll"), "fetched over http");
+        Directory.CreateDirectory(VersionFolder());
+        System.IO.File.WriteAllText(Path.Combine(VersionFolder(), "Oadm.Plugins.Ocr.Client.dll"), "client");
+
+        Cache().DeleteRemoved();
+
+        Assert.False(Directory.Exists(Path.Combine(_root, AddOnClientCache.OldUnpinnedFolder)));
+        Assert.True(Directory.Exists(VersionFolder())); // the parts of a pinned server stay
+    }
+
+    [Fact]
     public async Task A_client_part_loads_into_the_registry_like_a_plugin_folder()
     {
         string sample = Path.Combine(Oadm.Tests.Shared.TestRepository.TestPlugins, "oadm.sample");
