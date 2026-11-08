@@ -9,8 +9,8 @@ namespace Oadm.Plugins.Vision.Nodes;
 /// <summary>
 /// Event (docs/spec/vision-center.md "Events"): what it publishes follows its input. Objects: the stateful Objects present
 /// (Minimum objects, At least, Off after), with tracked objects also Object entered and Object left; Crossings: Line
-/// crossed per crossing; Number: Count changed at most once per <see cref="VisionLimits.CountChangedEvery"/> and the
-/// stateful Above limit. In On action mode Objects gives Objects found or No objects found once per run.
+/// crossed per crossing; Number: Count changed (the value, or In or Out of crossings) at most once per
+/// <see cref="VisionLimits.CountChangedEvery"/> with the latest values, and the stateful Above limit. In On action mode Objects gives Objects found or No objects found once per run.
 /// </summary>
 internal sealed class EventNode : VisionNode
 {
@@ -36,6 +36,8 @@ internal sealed class EventNode : VisionNode
 
     // Count changed and Above limit.
     private long _lastCount;
+    private long _lastIn;
+    private long _lastOut;
     private DateTimeOffset? _lastCountAt;
     private bool _aboveOn;
     private IReadOnlyDictionary<string, string> _aboveValues = NoValues;
@@ -235,9 +237,12 @@ internal sealed class EventNode : VisionNode
     private void Number(NodeOutput input, DateTimeOffset at, List<Emission> emissions)
     {
         var value = input.Value ?? 0;
-        if (value != _lastCount && (_lastCountAt is not { } last || at - last >= VisionLimits.CountChangedEvery))
+        var changed = value != _lastCount || (_numberHasInOut && (input.In != _lastIn || input.Out != _lastOut));
+        if (changed && (_lastCountAt is not { } last || at - last >= VisionLimits.CountChangedEvery))
         {
             _lastCount = value;
+            _lastIn = input.In;
+            _lastOut = input.Out;
             _lastCountAt = at;
             emissions.Add(new Emission(Id, VisionEventKind.CountChanged, EmissionState.Fired, NumberValues(input, value)));
         }
