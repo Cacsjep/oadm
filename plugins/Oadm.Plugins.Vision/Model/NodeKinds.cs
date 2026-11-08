@@ -19,6 +19,9 @@ public enum PortKind
 
     /// <summary>Yes or no: whether a Compare node's condition holds.</summary>
     Condition = 5,
+
+    /// <summary>A Timer node's pulse: goes only into a control input (Count's Reset, Event's Send now).</summary>
+    Pulse = 6,
 }
 
 /// <summary>The type of a node setting; the page draws its field from it, the server checks it.</summary>
@@ -131,6 +134,12 @@ public sealed record NodeKindInfo
 
     /// <summary>Whether it takes <paramref name="input"/>.</summary>
     public bool Takes(PortKind input) => Accepts.Contains(input);
+
+    /// <summary>
+    /// Extra inputs beside the data input (decision 2026-11-08): each takes only a Timer's <see cref="PortKind.Pulse"/>, at most one
+    /// link each. Count: "reset"; Event: "send".
+    /// </summary>
+    public IReadOnlyList<ControlInput> ControlInputs { get; init; } = [];
 }
 
 /// <summary>
@@ -148,6 +157,7 @@ public static class NodeKinds
     public const string Line = "line";
     public const string Count = "count";
     public const string Compare = "compare";
+    public const string Timer = "timer";
     public const string Event = "event";
 
     // Settings keys.
@@ -170,6 +180,12 @@ public static class NodeKinds
     public const string OperatorKey = "operator";
     public const string ValueKey = "value";
     public const string Value2Key = "value2";
+    public const string EveryKey = "every";
+    public const string MinutesKey = "minutes";
+    public const string AtKey = "at";
+    public const string DayKey = "day";
+    public const string ResetPort = "reset";
+    public const string SendPort = "send";
 
     public const string AnchorBottom = "bottom";
     public const string AnchorCentre = "centre";
@@ -183,6 +199,10 @@ public static class NodeKinds
     public const string OpAtMost = "atMost";
     public const string OpLess = "less";
     public const string OpBetween = "between";
+    public const string EveryMinutes = "minutes";
+    public const string EveryHour = "hour";
+    public const string EveryDay = "day";
+    public const string EveryWeek = "week";
 
     private static readonly PortKind[] ObjectKinds = [PortKind.Objects, PortKind.TrackedObjects];
 
@@ -289,10 +309,28 @@ public static class NodeKinds
     public static readonly NodeKindInfo CountKind = new()
     {
         Id = Count, Label = "Count", Group = "Output", Description = "A live number",
+        ControlInputs = [new(ResetPort, "Reset")],
         Accepts = [.. ObjectKinds, PortKind.Crossings], Output = _ => PortKind.Number,
         Fields =
         [
-            new() { Key = ResetAtKey, Label = "Reset daily at", Type = NodeFieldType.TimeOfDay, Optional = true, OnlyForInput = [PortKind.Crossings] },
+            new() { Key = ResetAtKey, Label = "Reset daily at", Type = NodeFieldType.TimeOfDay, Optional = true, OnlyForInput = [PortKind.Crossings] }, // goes with the Timer node (graph stage)
+        ],
+    };
+
+    public static readonly NodeKindInfo TimerKind = new()
+    {
+        Id = Timer, Label = "Timer", Group = "Time", Description = "A pulse on a schedule, server time",
+        Accepts = [], Output = _ => PortKind.Pulse, Draws = false, NeedsStream = true,
+        Fields =
+        [
+            new()
+            {
+                Key = EveryKey, Label = "Every", Type = NodeFieldType.Choice, Default = "\"day\"",
+                Choices = [new(EveryMinutes, "Few minutes"), new(EveryHour, "Hour"), new(EveryDay, "Day"), new(EveryWeek, "Week")],
+            },
+            new() { Key = MinutesKey, Label = "Minutes", Type = NodeFieldType.Number, Default = "15", Min = 1, Max = 59, Unit = "min", Slider = true, VisibleWhenKey = EveryKey, VisibleWhenValues = [EveryMinutes] },
+            new() { Key = AtKey, Label = "At", Type = NodeFieldType.TimeOfDay, Default = "\"00:00\"", VisibleWhenKey = EveryKey, VisibleWhenValues = [EveryDay, EveryWeek] },
+            new() { Key = DayKey, Label = "Day", Type = NodeFieldType.Choice, Default = "\"mon\"", Choices = [new("mon", "Monday"), new("tue", "Tuesday"), new("wed", "Wednesday"), new("thu", "Thursday"), new("fri", "Friday"), new("sat", "Saturday"), new("sun", "Sunday")], VisibleWhenKey = EveryKey, VisibleWhenValues = [EveryWeek] },
         ],
     };
 
@@ -315,6 +353,7 @@ public static class NodeKinds
     public static readonly NodeKindInfo EventKind = new()
     {
         Id = Event, Label = "Event", Group = "Output", Description = "An event for the event rules",
+        ControlInputs = [new(SendPort, "Send now")],
         Accepts = [.. ObjectKinds, PortKind.Crossings, PortKind.Number, PortKind.Condition], Output = _ => null, Draws = false,
         Fields =
         [
@@ -327,8 +366,11 @@ public static class NodeKinds
 
     /// <summary>Every kind, in the order of the node list.</summary>
     public static readonly IReadOnlyList<NodeKindInfo> All =
-        [CameraKind, DetectKind, ClassifyKind, FilterKind, TrackKind, AreaKind, LineKind, CountKind, CompareKind, EventKind];
+        [CameraKind, DetectKind, ClassifyKind, FilterKind, TrackKind, AreaKind, LineKind, CountKind, CompareKind, TimerKind, EventKind];
 
     /// <summary>The kind of <paramref name="id"/>; null for a kind this version does not know.</summary>
     public static NodeKindInfo? Find(string? id) => All.FirstOrDefault(k => string.Equals(k.Id, id, StringComparison.Ordinal));
 }
+
+/// <summary>A control input of a node: its port id and its label on the canvas.</summary>
+public sealed record ControlInput(string Port, string Label);

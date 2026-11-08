@@ -92,6 +92,9 @@ public enum VisionEventKind
 
     /// <summary>Stateful, input Condition: on while the Compare node before it says yes (with At least and Off after).</summary>
     ConditionHolds = 8,
+
+    /// <summary>Stateless, on each pulse of a Timer into the Event's Send now: the input's current values (count, in, out, classes).</summary>
+    Report = 9,
 }
 
 public enum EmissionState
