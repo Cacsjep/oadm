@@ -195,6 +195,15 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
 
     public bool HasForm => Form is not null;
 
+    partial void OnFormChanged(NodeFormViewModel? oldValue, NodeFormViewModel? newValue)
+    {
+        oldValue?.ValidityChanged -= OnFormValidityChanged;
+        newValue?.ValidityChanged += OnFormValidityChanged;
+        UpdateSaveState();
+    }
+
+    private void OnFormValidityChanged(object? sender, EventArgs e) => UpdateSaveState();
+
     public bool ShowPipelineForm => Form is null;
 
     [ObservableProperty]

@@ -52,7 +52,14 @@ public sealed partial class NodeFormViewModel : ValidatingViewModel
         Fields = node.Info is { } info
             ? [.. info.Fields.Where(f => Graph.VisionGraph.Applies(f, input)).Select(f => FieldViewModel.Create(f, node, host, Write))]
             : [];
+        foreach (var field in Fields)
+        {
+            field.ValidityChanged += (_, _) => ValidityChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
+
+    /// <summary>An error of the form came or went: Save follows.</summary>
+    public event EventHandler? ValidityChanged;
 
     public NodeViewModel Node { get; }
 
@@ -98,6 +105,8 @@ public sealed partial class NodeFormViewModel : ValidatingViewModel
         }
     }
 
+    protected override void OnValidationChanged() => ValidityChanged?.Invoke(this, EventArgs.Empty);
+
     private string? NameProblem()
     {
         var name = Name.Trim();
@@ -142,7 +151,12 @@ public abstract partial class FieldViewModel : ValidatingViewModel
 
     public string? FirstError => Validation.FirstError;
 
+    /// <summary>An error of the field came or went.</summary>
+    public event EventHandler? ValidityChanged;
+
     public void ShowAllErrors() => Validation.ShowAll();
+
+    protected override void OnValidationChanged() => ValidityChanged?.Invoke(this, EventArgs.Empty);
 
     /// <summary>The node's stored value again (after undo or a shape drawn on the video).</summary>
     public virtual void Reload()
