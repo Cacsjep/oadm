@@ -91,6 +91,16 @@ public interface IInference
     double? GpuMsOf(string modelId) => null;
 }
 
+/// <summary>
+/// Whether an event of the event rules is on now (the Device event node, docs/spec/vision-center.md "Nodes"): the plugin
+/// follows the stateful events through <c>ICorePluginContext.EventSubscriptions</c> and answers from that state.
+/// </summary>
+public interface IEventStates
+{
+    /// <summary>On now for <paramref name="deviceId"/> (null: the server, or any device of the type).</summary>
+    bool IsOn(string typeId, Guid? deviceId);
+}
+
 /// <summary>The outcome of the model check of an upload.</summary>
 /// <param name="Model">The model as it would be stored (format, input, classes, times); null when refused.</param>
 /// <param name="Refusal">"This model cannot run here: ..." when refused.</param>
