@@ -12,6 +12,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Event rules: Recipients, shared targets for Send email, Send HTTP request and Send TCP message; change one and all its rules follow.
 - Event rules: MQTT, Modbus and OPC UA recipients, with actions that publish a message or write a value.
 - Text recognition reads an area row by row at any turn, so an article and its price stay together.
+- Vision Center, an optional plugin: run your own detection models on the cameras and count objects in areas or over lines for the event rules.
 - Plugin SDK 0.12.0: recipient sessions, GuardedRun, ByteSize, PluginJson and one call that reads and watches a page's events.
 
 ### Changed
