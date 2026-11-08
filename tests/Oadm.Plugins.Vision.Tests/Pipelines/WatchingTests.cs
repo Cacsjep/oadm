@@ -241,3 +241,25 @@ public sealed class WatchingTests
         await Eventually.TrueAsync(() => vision.Context.PublishedEvents.Any(e => e.Topic == VisionMethods.PipelinesTopic && e.PayloadJson!.Contains("In 3", StringComparison.Ordinal)), "the pages heard of it");
     }
 }
+
+/// <summary>The runtime over the real graph check and evaluator (the fakes only for the models, pictures and inference).</summary>
+public sealed class RealGraphTests
+{
+    [Fact]
+    public async Task ASavedPipelineRunsThroughTheRealCheckAndEvaluator()
+    {
+        await using var vision = new VisionHarness(real: true);
+        await vision.Plugin.StartAsync(vision.Context, CancellationToken.None);
+        var saved = await vision.SaveAsync(vision.NewPipeline(tail:
+        [
+            VisionHarness.Node("cnt", NodeKinds.Count, "People"),
+            VisionHarness.Node("ev", NodeKinds.Event, "Many"),
+        ]));
+        Assert.Contains(vision.Plugin.EventTypes, t => t.Id == VisionInfo.EventTypeId(saved.Id, "ev", VisionEventKind.CountChanged));
+        await vision.StreamingAsync();
+
+        await vision.SendAndWaitAsync(vision.Inside.Id, "picture");
+        Assert.Null(vision.Runtime.ProblemOf(saved.Id));
+        Assert.NotNull(vision.Runtime.LastOf(saved.Id)?.Result);
+    }
+}

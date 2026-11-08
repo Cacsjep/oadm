@@ -409,7 +409,7 @@ internal sealed class FakeFrames : IFrameSource
 /// <summary>A started Vision Center plugin over the fakes.</summary>
 internal sealed class VisionHarness : IAsyncDisposable
 {
-    public VisionHarness(int processorCount = 8, bool startingCard = false)
+    public VisionHarness(int processorCount = 8, bool startingCard = false, bool real = false)
     {
         Context = new FakeCoreContext { EventPublisher = Publisher };
         Inside = Context.Add(new FakeDevice { Address = "10.0.0.1" });
@@ -419,9 +419,9 @@ internal sealed class VisionHarness : IAsyncDisposable
             Models = _ => Models,
             Inference = _ => Inference,
             Frames = _ => Frames,
-            Check = FakeCheck.Check,
-            Evaluator = Evaluators.Create,
-            PreviewEvaluator = Evaluators.CreatePreview,
+            Check = real ? Oadm.Plugins.Vision.Graph.VisionGraph.Check : FakeCheck.Check,
+            Evaluator = real ? Oadm.Plugins.Vision.Nodes.PipelineEvaluator.Create : Evaluators.Create,
+            PreviewEvaluator = real ? new VisionParts { Models = _ => null!, Inference = _ => null!, Frames = _ => null! }.PreviewEvaluator : Evaluators.CreatePreview,
             Time = Time,
             ProcessorCount = processorCount,
         };
