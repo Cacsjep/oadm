@@ -62,6 +62,9 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
     private readonly ConcurrentDictionary<string, string> _failing = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string> _actionProblems = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Task, byte> _singles = new();
+
+    /// <summary>The watching pipelines that take a picture of their own for Run pipeline now (one at a time each).</summary>
+    private readonly ConcurrentDictionary<string, byte> _ownPictures = new(StringComparer.Ordinal);
     private readonly ConditionalWeakTable<Pipeline, string> _prints = new();
     private readonly StatsWindow _stats;
     private readonly Events.EventStateBook _eventStates;
@@ -334,10 +337,23 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
 
             // No stream that ran a frame now: a picture of its own, through an evaluator of its own (no event: the stream
             // publishes the pipeline's events, its counts stay as they are).
-            var own = Build(pipeline, preview: false) ?? throw new InvalidOperationException(CannotRun);
-            var jpeg = await _frames.SingleAsync(FrameRequest.Of(pipeline), ct).ConfigureAwait(false);
-            var outcome = await Process(new SerialWork(), own, jpeg, ct).ConfigureAwait(false);
-            return outcome.Result ?? throw new InvalidOperationException(PipelineRules.ModelsFail);
+            // One such picture per pipeline at a time: a second run is refused, never queued (rule 6).
+            if (!_ownPictures.TryAdd(pipeline.Id, 0))
+            {
+                throw new InvalidOperationException(PipelineRules.AlreadyRunning);
+            }
+
+            try
+            {
+                var own = Build(pipeline, preview: false) ?? throw new InvalidOperationException(CannotRun);
+                var jpeg = await _frames.SingleAsync(FrameRequest.Of(pipeline), ct).ConfigureAwait(false);
+                var outcome = await Process(new SerialWork(), own, jpeg, ct).ConfigureAwait(false);
+                return outcome.Result ?? throw new InvalidOperationException(PipelineRules.ModelsFail);
+            }
+            finally
+            {
+                _ownPictures.TryRemove(pipeline.Id, out _);
+            }
         }
 
         var runner = RunnerOf(pipeline) ?? throw new InvalidOperationException(CannotRun);

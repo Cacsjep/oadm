@@ -154,7 +154,7 @@ internal sealed class PreviewRegistry<T>(TimeProvider time, int max, int maxPerU
 /// The worker of a paused preview (docs/spec/ocr.md "Pause"): runs its step again while a newer draft waits, one run at a time,
 /// latest wins (a burst of edits never queues runs). <see cref="Kick"/> and the check of <c>due</c> run under the given lock.
 /// </summary>
-internal sealed class LatestWinsWorker(object gate)
+internal sealed class LatestWinsWorker(object gate, Action<Exception>? failed = null)
 {
     private CancellationTokenSource Stop { get; } = new();
     private Task _worker = Task.CompletedTask;
@@ -204,6 +204,18 @@ internal sealed class LatestWinsWorker(object gate)
 
                 return;
             }
+#pragma warning disable CA1031 // A failed run is the step's to tell; the worker stops, the next Kick runs again.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                failed?.Invoke(ex);
+                lock (gate)
+                {
+                    _working = false;
+                }
+
+                return;
+            }
         }
     }
 
@@ -211,7 +223,16 @@ internal sealed class LatestWinsWorker(object gate)
     public async Task StopAsync()
     {
         await Stop.CancelAsync().ConfigureAwait(false);
-        await _worker.ConfigureAwait(false);
+        try
+        {
+            await _worker.ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // The worker never fails its stop.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
+
         Stop.Dispose();
     }
 }

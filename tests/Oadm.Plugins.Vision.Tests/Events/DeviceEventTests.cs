@@ -39,12 +39,12 @@ public sealed class DeviceEventTests
         subscriptions.Publish("oadm.vision.event.p.ev.objectspresent", camera, PublishedEventKind.On);
         subscriptions.Publish("oadm.device.unreachable", null, PublishedEventKind.Fired);
         Assert.True(book.IsOn(Tamper, camera));
-        Assert.True(book.IsOn(Tamper, null));
+        Assert.False(book.IsOn(Tamper, null)); // a per-device event without its device follows none
         Assert.False(book.IsOn(Tamper, Guid.NewGuid()));
         Assert.False(book.IsOn("oadm.vision.event.p.ev.objectspresent", camera));
 
         subscriptions.Publish(Tamper, camera, PublishedEventKind.Off);
-        Assert.False(book.IsOn(Tamper, null));
+        Assert.False(book.IsOn(Tamper, camera));
 
         book.Follow(false);
         Assert.Equal(0, subscriptions.Open);

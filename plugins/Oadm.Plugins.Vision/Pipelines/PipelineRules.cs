@@ -329,4 +329,32 @@ public static class PipelineRules
 
     /// <summary>A pipeline id or a preview id: 32 hex digits.</summary>
     public static bool IsId(string? id) => id is { Length: 32 } && id.All(char.IsAsciiHexDigit);
+
+    public const string SettingsTooLarge = "The settings of a node are too large.";
+
+    /// <summary>
+    /// Why a pipeline from a page is too large to be checked at all (more nodes or links than a pipeline may have, a node's
+    /// settings beyond <see cref="VisionLimits.MaxSettingsLength"/>); null when it may be checked. Asked before any check.
+    /// </summary>
+    public static string? Oversized(Pipeline? pipeline)
+    {
+        if (pipeline is null)
+        {
+            return null;
+        }
+
+        if (pipeline.Nodes is { Count: > VisionLimits.MaxNodes })
+        {
+            return Graph.GraphTexts.TooManyNodes;
+        }
+
+        if (pipeline.Links is { Count: > VisionLimits.MaxLinks })
+        {
+            return Graph.GraphTexts.TooManyLinks;
+        }
+
+        return (pipeline.Nodes ?? []).Any(n => n?.Settings is { } settings && settings.ToJsonString().Length > VisionLimits.MaxSettingsLength)
+            ? SettingsTooLarge
+            : null;
+    }
 }

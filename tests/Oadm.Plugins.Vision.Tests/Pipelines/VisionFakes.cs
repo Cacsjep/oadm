@@ -362,10 +362,18 @@ internal sealed class FakeFrames : IFrameSource
 
     public ConcurrentQueue<int> Rates { get; } = new();
 
-    public Task<ReadOnlyMemory<byte>> SingleAsync(FrameRequest request, CancellationToken ct)
+    /// <summary>When set, a single picture waits for it.</summary>
+    public SemaphoreSlim? SingleGate { get; set; }
+
+    public async Task<ReadOnlyMemory<byte>> SingleAsync(FrameRequest request, CancellationToken ct)
     {
         Interlocked.Increment(ref _singles);
-        return Task.FromResult(Frame.Of(Single));
+        if (SingleGate is { } gate)
+        {
+            await gate.WaitAsync(ct);
+        }
+
+        return Frame.Of(Single);
     }
 
     public IAsyncEnumerable<ReadOnlyMemory<byte>> WatchAsync(FrameRequest request, int fps, Action<string?> problem, CancellationToken ct)
@@ -557,6 +565,9 @@ internal sealed class FakeSubscriptions : Oadm.Sdk.Events.IEventSubscriptions
 {
     private readonly List<Action<Oadm.Sdk.Events.PublishedEvent>> _handlers = [];
 
+    /// <summary>Every handler ever subscribed, also ended ones (a late event of an old subscription).</summary>
+    public List<Action<Oadm.Sdk.Events.PublishedEvent>> Ever { get; } = [];
+
     public List<Oadm.Sdk.Events.SubscribedEventType> TypeList { get; } = [];
 
     public IReadOnlyList<Oadm.Sdk.Events.SubscribedEventType> Types => TypeList;
@@ -577,6 +588,7 @@ internal sealed class FakeSubscriptions : Oadm.Sdk.Events.IEventSubscriptions
         lock (_handlers)
         {
             _handlers.Add(handler);
+            Ever.Add(handler);
         }
 
         return new Ending(() =>

@@ -38,7 +38,12 @@ public static class VisionGraph
         var inputKinds = new Dictionary<string, PortKind>(StringComparer.Ordinal);
         if (n > VisionLimits.MaxNodes)
         {
-            graphErrors.Add(GraphTexts.TooManyNodes);
+            return new GraphCheck { GraphErrors = [GraphTexts.TooManyNodes] }; // nothing more is checked of an oversized graph
+        }
+
+        if (pipeline.Links.Count > VisionLimits.MaxLinks)
+        {
+            return new GraphCheck { GraphErrors = [GraphTexts.TooManyLinks] };
         }
 
         // The nodes by id (the first of a duplicate id) and their kinds.
@@ -56,7 +61,7 @@ public static class VisionGraph
             }
         }
 
-        if (camera < 0 && n <= VisionLimits.MaxNodes)
+        if (camera < 0)
         {
             graphErrors.Add(GraphTexts.NoCamera);
         }
