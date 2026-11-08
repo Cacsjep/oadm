@@ -159,7 +159,7 @@ function Read-Arguments([string]$Verb, [string[]]$Arguments) {
         }
         'test' {
             if (-not $script:Target) { $script:Target = 'unit' }
-            if ($script:Target -cnotin 'unit', 'perf', 'hardware', 'recipients', 'all') { Exit-Usage test "unknown target '$($script:Target)' for test" }
+            if ($script:Target -cnotin 'unit', 'perf', 'hardware', 'models', 'recipients', 'all') { Exit-Usage test "unknown target '$($script:Target)' for test" }
         }
         'publish' {
             if (-not $script:Target) { $script:Target = 'all' }
@@ -490,8 +490,10 @@ function Invoke-Test {
     Initialize-Dotnet
     if ($script:Target -ceq 'recipients') { Invoke-TestRecipients; return }
     switch ($script:Target) {
-        'unit' { $filter = 'Category!=Hardware&Category!=Perf&Category!=HardwareWrite' }
+        'unit' { $filter = 'Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=RealModel' }
         'perf' { $filter = 'Category=Perf' }
+        # The real models and photos (Vision Center): the build downloads them once into the model cache.
+        'models' { $filter = 'Category=RealModel'; $script:Extra = @('-p:OadmRealModels=true') + $script:Extra }
         'hardware' {
             if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot 'dev-cameras.yaml')) -and -not $env:OADM_DEV_CAMERAS) {
                 [Console]::Error.WriteLine('error: dev-cameras.yaml not found and OADM_DEV_CAMERAS not set, copy dev-cameras.example.yaml first')

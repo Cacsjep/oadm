@@ -1,0 +1,65 @@
+<Project>
+
+  <!-- The real model and photos of the RealModel tests (docs/spec/vision-center.md "Tests"): never in git, never shipped.
+       Downloaded only when the build is asked for them (-p:OadmRealModels=true; manage test models) from their pinned
+       revisions into the cache Text recognition uses ($(OADM_MODEL_CACHE), else %LOCALAPPDATA%\Oadm\model-cache or
+       ~/.cache/oadm/models), each in a folder named after its SHA-256, and checked. A failed download or another hash never
+       fails the build: the file is left out and the tests skip with the reason. The tests find the files through the
+       assembly metadata "RealModelFile" (name|path|sha256). Keep the table in plugins/Oadm.Plugins.Vision/README.md
+       "Tests" the same (RealModelSourcesTests compares them). -->
+
+  <PropertyGroup>
+    <VisionRealModelCache Condition="'$(VisionRealModelCache)' == ''">$(OADM_MODEL_CACHE)</VisionRealModelCache>
+    <VisionRealModelCache Condition="'$(VisionRealModelCache)' == '' and '$(LOCALAPPDATA)' != ''">$(LOCALAPPDATA)\Oadm\model-cache</VisionRealModelCache>
+    <VisionRealModelCache Condition="'$(VisionRealModelCache)' == ''">$(HOME)/.cache/oadm/models</VisionRealModelCache>
+    <VisionRealModelCache>$([MSBuild]::EnsureTrailingSlash('$(VisionRealModelCache)'))</VisionRealModelCache>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <VisionRealModelFile Include="rf-detr-medium.onnx"
+                         Url="https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/94f91976449c187be38e649863e3dadecc312437/rf-detr-medium.onnx"
+                         Sha256="18250b5a3a9552ae117d592f8e8c27fe52438d70c914a77a8913fc45d8f29e69" />
+    <VisionRealModelFile Include="coco-000000278705.jpg"
+                         Url="http://images.cocodataset.org/val2017/000000278705.jpg"
+                         Sha256="d01c906a85c3f77702bdbf9dc7cedf11310e9aa47c6730927f51d9651dece310" />
+    <VisionRealModelFile Include="coco-000000065350.jpg"
+                         Url="http://images.cocodataset.org/val2017/000000065350.jpg"
+                         Sha256="963a129714e3675b99b6a405a2cb46eca5678241358bb6b6bbefc3c3f1943ae0" />
+  </ItemGroup>
+
+  <!-- One assembly metadata per file, also without the download: the tests skip by what is in the cache. -->
+  <Target Name="VisionRealModelMetadata" BeforeTargets="GetAssemblyAttributes">
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>RealModelFile</_Parameter1>
+        <_Parameter2>%(VisionRealModelFile.Identity)|$(VisionRealModelCache)%(VisionRealModelFile.Sha256)/%(VisionRealModelFile.Identity)|%(VisionRealModelFile.Sha256)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
+
+  <Target Name="VisionFetchRealModels" BeforeTargets="BeforeBuild" Condition="'$(OadmRealModels)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <_VisionRealMissing Include="@(VisionRealModelFile)" Condition="!Exists('$(VisionRealModelCache)%(VisionRealModelFile.Sha256)/%(VisionRealModelFile.Identity)')">
+        <Folder>$(VisionRealModelCache)%(VisionRealModelFile.Sha256)/</Folder>
+        <Download>$(VisionRealModelCache)%(VisionRealModelFile.Sha256)/%(VisionRealModelFile.Identity).download</Download>
+      </_VisionRealMissing>
+    </ItemGroup>
+
+    <Message Importance="high" Text="Vision Center tests: downloading %(_VisionRealMissing.Identity) into $(VisionRealModelCache)" Condition="'@(_VisionRealMissing)' != ''" />
+    <DownloadFile SourceUrl="%(_VisionRealMissing.Url)" DestinationFolder="%(_VisionRealMissing.Folder)" DestinationFileName="%(_VisionRealMissing.Identity).download" Retries="3" RetryDelayMilliseconds="5000" ContinueOnError="true" Condition="'@(_VisionRealMissing)' != ''" />
+
+    <ItemGroup>
+      <_VisionRealArrived Include="@(_VisionRealMissing->'%(Download)')" Condition="Exists('%(_VisionRealMissing.Download)')" />
+    </ItemGroup>
+    <GetFileHash Files="@(_VisionRealArrived)" Algorithm="SHA256" Condition="'@(_VisionRealArrived)' != ''">
+      <Output TaskParameter="Items" ItemName="_VisionRealDownloaded" />
+    </GetFileHash>
+
+    <!-- A good file goes into the cache; one with another hash is deleted and its tests skip. -->
+    <Move SourceFiles="%(_VisionRealDownloaded.Identity)" DestinationFiles="%(_VisionRealDownloaded.Folder)%(_VisionRealDownloaded.Filename)" Condition="'@(_VisionRealDownloaded)' != '' and '%(_VisionRealDownloaded.FileHash)' == '%(_VisionRealDownloaded.Sha256)'" />
+    <Message Importance="high" Condition="'@(_VisionRealDownloaded)' != '' and '%(_VisionRealDownloaded.FileHash)' != '%(_VisionRealDownloaded.Sha256)'"
+             Text="Vision Center tests: %(_VisionRealDownloaded.Filename) from %(_VisionRealDownloaded.Url) has the SHA-256 %(_VisionRealDownloaded.FileHash), expected %(_VisionRealDownloaded.Sha256); deleted, its tests skip." />
+    <Delete Files="%(_VisionRealDownloaded.Identity)" Condition="'@(_VisionRealDownloaded)' != '' and '%(_VisionRealDownloaded.FileHash)' != '%(_VisionRealDownloaded.Sha256)'" />
+  </Target>
+
+</Project>

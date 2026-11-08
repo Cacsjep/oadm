@@ -152,7 +152,7 @@ parse_args() {
     build)   TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client|plugins|docs|docs-offline) ;; *) usage_error build "unknown target '$TARGET' for build" ;; esac ;;
     run)     [ -n "$TARGET" ] || usage_error run "missing target for run (server, client, dev, node or node-app)"
              case "$TARGET" in server|client|dev|node|node-app) ;; *) usage_error run "unknown target '$TARGET' for run" ;; esac ;;
-    test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|hardware|recipients|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
+    test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|hardware|models|recipients|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
     publish) TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client) ;; *) usage_error publish "unknown target '$TARGET' for publish" ;; esac ;;
     package) [ -n "$TARGET" ] || usage_error package "missing target for package (windows, linux, macos, site-node, addons or nuget)"
              case "$TARGET" in windows|linux|macos|site-node|addons|nuget) ;; *) usage_error package "unknown target '$TARGET' for package" ;; esac ;;
@@ -453,8 +453,10 @@ cmd_test() {
     return "$status"
   fi
   case "$TARGET" in
-    unit) filter="Category!=Hardware&Category!=Perf&Category!=HardwareWrite" ;;
+    unit) filter="Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=RealModel" ;;
     perf) filter="Category=Perf" ;;
+    # The real models and photos (Vision Center): the build downloads them once into the model cache.
+    models) filter="Category=RealModel"; EXTRA=("-p:OadmRealModels=true" ${EXTRA[@]+"${EXTRA[@]}"}) ;;
     hardware)
       if [ ! -f "$REPO_ROOT/dev-cameras.yaml" ] && [ -z "${OADM_DEV_CAMERAS:-}" ]; then
         echo "error: dev-cameras.yaml not found and OADM_DEV_CAMERAS not set, copy dev-cameras.example.yaml first" >&2
