@@ -221,7 +221,7 @@ internal static class FakeCheck
                 errors[node.Id] = "Choose a model.";
             }
 
-            if (pipeline.Links.FirstOrDefault(l => l.To == node.Id) is { } link && pipeline.Nodes.FirstOrDefault(n => n.Id == link.From) is { } from)
+            if (pipeline.Links.FirstOrDefault(l => l.To == node.Id && l.ToPort is null) is { } link && pipeline.Nodes.FirstOrDefault(n => n.Id == link.From) is { } from)
             {
                 inputs[node.Id] = from.Kind switch
                 {
@@ -229,6 +229,8 @@ internal static class FakeCheck
                     NodeKinds.Track => PortKind.TrackedObjects,
                     NodeKinds.Line => PortKind.Crossings,
                     NodeKinds.Count => PortKind.Number,
+                    NodeKinds.Compare => PortKind.Condition,
+                    NodeKinds.Timer => PortKind.Pulse,
                     _ => PortKind.Objects,
                 };
             }

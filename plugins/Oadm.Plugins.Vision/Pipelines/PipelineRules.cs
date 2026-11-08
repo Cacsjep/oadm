@@ -273,13 +273,6 @@ public static class PipelineRules
     public static double? Number(PipelineNode node, string key) =>
         Setting(node, key) is JsonValue value && value.TryGetValue<double>(out var number) ? number : null;
 
-    /// <summary>The time of day of a Count node's daily reset ("HH:mm"); null without one.</summary>
-    public static TimeOnly? ResetAt(PipelineNode node) =>
-        node.Kind == NodeKinds.Count && Text(node, NodeKinds.ResetAtKey) is { Length: > 0 } text
-        && TimeOnly.TryParseExact(text, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var time)
-            ? time
-            : null;
-
     /// <summary>The ids of the models the nodes of <paramref name="pipeline"/> name.</summary>
     public static IReadOnlyList<string> ModelsOf(Pipeline pipeline)
     {

@@ -32,7 +32,7 @@ internal sealed record FrameOutcome(FrameResult? Result, ReadOnlyMemory<byte> Jp
 /// newest frame wins (older ones are dropped, never queued), one frame in work, up to <see cref="VisionLimits.MaxFramesInWork"/>
 /// while <see cref="IInference.HasRoom"/>; each frame decoded once (<see cref="IInference.Decode"/>) beside the frames before
 /// it, then through the pipeline's evaluator one at a time in frame order (<see cref="SerialWork"/>), its emissions published;</item>
-/// <item>the action Run pipeline (<see cref="RunOnceAsync"/>) and Reset counter, the daily reset of Count nodes;</item>
+/// <item>the action Run pipeline (<see cref="RunOnceAsync"/>) and Reset counter (a Timer node's pulses are the evaluator's);</item>
 /// <item>the watching limits (by the cores and <see cref="VisionLimits.MaxWatchingPerSite"/> per site), the problems, the
 /// previews of the page (PipelineRuntime.Previews.cs) and the runtime stats (PipelineRuntime.Stats.cs).</item>
 /// </list>
@@ -42,9 +42,6 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
 {
     /// <summary>How often the pipelines' cameras are checked again.</summary>
     public static readonly TimeSpan RecheckInterval = TimeSpan.FromMinutes(1);
-
-    /// <summary>How often the daily resets of the Count nodes are looked for.</summary>
-    public static readonly TimeSpan ResetCheckInterval = TimeSpan.FromMinutes(1);
 
     /// <summary>The problem of a pipeline whose evaluator cannot be built.</summary>
     public const string CannotRun = "The pipeline cannot run. The server log has the details.";
@@ -69,7 +66,6 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
     private readonly StatsWindow _stats;
     private readonly CancellationTokenSource _stopping = new();
     private readonly ITimer _recheck;
-    private readonly ITimer _resets;
     private readonly ITimer _live;
     private readonly ITimer _sweep;
     private readonly ITimer _statsTimer;
@@ -96,7 +92,6 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
         using (ExecutionContext.SuppressFlow())
         {
             _recheck = _time.CreateTimer(_ => _ = QuietlyAsync(SyncAsync, "the check of the pipelines"), null, RecheckInterval, RecheckInterval);
-            _resets = _time.CreateTimer(_ => _ = QuietlyAsync(CheckResetsAsync, "the daily reset of the counters"), null, ResetCheckInterval, ResetCheckInterval);
             _live = _time.CreateTimer(_ => TickLive(), null, VisionLimits.LiveEvery, VisionLimits.LiveEvery);
             _sweep = _time.CreateTimer(_ => _ = QuietlyAsync(SweepPreviewsAsync, "the end of old previews"), null, PreviewSweepInterval, PreviewSweepInterval);
             _statsTimer = _time.CreateTimer(_ => TickStats(), null, PipelineStats.SampleInterval, PipelineStats.SampleInterval);
@@ -430,7 +425,6 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
             }
 
             await _recheck.DisposeAsync().ConfigureAwait(false);
-            await _resets.DisposeAsync().ConfigureAwait(false);
             await _live.DisposeAsync().ConfigureAwait(false);
             await _sweep.DisposeAsync().ConfigureAwait(false);
             await _statsTimer.DisposeAsync().ConfigureAwait(false);
@@ -582,7 +576,6 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
                         Site = camera?.SiteId,
                         SiteName = camera?.SiteName,
                     };
-                    watch.Resets = ResetsOf(pipeline);
                     _stats.Started(pipeline.Id);
                     var token = watch.Stop.Token;
                     watch.Run = Task.Run(() => WatchAsync(watch, token), CancellationToken.None);
@@ -639,7 +632,7 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
             return null;
         }
 
-        var runner = new Runner(print, evaluator) { Resets = ResetsOf(pipeline) };
+        var runner = new Runner(print, evaluator);
         _runners[pipeline.Id] = runner;
         if (StoredOf(pipeline.Id) is { } stored)
         {
@@ -1053,60 +1046,6 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
         return string.Empty;
     }
 
-    /// <summary>The Count nodes with a daily reset and the last day each was reset (today when its time has passed already).</summary>
-    private Dictionary<string, (TimeOnly At, DateOnly Done)> ResetsOf(Pipeline pipeline)
-    {
-        var now = _time.GetLocalNow().DateTime;
-        var today = DateOnly.FromDateTime(now);
-        var resets = new Dictionary<string, (TimeOnly, DateOnly)>(StringComparer.Ordinal);
-        foreach (var node in pipeline.Nodes)
-        {
-            if (PipelineRules.ResetAt(node) is { } at)
-            {
-                resets[node.Id] = (at, TimeOnly.FromDateTime(now) >= at ? today : today.AddDays(-1));
-            }
-        }
-
-        return resets;
-    }
-
-    /// <summary>The timer: every Count node whose daily time (server local time) has come resets once that day.</summary>
-    private async Task CheckResetsAsync()
-    {
-        if (_stopped)
-        {
-            return;
-        }
-
-        var now = _time.GetLocalNow().DateTime;
-        var today = DateOnly.FromDateTime(now);
-        var time = TimeOnly.FromDateTime(now);
-        List<(SerialWork Serial, IPipelineEvaluator Evaluator, Dictionary<string, (TimeOnly At, DateOnly Done)> Resets)> running;
-        lock (_loops)
-        {
-            running = [.. _loops.Values.Select(w => (w.Serial, w.Evaluator, w.Resets)), .. _runners.Values.Select(r => (r.Serial, r.Evaluator, r.Resets))];
-        }
-
-        foreach (var (serial, evaluator, resets) in running)
-        {
-            List<string> due;
-            lock (resets)
-            {
-                due = [.. resets.Where(r => time >= r.Value.At && r.Value.Done < today).Select(r => r.Key)];
-                foreach (var node in due)
-                {
-                    resets[node] = (resets[node].At, today);
-                }
-            }
-
-            foreach (var node in due)
-            {
-                await serial.RunAsync(() => evaluator.ResetCounter(node)).ConfigureAwait(false);
-                MarkLive();
-            }
-        }
-    }
-
     /// <summary>Work started from a user's call runs without it, like every other background work of the plugin.</summary>
     private static Task<T> Detached<T>(Func<Task<T>> work)
     {
@@ -1172,8 +1111,6 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
         /// <summary>Failed frames in a row (the loop's thread only).</summary>
         public int Failed { get; set; }
 
-        public Dictionary<string, (TimeOnly At, DateOnly Done)> Resets { get; set; } = [];
-
         public FrameOutcome? Last
         {
             get => _last;
@@ -1199,8 +1136,6 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
         public IPipelineEvaluator Evaluator { get; } = evaluator;
 
         public SerialWork Serial { get; } = new();
-
-        public Dictionary<string, (TimeOnly At, DateOnly Done)> Resets { get; init; } = [];
 
         public FrameOutcome? Last
         {
