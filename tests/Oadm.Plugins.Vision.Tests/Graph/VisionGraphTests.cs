@@ -385,7 +385,7 @@ public sealed class VisionGraphTests(ITestOutputHelper output)
     [Theory]
     [InlineData("", "Enter a name.")]
     [InlineData("   ", "Enter a name.")]
-    [InlineData("Line\t1", "Use no control characters.")]
+    [InlineData("Line\t1", "Use letters, digits and punctuation only.")]
     public void Names_must_be_given_and_plain(string name, string text)
     {
         var (b, _, detect, _, _, _) = Gate();

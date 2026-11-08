@@ -37,7 +37,7 @@ public static class GraphTexts
     public const string LabelNeedsClassify = "Class of Classify needs a Classify node before it.";
     public const string EnterNumber = "Enter a number.";
     public const string EnterText = "Enter a text.";
-    public const string NoControlCharacters = "Use no control characters.";
+    public const string NoControlCharacters = Oadm.Sdk.Events.RuleDefinition.NameInvalidText; // one phrase with the rules and recipients
     public const string ChooseOption = "Choose one of the options.";
     public const string ChooseYesNo = "Choose on or off.";
     public const string EnterTime = "Enter a time like 06:00.";
