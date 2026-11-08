@@ -144,6 +144,9 @@ public static class VisionMethods
     public const string GetStats = "getStats";
 
     public const string StatsTopic = "stats";
+
+    /// <summary>{} -> <see cref="EventTypeList"/>: the on and off events a Device event node may follow. View.</summary>
+    public const string ListEventTypes = "listEventTypes";
 }
 
 public sealed record PipelineRequest
@@ -414,4 +417,26 @@ public sealed record SaveClassListReply
 
     /// <summary>By field ("name", "names"); nothing was stored.</summary>
     public IReadOnlyDictionary<string, string> Errors { get; init; } = new Dictionary<string, string>();
+}
+
+/// <summary>An on and off event of the event rules a Device event node may follow.</summary>
+public sealed record EventTypeChoice
+{
+    public string Id { get; init; } = string.Empty;
+
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>Its folders in the event tree, top first ("Devices", "Any device").</summary>
+    public IReadOnlyList<string> Path { get; init; } = [];
+
+    /// <summary>One state per device (the node then names a device); false: one for the server.</summary>
+    public bool PerDevice { get; init; }
+
+    /// <summary>False while the plugin that sends it is turned off.</summary>
+    public bool Available { get; init; } = true;
+}
+
+public sealed record EventTypeList
+{
+    public IReadOnlyList<EventTypeChoice> Types { get; init; } = [];
 }

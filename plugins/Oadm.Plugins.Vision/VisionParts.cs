@@ -41,6 +41,15 @@ public sealed record VisionParts
     /// <summary>The processor count the watching limits follow (<see cref="VisionLimits.MaxWatchingFor"/>).</summary>
     public int ProcessorCount { get; init; } = Environment.ProcessorCount;
 
+    /// <summary>The events of the event rules the Device event nodes follow (<see cref="ICorePluginContext.EventSubscriptions"/>).</summary>
+    public Func<ICorePluginContext, Oadm.Sdk.Events.IEventSubscriptions?> EventSubscriptions { get; init; } = static ctx => ctx.EventSubscriptions;
+
+    /// <summary>
+    /// Builds an evaluator that reads the Device event nodes' states (the last argument: a preview's, every node), for
+    /// <c>EvaluatorOptions.EventStates</c> of the graph stage. Null: <see cref="Evaluator"/> and <see cref="PreviewEvaluator"/>.
+    /// </summary>
+    public Func<Pipeline, Func<string?, VisionModel?>, IInference, PipelineMode, IEventStates, bool, IPipelineEvaluator>? EvaluatorWithStates { get; init; }
+
     /// <summary>
     /// The real parts: <see cref="ModelLibrary"/> in the plugin's records and data folder, <see cref="OnnxInference"/> over its
     /// files (on the CPU until the plugin hands "Use GPU": off must not load DirectML), and the cameras' pictures through the

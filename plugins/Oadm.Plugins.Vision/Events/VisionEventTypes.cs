@@ -16,19 +16,27 @@ namespace Oadm.Plugins.Vision.Events;
 /// </summary>
 public static class VisionEventTypes
 {
-    /// <summary>The kinds an Event node publishes for its input; Above limit only with a limit set.</summary>
-    public static IReadOnlyList<VisionEventKind> KindsOf(PortKind input, PipelineMode mode, bool hasLimit) => input switch
+    /// <summary>
+    /// The kinds an Event node publishes for its input; Report too when a Timer pulses its "Send now"
+    /// (<paramref name="hasSend"/>). The first kind carries the node's name.
+    /// </summary>
+    public static IReadOnlyList<VisionEventKind> KindsOf(PortKind input, PipelineMode mode, bool hasSend)
     {
-        PortKind.Objects or PortKind.TrackedObjects when mode == PipelineMode.OnAction => [VisionEventKind.ObjectsFound, VisionEventKind.NoObjectsFound],
-        PortKind.Objects => [VisionEventKind.ObjectsPresent],
-        PortKind.TrackedObjects => [VisionEventKind.ObjectsPresent, VisionEventKind.ObjectEntered, VisionEventKind.ObjectLeft],
-        PortKind.Crossings => [VisionEventKind.LineCrossed],
-        PortKind.Number => hasLimit ? [VisionEventKind.CountChanged, VisionEventKind.AboveLimit] : [VisionEventKind.CountChanged],
-        _ => [],
-    };
+        IReadOnlyList<VisionEventKind> kinds = input switch
+        {
+            PortKind.Objects or PortKind.TrackedObjects when mode == PipelineMode.OnAction => [VisionEventKind.ObjectsFound, VisionEventKind.NoObjectsFound],
+            PortKind.Objects => [VisionEventKind.ObjectsPresent],
+            PortKind.TrackedObjects => [VisionEventKind.ObjectsPresent, VisionEventKind.ObjectEntered, VisionEventKind.ObjectLeft],
+            PortKind.Crossings => [VisionEventKind.LineCrossed],
+            PortKind.Number => [VisionEventKind.CountChanged],
+            PortKind.Condition => [VisionEventKind.ConditionHolds],
+            _ => [],
+        };
+        return hasSend && kinds.Count > 0 ? [.. kinds, VisionEventKind.Report] : kinds;
+    }
 
     /// <summary>On and off kinds; the others fire once.</summary>
-    public static bool IsStateful(VisionEventKind kind) => kind is VisionEventKind.ObjectsPresent or VisionEventKind.AboveLimit;
+    public static bool IsStateful(VisionEventKind kind) => kind is VisionEventKind.ObjectsPresent or VisionEventKind.ConditionHolds;
 
     /// <summary>The event name: the node's name for its first kind, else the node's name and what the kind tells.</summary>
     public static string NameOf(string nodeName, VisionEventKind kind) => kind switch
@@ -36,9 +44,17 @@ public static class VisionEventTypes
         VisionEventKind.ObjectEntered => nodeName + ": object entered",
         VisionEventKind.ObjectLeft => nodeName + ": object left",
         VisionEventKind.NoObjectsFound => nodeName + ": no objects found",
-        VisionEventKind.AboveLimit => nodeName + ": above limit",
+        VisionEventKind.Report => nodeName + ": report",
         _ => nodeName,
     };
+
+    /// <summary>A Timer's pulse goes into the "Send now" of <paramref name="node"/>.</summary>
+    public static bool HasSend(Pipeline pipeline, PipelineNode node)
+    {
+        ArgumentNullException.ThrowIfNull(pipeline);
+        ArgumentNullException.ThrowIfNull(node);
+        return pipeline.Links.Any(l => l.To == node.Id && l.ToPort == NodeKinds.SendPort);
+    }
 
     /// <summary>The folders of a pipeline's events in the rule dialog.</summary>
     public static IReadOnlyList<string> PathOf(string pipelineName) =>
@@ -56,8 +72,7 @@ public static class VisionEventTypes
                 continue;
             }
 
-            var hasLimit = Pipelines.PipelineRules.Number(node, NodeKinds.LimitKey) is not null;
-            foreach (var kind in KindsOf(input, pipeline.Mode, hasLimit))
+            foreach (var kind in KindsOf(input, pipeline.Mode, HasSend(pipeline, node)))
             {
                 yield return (node, kind);
             }
@@ -66,13 +81,17 @@ public static class VisionEventTypes
 
     /// <summary>The event types of every Event node of <paramref name="pipeline"/>.</summary>
     public static IEnumerable<EventTypeInfo> TypesOf(Pipeline pipeline, GraphCheck check) =>
-        EventsOf(pipeline, check).Select(e => TypeOf(pipeline, e.Node, e.Kind));
+        EventsOf(pipeline, check).Select(e => TypeOf(pipeline, e.Node, e.Kind, check.InputKinds.GetValueOrDefault(e.Node.Id)));
 
     /// <summary>The ids of the on and off types of <paramref name="pipeline"/>.</summary>
     public static IReadOnlyList<string> StatefulIdsOf(Pipeline pipeline, GraphCheck check) =>
         [.. EventsOf(pipeline, check).Where(e => IsStateful(e.Kind)).Select(e => VisionInfo.EventTypeId(pipeline.Id, e.Node.Id, e.Kind))];
 
-    public static EventTypeInfo TypeOf(Pipeline pipeline, PipelineNode node, VisionEventKind kind)
+    /// <param name="pipeline">The pipeline.</param>
+    /// <param name="node">Its Event node.</param>
+    /// <param name="kind">The kind.</param>
+    /// <param name="input">The node's input (the values of a Report follow it).</param>
+    public static EventTypeInfo TypeOf(Pipeline pipeline, PipelineNode node, VisionEventKind kind, PortKind input = PortKind.Objects)
     {
         ArgumentNullException.ThrowIfNull(pipeline);
         ArgumentNullException.ThrowIfNull(node);
@@ -83,7 +102,7 @@ public static class VisionEventTypes
             VisionInfo.EventGroup,
             IsStateful(kind) ? EventKind.Stateful : EventKind.Stateless,
             EventScope.Device,
-            FieldsOf(kind))
+            FieldsOf(kind, input))
         {
             Description = DescriptionOf(pipeline.Name, node.Name, kind),
             DeviceIds = [pipeline.DeviceId],
@@ -93,15 +112,24 @@ public static class VisionEventTypes
         };
     }
 
-    /// <summary>The values of each kind (docs/spec/vision-center.md "Events").</summary>
-    public static IReadOnlyList<EventField> FieldsOf(VisionEventKind kind) => kind switch
+    /// <summary>
+    /// The values of each kind (docs/spec/vision-center.md "Events"); a Report's follow the Event node's input: objects count
+    /// and classes, crossings and numbers count, in and out, a condition the compared number.
+    /// </summary>
+    public static IReadOnlyList<EventField> FieldsOf(VisionEventKind kind, PortKind input = PortKind.Objects) => kind switch
     {
         VisionEventKind.ObjectsPresent or VisionEventKind.ObjectsFound => [Count, Classes],
         VisionEventKind.NoObjectsFound => [],
         VisionEventKind.ObjectEntered or VisionEventKind.ObjectLeft => [Class, ObjectId, TimeInside],
         VisionEventKind.LineCrossed => [Direction, Class, ObjectId, Score],
         VisionEventKind.CountChanged => [Count, In, Out],
-        VisionEventKind.AboveLimit => [Count],
+        VisionEventKind.ConditionHolds => [Count],
+        VisionEventKind.Report => input switch
+        {
+            PortKind.Objects or PortKind.TrackedObjects => [Count, Classes],
+            PortKind.Crossings or PortKind.Number => [Count, In, Out],
+            _ => [Count],
+        },
         _ => [],
     };
 
@@ -129,7 +157,8 @@ public static class VisionEventTypes
         VisionEventKind.ObjectLeft => $"An object left {node} of the pipeline {pipeline}.",
         VisionEventKind.LineCrossed => $"An object crossed the line at {node} of the pipeline {pipeline}.",
         VisionEventKind.CountChanged => $"The count at {node} of the pipeline {pipeline} changed.",
-        VisionEventKind.AboveLimit => $"The count at {node} of the pipeline {pipeline} is at its limit or above.",
+        VisionEventKind.ConditionHolds => $"The condition at {node} of the pipeline {pipeline} holds.",
+        VisionEventKind.Report => $"The values at {node} of the pipeline {pipeline}, sent by its timer.",
         _ => string.Empty,
     };
 

@@ -221,7 +221,7 @@ internal static class FakeCheck
                 errors[node.Id] = "Choose a model.";
             }
 
-            if (pipeline.Links.FirstOrDefault(l => l.To == node.Id) is { } link && pipeline.Nodes.FirstOrDefault(n => n.Id == link.From) is { } from)
+            if (pipeline.Links.FirstOrDefault(l => l.To == node.Id && l.ToPort is null) is { } link && pipeline.Nodes.FirstOrDefault(n => n.Id == link.From) is { } from)
             {
                 inputs[node.Id] = from.Kind switch
                 {
@@ -229,6 +229,8 @@ internal static class FakeCheck
                     NodeKinds.Track => PortKind.TrackedObjects,
                     NodeKinds.Line => PortKind.Crossings,
                     NodeKinds.Count => PortKind.Number,
+                    NodeKinds.Compare => PortKind.Condition,
+                    NodeKinds.Timer => PortKind.Pulse,
                     _ => PortKind.Objects,
                 };
             }
@@ -424,6 +426,7 @@ internal sealed class VisionHarness : IAsyncDisposable
             PreviewEvaluator = real ? new VisionParts { Models = _ => null!, Inference = _ => null!, Frames = _ => null! }.PreviewEvaluator : Evaluators.CreatePreview,
             Time = Time,
             ProcessorCount = processorCount,
+            EventSubscriptions = _ => Subscriptions,
         };
         if (startingCard)
         {
@@ -446,6 +449,8 @@ internal sealed class VisionHarness : IAsyncDisposable
     public FakeFrames Frames { get; } = new();
 
     public FakeModels Models { get; } = new();
+
+    public FakeSubscriptions Subscriptions { get; } = new();
 
     public FakeEvaluators Evaluators { get; } = new();
 
@@ -545,4 +550,61 @@ internal sealed class FakeCallContextWithout(FakeCallContext inner, string permi
     public bool Has(string key) => key != permission && inner.Has(key);
 
     public bool Contains(Oadm.Sdk.Devices.IDeviceInfo device) => inner.Contains(device);
+}
+
+/// <summary>The event subscriptions of the fakes: the types a test sets, the handlers of the open subscriptions.</summary>
+internal sealed class FakeSubscriptions : Oadm.Sdk.Events.IEventSubscriptions
+{
+    private readonly List<Action<Oadm.Sdk.Events.PublishedEvent>> _handlers = [];
+
+    public List<Oadm.Sdk.Events.SubscribedEventType> TypeList { get; } = [];
+
+    public IReadOnlyList<Oadm.Sdk.Events.SubscribedEventType> Types => TypeList;
+
+    public int Open
+    {
+        get
+        {
+            lock (_handlers)
+            {
+                return _handlers.Count;
+            }
+        }
+    }
+
+    public IDisposable Subscribe(Action<Oadm.Sdk.Events.PublishedEvent> handler)
+    {
+        lock (_handlers)
+        {
+            _handlers.Add(handler);
+        }
+
+        return new Ending(() =>
+        {
+            lock (_handlers)
+            {
+                _handlers.Remove(handler);
+            }
+        });
+    }
+
+    /// <summary>Hands an event to every open subscription.</summary>
+    public void Publish(string typeId, Guid? deviceId, Oadm.Sdk.Events.PublishedEventKind kind)
+    {
+        List<Action<Oadm.Sdk.Events.PublishedEvent>> handlers;
+        lock (_handlers)
+        {
+            handlers = [.. _handlers];
+        }
+
+        foreach (var handler in handlers)
+        {
+            handler(new Oadm.Sdk.Events.PublishedEvent(typeId, deviceId, kind, new Dictionary<string, string>(), DateTimeOffset.UnixEpoch));
+        }
+    }
+
+    private sealed class Ending(Action end) : IDisposable
+    {
+        public void Dispose() => end();
+    }
 }

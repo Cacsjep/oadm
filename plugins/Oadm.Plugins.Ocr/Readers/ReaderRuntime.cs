@@ -89,6 +89,8 @@ internal sealed partial class ReaderRuntime : IAsyncDisposable
         }
 
         _time = parts.Time;
+        _statsLeases = new StatsLeases(parts.Time);
+        _previews = new PreviewRegistry<Preview>(parts.Time, OcrLimits.MaxPreviews, OcrLimits.MaxPreviewsPerUser, OcrLimits.PreviewLease);
         _readIds = parts.Time.GetUtcNow().ToUnixTimeMilliseconds(); // a plugin started again never repeats an id the page holds
     }
 

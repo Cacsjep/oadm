@@ -54,7 +54,8 @@ public sealed class VisionEventTests
     [InlineData(PortKind.Objects, PipelineMode.OnAction, false, new[] { VisionEventKind.ObjectsFound, VisionEventKind.NoObjectsFound })]
     [InlineData(PortKind.Crossings, PipelineMode.Watching, false, new[] { VisionEventKind.LineCrossed })]
     [InlineData(PortKind.Number, PipelineMode.Watching, false, new[] { VisionEventKind.CountChanged })]
-    [InlineData(PortKind.Number, PipelineMode.Watching, true, new[] { VisionEventKind.CountChanged, VisionEventKind.AboveLimit })]
+    [InlineData(PortKind.Number, PipelineMode.Watching, true, new[] { VisionEventKind.CountChanged, VisionEventKind.Report })]
+    [InlineData(PortKind.Condition, PipelineMode.Watching, false, new[] { VisionEventKind.ConditionHolds })]
     public void TheKindsFollowTheInput(PortKind input, PipelineMode mode, bool limit, VisionEventKind[] kinds) =>
         Assert.Equal(kinds, VisionEventTypes.KindsOf(input, mode, limit));
 
@@ -168,26 +169,75 @@ public sealed class VisionEventTests
     }
 
     [Fact]
-    public async Task ACountNodeResetsOnceADayAtItsTime()
+    public async Task TheRuntimeNeverResetsACounterByTheClock()
     {
-        await using var vision = new VisionHarness();
-        vision.Time.SetLocalTimeZone(TimeZoneInfo.Utc);
-        vision.Time.SetUtcNow(new DateTimeOffset(2026, 11, 9, 5, 58, 30, TimeSpan.Zero));
-        await vision.Plugin.StartAsync(vision.Context, CancellationToken.None);
+        await using var vision = await VisionHarness.StartAsync();
         var saved = await vision.SaveAsync(vision.NewPipeline(tail: [VisionHarness.Node("cnt", NodeKinds.Count, "People", new JsonObject { [NodeKinds.ResetAtKey] = "06:00" })]));
         await vision.StreamingAsync();
-        var evaluator = vision.Evaluators.Of(saved.Id)!;
 
-        vision.Time.Advance(TimeSpan.FromMinutes(1));
-        Assert.Empty(evaluator.Resets);
-        vision.Time.Advance(TimeSpan.FromMinutes(1));
-        await Eventually.TrueAsync(() => evaluator.Resets.Count == 1, "the counter was reset at 06:00");
-        vision.Time.Advance(TimeSpan.FromMinutes(5));
-        vision.Time.Advance(TimeSpan.FromHours(12));
-        Assert.Single(evaluator.Resets);
+        vision.Time.Advance(TimeSpan.FromDays(1));
+        Assert.Empty(vision.Evaluators.Of(saved.Id)!.Resets); // the Timer node pulses Count's Reset (the evaluator's)
+    }
 
-        vision.Time.Advance(TimeSpan.FromHours(12));
-        await Eventually.TrueAsync(() => evaluator.Resets.Count == 2, "the next day's reset");
+    [Fact]
+    public async Task ATimersSettingsRestartThePipelineLikeAnyOther()
+    {
+        await using var vision = await VisionHarness.StartAsync();
+        var saved = await vision.SaveAsync(TimedPipeline(vision, "15"));
+        await vision.StreamingAsync();
+        var first = vision.Evaluators.Of(saved.Id);
+
+        await vision.SaveAsync(TimedPipeline(vision, "30") with { Id = saved.Id });
+        Assert.NotSame(first, vision.Evaluators.Of(saved.Id));
+    }
+
+    [Fact]
+    public async Task AConditionHoldsWhileItsCompareSaysYesAndATimerAddsAReport()
+    {
+        await using var vision = await VisionHarness.StartAsync();
+        var saved = await vision.SaveAsync(vision.NewPipeline(tail:
+        [
+            VisionHarness.Node("cnt", NodeKinds.Count, "People"),
+            VisionHarness.Node("cmp", NodeKinds.Compare, "Crowded"),
+            VisionHarness.Node("ev", NodeKinds.Event, "Lobby crowded"),
+        ]));
+        var holds = vision.Plugin.EventTypes.Single(t => t.Id == VisionInfo.EventTypeId(saved.Id, "ev", VisionEventKind.ConditionHolds));
+        Assert.Equal("Lobby crowded", holds.DisplayName);
+        Assert.Equal(EventKind.Stateful, holds.Kind);
+        Assert.Equal([VisionInfo.CountField], holds.DataFields.Select(f => f.Name));
+        Assert.DoesNotContain(vision.Plugin.EventTypes, t => t.Id == VisionInfo.EventTypeId(saved.Id, "ev", VisionEventKind.Report));
+        await Eventually.TrueAsync(() => vision.Publisher.States.ContainsKey(holds.Id), "the condition's type reported first");
+
+        var timed = await vision.SaveAsync(TimedPipeline(vision, "15") with { Name = "Counted" });
+        var report = vision.Plugin.EventTypes.Single(t => t.Id == VisionInfo.EventTypeId(timed.Id, "ev", VisionEventKind.Report));
+        Assert.Equal("Counts: report", report.DisplayName);
+        Assert.Equal(EventKind.Stateless, report.Kind);
+        Assert.Equal([VisionInfo.CountField, VisionInfo.InField, VisionInfo.OutField], report.DataFields.Select(f => f.Name));
+        Assert.Contains(vision.Plugin.EventTypes, t => t.Id == VisionInfo.EventTypeId(timed.Id, "ev", VisionEventKind.CountChanged));
+    }
+
+    [Theory]
+    [InlineData(PortKind.Objects, new[] { VisionInfo.CountField, VisionInfo.ClassesField })]
+    [InlineData(PortKind.TrackedObjects, new[] { VisionInfo.CountField, VisionInfo.ClassesField })]
+    [InlineData(PortKind.Crossings, new[] { VisionInfo.CountField, VisionInfo.InField, VisionInfo.OutField })]
+    [InlineData(PortKind.Condition, new[] { VisionInfo.CountField })]
+    public void AReportCarriesTheValuesOfItsInput(PortKind input, string[] fields) =>
+        Assert.Equal(fields, VisionEventTypes.FieldsOf(VisionEventKind.Report, input).Select(f => f.Name));
+
+    /// <summary>Camera > detect > count > event "Counts", a timer pulsing the event's Send now.</summary>
+    private static Pipeline TimedPipeline(VisionHarness vision, string minutes)
+    {
+        var pipeline = vision.NewPipeline("Timed", tail:
+        [
+            VisionHarness.Node("cnt", NodeKinds.Count, "People"),
+            VisionHarness.Node("ev", NodeKinds.Event, "Counts"),
+        ]);
+        var timer = VisionHarness.Node("tmr", NodeKinds.Timer, "Every 15 minutes", new JsonObject { [NodeKinds.EveryKey] = NodeKinds.EveryMinutes, [NodeKinds.MinutesKey] = int.Parse(minutes, System.Globalization.CultureInfo.InvariantCulture) });
+        return pipeline with
+        {
+            Nodes = [.. pipeline.Nodes, timer],
+            Links = [.. pipeline.Links, new PipelineLink("tmr", "ev") { ToPort = NodeKinds.SendPort }],
+        };
     }
 
     private static Oadm.Sdk.Actions.ActionInvocation Invocation(Dictionary<string, string> settings) =>

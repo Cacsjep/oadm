@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-
 using Oadm.Plugins.Ocr.Api;
 using Oadm.Plugins.Ocr.Model;
 using Oadm.Plugins.Shared;
@@ -15,7 +13,8 @@ namespace Oadm.Plugins.Ocr.Readers;
 /// </summary>
 internal sealed partial class ReaderRuntime
 {
-    private readonly ConcurrentDictionary<string, DateTimeOffset> _statsLeases = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>The scopes whose page keeps the live stats on (<see cref="StatsRules.StatsLease"/>).</summary>
+    private readonly StatsLeases _statsLeases;
 
     /// <summary>The scopes that get the live stats now (tests).</summary>
     public IReadOnlyCollection<string> StatsWatchers => [.. _statsLeases.Keys];
@@ -26,7 +25,7 @@ internal sealed partial class ReaderRuntime
     /// </summary>
     public OcrStats GetStats(string owner)
     {
-        _statsLeases[owner] = _time.GetUtcNow() + OcrLimits.PreviewLease;
+        _statsLeases.Keep(owner);
         return StatsFor(owner);
     }
 
@@ -41,15 +40,8 @@ internal sealed partial class ReaderRuntime
                 return;
             }
 
-            var now = _time.GetUtcNow();
-            foreach (var (owner, until) in _statsLeases)
+            foreach (var owner in _statsLeases.Live())
             {
-                if (until <= now)
-                {
-                    _statsLeases.TryRemove(new KeyValuePair<string, DateTimeOffset>(owner, until));
-                    continue;
-                }
-
                 var audience = owner == ICallContext.AllDevicesScopeKey ? PluginEventAudience.AllDevices : PluginEventAudience.DeviceScope(owner);
                 events.Publish(OcrMethods.StatsTopic, OcrJson.Serialize(StatsFor(owner)), audience);
             }
