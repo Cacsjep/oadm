@@ -1,5 +1,7 @@
 using System.Text.Json.Nodes;
 
+using Microsoft.Extensions.Time.Testing;
+
 using Oadm.Plugins.Vision.Graph;
 using Oadm.Plugins.Vision.Model;
 
@@ -33,6 +35,11 @@ internal sealed class FakeInference : IInference
     /// <summary>The next model call fails with this.</summary>
     public Exception? FailNext { get; set; }
 
+    /// <summary>Advanced by <see cref="CallTime"/> in every model call (the measured ms).</summary>
+    public FakeTimeProvider? Clock { get; set; }
+
+    public TimeSpan CallTime { get; set; } = TimeSpan.FromMilliseconds(18);
+
     public int DetectCalls { get; private set; }
 
     public int ClassifyCalls { get; private set; }
@@ -49,6 +56,7 @@ internal sealed class FakeInference : IInference
     {
         DetectCalls++;
         MinScores.Add(minScore);
+        Clock?.Advance(CallTime);
         if (FailNext is { } ex)
         {
             FailNext = null;
@@ -63,6 +71,7 @@ internal sealed class FakeInference : IInference
     {
         ClassifyCalls++;
         ClassifiedRegions.Add(regions.Count);
+        Clock?.Advance(CallTime);
         if (FailNext is { } ex)
         {
             FailNext = null;
