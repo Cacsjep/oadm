@@ -20,7 +20,7 @@ public interface INodeFormHost
     /// <summary>The stored models of <paramref name="kind"/> (not Missing ones too: they show, the check says to upload them).</summary>
     IReadOnlyList<ModelOption> ModelsOf(ModelKind kind);
 
-    /// <summary>"Class list: COCO (91 ids)" of a stored model; null when there is no such model.</summary>
+    /// <summary>"Class list: COCO for DETR and RF-DETR (91)" of a stored model; null when there is no such model.</summary>
     string? ClassListOf(string? modelId) => null;
 
     /// <summary>The class names of the node's own model, or of the model before it; empty without one.</summary>
@@ -374,7 +374,7 @@ public sealed partial class ModelFieldViewModel : FieldViewModel
 
     public static string ChoosePlaceholder => VisionTexts.ChooseModel;
 
-    /// <summary>The chosen model's class list, read only below the field ("Class list: COCO (91 ids)").</summary>
+    /// <summary>The chosen model's class list, read only below the field ("Class list: COCO for DETR and RF-DETR (91)").</summary>
     public string? ClassListText => _host.ClassListOf(Selected?.Id);
 
     public bool HasClassList => ClassListText is not null;

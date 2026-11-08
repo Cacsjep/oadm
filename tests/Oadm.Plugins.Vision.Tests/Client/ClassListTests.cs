@@ -44,16 +44,16 @@ public sealed class ClassListTests
     public async Task The_built_in_lists_come_first_and_the_model_lines_name_their_list()
     {
         var (models, _, _) = await LoadAsync();
-        Assert.Equal(["COCO for DETR (91)", "COCO for RF-DETR (90)", "COCO for YOLO (80)", "Gate classes"], models.ClassLists.Select(r => r.Name));
+        Assert.Equal(["COCO for DETR and RF-DETR (91)", "COCO for YOLO (80)", "Gate classes"], models.ClassLists.Select(r => r.Name));
         Assert.Equal("91 names · Built-in", models.ClassLists[0].Line);
-        Assert.Equal("6 names · 1 model", models.ClassLists[3].Line);
+        Assert.Equal("6 names · 1 model", models.ClassLists[2].Line);
         var rf = models.Rows.OfType<ModelRow>().Single(r => r.Model.Id == "m1");
         Assert.Contains("Gate classes", rf.Line);
         Assert.DoesNotContain(VisionTexts.OwnNames, models.Rows.OfType<ModelRow>().Single(r => r.Model.Id == "m2").Line);
         Assert.Equal(VisionTexts.OwnNames, models.ClassListNameOf(PageSamples.Detr));
 
         Assert.Equal([VisionTexts.View], models.ActionsOf(models.ClassLists[0]).Select(a => a.Text));
-        var own = models.ActionsOf(models.ClassLists[3]);
+        var own = models.ActionsOf(models.ClassLists[2]);
         Assert.Equal([VisionTexts.Edit, "-", VisionTexts.Delete], own.Select(a => a.Text));
         Assert.True(own[^1].IsDanger);
     }
@@ -77,7 +77,7 @@ public sealed class ClassListTests
         Assert.Equal(["truck", "car"], form.ToList().Names);
 
         var view = new ClassListEditViewModel(PageSamples.Coco91, _ => false, isReadOnly: true);
-        Assert.Equal("COCO for DETR (91)", view.Title);
+        Assert.Equal("COCO for DETR and RF-DETR (91)", view.Title);
         Assert.True(view.Names.IsReadOnly);
         Assert.False(view.OkCommand.CanExecute(null));
         Assert.Equal("91 names", view.Names.CountText);
@@ -142,7 +142,7 @@ public sealed class ClassListTests
     public void A_models_class_list_offers_the_lists_that_fit_its_class_count_and_its_own_names()
     {
         var form = ModelEditViewModel.ForClassList(PageSamples.RfDetr, PageSamples.ClassLists.Lists);
-        Assert.Equal([VisionTexts.OwnNames, "Gate classes"], form.Choices.Select(c => c.Name)); // 91, 90 and 80 names do not fit 6 classes
+        Assert.Equal([VisionTexts.OwnNames, "Gate classes"], form.Choices.Select(c => c.Name)); // 91 and 80 names do not fit 6 classes
         Assert.Equal("gate6", form.SelectedChoice!.Id);
         Assert.False(form.IsOwn);
         Assert.Equal(PageSamples.GateClasses.Names, form.ClassNames);

@@ -44,7 +44,7 @@ internal static class PageSamples
 
     public static ClassList Coco91 => new()
     {
-        Id = "coco-91", Name = "COCO for DETR (91)", BuiltIn = true,
+        Id = "coco-91", Name = "COCO for DETR and RF-DETR (91)", BuiltIn = true,
         Names = [.. Enumerable.Range(0, 91).Select(i => i < Coco.Length ? Coco[i] : i % 12 == 0 ? VisionLimits.NoClassName : $"class {i}")],
     };
 
@@ -54,18 +54,12 @@ internal static class PageSamples
         Names = [.. Enumerable.Range(0, 80).Select(i => i < Coco.Length ? Coco[i] : $"class {i}")],
     };
 
-    public static ClassList Coco90 => new()
-    {
-        Id = "coco-90", Name = "COCO for RF-DETR (90)", BuiltIn = true,
-        Names = [.. Enumerable.Range(0, 90).Select(i => i < Coco.Length ? Coco[i] : $"class {i}")],
-    };
-
     /// <summary>The user's own list of six names: it fits the sample detection models.</summary>
     public static ClassList GateClasses => new() { Id = "gate6", Name = "Gate classes", Names = ["person", "bicycle", "car", "motorbike", "bus", "lorry"] };
 
     public static ClassListList ClassLists => new()
     {
-        Lists = [Coco91, Coco90, Coco80, GateClasses],
+        Lists = [Coco91, Coco80, GateClasses],
         UsedBy = new Dictionary<string, IReadOnlyList<string>> { ["gate6"] = ["RF-DETR medium"] },
     };
 

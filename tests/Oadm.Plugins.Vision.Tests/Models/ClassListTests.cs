@@ -58,7 +58,7 @@ public sealed class ClassListTests : IDisposable
         Assert.Equal(("traffic light", "stop sign", "dining table", "tv", "book", "hair drier"), (names[10], names[13], names[67], names[72], names[84], names[89]));
         Assert.Equal([0, 12, 26, 29, 30, 45, 66, 68, 69, 71, 83], Enumerable.Range(0, 91).Where(i => names[i] == VisionLimits.NoClassName));
         Assert.True(ClassLists.Coco91.BuiltIn);
-        Assert.Equal(("coco-91", "COCO for DETR (91)"), (ClassLists.Coco91.Id, ClassLists.Coco91.Name));
+        Assert.Equal(("coco-91", "COCO for DETR and RF-DETR (91)"), (ClassLists.Coco91.Id, ClassLists.Coco91.Name));
     }
 
     [Fact]
@@ -74,53 +74,19 @@ public sealed class ClassListTests : IDisposable
     }
 
     [Fact]
-    public void Coco_90_holds_rf_detrs_slots_by_category_id()
+    public async Task A_stored_model_on_a_list_that_is_gone_keeps_its_names_as_its_own()
     {
-        var names = ClassLists.Coco90.Names;
-        Assert.Equal(90, names.Count);
-        Assert.Equal(("person", "car", "dog", "hair drier"), (names[1], names[3], names[18], names[89]));
-        Assert.Equal([0, 12, 26, 29, 30, 45, 66, 68, 69, 71, 83], Enumerable.Range(0, 90).Where(i => names[i] == VisionLimits.NoClassName));
-        Assert.Equal(ClassLists.Coco91.Names.Take(90), names);
-        Assert.Equal(("coco-90", "COCO for RF-DETR (90)", true), (ClassLists.Coco90.Id, ClassLists.Coco90.Name, ClassLists.Coco90.BuiltIn));
-        Assert.Equal(["coco-91", "coco-90", "coco-80"], ClassLists.BuiltIn.Select(l => l.Id));
-    }
-
-    [Fact]
-    public async Task An_rf_detr_model_of_90_classes_gets_its_coco_list()
-    {
-        var rfDetr = OnnxModel.Picture(576, 576).Output("dets", [1, 300, 4], new float[1200]).Output("labels", [1, 300, 90], new float[300 * 90]).Build();
-        var model = await UploadAsync(rfDetr, "rf-detr-medium.onnx");
-        Assert.Equal((ModelFormat.RfDetr, ClassLists.Coco90Id), (model.Format, model.ClassListId));
-        Assert.Equal("dog", model.ClassNames[18]);
-    }
-
-    [Fact]
-    public async Task Rf_detr_with_the_outputs_of_rf_detr_onnx_gets_the_coco_91_list()
-    {
-        // rf-detr-medium.onnx (RealModels): pred_boxes first, then pred_logits with 91 columns, the COCO category ids.
-        var rfDetr = OnnxModel.Picture(576, 576).Output("pred_boxes", [1, 300, 4], new float[1200]).Output("pred_logits", [1, 300, 91], new float[300 * 91]).Build();
-        var model = await UploadAsync(rfDetr, "rf-detr-medium.onnx");
-        Assert.Equal((ModelFormat.RfDetr, ModelFit.Stretch, ClassLists.Coco91Id), (model.Format, model.Fit, model.ClassListId));
-        Assert.Equal(("person", "car", "toothbrush"), (model.ClassNames[1], model.ClassNames[3], model.ClassNames[90]));
-    }
-
-    [Theory]
-    [InlineData(true, true)]
-    [InlineData(false, false)]
-    public async Task Stored_models_of_90_generated_names_get_the_rf_detr_list_at_the_start(bool generated, bool migrated)
-    {
-        // As stored before the list existed: no list, 90 names.
-        var names = Enumerable.Range(0, 90).Select(i => generated ? "Class " + i : "Mine " + i).ToList();
-        var stored = new VisionModel { Name = "rf-detr", Kind = ModelKind.Detection, Format = ModelFormat.RfDetr, InputWidth = 576, InputHeight = 576, FixedInput = true, ClassNames = names, Sha256 = "ab" };
+        // "coco-90" came from an OADM that read RF-DETR as DETR (90 classes); the list no longer exists.
+        var names = ClassLists.Coco91.Names.Take(90).ToList();
+        var stored = new VisionModel { Name = "rf-detr", Kind = ModelKind.Detection, Format = ModelFormat.Detr, InputWidth = 576, InputHeight = 576, FixedInput = true, ClassListId = "coco-90", ClassNames = names, Sha256 = "ab" };
         await _records.SetManyAsync(ModelLibrary.Collection, [new("0123456789abcdef0123456789abcdef", VisionJson.Serialize(stored))], CancellationToken.None);
 
         await _library.LoadAsync(CancellationToken.None);
 
         var model = Assert.Single(_library.All);
-        Assert.Equal(migrated ? ClassLists.Coco90Id : null, model.ClassListId);
-        Assert.Equal(migrated ? "dog" : "Mine 18", model.ClassNames[18]);
-        var json = (await _records.ListAsync(ModelLibrary.Collection, CancellationToken.None))[model.Id];
-        Assert.Equal(migrated, json.Contains(ClassLists.Coco90Id, StringComparison.Ordinal));
+        Assert.Null(model.ClassListId);
+        Assert.Equal(names, model.ClassNames);
+        Assert.DoesNotContain("coco-90", (await _records.ListAsync(ModelLibrary.Collection, CancellationToken.None))[model.Id], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -133,6 +99,9 @@ public sealed class ClassListTests : IDisposable
         var yolo = await UploadAsync(Yolo(80), "yolo.onnx");
         Assert.Equal(ClassLists.Coco80Id, yolo.ClassListId);
         Assert.Equal("person", yolo.ClassNames[0]);
+
+        var ninety = await UploadAsync(Yolo(90), "ninety.onnx");
+        Assert.Null(ninety.ClassListId); // no built-in list of 90
 
         var other = await UploadAsync(Yolo(3), "three.onnx");
         Assert.Null(other.ClassListId);
@@ -218,7 +187,7 @@ public sealed class ClassListTests : IDisposable
         Assert.Equal(("Lane", false, 32), (saved.Name, saved.BuiltIn, saved.Id.Length));
         Assert.Equal(["car", "Class 1", "N/A"], saved.Names);
         Assert.Equal(ModelTexts.ClassListBuiltInChanged, (await Assert.ThrowsAsync<ArgumentException>(() => _library.SaveClassListAsync(ClassLists.Coco80 with { Name = "Mine" }, CancellationToken.None))).Message);
-        Assert.Equal(["COCO for DETR (91)", "COCO for RF-DETR (90)", "COCO for YOLO (80)", "Gate", "Lane"], _library.ClassLists.Select(l => l.Name));
+        Assert.Equal(["COCO for DETR and RF-DETR (91)", "COCO for YOLO (80)", "Gate", "Lane"], _library.ClassLists.Select(l => l.Name));
     }
 
     [Fact]
@@ -250,7 +219,7 @@ public sealed class ClassListTests : IDisposable
         await _library.UpdateAsync(_library.Find(first.Id)! with { ClassListId = null }, CancellationToken.None);
         await _library.UpdateAsync(_library.Find(second.Id)! with { ClassListId = null }, CancellationToken.None);
         await _library.DeleteClassListAsync(list.Id, CancellationToken.None);
-        Assert.Equal(3, _library.ClassLists.Count);
+        Assert.Equal(2, _library.ClassLists.Count);
         Assert.Empty(await _records.ListAsync(ModelLibrary.ListCollection, CancellationToken.None));
         Assert.Equal(ModelTexts.ClassListGone, (await Assert.ThrowsAsync<ArgumentException>(() => _library.DeleteClassListAsync(list.Id, CancellationToken.None))).Message);
     }
@@ -267,7 +236,7 @@ public sealed class ClassListTests : IDisposable
         File.Delete(ModelLibrary.PathOf(_data.Path, model.Id));
         using var restored = new ModelLibrary(_records, _data.Path, _time);
         await restored.LoadAsync(CancellationToken.None);
-        Assert.Equal(["COCO for DETR (91)", "COCO for RF-DETR (90)", "COCO for YOLO (80)", "Gate"], restored.ClassLists.Select(l => l.Name));
+        Assert.Equal(["COCO for DETR and RF-DETR (91)", "COCO for YOLO (80)", "Gate"], restored.ClassLists.Select(l => l.Name));
         Assert.True(restored.Find(model.Id)!.Missing);
 
         var id = await restored.BeginUploadAsync("again.onnx", file.Length, null, CancellationToken.None);
@@ -310,7 +279,7 @@ public sealed class ClassListTests : IDisposable
                 VisionJson.Deserialize<T>(await context.InvokeAsync(plugin, context.CallAsAllDevices(), method, VisionJson.Serialize(payload)));
 
             var lists = await Call<ClassListList>(VisionMethods.ListClassLists, new { });
-            Assert.Equal([ClassLists.Coco91Id, ClassLists.Coco90Id, ClassLists.Coco80Id], lists.Lists.Select(l => l.Id));
+            Assert.Equal([ClassLists.Coco91Id, ClassLists.Coco80Id], lists.Lists.Select(l => l.Id));
 
             var refused = await Call<SaveClassListReply>(VisionMethods.SaveClassList, new SaveClassListRequest { ClassList = List(" ", "a") });
             Assert.Null(refused.ClassList);
@@ -319,12 +288,12 @@ public sealed class ClassListTests : IDisposable
             var request = new SaveClassListRequest { ClassList = List("Gate", "person", "car") };
             var saved = (await Call<SaveClassListReply>(VisionMethods.SaveClassList, request)).ClassList!;
             Assert.Equal("Saved class list Gate", plugin.AuditDetail(VisionMethods.SaveClassList, VisionJson.Serialize(request)));
-            Assert.Equal(4, (await Call<ClassListList>(VisionMethods.ListClassLists, new { })).Lists.Count);
+            Assert.Equal(3, (await Call<ClassListList>(VisionMethods.ListClassLists, new { })).Lists.Count);
 
             var delete = new ClassListRequest { ClassListId = saved.Id };
             await Call<object>(VisionMethods.DeleteClassList, delete);
             Assert.Equal("Deleted class list Gate", plugin.AuditDetail(VisionMethods.DeleteClassList, VisionJson.Serialize(delete)));
-            Assert.Equal(3, (await Call<ClassListList>(VisionMethods.ListClassLists, new { })).Lists.Count);
+            Assert.Equal(2, (await Call<ClassListList>(VisionMethods.ListClassLists, new { })).Lists.Count);
         }
         finally
         {

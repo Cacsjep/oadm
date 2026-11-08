@@ -200,7 +200,7 @@ public sealed class PageScreenshotTests
             using (vm)
             {
                 Assert.True(view.FindControl<ListBox>("ClassListList")!.IsEffectivelyVisible);
-                Assert.Equal(4, vm.Models.ClassLists.Count);
+                Assert.Equal(3, vm.Models.ClassLists.Count);
                 vm.Editor!.Canvas.SelectedNode = vm.Editor.Canvas.Find("b"); // Detect objects names its class list
                 Headless.Pump();
                 Assert.Contains(view.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "Class list: Gate classes");
