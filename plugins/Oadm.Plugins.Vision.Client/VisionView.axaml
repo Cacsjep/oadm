@@ -118,6 +118,27 @@
               </DataTemplate>
             </ListBox.DataTemplates>
           </ListBox>
+
+          <!-- Class lists: the built-in ones (View), the user's (Edit, Delete in red); a refusal in its row. -->
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Margin="0,6,0,0">
+            <TextBlock Classes="sectionTitle" Text="{x:Static vm:VisionTexts.ClassLists}" VerticalAlignment="Center" />
+            <ui:ToolbarButton Grid.Column="1" x:Name="NewClassListButton" Classes="atEnd" IconKey="add" Text="{x:Static vm:VisionTexts.New}" Command="{Binding NewClassListCommand}" />
+          </Grid>
+          <ListBox x:Name="ClassListList" Classes="readOnlyList" ItemsSource="{Binding ClassLists}" MaxHeight="200">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:ClassListRow">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="6" Margin="0,2">
+                  <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding Line}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Row="2" Classes="fieldMessage error" Text="{Binding Refusal}" TextWrapping="Wrap" IsVisible="{Binding HasRefusal}" />
+                  <Button x:Name="ClassListActions" Grid.Column="1" Grid.RowSpan="2" Classes="toolbar iconOnly" VerticalAlignment="Center"
+                          ToolTip.Tip="{x:Static ui:RowActions.Tip}" Click="OnClassListActions">
+                    <ui:OadmIcon Data="{StaticResource Icon.more}" />
+                  </Button>
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
         </StackPanel>
       </Border>
     </Grid>
@@ -280,16 +301,19 @@
                         </ui:FormField>
                       </DataTemplate>
                       <DataTemplate x:DataType="vm:ModelFieldViewModel">
-                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
-                          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Models}" SelectedItem="{Binding Selected}"
-                                    PlaceholderText="{x:Static vm:ModelFieldViewModel.ChoosePlaceholder}">
-                            <ComboBox.ItemTemplate>
-                              <DataTemplate x:DataType="vm:ModelOption">
-                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                              </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                          </ComboBox>
-                        </ui:FormField>
+                        <StackPanel Spacing="4">
+                          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                            <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Models}" SelectedItem="{Binding Selected}"
+                                      PlaceholderText="{x:Static vm:ModelFieldViewModel.ChoosePlaceholder}">
+                              <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ModelOption">
+                                  <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                </DataTemplate>
+                              </ComboBox.ItemTemplate>
+                            </ComboBox>
+                          </ui:FormField>
+                          <TextBlock x:Name="ClassListLine" Classes="secondary" Text="{Binding ClassListText}" IsVisible="{Binding HasClassList}" />
+                        </StackPanel>
                       </DataTemplate>
                       <DataTemplate x:DataType="vm:ClassesFieldViewModel">
                         <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">

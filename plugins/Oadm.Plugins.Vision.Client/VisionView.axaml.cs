@@ -246,6 +246,28 @@ public partial class VisionView : UserControl, IVisionDialogs
         return ok;
     }
 
+    public async Task<bool> EditClassListAsync(ClassListEditViewModel form)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+        var ok = false;
+        var window = new ClassListWindow { DataContext = form };
+        form.CloseRequested += (_, result) =>
+        {
+            ok = result;
+            window.Close();
+        };
+        await ShowDialogAsync(window).ConfigureAwait(true);
+        return ok;
+    }
+
+    private void OnClassListActions(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: ClassListRow row } button && _viewModel is { } vm)
+        {
+            RowActions.Show(button, vm.Models.ActionsOf(row));
+        }
+    }
+
     public async Task<bool> EditModelAsync(ModelEditViewModel form)
     {
         ArgumentNullException.ThrowIfNull(form);

@@ -10,7 +10,7 @@
         ShowInTaskbar="False"
         CanResize="False"
         WindowDecorations="BorderOnly">
-  <!-- Single operation: no card; the error below the field, the main button off while there is one. -->
+  <!-- Single operation: no card; the errors below the fields, the main button off while there is one. -->
   <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
     <Border Grid.Row="1" Classes="dialogBody">
@@ -18,8 +18,18 @@
         <ui:FormField Classes="wide" LabelAbove="True" Label="Name" IsVisible="{Binding IsRename}">
           <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="{x:Static vm:ModelEditViewModel.MaxNameLength}" />
         </ui:FormField>
-        <ui:FormField Classes="wide" LabelAbove="True" Label="Classes" Hint="{x:Static vm:ModelEditViewModel.ClassesHint}" IsVisible="{Binding IsClasses}">
-          <TextBox x:Name="ClassesBox" Text="{Binding ClassesText}" AcceptsReturn="True" TextWrapping="NoWrap" Height="240" />
+        <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.ClassListTitle}" IsVisible="{Binding IsClassList}">
+          <ComboBox x:Name="ListBox" HorizontalAlignment="Stretch" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:ClassListChoice">
+                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </ui:FormField>
+        <vm:ClassNamesField x:Name="OwnNames" DataContext="{Binding Own}" IsVisible="{Binding $parent[Window].((vm:ModelEditViewModel)DataContext).IsOwn, FallbackValue=False}" />
+        <ui:FormField Classes="wide" LabelAbove="True" Label="Classes" IsVisible="{Binding ChosenNames, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <TextBox x:Name="ListNames" Text="{Binding ChosenNames, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="80" MaxHeight="300" />
         </ui:FormField>
       </StackPanel>
     </Border>

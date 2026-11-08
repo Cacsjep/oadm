@@ -1,0 +1,12 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Vision.Client"
+             x:Class="Oadm.Plugins.Vision.Client.ClassNamesField"
+             x:DataType="vm:ClassNamesEditor">
+  <!-- The class names, one per line: the one field of a class list and of a model's own names (docs/spec/vision-center.md
+       "Class lists"); its error below it. -->
+  <ui:FormField Classes="wide" LabelAbove="True" Label="Classes" Hint="{x:Static vm:ClassNamesEditor.Hint}">
+    <TextBox x:Name="NamesBox" Text="{Binding Text}" AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="80" MaxHeight="300" IsReadOnly="{Binding IsReadOnly}" />
+  </ui:FormField>
+</UserControl>

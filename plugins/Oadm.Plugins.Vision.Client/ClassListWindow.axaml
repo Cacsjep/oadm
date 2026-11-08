@@ -1,0 +1,31 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Vision.Client"
+        x:Class="Oadm.Plugins.Vision.Client.ClassListWindow"
+        x:DataType="vm:ClassListEditViewModel"
+        Title="{Binding Title}"
+        Width="400" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- New, Edit or View of a class list. Single operation: no card; the errors below the fields. View: read only, Close alone. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <ui:FormField Classes="wide" LabelAbove="True" Label="Name" IsVisible="{Binding CanChange}">
+          <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="{x:Static vm:ClassListEditViewModel.MaxNameLength}" />
+        </ui:FormField>
+        <vm:ClassNamesField x:Name="Names" DataContext="{Binding Names}" />
+      </StackPanel>
+    </Border>
+    <Panel Grid.Row="2">
+      <ui:DialogFooter CancelCommand="{Binding CancelCommand}" IsVisible="{Binding CanChange}">
+        <Button Classes="primary" Content="{Binding ConfirmText}" Command="{Binding OkCommand}" ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+      </ui:DialogFooter>
+      <ui:DialogFooter CancelCommand="{Binding CancelCommand}" IsVisible="{Binding IsReadOnly}" />
+    </Panel>
+  </Grid>
+</Window>

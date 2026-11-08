@@ -25,7 +25,7 @@ internal static class PageSamples
     public static VisionModel RfDetr => new()
     {
         Id = "m1", Name = "RF-DETR medium", Kind = ModelKind.Detection, Format = ModelFormat.RfDetr, InputWidth = 576, InputHeight = 576,
-        FixedInput = true, ClassNames = Coco, SizeBytes = 129L * 1024 * 1024, Sha256 = "ab", CpuMs = 120, GpuMs = 14,
+        FixedInput = true, ClassNames = Coco, ClassListId = "gate6", SizeBytes = 129L * 1024 * 1024, Sha256 = "ab", CpuMs = 120, GpuMs = 14,
     };
 
     public static VisionModel Detr => new()
@@ -41,6 +41,27 @@ internal static class PageSamples
     };
 
     public static IReadOnlyList<VisionModel> Models => [RfDetr, Detr, Helmet];
+
+    public static ClassList Coco91 => new()
+    {
+        Id = "coco-91", Name = "COCO (91 ids)", BuiltIn = true,
+        Names = [.. Enumerable.Range(0, 91).Select(i => i < Coco.Length ? Coco[i] : i % 12 == 0 ? VisionLimits.NoClassName : $"class {i}")],
+    };
+
+    public static ClassList Coco80 => new()
+    {
+        Id = "coco-80", Name = "COCO (80 classes)", BuiltIn = true,
+        Names = [.. Enumerable.Range(0, 80).Select(i => i < Coco.Length ? Coco[i] : $"class {i}")],
+    };
+
+    /// <summary>The user's own list of six names: it fits the sample detection models.</summary>
+    public static ClassList GateClasses => new() { Id = "gate6", Name = "Gate classes", Names = ["person", "bicycle", "car", "motorbike", "bus", "lorry"] };
+
+    public static ClassListList ClassLists => new()
+    {
+        Lists = [Coco91, Coco80, GateClasses],
+        UsedBy = new Dictionary<string, IReadOnlyList<string>> { ["gate6"] = ["RF-DETR medium"] },
+    };
 
     public static ModelList ModelList => new()
     {
@@ -160,6 +181,7 @@ internal static class PageSamples
         ctx.DeviceList.AddRange([Gate, Dock]);
         ctx.Answers[VisionMethods.ListPipelines] = _ => VisionJson.Serialize(List);
         ctx.Answers[VisionMethods.ListModels] = _ => VisionJson.Serialize(ModelList);
+        ctx.Answers[VisionMethods.ListClassLists] = _ => VisionJson.Serialize(ClassLists);
         ctx.Answers[VisionMethods.GetPipeline] = json => VisionJson.Deserialize<PipelineRequest>(json).PipelineId == "p2"
             ? VisionJson.Serialize(DockTrucks)
             : VisionJson.Serialize(GatePeople);

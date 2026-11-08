@@ -580,7 +580,7 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
     /// <summary>Shows <paramref name="pipeline"/> on the canvas and the right column (tests and the page).</summary>
     internal PipelineEditorViewModel ShowEditor(Pipeline pipeline, bool isNew)
     {
-        var editor = new PipelineEditorViewModel(_ctx, pipeline, isNew, Engine, CameraText, PipelineNameTaken, () => Models.Models, DecodePicture, Check)
+        var editor = new PipelineEditorViewModel(_ctx, pipeline, isNew, Engine, CameraText, PipelineNameTaken, () => Models.Models, DecodePicture, Check, Models.ClassListNameOf)
         {
             Dialogs = Dialogs,
             PreviewTime = Time,

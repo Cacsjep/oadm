@@ -167,4 +167,52 @@ public sealed class PageScreenshotTests
             window.Close();
         }, CancellationToken.None);
     }
+
+    [Fact]
+    public async Task Class_lists_render_in_the_models_card_and_their_dialogs()
+    {
+        var suffix = Headless.Appearance;
+        await await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = PageSamples.Context();
+            var (vm, view, window) = await ShowAsync(ctx);
+            using (vm)
+            {
+                Assert.True(view.FindControl<ListBox>("ClassListList")!.IsEffectivelyVisible);
+                Assert.Equal(3, vm.Models.ClassLists.Count);
+                vm.Editor!.Canvas.SelectedNode = vm.Editor.Canvas.Find("b"); // Detect objects names its class list
+                Headless.Pump();
+                Assert.Contains(view.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "Class list: Gate classes");
+                Headless.Capture(window, $"vision-class-lists-{suffix}.png");
+            }
+
+            window.Close();
+
+            // A model's Class list: the lists that fit, then its own names to edit.
+            var form = ModelEditViewModel.ForClassList(PageSamples.RfDetr, PageSamples.ClassLists.Lists);
+            var dialog = new ModelEditWindow { DataContext = form };
+            Oadm.Client.App.ApplyCrispText(dialog);
+            dialog.Show();
+            Headless.Pump();
+            Assert.False(dialog.FindControl<ClassNamesField>("OwnNames")!.IsEffectivelyVisible);
+            Headless.Capture(dialog, $"vision-class-list-dialog-{suffix}.png");
+            form.SelectedChoice = form.Choices[0];
+            form.Own.Text = "person\ncar";
+            Headless.Pump();
+            Assert.True(dialog.FindControl<ClassNamesField>("OwnNames")!.IsEffectivelyVisible);
+            Assert.Contains(dialog.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == VisionTexts.WrongClassCount);
+            Headless.Capture(dialog, $"vision-class-list-own-{suffix}.png");
+            dialog.Close();
+
+            // New class list: Name and the names, one per line.
+            var edit = new ClassListEditViewModel(PageSamples.GateClasses, _ => false);
+            var editWindow = new ClassListWindow { DataContext = edit };
+            Oadm.Client.App.ApplyCrispText(editWindow);
+            editWindow.Show();
+            Headless.Pump();
+            Assert.DoesNotContain(editWindow.GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("card"));
+            Headless.Capture(editWindow, $"vision-class-list-edit-{suffix}.png");
+            editWindow.Close();
+        }, CancellationToken.None);
+    }
 }

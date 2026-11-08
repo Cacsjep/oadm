@@ -81,6 +81,40 @@ public static class VisionTexts
     public const string DeleteModel = "Delete model";
     public const string DeletePipeline = "Delete pipeline";
     public const string ClassesHint = "One name per line.";
+    public const string ClassLists = "Class lists";
+    public const string ClassListTitle = "Class list";
+    public const string OwnNames = "Own names";
+    public const string NewClassList = "New class list";
+    public const string EditClassList = "Edit class list";
+    public const string DeleteClassList = "Delete class list";
+    public const string View = "View";
+    public const string Edit = "Edit";
+    public const string New = "New";
+    public const string Create = "Create";
+    public const string Close = "Close";
+    public const string BuiltIn = "Built-in";
+    public const string ClassListNameTaken = "Another class list has this name.";
+    public const string EnterNames = "Enter the names, one per line.";
+
+    public static string TooManyNames => string.Create(CultureInfo.InvariantCulture, $"Enter at most {VisionLimits.MaxClasses:N0} names.");
+
+    public static string NameCount(int count) => count == 1 ? "1 name" : string.Create(CultureInfo.InvariantCulture, $"{count} names");
+
+    /// <summary>"91 names · Built-in", "80 names · 2 models".</summary>
+    public static string ClassListLine(ClassList list, int usedBy)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+        var text = NameCount(list.Names.Count) + (list.BuiltIn ? " · " + BuiltIn : string.Empty);
+        return usedBy switch
+        {
+            0 => text,
+            1 => text + " · 1 model",
+            _ => text + string.Create(CultureInfo.InvariantCulture, $" · {usedBy} models"),
+        };
+    }
+
+    /// <summary>Below the Model field of Detect objects: "Class list: COCO (91 ids)".</summary>
+    public static string ClassListOf(string name) => "Class list: " + name;
 
     // Errors of the page's own checks, the same as the server's (docs/spec/vision-center.md "Pipelines").
     public const string PipelineNameTaken = "Another pipeline has this name.";
@@ -126,12 +160,13 @@ public static class VisionTexts
     public static string Uploading(double fraction) => string.Create(CultureInfo.InvariantCulture, $"Upload {Math.Round(Math.Clamp(fraction, 0, 1) * 100)} %");
 
     /// <summary>"Detection · 576x576 · 91 classes · 129 MB · 2 pipelines".</summary>
-    public static string ModelLine(VisionModel model, int usedBy)
+    public static string ModelLine(VisionModel model, int usedBy, string? listName = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         var kind = model.Kind == ModelKind.Detection ? "Detection" : "Classification";
         var classes = model.ShownClasses.Count();
-        var text = string.Create(CultureInfo.InvariantCulture, $"{kind} · {model.InputWidth}x{model.InputHeight} · {classes} {(classes == 1 ? "class" : "classes")} · {Size(model.SizeBytes)}");
+        var list = listName is { Length: > 0 } && listName != OwnNames ? " · " + listName : string.Empty;
+        var text = string.Create(CultureInfo.InvariantCulture, $"{kind} · {model.InputWidth}x{model.InputHeight} · {classes} {(classes == 1 ? "class" : "classes")}{list} · {Size(model.SizeBytes)}");
         return usedBy switch
         {
             0 => text,
