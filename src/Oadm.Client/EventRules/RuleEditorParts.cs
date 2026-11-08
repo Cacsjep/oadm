@@ -178,7 +178,7 @@ public sealed partial class DeviceSelectorViewModel : ObservableObject
 public sealed record OverviewLine(string Label, string Text);
 
 /// <summary>A day toggle of a schedule.</summary>
-public sealed partial class DayToggle(DayOfWeek day) : ObservableObject
+public sealed partial class DayToggle(DayOfWeek day) : ObservableObject, Oadm.Sdk.Client.Controls.IDayChoice
 {
     public DayOfWeek Day { get; } = day;
 

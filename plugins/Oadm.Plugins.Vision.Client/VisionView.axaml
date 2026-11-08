@@ -283,14 +283,28 @@
                         <StackPanel Spacing="8" />
                       </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
+                    <!-- A field another field hides (VisibleWhen) takes no room. -->
+                    <ItemsControl.Styles>
+                      <Style Selector="ContentPresenter" x:DataType="vm:FieldViewModel">
+                        <Setter Property="IsVisible" Value="{Binding IsShown}" />
+                      </Style>
+                    </ItemsControl.Styles>
                     <ItemsControl.DataTemplates>
                       <DataTemplate x:DataType="vm:NumberFieldViewModel">
-                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
-                          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" />
-                            <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding Unit}" VerticalAlignment="Center" IsVisible="{Binding HasUnit}" />
-                          </Grid>
-                        </ui:FormField>
+                        <Panel>
+                          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}" IsVisible="{Binding IsPlain}">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                              <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" />
+                              <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding Unit}" VerticalAlignment="Center" IsVisible="{Binding HasUnit}" />
+                            </Grid>
+                          </ui:FormField>
+                          <!-- A tuned number: the shared slider row, its error below the whole row. -->
+                          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}" Error="{Binding TextError}"
+                                        IsVisible="{Binding IsSlider}">
+                            <ui:NumberSlider Text="{Binding Text}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" Unit="{Binding Unit}"
+                                             Placeholder="{Binding Placeholder}" HasError="{Binding HasTextError}" />
+                          </ui:FormField>
+                        </Panel>
                       </DataTemplate>
                       <DataTemplate x:DataType="vm:ChoiceFieldViewModel">
                         <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
@@ -334,6 +348,19 @@
                       <DataTemplate x:DataType="vm:TimeFieldViewModel">
                         <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
                           <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" />
+                        </ui:FormField>
+                      </DataTemplate>
+                      <DataTemplate x:DataType="vm:DaysFieldViewModel">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                          <ui:DayChips x:Name="DayChips" ItemsSource="{Binding Days}" />
+                        </ui:FormField>
+                      </DataTemplate>
+                      <DataTemplate x:DataType="vm:EventTypeFieldViewModel">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}" Error="{Binding ValueError}">
+                          <Button x:Name="ChooseEventButton" Classes="secondary" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                  Command="{Binding ChooseCommand}">
+                            <ui:IconLabel Icon="{DynamicResource Icon.bell}" Text="{Binding Text}" />
+                          </Button>
                         </ui:FormField>
                       </DataTemplate>
                       <DataTemplate x:DataType="vm:BoolFieldViewModel">

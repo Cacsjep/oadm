@@ -30,7 +30,7 @@ public sealed class PageScreenshotTests
     public async Task Page_renders_the_example_pipeline_with_its_live_outputs()
     {
         var suffix = Headless.Appearance;
-        await await Headless.Session.Dispatch(async () =>
+        await Headless.Session.Dispatch(async () =>
         {
             var ctx = PageSamples.Context();
             ctx.Video!.Still = PageSamples.GatePicture();
@@ -106,6 +106,7 @@ public sealed class PageScreenshotTests
             }
 
             window.Close();
+            return true;
         }, CancellationToken.None);
     }
 
@@ -113,7 +114,7 @@ public sealed class PageScreenshotTests
     public async Task Page_renders_errors_below_the_nodes_and_the_node_list()
     {
         var suffix = Headless.Appearance;
-        await await Headless.Session.Dispatch(async () =>
+        await Headless.Session.Dispatch(async () =>
         {
             var ctx = PageSamples.Context();
             var (vm, view, window) = await ShowAsync(ctx);
@@ -140,6 +141,7 @@ public sealed class PageScreenshotTests
             }
 
             window.Close();
+            return true;
         }, CancellationToken.None);
     }
 
@@ -147,7 +149,7 @@ public sealed class PageScreenshotTests
     public async Task Page_renders_an_upload_in_the_models_card_and_the_empty_page()
     {
         var suffix = Headless.Appearance;
-        await await Headless.Session.Dispatch(async () =>
+        await Headless.Session.Dispatch(async () =>
         {
             var ctx = PageSamples.Context();
             var gate = new TaskCompletionSource<string?>();
@@ -183,6 +185,7 @@ public sealed class PageScreenshotTests
             }
 
             window.Close();
+            return true;
         }, CancellationToken.None);
     }
 
@@ -190,14 +193,14 @@ public sealed class PageScreenshotTests
     public async Task Class_lists_render_in_the_models_card_and_their_dialogs()
     {
         var suffix = Headless.Appearance;
-        await await Headless.Session.Dispatch(async () =>
+        await Headless.Session.Dispatch(async () =>
         {
             var ctx = PageSamples.Context();
             var (vm, view, window) = await ShowAsync(ctx);
             using (vm)
             {
                 Assert.True(view.FindControl<ListBox>("ClassListList")!.IsEffectivelyVisible);
-                Assert.Equal(3, vm.Models.ClassLists.Count);
+                Assert.Equal(4, vm.Models.ClassLists.Count);
                 vm.Editor!.Canvas.SelectedNode = vm.Editor.Canvas.Find("b"); // Detect objects names its class list
                 Headless.Pump();
                 Assert.Contains(view.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "Class list: Gate classes");
@@ -241,6 +244,114 @@ public sealed class PageScreenshotTests
             Assert.DoesNotContain(editWindow.GetVisualDescendants().OfType<Border>(), b => b.Classes.Contains("card"));
             Headless.Capture(editWindow, $"vision-class-list-edit-{suffix}.png");
             editWindow.Close();
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Timers_compare_and_sliders_render()
+    {
+        var suffix = Headless.Appearance;
+        await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = PageSamples.Context();
+            var vm = new VisionViewModel(ctx) { Check = PageSamples.CheckData, DecodePicture = PageSamples.Decode };
+            var view = new VisionView();
+            var window = Headless.Host(view, Width, Height);
+            window.Show();
+            view.DataContext = vm;
+            await vm.LoadAsync(CancellationToken.None);
+            using (vm)
+            {
+                await vm.OpenAsync(vm.Pipelines.Single(p => p.Id == "p3"), CancellationToken.None);
+                var editor = vm.Editor!;
+                editor.StartPreview();
+                editor.ApplyPreview(PageSamples.LobbyPreview(editor.PreviewId!));
+                editor.Canvas.FitView();
+                Headless.Pump();
+                Assert.Equal("Next 00:00", editor.Canvas.Find("t1")!.Live);
+                Assert.All(editor.Canvas.Nodes, n => Assert.Null(n.Error));
+                Headless.Capture(window, $"vision-timers-{suffix}.png");
+
+                // A form with a slider: the minimum score of Detect objects.
+                editor.Canvas.SelectedNode = editor.Canvas.Find("b");
+                Headless.Pump();
+                var slider = view.GetVisualDescendants().OfType<NumberSlider>().First(s => s.IsEffectivelyVisible);
+                Assert.Equal("50", slider.Box.Text);
+                Assert.Equal(50, slider.Slider.Value);
+                Headless.Capture(window, $"vision-slider-form-{suffix}.png");
+
+                // Compare with Between: And shows.
+                editor.Canvas.SelectedNode = editor.Canvas.Find("e");
+                var op = Assert.IsType<ChoiceFieldViewModel>(editor.Form!.Fields.Single(f => f.Field.Key == Oadm.Plugins.Vision.Model.NodeKinds.OperatorKey));
+                op.Selected = op.Choices.Single(c => c.Value == Oadm.Plugins.Vision.Model.NodeKinds.OpBetween);
+                Headless.Pump();
+                Assert.Contains(view.GetVisualDescendants().OfType<FormField>(), f => f.IsEffectivelyVisible && f.Label == "And");
+                Headless.Capture(window, $"vision-compare-between-{suffix}.png");
+                editor.StopPreview();
+            }
+
+            window.Close();
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Logic_time_and_device_events_render()
+    {
+        var suffix = Headless.Appearance;
+        await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = PageSamples.Context();
+            ctx.Video!.Still = PageSamples.GatePicture();
+            var vm = new VisionViewModel(ctx) { Check = PageSamples.CheckData, DecodePicture = PageSamples.Decode };
+            var view = new VisionView();
+            var window = Headless.Host(view, Width, Height);
+            window.Show();
+            view.DataContext = vm;
+            await vm.LoadAsync(CancellationToken.None);
+            using (vm)
+            {
+                vm.ApplyList(new Oadm.Plugins.Vision.Api.PipelineList
+                {
+                    Pipelines = [.. PageSamples.List.Pipelines, new() { Id = "p4", Name = "Entrance", DeviceId = PageSamples.Gate.Id, Fps = 8, Last = "In 41 · Out 33" }],
+                });
+                await vm.OpenAsync(vm.Pipelines.Single(p => p.Id == "p4"), CancellationToken.None);
+                var editor = vm.Editor!;
+                editor.StartPreview();
+                editor.ApplyPreview(PageSamples.EntrancePreview(editor.PreviewId!));
+                await editor.EventTypesAsync(); // the names of the chosen events
+                editor.Canvas.FitView();
+                Headless.Pump();
+                Assert.Equal("Highest 14", editor.Canvas.Find("s")!.Live);
+                Headless.Capture(window, $"vision-logic-{suffix}.png");
+
+                // Time window: the shared day chips.
+                editor.Canvas.SelectedNode = editor.Canvas.Find("w");
+                Headless.Pump();
+                Assert.True(view.GetVisualDescendants().OfType<DayChips>().Single().IsEffectivelyVisible);
+                Headless.Capture(window, $"vision-days-{suffix}.png");
+
+                // Device event: the chosen event with its device on the button.
+                editor.Canvas.SelectedNode = editor.Canvas.Find("h");
+                Headless.Pump();
+                Assert.Contains(view.GetVisualDescendants().OfType<IconLabel>(), l => l.IsEffectivelyVisible && l.Text == "Door open · AXIS P1468-LE · 10.0.0.202");
+                Headless.Capture(window, $"vision-device-event-{suffix}.png");
+                editor.StopPreview();
+            }
+
+            window.Close();
+
+            // The Choose event dialog.
+            var picker = new EventTypePickerViewModel(PageSamples.EventTypes.Types, "io.port.door");
+            var dialog = new EventTypeWindow { DataContext = picker };
+            Oadm.Client.App.ApplyCrispText(dialog);
+            dialog.Show();
+            Headless.Pump();
+            Assert.True(picker.OkCommand.CanExecute(null));
+            Headless.Capture(dialog, $"vision-event-type-dialog-{suffix}.png");
+            dialog.Close();
+            return true;
         }, CancellationToken.None);
     }
 }

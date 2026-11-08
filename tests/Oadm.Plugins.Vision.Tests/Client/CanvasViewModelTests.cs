@@ -54,8 +54,11 @@ public sealed class CanvasViewModelTests
     {
         var canvas = Canvas(CameraOnly);
         canvas.AddNodeCommand.Execute(null);
-        Assert.Equal(NodeKinds.All.Where(k => k.Group is not null).Select(k => k.Id), canvas.Picker.ShownKinds.Select(k => k.Id));
-        Assert.Equal(["Models", "Objects", "Geometry", "Output"], canvas.Picker.Entries.OfType<PickerGroup>().Select(g => g.Name));
+        // Every kind with a group, grouped in the order the groups first come in the catalogue.
+        Assert.Equal(
+            NodeKinds.All.Where(k => k.Group is not null).GroupBy(k => k.Group).SelectMany(g => g).Select(k => k.Id),
+            canvas.Picker.ShownKinds.Select(k => k.Id));
+        Assert.Equal(["Models", "Objects", "Geometry", "Output", "Logic", "Time"], canvas.Picker.Entries.OfType<PickerGroup>().Select(g => g.Name));
         canvas.AddNodeCommand.Execute(null);
         Assert.False(canvas.Picker.IsOpen); // the button again closes it
     }
@@ -232,7 +235,7 @@ public sealed class CanvasViewModelTests
         var second = canvas.Add(NodeKinds.EventKind, count)!;
         Assert.True(second.Y > count.Y);
         Assert.NotEqual(gate.X, second.X); // the first child already below
-        Assert.Equal(gate.Y, second.Y);
+        Assert.True(second.Y >= count.Y + count.Height); // below its parent
         var below = canvas.Add(NodeKinds.EventKind, canvas.Find("h")!)!;
         Assert.True(below.Y > canvas.Find("h")!.Y);
     }

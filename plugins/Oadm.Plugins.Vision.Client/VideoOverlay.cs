@@ -2,6 +2,7 @@ using System.Globalization;
 
 using Avalonia;
 
+using Oadm.Plugins.Vision.Graph;
 using Oadm.Plugins.Vision.Model;
 
 namespace Oadm.Plugins.Vision.Client;
@@ -48,7 +49,14 @@ public sealed record ShapeItem(
     string Label,
     bool IsSelected,
     int MinPoints,
-    int MaxPoints);
+    int MaxPoints)
+{
+    /// <summary>Direction: drawn as an arrow from the first point to the second.</summary>
+    public bool IsArrow { get; init; }
+
+    /// <summary>Direction: the tolerance to each side of the arrow, degrees (drawn as a faint wedge).</summary>
+    public double Tolerance { get; init; }
+}
 
 /// <summary>
 /// The overlay of the live video (docs/spec/vision-center.md "Page"): for each node whose eye is on, and the selected node,
@@ -83,8 +91,15 @@ public static class VideoOverlay
                 var points = NodeValues.Points(NodeValues.Get(node.Settings, field));
                 if (points.Count > 0)
                 {
-                    var closed = node.Kind != NodeKinds.Line;
-                    shapes.Add(new ShapeItem(node, points, closed, brush, ShapeLabel(node, output), isSelected, field.MinPoints, field.MaxPoints));
+                    var closed = node.Kind is not (NodeKinds.Line or NodeKinds.Direction);
+                    var tolerance = node.Kind == NodeKinds.Direction && VisionGraph.FieldOf(node.Info, NodeKinds.AngleKey) is { } angle
+                        ? NodeValues.Number(NodeValues.Get(node.Settings, angle)) ?? 45
+                        : 0;
+                    shapes.Add(new ShapeItem(node, points, closed, brush, ShapeLabel(node, output), isSelected, field.MinPoints, field.MaxPoints)
+                    {
+                        IsArrow = node.Kind == NodeKinds.Direction,
+                        Tolerance = tolerance,
+                    });
                 }
             }
 
@@ -134,6 +149,15 @@ public static class VideoOverlay
                     }
 
                     break;
+                case NodeKinds.Dwell or NodeKinds.Stationary or NodeKinds.Direction:
+                    // The kept objects, filled lightly, with how long they stay ("45 s").
+                    foreach (var o in output.Objects)
+                    {
+                        var time = o.InsideSeconds is { } s ? string.Create(CultureInfo.InvariantCulture, $"{Math.Round(s)} s") : null;
+                        items.Add(Box(node, o, time ?? (o.TrackId is { } id ? VisionTexts.ObjectId(id) : null)) with { Filled = true, ShortLabel = time });
+                    }
+
+                    break;
                 case NodeKinds.Count:
                     items.Add(new OverlayItem(OverlayItemKind.Badge, node.Id, brush, [], node.Name, (output.Value ?? 0).ToString(CultureInfo.InvariantCulture)));
                     break;
@@ -152,9 +176,12 @@ public static class VideoOverlay
             return node.Name;
         }
 
-        return node.Kind == NodeKinds.Line
-            ? $"{node.Name} · {VisionTexts.InOut(output.In, output.Out)}"
-            : string.Create(CultureInfo.InvariantCulture, $"{node.Name} · {output.Objects.Count} inside");
+        return node.Kind switch
+        {
+            NodeKinds.Line => $"{node.Name} · {VisionTexts.InOut(output.In, output.Out)}",
+            NodeKinds.Direction => string.Create(CultureInfo.InvariantCulture, $"{node.Name} · {output.Objects.Count}"),
+            _ => string.Create(CultureInfo.InvariantCulture, $"{node.Name} · {output.Objects.Count} inside"),
+        };
     }
 
     /// <summary>The middle of a line and the way its In arrow points (to the right of the line from its first point to its last).</summary>

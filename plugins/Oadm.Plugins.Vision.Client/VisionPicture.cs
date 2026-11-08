@@ -184,7 +184,7 @@ public sealed class VisionPicture : Control
     /// <summary>A drawing drag from <paramref name="start"/> to <paramref name="end"/> (relative): the shape's points, or nothing for a click.</summary>
     public void FinishDraw(Point start, Point end)
     {
-        if (DrawKind == NodeKinds.Line)
+        if (DrawKind is NodeKinds.Line or NodeKinds.Direction)
         {
             if (CanvasGeometry.Distance(start, end) >= MinDrawn)
             {
@@ -398,7 +398,7 @@ public sealed class VisionPicture : Control
             if (_drawStart is { } start)
             {
                 var accent = theme.Brush("Oadm.AccentBrush");
-                if (DrawKind == NodeKinds.Line)
+                if (DrawKind is NodeKinds.Line or NodeKinds.Direction)
                 {
                     context.DrawLine(new Pen(accent, 3), PictureFit.ToControl(start, picture), PictureFit.ToControl(_drawNow, picture));
                 }
@@ -412,7 +412,7 @@ public sealed class VisionPicture : Control
 
         if (IsDrawing)
         {
-            ShapePainter.DrawHint(context, theme, picture, DrawKind == NodeKinds.Line ? VisionTexts.DrawLineHint : VisionTexts.DrawAreaHint, top: true);
+            ShapePainter.DrawHint(context, theme, picture, DrawKind is NodeKinds.Line or NodeKinds.Direction ? VisionTexts.DrawLineHint : VisionTexts.DrawAreaHint, top: true);
         }
     }
 
@@ -514,7 +514,11 @@ public sealed class VisionPicture : Control
             var brush = theme.Brush(shape.BrushKey);
             var pen = shape.IsSelected ? new Pen(brush, 2.5) : new Pen(brush, 2, new DashStyle([5, 3], 0));
             context.DrawGeometry(shape.Closed ? OverlayTheme.Tint(brush, 0.1) : null, pen, ShapePainter.Outline(pixels, shape.Closed));
-            if (!shape.Closed && pixels.Count >= 2)
+            if (shape.IsArrow && pixels.Count >= 2)
+            {
+                DrawDirection(context, brush, pixels[0], pixels[^1], shape.Tolerance);
+            }
+            else if (!shape.Closed && pixels.Count >= 2)
             {
                 DrawInArrow(context, brush, VideoOverlay.InArrow(pixels));
             }
@@ -525,6 +529,36 @@ public sealed class VisionPicture : Control
                 ShapePainter.DrawHandles(context, pixels, brush, white);
             }
         }
+    }
+
+    /// <summary>Direction: the arrow head at its end and its tolerance as a faint wedge from its start.</summary>
+    private static void DrawDirection(DrawingContext context, IBrush brush, Point from, Point to, double tolerance)
+    {
+        var dx = to.X - from.X;
+        var dy = to.Y - from.Y;
+        var length = Math.Sqrt((dx * dx) + (dy * dy));
+        if (length < 1)
+        {
+            return;
+        }
+
+        var angle = Math.Atan2(dy, dx);
+        var spread = Math.Clamp(tolerance, 0, 90) * Math.PI / 180;
+        Point At(double a) => new(from.X + (Math.Cos(a) * length), from.Y + (Math.Sin(a) * length));
+        var wedge = new StreamGeometry();
+        using (var ctx = wedge.Open())
+        {
+            ctx.BeginFigure(from, true);
+            ctx.LineTo(At(angle - spread));
+            ctx.ArcTo(At(angle + spread), new Size(length, length), 0, spread > Math.PI / 2, SweepDirection.Clockwise);
+            ctx.EndFigure(true);
+        }
+
+        context.DrawGeometry(OverlayTheme.Tint(brush, 0.12), null, wedge);
+        var direction = new Vector(dx / length, dy / length);
+        var side = new Vector(-direction.Y, direction.X) * 7;
+        var back = to - (direction * 14);
+        context.DrawGeometry(brush, null, ShapePainter.Outline([to, back + side, back - side], closed: true));
     }
 
     /// <summary>The In arrow at the line's middle, pointing to the side a crossing counts as In.</summary>

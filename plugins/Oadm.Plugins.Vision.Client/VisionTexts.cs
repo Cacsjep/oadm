@@ -95,6 +95,11 @@ public static class VisionTexts
     public const string BuiltIn = "Built-in";
     public const string ClassListNameTaken = "Another class list has this name.";
     public const string EnterNames = "Enter the names, one per line.";
+    public const string ChooseEvent = "Choose event";
+    public const string SearchEvents = "Search events";
+    public const string NoEventMatches = "No event matches the search.";
+    public const string ChooseDevice = "Choose a device";
+    public const string ChooseAnEvent = "Choose an event.";
 
     /// <summary>Below the Class list select when no list fits the model.</summary>
     public static string NoFittingList(int classes) =>

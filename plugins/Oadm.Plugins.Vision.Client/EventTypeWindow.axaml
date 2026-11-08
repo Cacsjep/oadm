@@ -1,0 +1,36 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Vision.Client"
+        x:Class="Oadm.Plugins.Vision.Client.EventTypeWindow"
+        x:DataType="vm:EventTypePickerViewModel"
+        Title="{x:Static vm:EventTypePickerViewModel.Title}"
+        Width="440" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Choose event of the Device event node: the event types in their folders, as the event rules' picker shows them. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:EventTypePickerViewModel.Title}" />
+    <Border Grid.Row="1" Classes="dialogBody">
+      <DockPanel>
+        <ui:SearchBox x:Name="EventSearch" DockPanel.Dock="Top" Classes="stretch" Text="{Binding SearchText}" Placeholder="{x:Static vm:EventTypePickerViewModel.Placeholder}" Margin="0,0,0,6" />
+        <TextBlock DockPanel.Dock="Top" Classes="secondary" Text="{x:Static vm:EventTypePickerViewModel.EmptyText}" IsVisible="{Binding IsEmpty}" />
+        <ListBox x:Name="EventList" Classes="eventTree" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" SelectionMode="Single" Height="340">
+          <ListBox.DataTemplates>
+            <DataTemplate x:DataType="vm:EventPickerFolder">
+              <TextBlock Classes="eventTreeFolder" Text="{Binding Name}" IsHitTestVisible="False" />
+            </DataTemplate>
+            <DataTemplate x:DataType="vm:EventPickerType">
+              <TextBlock Text="{Binding Name}" Margin="16,0,0,0" TextTrimming="CharacterEllipsis" />
+            </DataTemplate>
+          </ListBox.DataTemplates>
+        </ListBox>
+      </DockPanel>
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="OK" Command="{Binding OkCommand}" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

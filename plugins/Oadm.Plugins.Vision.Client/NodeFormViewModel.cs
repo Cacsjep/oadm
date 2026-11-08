@@ -28,6 +28,12 @@ public interface INodeFormHost
 
     /// <summary>Draw: the node's shape is drawn again on the video.</summary>
     void StartDrawing(NodeViewModel node);
+
+    /// <summary>Choose event: the event types in the dialog, then the device of a per-device event; null when cancelled.</summary>
+    Task<EventTypeValue?> ChooseEventAsync(EventTypeValue? current) => Task.FromResult<EventTypeValue?>(null);
+
+    /// <summary>"Door open · AXIS P3265 · 10.0.0.48" of a chosen event.</summary>
+    string EventTypeText(EventTypeValue value) => value.Type;
 }
 
 /// <summary>
@@ -59,6 +65,8 @@ public sealed partial class NodeFormViewModel : ValidatingViewModel
         {
             field.ValidityChanged += (_, _) => ValidityChanged?.Invoke(this, EventArgs.Empty);
         }
+
+        UpdateShown();
     }
 
     /// <summary>An error of the form came or went: Save follows.</summary>
@@ -82,7 +90,7 @@ public sealed partial class NodeFormViewModel : ValidatingViewModel
     public bool HasFields => Fields.Count > 0;
 
     /// <summary>The form's first error (the name's, then each field's in order).</summary>
-    public string? FirstError => Validation.FirstError ?? Fields.Select(f => f.FirstError).FirstOrDefault(e => e is not null);
+    public string? FirstError => Validation.FirstError ?? Fields.Where(f => f.IsShown).Select(f => f.FirstError).FirstOrDefault(e => e is not null);
 
     /// <summary>Save was tried: every error shows.</summary>
     public void ShowAllErrors()
@@ -100,6 +108,23 @@ public sealed partial class NodeFormViewModel : ValidatingViewModel
         foreach (var field in Fields)
         {
             field.Reload();
+        }
+
+        UpdateShown();
+    }
+
+    /// <summary>
+    /// A field with <see cref="NodeFieldInfo.VisibleWhenKey"/> shows only while that field holds one of its values (Timer: Minutes
+    /// for every few minutes, At for every day or week; Compare: And for between).
+    /// </summary>
+    private void UpdateShown()
+    {
+        foreach (var field in Fields)
+        {
+            field.IsShown = field.Field.VisibleWhenKey is not { } key
+                || (VisionGraph.FieldOf(Node.Info, key) is { } other
+                    && NodeValues.Text(NodeValues.Get(Node.Settings, other)) is { } value
+                    && field.Field.VisibleWhenValues.Contains(value));
         }
     }
 
@@ -122,7 +147,11 @@ public sealed partial class NodeFormViewModel : ValidatingViewModel
             : null;
     }
 
-    private void Write(string key, JsonNode? value) => _canvas.SetSetting(Node, key, value);
+    private void Write(string key, JsonNode? value)
+    {
+        _canvas.SetSetting(Node, key, value);
+        UpdateShown();
+    }
 }
 
 /// <summary>One field of a node's form; its error below its input (the theme shows the bound property's error).</summary>
@@ -156,6 +185,10 @@ public abstract partial class FieldViewModel : ValidatingViewModel
     protected bool Loading { get; set; }
 
     public string? FirstError => Validation.FirstError;
+
+    /// <summary>The field shows: always, or while another field holds one of its values (VisibleWhen).</summary>
+    [ObservableProperty]
+    public partial bool IsShown { get; set; } = true;
 
     /// <summary>An error of the field came or went.</summary>
     public event EventHandler? ValidityChanged;
@@ -193,6 +226,8 @@ public abstract partial class FieldViewModel : ValidatingViewModel
             NodeFieldType.Shape => new ShapeFieldViewModel(field, node, host, write),
             NodeFieldType.TimeOfDay => new TimeFieldViewModel(field, node, write),
             NodeFieldType.Bool => new BoolFieldViewModel(field, node, write),
+            NodeFieldType.Days => new DaysFieldViewModel(field, node, write),
+            NodeFieldType.EventType => new EventTypeFieldViewModel(field, node, host, write),
             _ => new TextFieldViewModel(field, node, write),
         };
     }
@@ -235,11 +270,32 @@ public sealed partial class NumberFieldViewModel : FieldViewModel
     [ObservableProperty]
     public partial string Text { get; set; } = string.Empty;
 
+    /// <summary>A slider with the number beside it (the field's <see cref="NodeFieldInfo.Slider"/> with a range).</summary>
+    public bool IsSlider => Field.Slider && Field.Min is not null && Field.Max is not null;
+
+    public bool IsPlain => !IsSlider;
+
+    public double Minimum => Field.Min ?? 0;
+
+    public double Maximum => Field.Max ?? 100;
+
+    /// <summary>The shown error of the number (the slider row shows it below itself).</summary>
+    public string? TextError => ErrorOf(nameof(Text));
+
+    public bool HasTextError => TextError is not null;
+
     public override void Reload()
     {
         Loading = true;
         Text = NodeValues.Number(Stored) is { } value ? NodeValues.Format(value) : string.Empty;
         Loading = false;
+    }
+
+    protected override void OnValidationChanged()
+    {
+        base.OnValidationChanged();
+        OnPropertyChanged(nameof(TextError));
+        OnPropertyChanged(nameof(HasTextError));
     }
 
     private string? Problem()
@@ -461,4 +517,93 @@ public sealed partial class BoolFieldViewModel : FieldViewModel
     }
 
     partial void OnValueChanged(bool value) => Write(JsonValue.Create(value));
+}
+
+/// <summary>Weekdays as the shared day chips, Monday first; none on means every day (the field's hint says so).</summary>
+public sealed partial class DaysFieldViewModel : FieldViewModel
+{
+    private static readonly string[] Keys = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+    public DaysFieldViewModel(NodeFieldInfo field, NodeViewModel node, Action<string, JsonNode?> write)
+        : base(field, node, write)
+    {
+        Days = DayChoice.Week();
+        foreach (var day in Days)
+        {
+            day.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(DayChoice.IsChecked) && !Loading)
+                {
+                    Write(NodeValues.ToJson(Chosen));
+                }
+            };
+        }
+
+        Reload();
+    }
+
+    public IReadOnlyList<DayChoice> Days { get; }
+
+    /// <summary>The keys of the days that are on ("mon", ...), in week order.</summary>
+    public IReadOnlyList<string> Chosen => [.. Days.Select((d, i) => (d, i)).Where(x => x.d.IsChecked).Select(x => Keys[x.i])];
+
+    public override void Reload()
+    {
+        Loading = true;
+        var stored = NodeValues.Strings(Stored);
+        for (var i = 0; i < Days.Count; i++)
+        {
+            Days[i].IsChecked = stored.Contains(Keys[i]);
+        }
+
+        Loading = false;
+    }
+}
+
+/// <summary>An event of the event rules with its device: a button that opens the event list and shows the choice.</summary>
+public sealed partial class EventTypeFieldViewModel : FieldViewModel
+{
+    private readonly INodeFormHost _host;
+
+    public EventTypeFieldViewModel(NodeFieldInfo field, NodeViewModel node, INodeFormHost host, Action<string, JsonNode?> write)
+        : base(field, node, write)
+    {
+        _host = host ?? throw new ArgumentNullException(nameof(host));
+        Reload();
+        Validation.Rule(nameof(Value), () => Value is null && !Field.Optional ? VisionTexts.ChooseAnEvent : null);
+        Validation.Validate();
+    }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Text))]
+    public partial EventTypeValue? Value { get; private set; }
+
+    /// <summary>The button's text: the chosen event and its device, or Choose event.</summary>
+    public string Text => Value is { } value ? _host.EventTypeText(value) : VisionTexts.ChooseEvent;
+
+    /// <summary>The shown error (below the button).</summary>
+    public string? ValueError => ErrorOf(nameof(Value));
+
+    public override void Reload()
+    {
+        Loading = true;
+        Value = EventTypeValue.Of(Stored);
+        Loading = false;
+    }
+
+    protected override void OnValidationChanged()
+    {
+        base.OnValidationChanged();
+        OnPropertyChanged(nameof(ValueError));
+    }
+
+    [RelayCommand]
+    private async Task ChooseAsync()
+    {
+        if (await _host.ChooseEventAsync(Value).ConfigureAwait(true) is { } chosen)
+        {
+            Value = chosen;
+            Write(chosen.ToJson());
+        }
+    }
 }

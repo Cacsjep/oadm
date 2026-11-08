@@ -98,6 +98,14 @@
   <StreamGeometry x:Key="Icon.polygon">M5 5l14 2 -2 12 -12 -3z</StreamGeometry>
   <StreamGeometry x:Key="Icon.crossing">M5 19L19 5 M8 8l-3 3 3 3 M16 10l3 3 -3 3</StreamGeometry>
   <StreamGeometry x:Key="Icon.hash">M4 9h16 M4 15h16 M10 3L8 21 M16 3l-2 18</StreamGeometry>
+  <StreamGeometry x:Key="Icon.compare">M4 7l6 5 -6 5 M14 9h6 M14 15h6</StreamGeometry>
+  <StreamGeometry x:Key="Icon.hourglass">M5 22h14 M5 2h14 M17 22v-4.172a2 2 0 0 0 -0.586 -1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22 M7 2v4.172a2 2 0 0 0 0.586 1.414L12 12l4.414 -4.414A2 2 0 0 0 17 6.172V2</StreamGeometry>
+  <StreamGeometry x:Key="Icon.pin">M12 17v5 M9 10.76a2 2 0 0 1 -1.11 1.79l-1.78 0.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1 -1v-0.76a2 2 0 0 0 -1.11 -1.79l-1.78 -0.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1 -1a2 2 0 0 0 0 -4H8a2 2 0 0 0 0 4a1 1 0 0 1 1 1z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.arrowUpRight">M7 17L17 7 M7 7h10v10</StreamGeometry>
+  <StreamGeometry x:Key="Icon.calendarClock">M21 7.5V6a2 2 0 0 0 -2 -2H5a2 2 0 0 0 -2 2v14a2 2 0 0 0 2 2h3.5 M16 2v4 M8 2v4 M3 10h5 M17.5 17.5L16 16.3V14 M22 16a6 6 0 1 1 -12 0a6 6 0 1 1 12 0z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.hold">M9 4h-2a1 1 0 0 0 -1 1v14a1 1 0 0 0 1 1h2 M15 4h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2 M12 8v8</StreamGeometry>
+  <StreamGeometry x:Key="Icon.barChart">M3 3v18h18 M8 17v-5 M13 17V8 M18 17v-8</StreamGeometry>
+  <StreamGeometry x:Key="Icon.merge">M8 18a2 2 0 1 0 0 0.01z M6 6a2 2 0 1 0 0 0.01z M18 6a2 2 0 1 0 0 0.01z M6 8v1a4 4 0 0 0 4 4h4a4 4 0 0 0 4 -4V8 M12 13v3</StreamGeometry>
   <StreamGeometry x:Key="Icon.redo">M15 14l5 -5 -5 -5 M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13</StreamGeometry>
   <StreamGeometry x:Key="Icon.undo">M9 14L4 9l5 -5 M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1 -5.5 5.5H11</StreamGeometry>
   <StreamGeometry x:Key="Icon.zap">M13 2L3 14h9l-1 8l10 -12h-9l1 -8z</StreamGeometry>

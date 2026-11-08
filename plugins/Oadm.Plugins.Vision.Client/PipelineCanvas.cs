@@ -220,7 +220,7 @@ public sealed class PipelineCanvas : Control
         switch (drag)
         {
             case Drag.Link:
-                canvas.EndLinkDrag(canvas.NodeAt(world));
+                canvas.EndLinkDrag(canvas.NodeAt(world), world);
                 break;
             case Drag.Node:
                 canvas.EndMove();
@@ -322,7 +322,7 @@ public sealed class PipelineCanvas : Control
 
             if (canvas.LinkDragFrom is { } from)
             {
-                var start = CanvasGeometry.OutputPort(from.X, from.Y);
+                var start = from.OutputPoint;
                 context.DrawGeometry(null, new Pen(theme.Brush("Oadm.AccentBrush"), 1, new DashStyle([3, 2], 0)), Curve(start, canvas.LinkDragTo));
             }
 
@@ -359,9 +359,9 @@ public sealed class PipelineCanvas : Control
         }
     }
 
-    private static StreamGeometry Curve(Point from, Point to)
+    private static StreamGeometry Curve(Point from, Point to, bool intoSide = false)
     {
-        var (c1, c2) = CanvasGeometry.Curve(from, to);
+        var (c1, c2) = CanvasGeometry.Curve(from, to, intoSide);
         var geometry = new StreamGeometry();
         using (var ctx = geometry.Open())
         {
@@ -375,10 +375,8 @@ public sealed class PipelineCanvas : Control
 
     private static void DrawLink(DrawingContext context, OverlayTheme theme, LinkViewModel link, IBrush brush)
     {
-        var from = CanvasGeometry.OutputPort(link.From.X, link.From.Y);
-        var to = CanvasGeometry.InputPort(link.To.X, link.To.Y);
         var pen = link.IsSelected ? new Pen(theme.Brush("Oadm.AccentBrush"), 2) : new Pen(brush, 1);
-        context.DrawGeometry(null, pen, Curve(from, to));
+        context.DrawGeometry(null, pen, Curve(link.Start, link.End, link.IsControl));
     }
 
     private static void DrawCount(DrawingContext context, OverlayTheme theme, LinkViewModel link)
@@ -388,7 +386,7 @@ public sealed class PipelineCanvas : Control
             return;
         }
 
-        var middle = CanvasGeometry.OnCurve(CanvasGeometry.OutputPort(link.From.X, link.From.Y), CanvasGeometry.InputPort(link.To.X, link.To.Y), 0.5);
+        var middle = CanvasGeometry.OnCurve(link.Start, link.End, 0.5, link.IsControl);
         var text = theme.Small(count, theme.Brush("Oadm.TextSecondaryBrush"));
         var box = new Rect(middle.X - (text.Width / 2) - 6, middle.Y - (text.Height / 2) - 1, text.Width + 12, text.Height + 2);
         context.DrawRectangle(theme.Brush("Oadm.CardBackgroundBrush"), new Pen(theme.Brush("Oadm.BorderBrush"), 1), box, box.Height / 2, box.Height / 2);
@@ -397,7 +395,7 @@ public sealed class PipelineCanvas : Control
 
     private void DrawNode(DrawingContext context, OverlayTheme theme, CanvasViewModel canvas, NodeViewModel node, IBrush linkBrush)
     {
-        var rect = CanvasGeometry.NodeRect(node.X, node.Y);
+        var rect = node.Rect;
         var colour = theme.Brush(node.BrushKey);
         var accent = theme.Brush("Oadm.AccentBrush");
         var error = theme.Brush("Oadm.StatusErrorBrush");
@@ -435,6 +433,23 @@ public sealed class PipelineCanvas : Control
                 theme.Brush(node.ShowOnVideo ? "Oadm.TextPrimaryBrush" : "Oadm.TextDisabledBrush"), eye.Deflate(4));
         }
 
+        // While a link is dragged the inputs it fits light up: the data input or a control input.
+        var dragged = canvas.LinkDragFrom;
+
+        // The control inputs: a row each below the live line, the dot on the left edge, its label beside it. A pulse input is a
+        // ring, a yes-or-no input a filled dot.
+        var inputs = node.ControlInputs;
+        for (var i = 0; i < inputs.Count; i++)
+        {
+            var at = CanvasGeometry.ControlPort(node.X, node.Y, i);
+            var lit = dragged is not null && node.Fit == LinkFit.Fits && canvas.FitsPort(dragged, node, inputs[i].Port);
+            var condition = inputs[i].Accepts == Vision.Model.PortKind.Condition;
+            var dot = lit ? accent : condition ? linkBrush : fill;
+            context.DrawEllipse(dot, new Pen(lit ? accent : linkBrush, 1), at, CanvasGeometry.ControlPortRadius, CanvasGeometry.ControlPortRadius);
+            var label = theme.Small(inputs[i].Label, theme.Brush("Oadm.TextSecondaryBrush"));
+            context.DrawText(label, new Point(at.X + CanvasGeometry.ControlPortRadius + 7, at.Y - (label.Height / 2)));
+        }
+
         if (node.Live.Length > 0)
         {
             var live = theme.Body(node.Live, theme.Brush("Oadm.TextSecondaryBrush"));
@@ -447,13 +462,13 @@ public sealed class PipelineCanvas : Control
         if (node.HasInputPort)
         {
             var at = CanvasGeometry.InputPort(node.X, node.Y);
-            var lit = node.Fit == LinkFit.Fits;
+            var lit = dragged is not null && node.Fit == LinkFit.Fits && canvas.FitsPort(dragged, node, null);
             context.DrawEllipse(lit ? accent : fill, new Pen(lit ? accent : linkBrush, 1), at, CanvasGeometry.PortRadius - 1, CanvasGeometry.PortRadius - 1);
         }
 
         if (node.HasOutputPort)
         {
-            var at = CanvasGeometry.OutputPort(node.X, node.Y);
+            var at = node.OutputPoint;
             var lit = ReferenceEquals(canvas.LinkDragFrom, node);
             context.DrawEllipse(lit ? accent : fill, new Pen(lit ? accent : linkBrush, 1), at, CanvasGeometry.PortRadius - 1, CanvasGeometry.PortRadius - 1);
             if (canvas.ShowsPlus(node))

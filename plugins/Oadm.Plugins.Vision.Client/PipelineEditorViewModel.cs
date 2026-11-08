@@ -22,6 +22,12 @@ public interface IVisionDialogs
     /// <summary>Stream settings of the Camera node: true when the user chose OK.</summary>
     Task<bool> EditStreamAsync(StreamSettingsViewModel form);
 
+    /// <summary>Choose event of the Device event node: true when the user chose OK.</summary>
+    Task<bool> ChooseEventTypeAsync(EventTypePickerViewModel form) => Task.FromResult(false);
+
+    /// <summary>The device of a per-device event (one device); null when cancelled.</summary>
+    Task<Guid?> ChooseDeviceAsync(Guid? selected) => Task.FromResult<Guid?>(null);
+
     /// <summary>Rename or the class names of a model: true when the user chose its main button.</summary>
     Task<bool> EditModelAsync(ModelEditViewModel form);
 
@@ -59,6 +65,7 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
     private readonly Func<Pipeline, GraphCheck> _check;
     private readonly ILiveVideo? _video;
     private readonly Func<VisionModel, string>? _classListName;
+    private readonly Func<Guid, string> _cameraText;
     private string _savedJson;
     private bool _loading;
     private bool _disposed;
@@ -81,6 +88,7 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
         Func<VisionModel, string>? classListName = null)
     {
         _classListName = classListName;
+        _cameraText = cameraText;
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         ArgumentNullException.ThrowIfNull(pipeline);
         ArgumentNullException.ThrowIfNull(engine);
@@ -343,6 +351,55 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
     string? INodeFormHost.ClassListOf(string? modelId) =>
         _classListName is { } name && _models().FirstOrDefault(m => m.Id == modelId) is { } model ? VisionTexts.ClassListOf(name(model)) : null;
 
+    private IReadOnlyList<PickerEventType>? _eventTypes;
+
+    /// <summary>The event types of the event rules (the page method, read once per pipeline shown).</summary>
+    public async Task<IReadOnlyList<PickerEventType>> EventTypesAsync()
+    {
+        if (_eventTypes is null)
+        {
+            try
+            {
+                _eventTypes = VisionJson.Deserialize<PickerEventTypeList>(await _ctx.InvokeAsync(PickerEventTypes.Method, "{}", CancellationToken.None).ConfigureAwait(true)).Types;
+            }
+#pragma warning disable CA1031 // An older server without the list: no event to choose, the dialog says so.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+                return [];
+            }
+        }
+
+        return _eventTypes;
+    }
+
+    async Task<EventTypeValue?> INodeFormHost.ChooseEventAsync(EventTypeValue? current)
+    {
+        if (Dialogs is not { } dialogs)
+        {
+            return null;
+        }
+
+        var form = new EventTypePickerViewModel(await EventTypesAsync().ConfigureAwait(true), current?.Type);
+        if (!await dialogs.ChooseEventTypeAsync(form).ConfigureAwait(true) || form.Chosen is not { } chosen)
+        {
+            return null;
+        }
+
+        if (!chosen.DeviceScope)
+        {
+            return new EventTypeValue(chosen.Id, null);
+        }
+
+        return await dialogs.ChooseDeviceAsync(current?.Device).ConfigureAwait(true) is { } device ? new EventTypeValue(chosen.Id, device) : null;
+    }
+
+    string INodeFormHost.EventTypeText(EventTypeValue value)
+    {
+        var name = _eventTypes?.FirstOrDefault(t => t.Id == value.Type)?.Name ?? value.Type;
+        return value.Device is { } device ? $"{name} · {_cameraText(device)}" : name;
+    }
+
     public void StartDrawing(NodeViewModel node)
     {
         ArgumentNullException.ThrowIfNull(node);
@@ -353,7 +410,7 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
 
         Canvas.SelectedNode = node;
         DrawingNode = node;
-        DrawKind = node.Kind == NodeKinds.Line ? NodeKinds.Line : NodeKinds.Area;
+        DrawKind = node.Kind is NodeKinds.Line or NodeKinds.Direction ? node.Kind : NodeKinds.Area;
     }
 
     public void StopDrawing()

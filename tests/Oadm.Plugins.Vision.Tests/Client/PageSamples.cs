@@ -44,14 +44,20 @@ internal static class PageSamples
 
     public static ClassList Coco91 => new()
     {
-        Id = "coco-91", Name = "COCO (91 ids)", BuiltIn = true,
+        Id = "coco-91", Name = "COCO for DETR (91)", BuiltIn = true,
         Names = [.. Enumerable.Range(0, 91).Select(i => i < Coco.Length ? Coco[i] : i % 12 == 0 ? VisionLimits.NoClassName : $"class {i}")],
     };
 
     public static ClassList Coco80 => new()
     {
-        Id = "coco-80", Name = "COCO (80 classes)", BuiltIn = true,
+        Id = "coco-80", Name = "COCO for YOLO (80)", BuiltIn = true,
         Names = [.. Enumerable.Range(0, 80).Select(i => i < Coco.Length ? Coco[i] : $"class {i}")],
+    };
+
+    public static ClassList Coco90 => new()
+    {
+        Id = "coco-90", Name = "COCO for RF-DETR (90)", BuiltIn = true,
+        Names = [.. Enumerable.Range(0, 90).Select(i => i < Coco.Length ? Coco[i] : $"class {i}")],
     };
 
     /// <summary>The user's own list of six names: it fits the sample detection models.</summary>
@@ -59,7 +65,7 @@ internal static class PageSamples
 
     public static ClassListList ClassLists => new()
     {
-        Lists = [Coco91, Coco80, GateClasses],
+        Lists = [Coco91, Coco90, Coco80, GateClasses],
         UsedBy = new Dictionary<string, IReadOnlyList<string>> { ["gate6"] = ["RF-DETR medium"] },
     };
 
@@ -122,6 +128,155 @@ internal static class PageSamples
         Links = [new("a", "b"), new("b", "c"), new("c", "d"), new("d", "e")],
     };
 
+    /// <summary>
+    /// "Lobby count": Camera > Detect objects > Lobby > People in lobby (Count) > Lobby full (Compare: at least 10) > Lobby full
+    /// event; the Timer Midnight (every day at 00:00) into the Count's Reset, the Timer Every hour into the Hourly report's Send now.
+    /// </summary>
+    public static Pipeline LobbyCount => new()
+    {
+        Id = "p3",
+        Name = "Lobby count",
+        DeviceId = Dock.Id,
+        Mode = PipelineMode.Watching,
+        Fps = 4,
+        Nodes =
+        [
+            Node("a", NodeKinds.Camera, "Camera", 400, 40),
+            Node("b", NodeKinds.Detect, "Detect objects", 400, 170, new JsonObject { ["model"] = "m1", ["classes"] = new JsonArray("person") }),
+            Node("c", NodeKinds.Area, "Lobby", 400, 300, new JsonObject { ["points"] = Points((0.1, 0.5), (0.9, 0.5), (0.95, 0.98), (0.05, 0.98)) }, eye: true),
+            Node("d", NodeKinds.Count, "People in lobby", 400, 430),
+            Node("e", NodeKinds.Compare, "Lobby full", 280, 560, new JsonObject { ["operator"] = "atLeast", ["value"] = 10 }),
+            Node("f", NodeKinds.Event, "Lobby full event", 280, 690),
+            Node("g", NodeKinds.Event, "Hourly report", 760, 560),
+            Node("t1", NodeKinds.Timer, "Midnight", 140, 300, new JsonObject { ["every"] = "day", ["at"] = "00:00" }),
+            Node("t2", NodeKinds.Timer, "Every hour", 640, 430, new JsonObject { ["every"] = "hour" }),
+        ],
+        Links =
+        [
+            new("a", "b"), new("b", "c"), new("c", "d"), new("d", "e"), new("e", "f"), new("d", "g"),
+            new("t1", "d") { ToPort = NodeKinds.ResetPort },
+            new("t2", "g") { ToPort = NodeKinds.SendPort },
+        ],
+    };
+
+    /// <summary>Lobby count's live outputs: 9 people, the condition not met, the timers' next pulses.</summary>
+    public static PreviewEvent LobbyPreview(string previewId) => new()
+    {
+        PreviewId = previewId,
+        At = Time,
+        Nodes =
+        [
+            new() { NodeId = "a", Kind = PortKind.Picture, Live = "4 pictures per second" },
+            new() { NodeId = "b", Kind = PortKind.Objects, Live = "9 objects · 21 ms" },
+            new() { NodeId = "c", Kind = PortKind.Objects, Live = "9 inside" },
+            new() { NodeId = "d", Kind = PortKind.Number, Value = 9, Live = "9 now" },
+            new() { NodeId = "e", Kind = PortKind.Condition, Live = "9 ≥ 10 · No" },
+            new() { NodeId = "f", On = false, Live = "Off" },
+            new() { NodeId = "g", Live = "Fired 12 min ago" },
+            new() { NodeId = "t1", Kind = PortKind.Pulse, Live = "Next 00:00" },
+            new() { NodeId = "t2", Kind = PortKind.Pulse, Live = "Next 15:00" },
+        ],
+    };
+
+    /// <summary>
+    /// The graph check of the samples while the graph stage does not know control links yet: the real check on the pipeline
+    /// without its Timers and the links into control inputs.
+    /// </summary>
+    public static GraphCheck CheckData(Pipeline pipeline)
+    {
+        // The nodes without an input other than the camera (Timer, Time window, Device event) and every link into a control input left out.
+        var starts = pipeline.Nodes.Where(n => n.Kind != NodeKinds.Camera && NodeKinds.Find(n.Kind) is { Accepts.Count: 0 }).Select(n => n.Id).ToHashSet();
+        return Check(pipeline with
+        {
+            Nodes = [.. pipeline.Nodes.Where(n => !starts.Contains(n.Id))],
+            Links = [.. pipeline.Links.Where(l => l.ToPort is null && !starts.Contains(l.From))],
+        });
+    }
+
+    /// <summary>
+    /// "Entrance": Camera > Detect objects > Track > Entrance line > People in > Busiest hour (Statistics, reset by the Timer
+    /// Midnight) and People in > Crowd (Compare: at least 5) > Crowd at open door (And / Or, the Device event Door open as its
+    /// second input) > Crowd alert (Event, Only while the Time window Opening hours); Track > Going in (Direction).
+    /// </summary>
+    public static Pipeline Entrance => new()
+    {
+        Id = "p4",
+        Name = "Entrance",
+        DeviceId = Gate.Id,
+        Mode = PipelineMode.Watching,
+        Fps = 8,
+        Nodes =
+        [
+            Node("a", NodeKinds.Camera, "Camera", 520, 40),
+            Node("b", NodeKinds.Detect, "Detect objects", 520, 180, new JsonObject { ["model"] = "m1", ["classes"] = new JsonArray("person") }),
+            Node("c", NodeKinds.Track, "Track", 520, 320),
+            Node("d", NodeKinds.Line, "Entrance line", 520, 460, new JsonObject { ["points"] = Points((0.30, 0.62), (0.62, 0.62)) }),
+            Node("k", NodeKinds.Direction, "Going in", 780, 460, new JsonObject { ["points"] = Points((0.78, 0.92), (0.78, 0.60)), ["angle"] = 30 }, eye: true),
+            Node("e", NodeKinds.Count, "People in", 520, 600),
+            Node("s", NodeKinds.Statistics, "Busiest hour", 780, 780, new JsonObject { ["function"] = "max" }),
+            Node("f", NodeKinds.Compare, "Crowd", 520, 780, new JsonObject { ["operator"] = "atLeast", ["value"] = 5 }),
+            Node("g", NodeKinds.Logic, "Crowd at open door", 520, 920, new JsonObject { ["operator"] = "and" }),
+            Node("i", NodeKinds.Event, "Crowd alert", 520, 1080),
+            Node("t", NodeKinds.Timer, "Midnight", 780, 600, new JsonObject { ["every"] = "day", ["at"] = "00:00" }),
+            Node("h", NodeKinds.DeviceEvent, "Door open", 260, 780, new JsonObject { ["event"] = new JsonObject { ["type"] = "io.port.door", ["device"] = Dock.Id.ToString() } }),
+            Node("w", NodeKinds.TimeWindow, "Opening hours", 260, 940,
+                new JsonObject { ["days"] = new JsonArray("mon", "tue", "wed", "thu", "fri"), ["from"] = "08:00", ["to"] = "18:00" }),
+        ],
+        Links =
+        [
+            new("a", "b"), new("b", "c"), new("c", "d"), new("c", "k"), new("d", "e"), new("e", "s"), new("e", "f"), new("f", "g"), new("g", "i"),
+            new("t", "s") { ToPort = NodeKinds.ResetPort },
+            new("h", "g") { ToPort = NodeKinds.SecondPort },
+            new("w", "i") { ToPort = NodeKinds.WhilePort },
+        ],
+    };
+
+    public static PreviewEvent EntrancePreview(string previewId)
+    {
+        VisionObject Walker(double x, int id, double seconds) => new()
+        {
+            Detection = new Detection(0, "person", 0.9, new RelativeBox(x, 0.66, 0.04, 0.22)),
+            TrackId = id,
+            InsideSeconds = seconds,
+        };
+
+        return new PreviewEvent
+        {
+            PreviewId = previewId,
+            At = Time,
+            Resolution = new Resolution(1280, 720),
+            Nodes =
+            [
+                new() { NodeId = "a", Kind = PortKind.Picture, Live = "8 pictures per second" },
+                new() { NodeId = "b", Kind = PortKind.Objects, Live = "7 objects · 19 ms" },
+                new() { NodeId = "c", Kind = PortKind.TrackedObjects, Live = "7 tracked" },
+                new() { NodeId = "d", Kind = PortKind.Crossings, In = 41, Out = 33, Live = "In 41 · Out 33" },
+                new() { NodeId = "k", Kind = PortKind.TrackedObjects, Objects = [Walker(0.74, 4, 3), Walker(0.80, 9, 6)], Live = "2 going in" },
+                new() { NodeId = "e", Kind = PortKind.Number, Value = 7, Live = "7 now" },
+                new() { NodeId = "s", Kind = PortKind.Number, Value = 14, Live = "Highest 14" },
+                new() { NodeId = "f", Kind = PortKind.Condition, Live = "7 ≥ 5 · Yes" },
+                new() { NodeId = "g", Kind = PortKind.Condition, Live = "Yes · both" },
+                new() { NodeId = "i", On = true, Live = "On" },
+                new() { NodeId = "t", Kind = PortKind.Pulse, Live = "Next 00:00" },
+                new() { NodeId = "h", Kind = PortKind.Condition, Live = "Yes · Door open" },
+                new() { NodeId = "w", Kind = PortKind.Condition, Live = "Yes · until 18:00" },
+            ],
+        };
+    }
+
+    /// <summary>The event types of the Choose event dialog.</summary>
+    public static PickerEventTypeList EventTypes => new()
+    {
+        Types =
+        [
+            new() { Id = "io.port.door", Group = "Input ports", Name = "Door open", DeviceScope = true },
+            new() { Id = "io.port.tamper", Group = "Input ports", Name = "Tamper alarm", DeviceScope = true },
+            new() { Id = "device.unreachable", Group = "Device status", Name = "Device unreachable", DeviceScope = true },
+            new() { Id = "server.backup", Group = "Server", Name = "Backup failed" },
+            new() { Id = "vision.p1.gate", Group = "Vision Center / Gate 1 people", Name = "Gate count changed" },
+        ],
+    };
+
     public static PipelineList List => new()
     {
         Pipelines =
@@ -182,9 +337,14 @@ internal static class PageSamples
         ctx.Answers[VisionMethods.ListPipelines] = _ => VisionJson.Serialize(List);
         ctx.Answers[VisionMethods.ListModels] = _ => VisionJson.Serialize(ModelList);
         ctx.Answers[VisionMethods.ListClassLists] = _ => VisionJson.Serialize(ClassLists);
-        ctx.Answers[VisionMethods.GetPipeline] = json => VisionJson.Deserialize<PipelineRequest>(json).PipelineId == "p2"
-            ? VisionJson.Serialize(DockTrucks)
-            : VisionJson.Serialize(GatePeople);
+        ctx.Answers[VisionMethods.GetPipeline] = json => VisionJson.Deserialize<PipelineRequest>(json).PipelineId switch
+        {
+            "p2" => VisionJson.Serialize(DockTrucks),
+            "p3" => VisionJson.Serialize(LobbyCount),
+            "p4" => VisionJson.Serialize(Entrance),
+            _ => VisionJson.Serialize(GatePeople),
+        };
+        ctx.Answers[PickerEventTypes.Method] = _ => VisionJson.Serialize(EventTypes);
         ctx.Answers[VisionMethods.GetEngine] = _ => VisionJson.Serialize(new EngineInfo { RunsOn = "CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti", GpuAvailable = true });
         ctx.Answers[VisionMethods.GetStats] = _ => VisionJson.Serialize(new VisionStats { State = LoadState.Ok, StateText = "All pipelines keep up", Load = 38 });
         ctx.Answers[VisionMethods.GetCameraOptions] = _ => VisionJson.Serialize(new CameraOptions { VideoSources = [1, 2], Resolutions = [new(1920, 1080), new(1280, 720)] });
