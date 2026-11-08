@@ -23,7 +23,7 @@
     </Border>
     <Panel Grid.Row="2">
       <ui:DialogFooter CancelCommand="{Binding CancelCommand}" IsVisible="{Binding CanChange}">
-        <Button Classes="primary" Content="{Binding ConfirmText}" Command="{Binding OkCommand}" ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+        <Button Classes="primary" Content="{Binding ConfirmText}" Command="{Binding OkCommand}" ToolTip.Tip="{Binding Error}" ToolTip.ShowOnDisabled="True" />
       </ui:DialogFooter>
       <ui:DialogFooter CancelCommand="{Binding CancelCommand}" IsVisible="{Binding IsReadOnly}" />
     </Panel>
