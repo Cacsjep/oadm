@@ -28,7 +28,7 @@ public sealed partial class ModelSettingsViewModel : ValidatingViewModel
         Model = model ?? throw new ArgumentNullException(nameof(model));
         Formats = model.Kind == ModelKind.Detection
             ? [new(ModelFormat.Yolo, "YOLO"), new(ModelFormat.YoloWithSuppression, "YOLO with suppression"), new(ModelFormat.Detr, "DETR"),
-                new(ModelFormat.RfDetr, "RF-DETR"), new(ModelFormat.DetrWithLabels, "DETR with labels")]
+                new(ModelFormat.RfDetr, "RF-DETR"), new(ModelFormat.DetrWithLabels, "DETR with labels"), new(ModelFormat.Yolox, "YOLOX")]
             : [new(ModelFormat.Classification, "Classification")];
         Format = Formats.FirstOrDefault(f => f.Value == model.Format) ?? Formats[0];
         Fit = Fits.First(f => f.Value == model.Fit);
@@ -55,7 +55,7 @@ public sealed partial class ModelSettingsViewModel : ValidatingViewModel
         [new(ModelFit.Letterbox, "Letterbox"), new(ModelFit.Stretch, "Stretch"), new(ModelFit.KeepShapePad, "Keep shape and pad")];
 
     public static IReadOnlyList<SettingChoice<ModelScaling>> Scalings { get; } =
-        [new(ModelScaling.ZeroToOne, "0 to 1"), new(ModelScaling.ImageNet, "ImageNet")];
+        [new(ModelScaling.ZeroToOne, "0 to 1"), new(ModelScaling.ImageNet, "ImageNet"), new(ModelScaling.ZeroTo255Bgr, "0 to 255, BGR")];
 
     [ObservableProperty]
     public partial SettingChoice<ModelFormat> Format { get; set; }
