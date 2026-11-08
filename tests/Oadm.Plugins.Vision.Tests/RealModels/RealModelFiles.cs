@@ -13,6 +13,32 @@ internal static class RealModelFiles
 
     public const string RfDetrMedium = "rf-detr-medium.onnx";
 
+    public const string RfDetrSmall = "rf-detr-small.onnx";
+
+    /// <summary>facebook/detr-resnet-50 as transformers.js exports it (Xenova): <c>logits</c>, <c>pred_boxes</c>, a free input size.</summary>
+    public const string DetrResNet50 = "detr-resnet-50.onnx";
+
+    /// <summary>The same export quantized (dynamic int8 weights).</summary>
+    public const string DetrResNet50Quantized = "detr-resnet-50-quantized.onnx";
+
+    /// <summary>PekingU/rtdetr_v2_r18vd as onnx-community exports it: <c>logits</c> (sigmoid, 80 classes), <c>pred_boxes</c>.</summary>
+    public const string RtDetrV2R18 = "rtdetr-v2-r18vd.onnx";
+
+    /// <summary>ustc-community/dfine_s_coco as onnx-community exports it, the same outputs as RT-DETR.</summary>
+    public const string DFineSmall = "dfine-s-coco.onnx";
+
+    /// <summary>microsoft/resnet-50 as transformers.js exports it (Xenova): <c>logits [1, 1000]</c>.</summary>
+    public const string ResNet50 = "resnet-50.onnx";
+
+    /// <summary>The config.json of the ResNet-50 export: its ImageNet class names (<c>id2label</c>) for a labels file.</summary>
+    public const string ResNet50Config = "resnet-50-config.json";
+
+    /// <summary>MobileNetV2 of the ONNX Model Zoo (opset 12).</summary>
+    public const string MobileNetV2 = "mobilenetv2-12.onnx";
+
+    /// <summary>Ultralytics YOLO11n-cls on ImageNet, the ONNX file of mobilint's repository.</summary>
+    public const string Yolo11Cls = "yolo11n-cls.onnx";
+
     /// <summary>COCO val2017 278705: two skateboarders, two parked cars.</summary>
     public const string Skaters = "coco-000000278705.jpg";
 
@@ -29,10 +55,15 @@ internal static class RealModelFiles
 
     public static string Sha256Of(string name) => Files[name].Sha256;
 
-    /// <summary>Why the tests skip: the files that are not in the cache; null when all are there.</summary>
-    public static string? Missing()
+    /// <summary>The two COCO photos every test needs.</summary>
+    public static readonly string[] Photos = [Skaters, SkateBowl];
+
+    /// <summary>Why the tests skip: of <paramref name="names"/> (every file when none) and the photos, the ones not in the cache; null when all are there.</summary>
+    public static string? Missing(params string[] names)
     {
-        var missing = Files.Where(f => !File.Exists(f.Value.Path)).Select(f => f.Key).ToList();
+        var wanted = names.Length == 0 ? Files.Keys.ToHashSet() : names.Concat(Photos).ToHashSet();
+        var missing = Files.Where(f => wanted.Contains(f.Key) && !File.Exists(f.Value.Path)).Select(f => f.Key)
+            .Concat(wanted.Where(w => !Files.ContainsKey(w))).ToList();
         return Files.Count == 0
             ? "No real model files are declared (RealModels.targets not imported)."
             : missing.Count == 0
@@ -52,13 +83,14 @@ internal static class RealModelFiles
     }
 }
 
-/// <summary>A fact that needs the downloaded real model and photos; skipped with the reason when they are not in the cache.</summary>
+/// <summary>A fact that needs downloaded real models and the photos; skipped with the reason when they are not in the cache.</summary>
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class RealModelFactAttribute : FactAttribute
 {
-    public RealModelFactAttribute()
+    /// <param name="files">The model files the test needs besides the photos; none: every file.</param>
+    public RealModelFactAttribute(params string[] files)
     {
-        if (RealModelFiles.Missing() is { } reason)
+        if (RealModelFiles.Missing(files) is { } reason)
         {
             Skip = reason;
         }

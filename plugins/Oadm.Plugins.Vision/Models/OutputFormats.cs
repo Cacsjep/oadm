@@ -2,8 +2,12 @@ using Oadm.Plugins.Vision.Model;
 
 namespace Oadm.Plugins.Vision.Models;
 
-/// <summary>One output of a model as its blank call gave it: name, shape and whether it holds floating point numbers.</summary>
-internal sealed record OutputInfo(string Name, long[] Shape, bool IsFloat);
+/// <summary>
+/// One output of a model as its blank call gave it: name, shape and whether it holds floating point numbers;
+/// <paramref name="LastClassShare"/> of a <c>[1, Q, C]</c> output the share of queries whose best column is the last one
+/// (null when not measured).
+/// </summary>
+internal sealed record OutputInfo(string Name, long[] Shape, bool IsFloat, double? LastClassShare = null);
 
 /// <summary>The format the outputs show and the class count they give (null: the outputs do not tell, the class names do).</summary>
 internal sealed record RecognisedFormat(ModelFormat Format, int? Classes);
@@ -26,7 +30,7 @@ internal static class OutputFormats
             return null;
         }
 
-        return Detr(outputs) ?? RfDetr(outputs) ?? DetrWithLabels(outputs) ?? Single(outputs);
+        return RtDetr(outputs) ?? Detr(outputs) ?? RfDetr(outputs) ?? DetrWithLabels(outputs) ?? Single(outputs);
     }
 
     /// <summary>How the picture is fitted for <paramref name="format"/>: Letterbox (YOLO), Keep shape and pad (DETR), else Stretch.</summary>
@@ -42,6 +46,43 @@ internal static class OutputFormats
         format is ModelFormat.Detr or ModelFormat.RfDetr ? ModelScaling.ImageNet : ModelScaling.ZeroToOne;
 
     public static ModelKind KindOf(ModelFormat format) => format == ModelFormat.Classification ? ModelKind.Classification : ModelKind.Detection;
+
+    /// <summary>
+    /// The indexes of the <c>logits</c> and <c>pred_boxes</c> outputs of a Hugging Face DETR export (<c>logits</c>, never
+    /// <c>pred_logits</c>: that name is the original DETR's), or null.
+    /// </summary>
+    public static (int Logits, int Boxes)? HfDetrParts(IReadOnlyList<OutputInfo> outputs)
+    {
+        ArgumentNullException.ThrowIfNull(outputs);
+        if (outputs.Count != 2)
+        {
+            return null;
+        }
+
+        var logitsAt = IndexOf(outputs, "logits");
+        if (logitsAt < 0 || outputs[logitsAt].Name.Contains("pred_logits", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var boxesAt = 1 - logitsAt;
+        var (logits, boxes) = (outputs[logitsAt], outputs[boxesAt]);
+        return IsQueries(logits) && IsBoxes(boxes) && logits.Shape[1] == boxes.Shape[1] ? (logitsAt, boxesAt) : null;
+    }
+
+    // Hugging Face exports name the outputs of DETR (softmax, the last class "no object") and of RT-DETR and D-FINE (a sigmoid
+    // per class, no "no object") alike: logits and pred_boxes. The blank picture tells them apart: a model with a "no object"
+    // class gives it as the best class of nearly every query (DETR R50: 100 of 100), one without gives the last class no such
+    // place (RT-DETR, D-FINE: 0 of 300). Not measured: not RT-DETR.
+    private static RecognisedFormat? RtDetr(IReadOnlyList<OutputInfo> outputs)
+    {
+        if (HfDetrParts(outputs) is not { } parts || outputs[parts.Logits].LastClassShare is not { } share || share >= 0.5)
+        {
+            return null;
+        }
+
+        return new RecognisedFormat(ModelFormat.RtDetr, (int)Math.Min(outputs[parts.Logits].Shape[2], int.MaxValue));
+    }
 
     // pred_logits [1, Q, C + 1] and pred_boxes [1, Q, 4], logits first: by name, or two outputs without the names. Boxes
     // first is RF-DETR whatever the names (rf-detr-onnx names its outputs pred_boxes, pred_logits too).

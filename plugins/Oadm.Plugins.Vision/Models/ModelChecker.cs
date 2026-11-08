@@ -84,6 +84,19 @@ internal static class ModelChecker
                 return (null, ModelTexts.CannotRun(ModelTexts.UnknownOutputs));
             }
 
+            if (ClassificationSize(format.Format, input) is { } smaller)
+            {
+                input = smaller;
+                try
+                {
+                    BlankCall(session, input, out ms);
+                }
+                catch (OnnxRuntimeException ex)
+                {
+                    return (null, ModelTexts.CannotRun(ModelTexts.DoesNotLoad(ex.Message)));
+                }
+            }
+
             if (format.Classes > VisionLimits.MaxClasses)
             {
                 return (null, ModelTexts.CannotRun(ModelTexts.TooManyClasses(format.Classes.Value)));
@@ -155,6 +168,42 @@ internal static class ModelChecker
         return ModelTexts.InputSizeNotSupported(w, h);
     }
 
+    /// <summary>
+    /// A classification model with a free input gets 224 x 224 (<see cref="VisionLimits.DefaultClassificationInputSize"/>),
+    /// the size ImageNet models are trained at, not the detection default; null for any other model.
+    /// </summary>
+    internal static PictureInput? ClassificationSize(ModelFormat format, PictureInput input) =>
+        format == ModelFormat.Classification && !input.Fixed
+            ? input with { Width = VisionLimits.DefaultClassificationInputSize, Height = VisionLimits.DefaultClassificationInputSize }
+            : null;
+
+    /// <summary>The share of the <c>[1, Q, C]</c> rows of <paramref name="values"/> whose best column is the last one; null for another shape.</summary>
+    internal static double? LastClassShare(long[] shape, ReadOnlySpan<float> values)
+    {
+        if (shape is not [1, > 0 and var queries, > 1 and var columns] || values.Length < queries * columns)
+        {
+            return null;
+        }
+
+        var last = 0;
+        for (var q = 0; q < queries; q++)
+        {
+            var row = values.Slice((int)(q * columns), (int)columns);
+            var best = 0;
+            for (var c = 1; c < row.Length; c++)
+            {
+                if (row[c] > row[best])
+                {
+                    best = c;
+                }
+            }
+
+            last += best == row.Length - 1 ? 1 : 0;
+        }
+
+        return (double)last / queries;
+    }
+
     /// <summary>One call with a black picture; the outputs' names and shapes and the call's time.</summary>
     private static List<OutputInfo> BlankCall(InferenceSession session, PictureInput input, out double ms)
     {
@@ -168,7 +217,9 @@ internal static class ModelChecker
         for (var i = 0; i < results.Count; i++)
         {
             var info = results[i].GetTensorTypeAndShape();
-            outputs.Add(new OutputInfo(session.OutputNames[i], info.Shape, info.ElementDataType == TensorElementType.Float));
+            var isFloat = info.ElementDataType == TensorElementType.Float;
+            var share = isFloat ? LastClassShare(info.Shape, results[i].GetTensorDataAsSpan<float>()) : null;
+            outputs.Add(new OutputInfo(session.OutputNames[i], info.Shape, isFloat, share));
         }
 
         return outputs;
@@ -178,10 +229,13 @@ internal static class ModelChecker
 /// <summary>
 /// The picture input of a session: one <c>[1, 3, H, W]</c> tensor of floats (the batch and the size may be free), and the
 /// optional size input of RT-DETR-like exports (<c>orig_target_sizes [1, 2]</c>, integers), which gets the input's size so their
-/// boxes come in input pixels.
+/// boxes come in input pixels; and the optional mask of Hugging Face DETR exports (<see cref="PixelMask"/>).
 /// </summary>
 internal sealed record PictureInput(string Name, int Width, int Height, bool Fixed, string? SizeName, TensorElementType SizeType)
 {
+    /// <summary>The <c>pixel_mask [1, h, w]</c> input (integers) of a Hugging Face DETR export, or null; filled with ones.</summary>
+    public PixelMask? Mask { get; init; }
+
     /// <summary>The picture input of <paramref name="session"/>, or null when its inputs are no single picture.</summary>
     public static PictureInput? Of(InferenceSession session)
     {
@@ -190,6 +244,7 @@ internal sealed record PictureInput(string Name, int Width, int Height, bool Fix
         int[] dims = [];
         string? size = null;
         var sizeType = TensorElementType.Int64;
+        PixelMask? mask = null;
         foreach (var (name, meta) in session.InputMetadata)
         {
             if (!meta.IsTensor)
@@ -207,6 +262,10 @@ internal sealed record PictureInput(string Name, int Width, int Height, bool Fix
 
                 picture = name;
                 dims = d;
+            }
+            else if (mask is null && PixelMask.Of(name, meta) is { } found)
+            {
+                mask = found;
             }
             else if (d.Length == 2 && d[0] is 1 or -1 && d[1] is 2 && size is null
                 && meta.ElementDataType is TensorElementType.Int64 or TensorElementType.Int32 or TensorElementType.Float)
@@ -239,7 +298,38 @@ internal sealed record PictureInput(string Name, int Width, int Height, bool Fix
             h > 0 ? h : VisionLimits.DefaultInputSize,
             fixedSize,
             size,
-            sizeType);
+            sizeType)
+        { Mask = mask };
+    }
+}
+
+/// <summary>
+/// The <c>pixel_mask</c> input of Hugging Face DETR exports: <c>[1, h, w]</c> integers, 1 where the picture is. The model
+/// scales it to its feature map, so ones of the declared size (or of the input's when free) mean "all picture", as the
+/// original DETR without a mask.
+/// </summary>
+internal sealed record PixelMask(string Name, int Height, int Width, TensorElementType Type)
+{
+    /// <summary>The mask input <paramref name="name"/>, or null when it is none.</summary>
+    public static PixelMask? Of(string name, NodeMetadata meta)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(meta);
+        var d = meta.Dimensions;
+        return name.Contains("mask", StringComparison.OrdinalIgnoreCase) && d.Length == 3 && d[0] is 1 or -1
+            && meta.ElementDataType is TensorElementType.Int64 or TensorElementType.Int32
+            ? new PixelMask(name, d[1], d[2], meta.ElementDataType)
+            : null;
+    }
+
+    /// <summary>A tensor of ones for an input of <paramref name="width"/> x <paramref name="height"/>.</summary>
+    public OrtValue Ones(int width, int height)
+    {
+        long h = Height > 0 ? Height : height, w = Width > 0 ? Width : width;
+        var count = (int)(h * w);
+        return Type == TensorElementType.Int32
+            ? OrtValue.CreateTensorValueFromMemory(Enumerable.Repeat(1, count).ToArray(), [1, h, w])
+            : OrtValue.CreateTensorValueFromMemory(Enumerable.Repeat(1L, count).ToArray(), [1, h, w]);
     }
 }
 
@@ -252,10 +342,19 @@ internal sealed class ModelInputs : IDisposable
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(input);
-        Names = input.SizeName is null ? [input.Name] : [input.Name, input.SizeName];
+        List<string> names = [input.Name];
         _values.Add(OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, values.AsMemory(0, 3 * width * height), [1, 3, height, width]));
+        if (input.Mask is { } mask)
+        {
+            names.Add(mask.Name);
+            _values.Add(mask.Ones(width, height));
+        }
+
+        Names = names;
         if (input.SizeName is not null)
         {
+            names.Add(input.SizeName);
+
             // RT-DETR and D-FINE scale their boxes to this size: the input's own, so they come in input pixels.
             _values.Add(input.SizeType switch
             {

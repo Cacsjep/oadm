@@ -30,6 +30,12 @@ public enum ModelFormat
 
     /// <summary><c>[1, C]</c> logits or probabilities.</summary>
     Classification = 5,
+
+    /// <summary>
+    /// RT-DETR, D-FINE and other DETR models without a "no object" class as Hugging Face exports them: <c>logits [1, Q, C]</c>
+    /// (a sigmoid per class) and <c>pred_boxes [1, Q, 4]</c> (cx, cy, w, h, 0 to 1), found by name.
+    /// </summary>
+    RtDetr = 6,
 }
 
 /// <summary>How the picture is fitted to the model's input.</summary>

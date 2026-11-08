@@ -44,6 +44,7 @@ internal static class Decoders
             ModelFormat.Detr => Detr(outputs, minScore, width, height),
             ModelFormat.RfDetr => RfDetr(outputs, minScore, width, height),
             ModelFormat.DetrWithLabels => WithLabels(outputs, minScore, width, height),
+            ModelFormat.RtDetr => RtDetr(outputs, minScore, width, height),
             _ => throw new InvalidOperationException("Not a detection format."),
         };
 
@@ -236,14 +237,31 @@ internal static class Decoders
     }
 
     // Output 0 boxes [1, Q, 4] (cx, cy, w, h, 0 to 1), output 1 logits [1, Q, C] (a sigmoid per class).
-    private static List<RawDetection> RfDetr(IModelOutputs outputs, float minScore, int width, int height)
+    private static List<RawDetection> RfDetr(IModelOutputs outputs, float minScore, int width, int height) =>
+        SigmoidQueries(outputs, 0, 1, minScore, width, height);
+
+    // logits [1, Q, C] (a sigmoid per class) and pred_boxes [1, Q, 4] (cx, cy, w, h, 0 to 1) by name, as RF-DETR.
+    private static List<RawDetection> RtDetr(IModelOutputs outputs, float minScore, int width, int height)
+    {
+        var infos = new List<OutputInfo>(outputs.Count);
+        for (var i = 0; i < outputs.Count; i++)
+        {
+            infos.Add(new OutputInfo(outputs.Name(i), outputs.Shape(i), outputs.IsFloat(i)));
+        }
+
+        var parts = OutputFormats.HfDetrParts(infos) ?? throw new InvalidOperationException(ModelTexts.OutputsDoNotFit);
+        return SigmoidQueries(outputs, parts.Boxes, parts.Logits, minScore, width, height);
+    }
+
+    // Boxes [1, Q, 4] (cx, cy, w, h, 0 to 1) and logits [1, Q, C] (a sigmoid per class): the best class per query.
+    private static List<RawDetection> SigmoidQueries(IModelOutputs outputs, int boxesAt, int logitsAt, float minScore, int width, int height)
     {
         Require(outputs.Count >= 2);
-        var shape = outputs.Shape(1);
+        var shape = outputs.Shape(logitsAt);
         Require(shape.Length == 3 && shape[2] >= 1);
         var (queries, classes) = ((int)shape[1], (int)shape[2]);
-        var boxes = outputs.Floats(0);
-        var logits = outputs.Floats(1);
+        var boxes = outputs.Floats(boxesAt);
+        var logits = outputs.Floats(logitsAt);
         Require(logits.Length >= queries * classes && boxes.Length >= queries * 4);
         var found = new List<RawDetection>();
         for (var q = 0; q < queries; q++)
