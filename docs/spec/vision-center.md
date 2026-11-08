@@ -73,7 +73,15 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
   (classification), RGB.
   Scaling: 0 to 1 (default) or ImageNet mean and deviation, a choice per model.
 - **Class names**: from the model's metadata (`names`, as Ultralytics exports write it) when there is one, else a
-  labels file uploaded with it (one name per line, as many as classes), else "Class 0", "Class 1", ... Names can be edited.
+  labels file uploaded with it (one name per line, as many as classes), else a built-in class list by the class count
+  (91: COCO with its ids, 80: COCO for YOLO), else "Class 0", "Class 1", ...
+- **Class lists** (decision 2026-11-08): profiles of class names, **chosen on the model**, never on a node (the ids
+  belong to how the model was trained). Built in, read only: "COCO (91 ids)" (`coco-91`, the COCO category ids DETR and
+  RF-DETR use, gaps "N/A") and "COCO (80 classes)" (`coco-80`, YOLO). The user's own lists are server-wide like the
+  models (at most 50, Manage vision models, audited); a list with another count of names than the model's classes
+  cannot be chosen for it; a list in use cannot be deleted. A model's ⋯ menu **Class list** offers the fitting lists
+  and "Own names" (edited one per line). Detect objects shows the model's list read only; the Classes pickers and every
+  label follow the names in effect. Backups keep the user's lists.
 - **Upload** (Settings card **Models** on the page, Administrators): the client sends the file in chunks like an add-on
   ZIP (`docs/spec/add-ons.md` "Server" step 2), hashed on the way, to `plugin-data/oadm.vision/models/<id>.onnx`. Then the
   **model check**: refused domains and external data (rule 4), a session on the CPU, one call with a blank picture, the

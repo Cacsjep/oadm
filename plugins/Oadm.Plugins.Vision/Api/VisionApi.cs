@@ -119,6 +119,15 @@ public static class VisionMethods
     /// <summary><see cref="ModelRequest"/> -> {}: refused while pipelines use it. Models, audited.</summary>
     public const string DeleteModel = "deleteModel";
 
+    /// <summary>{} -> <see cref="ClassListList"/>: the built-in and the user's class lists. View.</summary>
+    public const string ListClassLists = "listClassLists";
+
+    /// <summary><see cref="SaveClassListRequest"/> -> <see cref="SaveClassListReply"/>: creates (empty id) or changes a user's list; the models that use it follow. Models, audited.</summary>
+    public const string SaveClassList = "saveClassList";
+
+    /// <summary><see cref="ClassListRequest"/> -> {}: refused for a built-in list and while a model uses it. Models, audited.</summary>
+    public const string DeleteClassList = "deleteClassList";
+
     /// <summary>Event <see cref="ModelList"/> after a model changed.</summary>
     public const string ModelsTopic = "models";
 
@@ -379,4 +388,30 @@ public static class VisionJson
     public static string Serialize<T>(T value) => PluginJson.Serialize(value, Options);
 
     public static T Deserialize<T>(string? json) => PluginJson.ParseOrEmpty<T>(json, Options);
+}
+
+public sealed record ClassListList
+{
+    public IReadOnlyList<ClassList> Lists { get; init; } = [];
+
+    /// <summary>By list id: the names of the models that use it.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> UsedBy { get; init; } = new Dictionary<string, IReadOnlyList<string>>();
+}
+
+public sealed record ClassListRequest
+{
+    public string ClassListId { get; init; } = string.Empty;
+}
+
+public sealed record SaveClassListRequest
+{
+    public ClassList? ClassList { get; init; }
+}
+
+public sealed record SaveClassListReply
+{
+    public ClassList? ClassList { get; init; }
+
+    /// <summary>By field ("name", "names"); nothing was stored.</summary>
+    public IReadOnlyDictionary<string, string> Errors { get; init; } = new Dictionary<string, string>();
 }

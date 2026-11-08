@@ -83,6 +83,12 @@ public sealed record VisionModel
     /// <summary>The model fixes its input size (no choice on the page).</summary>
     public bool FixedInput { get; init; }
 
+    /// <summary>
+    /// The class list this model uses (<see cref="ClassList.Id"/>); null: its own names (from the model's metadata or edited
+    /// by hand). <see cref="ClassNames"/> always holds the names in effect: the library refreshes it when the list changes.
+    /// </summary>
+    public string? ClassListId { get; init; }
+
     /// <summary>One name per class id; "N/A" names a gap (never shown or chosen).</summary>
     public IReadOnlyList<string> ClassNames { get; init; } = [];
 
