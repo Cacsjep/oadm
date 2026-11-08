@@ -18,6 +18,12 @@ public sealed record VisionParts
     /// <summary>The cameras' pictures through the plugin's full device access.</summary>
     public required Func<ICorePluginContext, IFrameSource> Frames { get; init; }
 
+    /// <summary>The graph check (<see cref="Graph.VisionGraph.Check"/>); tests may hand a fake.</summary>
+    public Func<Pipeline, Func<string?, VisionModel?>, GraphCheck> Check { get; init; } = Graph.VisionGraph.Check;
+
+    /// <summary>Builds a checked pipeline's evaluator (<see cref="Nodes.PipelineEvaluator.Create"/>); tests may hand a fake.</summary>
+    public Func<Pipeline, Func<string?, VisionModel?>, IInference, PipelineMode, IPipelineEvaluator> Evaluator { get; init; } = Nodes.PipelineEvaluator.Create;
+
     public TimeProvider Time { get; init; } = TimeProvider.System;
 
     /// <summary>The real parts: Models/ModelLibrary, Inference/OnnxInference, the shared frame source (plugins/Shared/Vision).</summary>
