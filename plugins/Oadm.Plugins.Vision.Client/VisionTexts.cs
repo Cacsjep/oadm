@@ -82,6 +82,7 @@ public static class VisionTexts
     public const string DeletePipeline = "Delete pipeline";
     public const string ClassesHint = "One name per line.";
     public const string ClassLists = "Class lists";
+    public const string ModelSettings = "Settings";
     public const string ClassListTitle = "Class list";
     public const string OwnNames = "Own names";
     public const string NewClassList = "New class list";

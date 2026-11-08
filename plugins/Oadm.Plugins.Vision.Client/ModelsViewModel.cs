@@ -397,6 +397,7 @@ public sealed partial class ModelsViewModel : ObservableObject
     public IReadOnlyList<IssuedCertificateAction> ActionsOf(ModelRow row) =>
     [
         new(VisionTexts.Rename, RenameCommand, row),
+        new(VisionTexts.ModelSettings, SettingsCommand, row),
         new(VisionTexts.ClassListTitle, ClassListCommand, row),
         IssuedCertificateAction.Separator,
         new(VisionTexts.Delete, DeleteCommand, row, IsDanger: true),
@@ -414,6 +415,43 @@ public sealed partial class ModelsViewModel : ObservableObject
         if (await dialogs.EditModelAsync(form).ConfigureAwait(true))
         {
             await UpdateAsync(VisionTexts.RenameModel, row.Model with { Name = form.Name.Trim() }).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// Settings: format, fit, scaling and a free input size, through updateModel; a refusal of a field shows below it and the
+    /// dialog opens again with what the user chose; another refusal in the host's message.
+    /// </summary>
+    [RelayCommand]
+    private async Task SettingsAsync(ModelRow? row)
+    {
+        if (row is null || Dialogs is not { } dialogs)
+        {
+            return;
+        }
+
+        var form = new ModelSettingsViewModel(row.Model);
+        while (await dialogs.EditModelSettingsAsync(form).ConfigureAwait(true))
+        {
+            try
+            {
+                var json = await _ctx.InvokeAsync(VisionMethods.UpdateModel, VisionJson.Serialize(new UpdateModelRequest { Model = form.ToModel() }), CancellationToken.None)
+                    .ConfigureAwait(true);
+                var model = VisionJson.Deserialize<VisionModel>(json);
+                Apply(new ModelList { Models = [.. Models.Select(m => m.Id == model.Id ? model : m)], UsedBy = _modelsUsedBy });
+                return;
+            }
+#pragma warning disable CA1031 // The server's reason below its field, else in the host's message.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                var message = ServerErrors.Message(ex);
+                if (!form.ShowRefusal(message))
+                {
+                    await _ctx.ShowMessageAsync(VisionTexts.ModelSettings, message).ConfigureAwait(true);
+                    return;
+                }
+            }
         }
     }
 

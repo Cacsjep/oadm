@@ -28,6 +28,9 @@ public interface IVisionDialogs
     /// <summary>The device of a per-device event (one device); null when cancelled.</summary>
     Task<Guid?> ChooseDeviceAsync(Guid? selected) => Task.FromResult<Guid?>(null);
 
+    /// <summary>A model's Settings (format, fit, scaling, input size): true when the user chose Save.</summary>
+    Task<bool> EditModelSettingsAsync(ModelSettingsViewModel form) => Task.FromResult(false);
+
     /// <summary>Rename or the class names of a model: true when the user chose its main button.</summary>
     Task<bool> EditModelAsync(ModelEditViewModel form);
 
