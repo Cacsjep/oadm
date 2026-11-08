@@ -172,7 +172,7 @@ public sealed class VisionEventTests
     public async Task TheRuntimeNeverResetsACounterByTheClock()
     {
         await using var vision = await VisionHarness.StartAsync();
-        var saved = await vision.SaveAsync(vision.NewPipeline(tail: [VisionHarness.Node("cnt", NodeKinds.Count, "People", new JsonObject { [NodeKinds.ResetAtKey] = "06:00" })]));
+        var saved = await vision.SaveAsync(vision.NewPipeline(tail: [VisionHarness.Node("cnt", NodeKinds.Count, "People", new JsonObject { ["resetAt"] = "06:00" })]));
         await vision.StreamingAsync();
 
         vision.Time.Advance(TimeSpan.FromDays(1));
