@@ -111,7 +111,7 @@ public sealed class Yolo11nWithoutNamesTests(RealModelFixture fixture, ITestOutp
 {
     private const string File = RealModelFiles.Yolo11nNoNames;
 
-    // No names in the file: 80 classes take "COCO for YOLO (80)".
+    // No names in the file: 80 classes take "COCO, 80 classes".
     private static readonly YoloExpected Expected = new(ModelFormat.Yolo, 640, true, ModelScaling.ZeroToOne, ClassLists.Coco80Id)
     {
         MayMiss = [RealModelChecks.CarBehindTheFence, RealModelChecks.PersonBehind],
@@ -153,7 +153,7 @@ public sealed class Yolov10nTests(RealModelFixture fixture, ITestOutputHelper ou
 {
     private const string File = RealModelFiles.Yolov10n;
 
-    // Its metadata names are only the ids ("0" to "79"): 80 classes take "COCO for YOLO (80)".
+    // Its metadata names are only the ids ("0" to "79"): 80 classes take "COCO, 80 classes".
     private static readonly YoloExpected Expected = new(ModelFormat.YoloWithSuppression, 640, true, ModelScaling.ZeroToOne, ClassLists.Coco80Id)
     {
         MayMiss = [RealModelChecks.RightCar, RealModelChecks.PersonBehind],

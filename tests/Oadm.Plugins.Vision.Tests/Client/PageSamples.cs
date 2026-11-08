@@ -54,13 +54,13 @@ internal static class PageSamples
 
     public static ClassList Coco91 => new()
     {
-        Id = "coco-91", Name = "COCO for DETR and RF-DETR (91)", BuiltIn = true,
+        Id = "coco-91", Name = "COCO, 91 ids", BuiltIn = true,
         Names = [.. Enumerable.Range(0, 91).Select(i => i < Coco.Length ? Coco[i] : i % 12 == 0 ? VisionLimits.NoClassName : $"class {i}")],
     };
 
     public static ClassList Coco80 => new()
     {
-        Id = "coco-80", Name = "COCO for YOLO (80)", BuiltIn = true,
+        Id = "coco-80", Name = "COCO, 80 classes", BuiltIn = true,
         Names = [.. Enumerable.Range(0, 80).Select(i => i < Coco.Length ? Coco[i] : $"class {i}")],
     };
 

@@ -21,8 +21,8 @@ upload it:
 |---|---|---|
 | **YOLO** | YOLOv5, YOLOv8, YOLO11 and later, exported to ONNX | OADM removes the double boxes itself |
 | **YOLO with suppression** | YOLO models exported with the double boxes already removed | At most 1,000 boxes per picture |
-| **DETR** | DETR of Facebook Research, also as Hugging Face exports it | Class names from **COCO for DETR and RF-DETR (91)** |
-| **RT-DETR** | RT-DETR, D-FINE and YOLO26 as Hugging Face exports them (onnx-community) | Class names from **COCO for YOLO (80)** |
+| **DETR** | DETR of Facebook Research, also as Hugging Face exports it | Class names from **COCO, 91 ids** |
+| **RT-DETR** | RT-DETR, D-FINE and YOLO26 as Hugging Face exports them (onnx-community) | Class names from **COCO, 80 classes** |
 | **RF-DETR** | RF-DETR of Roboflow | Also the segmentation models: they find boxes |
 | **DETR with labels** | RT-DETR, D-FINE and other models that give boxes, scores and labels | Upload a labels file |
 | **Classification** | Models with one score per class | For the [Classify](../nodes/#classify) node. Upload a labels file |
@@ -42,9 +42,9 @@ animals and everyday objects, 80 kinds) unless the row says otherwise. Upload th
 
 | Model | Size | Licence | Download | Status |
 |---|---|---|---|---|
-| RF-DETR medium | 121 MB | Apache-2.0 | [rf-detr-medium.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-medium.onnx) | Tested: input 576 x 576, class list **COCO for DETR and RF-DETR (91)** taken by itself |
+| RF-DETR medium | 121 MB | Apache-2.0 | [rf-detr-medium.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-medium.onnx) | Tested: input 576 x 576, class list **COCO, 91 ids** taken by itself |
 | RF-DETR nano | 108 MB | Apache-2.0 | [rf-detr-nano.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-nano.onnx) | Should work. Fastest |
-| RF-DETR small | 114 MB | Apache-2.0 | [rf-detr-small.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-small.onnx) | Tested: input 512 x 512, class list **COCO for DETR and RF-DETR (91)** taken by itself, 0.6 s per picture on one CPU core |
+| RF-DETR small | 114 MB | Apache-2.0 | [rf-detr-small.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-small.onnx) | Tested: input 512 x 512, class list **COCO, 91 ids** taken by itself, 0.6 s per picture on one CPU core |
 | RF-DETR base | 108 MB | Apache-2.0 | [rf-detr-base-coco.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-base-coco.onnx) | Should work |
 | RF-DETR large | 122 MB | Apache-2.0 | [rf-detr-large-2026.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-large-2026.onnx) | Should work. Slower, finds more |
 | RF-DETR xlarge | 458 MB | Platform Model License 1.0 | [rf-detr-xlarge.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-xlarge.onnx) | Should work. Very slow without a graphics card |
@@ -60,7 +60,7 @@ use them. The other RF-DETR models are Apache-2.0.
 
 ### YOLO
 
-Trained on COCO (80 kinds). Upload the file as it is; the class names come with the file or from **COCO for YOLO (80)**.
+Trained on COCO (80 kinds). Upload the file as it is; the class names come with the file or from **COCO, 80 classes**.
 Times are for one picture on one CPU core.
 
 | Model | Licence | Download | Status |
@@ -162,8 +162,8 @@ belong to how the model was trained.
 
 | Class list | Fits |
 |---|---|
-| **COCO for DETR and RF-DETR (91)** | DETR and RF-DETR trained on COCO. 80 names; the 11 unused numbers are never shown |
-| **COCO for YOLO (80)** | YOLO trained on COCO, the same names without gaps |
+| **COCO, 91 ids** | DETR and RF-DETR trained on COCO. 80 names; the 11 unused numbers are never shown |
+| **COCO, 80 classes** | YOLO trained on COCO, the same names without gaps |
 | Your own lists | Any model with as many classes as the list has names |
 
 The section **Class lists** below **Models** shows them. **New** creates a list: a **Name** and the names, one per line.
@@ -176,7 +176,7 @@ model's number of classes.
 
 - A list in use cannot change its number of names: **Used by models with 2 classes. Keep 2 names.**
 - A list in use cannot be deleted.
-- **Detect objects** shows the model's list below the model, for example **Class list: COCO for DETR and RF-DETR (91)**.
+- **Detect objects** shows the model's list below the model, for example **Class list: COCO, 91 ids**.
 - At most 50 own lists.
 
 ## Export your own model
@@ -207,7 +207,7 @@ torch.onnx.export(model, picture, 'detr-r50.onnx', input_names=['images'],
                   output_names=['pred_logits', 'pred_boxes'], opset_version=17, dynamo=False)
 ```
 
-OADM names the classes with **COCO for DETR and RF-DETR (91)**. The ready
+OADM names the classes with **COCO, 91 ids**. The ready
 [DETR R50 file](https://huggingface.co/Xenova/detr-resnet-50/resolve/8be7ab59ff663484ee9ba2e8d8f267330d5ad03e/onnx/model.onnx)
 saves you the export.
 

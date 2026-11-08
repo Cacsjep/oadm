@@ -44,7 +44,7 @@ public sealed class ClassListTests
     public async Task The_built_in_lists_come_first_and_the_model_lines_name_their_list()
     {
         var (models, _, _) = await LoadAsync();
-        Assert.Equal(["COCO for DETR and RF-DETR (91)", "COCO for YOLO (80)", "Gate classes"], models.ClassLists.Select(r => r.Name));
+        Assert.Equal(["COCO, 91 ids", "COCO, 80 classes", "Gate classes"], models.ClassLists.Select(r => r.Name));
         Assert.Equal("91 names · Built-in", models.ClassLists[0].Line);
         Assert.Equal("6 names · 1 model", models.ClassLists[2].Line);
         var rf = models.Rows.OfType<ModelRow>().Single(r => r.Model.Id == "m1");
@@ -77,7 +77,7 @@ public sealed class ClassListTests
         Assert.Equal(["truck", "car"], form.ToList().Names);
 
         var view = new ClassListEditViewModel(PageSamples.Coco91, _ => false, isReadOnly: true);
-        Assert.Equal("COCO for DETR and RF-DETR (91)", view.Title);
+        Assert.Equal("COCO, 91 ids", view.Title);
         Assert.True(view.Names.IsReadOnly);
         Assert.False(view.OkCommand.CanExecute(null));
         Assert.Equal("91 names", view.Names.CountText);

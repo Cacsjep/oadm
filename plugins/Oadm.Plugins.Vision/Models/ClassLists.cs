@@ -28,13 +28,13 @@ public static class ClassLists
         "toothbrush",
     ];
 
-    public static ClassList Coco91 { get; } = new() { Id = Coco91Id, Name = "COCO for DETR and RF-DETR (91)", Names = Coco91Names, BuiltIn = true };
+    public static ClassList Coco91 { get; } = new() { Id = Coco91Id, Name = "COCO, 91 ids", Names = Coco91Names, BuiltIn = true };
 
     /// <summary>The same classes without the gaps, in the order of their ids.</summary>
     public static ClassList Coco80 { get; } = new()
     {
         Id = Coco80Id,
-        Name = "COCO for YOLO (80)",
+        Name = "COCO, 80 classes",
         Names = [.. Coco91Names.Where(n => n != VisionLimits.NoClassName)],
         BuiltIn = true,
     };

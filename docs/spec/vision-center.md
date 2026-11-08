@@ -87,7 +87,7 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
     deviation, the picture **stretched** to the input (not letterboxed: the export was trained that way). The order
     decides, also with the `pred_` names (rf-detr-onnx names its outputs `pred_boxes`, `pred_logits`): logits first is
     DETR, boxes first is RF-DETR. `rf-detr-medium.onnx` gives 91 class columns, the COCO category ids (0 unused), and
-    takes "COCO for DETR and RF-DETR (91)" (measured 2026-11-08).
+    takes "COCO, 91 ids" (measured 2026-11-08).
   - Detection **DETR with labels**: boxes, scores and labels outputs (RT-DETR, D-FINE and other end-to-end exports); no
     suppression. An optional input `orig_target_sizes` `[1, 2]` is filled with the input size; boxes in input pixels or
     0 to 1; Stretch by default.
@@ -104,7 +104,7 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
   (default), ImageNet mean and deviation, or 0 to 255 BGR (YOLOX), a choice per model.
 - **Class names**: from the model's metadata (`names`, as Ultralytics exports write it) when its count fits the classes
   and the names are more than the ids (`{0: '0', 1: '1', ...}` of onnx-community's YOLOv10 names nothing; its count
-  still gives the classes, so 80 take "COCO for YOLO (80)"),
+  still gives the classes, so 80 take "COCO, 80 classes"),
   else a labels file uploaded with it (one name per line, as many as classes; another count is refused), else a built-in
   class list by the class count ("Class lists"), else "Class 0", "Class 1", ... Formats whose outputs do not give the
   class count (YOLO with suppression, DETR with labels) take the names of the metadata or the labels file, else "Class
@@ -117,7 +117,8 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
   at most 200 characters). A new model is named after its file ("name 2" when taken). A file whose SHA-256 is already
   stored is refused: "This model is already stored as <name>." Shown per model: kind, input size, classes, class list,
   size, the pipelines that use it, SHA-256, the time of one call on the CPU and on the card. The page's ⋯ menu of a model:
-  Rename, Class list, Delete; the server also takes format, fit, scaling and input size changes (`updateModel`).
+  Rename, **Settings** (format, fit, scaling, and the input size of a model without a fixed one; refusals below their
+  fields), Class list, Delete in red (`updateModel`).
 - **Limits**: at most 20 models, each at most 500 MB, 4 GB together, at most 1,000 classes. Uploads in progress count;
   a Missing model counts once its file is stored again.
 - **Delete** is refused while a pipeline uses the model ("Used by 2 pipelines: Gate 1, Lane 2."), checked against every
@@ -133,8 +134,8 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
 Profiles of class names (decision 2026-11-08), **chosen on the model**, never on a node: the ids belong to how the model
 was trained.
 
-- Built in, read only, named by the models they fit: "COCO for DETR and RF-DETR (91)" (`coco-91`, the COCO 2017
-  category ids, "N/A" at the gaps 0, 12, 26, 29, 30, 45, 66, 68, 69, 71, 83) and "COCO for YOLO (80)" (`coco-80`, the
+- Built in, read only, named by what they hold (decision 2026-11-08): "COCO, 91 ids" (`coco-91`, for DETR and RF-DETR; the COCO 2017
+  category ids, "N/A" at the gaps 0, 12, 26, 29, 30, 45, 66, 68, 69, 71, 83) and "COCO, 80 classes" (`coco-80`, for YOLO, RT-DETR and D-FINE; the
   same names without gaps: couch, potted plant, dining table, tv). No list of 90 (decision 2026-11-08: it came only from
   RF-DETR read as DETR).
 - A built-in list is taken by itself only when neither metadata nor a labels file named the classes and the count is 91
@@ -150,7 +151,7 @@ was trained.
 - The page: the section **Class lists** below Models (built-in: View; own: Edit, Delete in red; New); its dialog holds
   Name and the names, one per line. A model's ⋯ menu **Class list** offers "Own names" and the fitting lists, and says
   below the select when none fits ("No class list has 90 names. Create one or use own names."). Detect objects shows
-  the model's list read only ("Class list: COCO for DETR and RF-DETR (91)"); the Classes pickers and every label follow the
+  the model's list read only ("Class list: COCO, 91 ids"); the Classes pickers and every label follow the
   names in effect. Lists change no live event: the page reads them again after its own changes. Used by shows to every
   user (models are server-wide).
 
@@ -338,7 +339,8 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   problem with the server's text as tooltip, the chips of Text recognition), one live line (the first Count node, else
   the first Event node; sent only on change, at most twice a second), **New** (the camera first), **Delete** (red,
   confirmation) and a search. The card **Models** below it for users with Manage vision models: Upload model, the models
-  with their ⋯ menu (Rename, Class list, Delete in red), then Class lists. Empty page: "Upload a model, then create a
+  with their ⋯ menu (Rename, Settings, Class list, Delete in red); below it the card **Class lists** (decision
+  2026-11-08: its own card). Each pipeline row has a ⋯ menu: Copy to cameras, then Delete in red. Empty page: "Upload a model, then create a
   pipeline."
 - **Canvas | right column**: the shared splitter (`GridSplitter.paneSplitter`) between them. The right column is 420 px
   by default and at least that, the canvas at least 620 px (its toolbar fits); in a narrow window the canvas keeps its
@@ -463,7 +465,7 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   Covered by the real-model tests below (2026-11-08).
 - **First real model: DETR** (`facebookresearch/detr`, DETR-R50 on COCO). The user docs give the export: the PyTorch
   Hub model, `torch.onnx.export` with the outputs named `pred_logits` and `pred_boxes`, a fixed input of 800 x 800 (or a
-  free one), opset 17; the class names come from "COCO for DETR and RF-DETR (91)". The upload, the model check and a pipeline Detect
+  free one), opset 17; the class names come from "COCO, 91 ids". The upload, the model check and a pipeline Detect
   objects > Filter (person) > Track > Line > Count > Event must work with that file. It is slow on the CPU (about a
   second per picture at 800 x 800, to be measured): the page's load and the node's time per frame say so, a graphics card
   or a lower frame rate is the answer.
@@ -484,14 +486,14 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   (`-p:OadmRealModels=true`) into the model cache of Text recognition, pinned by revision and SHA-256 (sources in the
   plugin README), never shipped, never in git; without them the tests skip with the reason. On the CPU only (no card is
   looked for, a session on anything else fails the test): the model check of a chunked upload through the real
-  `ModelLibrary` (RF-DETR, 576 x 576, Stretch, ImageNet, 91 classes, "COCO for DETR and RF-DETR (91)"), the real `OnnxInference` on
+  `ModelLibrary` (RF-DETR, 576 x 576, Stretch, ImageNet, 91 classes, "COCO, 91 ids"), the real `OnnxInference` on
   both photos against COCO's boxes (every person and car at an overlap of 50 % or more, scores of 50 % or more, no "N/A",
   no person where COCO has none), and Camera > Detect objects > Filter (person) > Count through the real evaluator
   (Count 2 on the photo with two skaters: COCO's annotation has two people and the photo shows no one else).
   The YOLO family the same way (2026-11-08, minimum score 25 % as Ultralytics' default; sources in the plugin README):
   YOLOv8n, YOLO11n (free input), YOLO11n in 16-bit floats, YOLO11n without names, YOLOv5n (v7.0 release, 16-bit),
   YOLOv10n (onnx-community), YOLO26n, YOLOX nano and tiny. The format, input size, fit, scaling and the 80 names or
-  "COCO for YOLO (80)" are checked; a nano model may miss only the COCO objects it was measured to miss ("Measured"),
+  "COCO, 80 classes" are checked; a nano model may miss only the COCO objects it was measured to miss ("Measured"),
   every other person and car at an overlap of 50 % or more, no person where COCO has none.
   The DETR family the same way (2026-11-08, minimum score 50 %; the nano YOLO26 25 %): DETR R50 of Transformers.js in
   full precision and quantized, RT-DETR v2 R18, D-FINE S, YOLO26n of Transformers.js, RF-DETR small. Three ImageNet
@@ -515,12 +517,12 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   | YOLOv8n | YOLO, 640 | 80 from the metadata | 104 | all but the car behind the fence |
   | YOLO11n (free input) | YOLO, 640 | 80 from the metadata | 107 | all but the car behind the fence (20 %) and the person behind (overlap 0.47, without the arm COCO's box holds) |
   | YOLO11n, 16-bit | YOLO, 640 | 80 from the metadata | 104 | the same boxes as in 32 bits |
-  | YOLO11n, no names | YOLO, 640 | 80, "COCO for YOLO (80)" | 90 | as YOLO11n |
+  | YOLO11n, no names | YOLO, 640 | 80, "COCO, 80 classes" | 90 | as YOLO11n |
   | YOLOv5n, 16-bit | YOLO (v5), 640 | 80 from the metadata | 89 | both people; both parked cars, the car behind the fence and the person behind missed |
-  | YOLOv10n | YOLO with suppression, 640 | 80, "COCO for YOLO (80)" | 89 | all but the right parked car (overlap 0.42) and the person behind |
+  | YOLOv10n | YOLO with suppression, 640 | 80, "COCO, 80 classes" | 89 | all but the right parked car (overlap 0.42) and the person behind |
   | YOLO26n | YOLO with suppression, 640 | 80 from the metadata | 79 | all but the right parked car (11 %) and the person behind |
-  | YOLOX nano | YOLOX, 416 | 80, "COCO for YOLO (80)" | 27 | all but the right parked car (overlap 0.44) and the car behind the fence |
-  | YOLOX tiny | YOLOX, 416 | 80, "COCO for YOLO (80)" | 74 | all but the car behind the fence |
+  | YOLOX nano | YOLOX, 416 | 80, "COCO, 80 classes" | 27 | all but the right parked car (overlap 0.44) and the car behind the fence |
+  | YOLOX tiny | YOLOX, 416 | 80, "COCO, 80 classes" | 74 | all but the car behind the fence |
 
   The boxes of every format land where COCO has them (the people within a few pixels); the misses are the nano
   models' accuracy, not the reading: RF-DETR medium finds all of them.
@@ -529,12 +531,12 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
 
   | Model | Format | Classes | ms per picture | Result |
   |---|---|---|---|---|
-  | DETR R50, Transformers.js | DETR, free input at 640, Keep shape and pad, ImageNet | 91, "COCO for DETR and RF-DETR (91)" | 690 | all but the person behind (overlap 0.47) |
+  | DETR R50, Transformers.js | DETR, free input at 640, Keep shape and pad, ImageNet | 91, "COCO, 91 ids" | 690 | all but the person behind (overlap 0.47) |
   | DETR R50, Transformers.js, quantized (8-bit weights) | DETR, as above | 91, as above | 990 | all; passes the scan, slower than full precision on this CPU |
-  | RT-DETR v2 R18 | RT-DETR, free input at 640 | 80, "COCO for YOLO (80)" | 710 | all; a person at 51 % where COCO has none (read at 60 %) |
-  | D-FINE S | RT-DETR, free input at 640 | 80, "COCO for YOLO (80)" | 460 | all but the right parked car (boxed with the skater, overlap 0.41) and the person behind (0.48) |
-  | YOLO26n, Transformers.js | RT-DETR, 640 | 80, "COCO for YOLO (80)" | 85 | at 25 %: all but the person behind (0.49) |
-  | RF-DETR small | RF-DETR, 512 | 91, "COCO for DETR and RF-DETR (91)" | 645 | all |
+  | RT-DETR v2 R18 | RT-DETR, free input at 640 | 80, "COCO, 80 classes" | 710 | all; a person at 51 % where COCO has none (read at 60 %) |
+  | D-FINE S | RT-DETR, free input at 640 | 80, "COCO, 80 classes" | 460 | all but the right parked car (boxed with the skater, overlap 0.41) and the person behind (0.48) |
+  | YOLO26n, Transformers.js | RT-DETR, 640 | 80, "COCO, 80 classes" | 85 | at 25 %: all but the person behind (0.49) |
+  | RF-DETR small | RF-DETR, 512 | 91, "COCO, 91 ids" | 645 | all |
   | ResNet-50, Transformers.js | Classification, free input at 224, ImageNet | 1,000 from the labels file | 76 | minivan 100 % and 90 % |
   | MobileNetV2, ONNX Model Zoo | Classification, 224, ImageNet | 1,000 from the labels file | 10 | minivan 28 % and 71 % |
   | YOLO11n-cls (no metadata) | Classification, 224, ImageNet; set to 0 to 1 | 1,000 from the labels file | 8 | minivan 66 % and 69 % at 0 to 1; with ImageNet "spotlight" 100 % |
@@ -570,7 +572,7 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
 - Hugging Face and ONNX Model Zoo classifiers carry no class names: the user uploads a labels file (the 1,000 ImageNet
   names from the export's `config.json` `id2label`); a built-in ImageNet list is not decided. Google's MobileNet of
   Hugging Face (1,001 classes with a background class, mean and deviation 0.5) is not covered by the scalings.
-- "COCO for YOLO (80)" is also the list of RT-DETR, D-FINE and Transformers.js YOLO26 (the same 80 names): its name says
+- "COCO, 80 classes" is also the list of RT-DETR, D-FINE and Transformers.js YOLO26 (the same 80 names): its name says
   YOLO only.
 - DETR of Hugging Face is trained with the shorter side at 800; the free input takes 640 by default (690 ms per
   picture), 800 is not measured.

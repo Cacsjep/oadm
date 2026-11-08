@@ -136,7 +136,7 @@ public static class VisionTexts
         };
     }
 
-    /// <summary>Below the Model field of Detect objects: "Class list: COCO for DETR and RF-DETR (91)".</summary>
+    /// <summary>Below the Model field of Detect objects: "Class list: COCO, 91 ids".</summary>
     public static string ClassListOf(string name) => "Class list: " + name;
 
     // Errors of the page's own checks, the same as the server's (docs/spec/vision-center.md "Pipelines").

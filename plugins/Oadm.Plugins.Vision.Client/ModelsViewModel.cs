@@ -164,7 +164,7 @@ public sealed partial class ModelsViewModel : ObservableObject
 
     private IReadOnlyDictionary<string, IReadOnlyList<string>> _modelsUsedBy = new Dictionary<string, IReadOnlyList<string>>();
 
-    /// <summary>"COCO for DETR and RF-DETR (91)" for a model's list, "Own names" without one (or a list no longer there).</summary>
+    /// <summary>"COCO, 91 ids" for a model's list, "Own names" without one (or a list no longer there).</summary>
     public string ClassListNameOf(VisionModel model)
     {
         ArgumentNullException.ThrowIfNull(model);

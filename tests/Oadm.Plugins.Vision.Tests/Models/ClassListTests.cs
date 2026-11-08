@@ -58,7 +58,7 @@ public sealed class ClassListTests : IDisposable
         Assert.Equal(("traffic light", "stop sign", "dining table", "tv", "book", "hair drier"), (names[10], names[13], names[67], names[72], names[84], names[89]));
         Assert.Equal([0, 12, 26, 29, 30, 45, 66, 68, 69, 71, 83], Enumerable.Range(0, 91).Where(i => names[i] == VisionLimits.NoClassName));
         Assert.True(ClassLists.Coco91.BuiltIn);
-        Assert.Equal(("coco-91", "COCO for DETR and RF-DETR (91)"), (ClassLists.Coco91.Id, ClassLists.Coco91.Name));
+        Assert.Equal(("coco-91", "COCO, 91 ids"), (ClassLists.Coco91.Id, ClassLists.Coco91.Name));
     }
 
     [Fact]
@@ -70,7 +70,7 @@ public sealed class ClassListTests : IDisposable
         Assert.Equal(("traffic light", "stop sign", "tv"), (names[9], names[11], names[62]));
         Assert.DoesNotContain(VisionLimits.NoClassName, names);
         Assert.Equal(80, names.Distinct().Count());
-        Assert.Equal(("coco-80", "COCO for YOLO (80)", true), (ClassLists.Coco80.Id, ClassLists.Coco80.Name, ClassLists.Coco80.BuiltIn));
+        Assert.Equal(("coco-80", "COCO, 80 classes", true), (ClassLists.Coco80.Id, ClassLists.Coco80.Name, ClassLists.Coco80.BuiltIn));
     }
 
     [Fact]
@@ -177,7 +177,7 @@ public sealed class ClassListTests : IDisposable
         Assert.Equal(("name", "Enter a name."), await Refused(List(" ", "a")));
         Assert.Equal(("name", "A name has at most 64 characters."), await Refused(List(new string('x', 65), "a")));
         Assert.Equal(("name", "A class list named Gate already exists."), await Refused(List("GATE", "a")));
-        Assert.Equal(("name", "A class list named COCO for YOLO (80) already exists."), await Refused(List("coco for yolo (80)", "a")));
+        Assert.Equal(("name", "A class list named COCO, 80 classes already exists."), await Refused(List("coco, 80 CLASSES", "a")));
         Assert.Equal(("names", "Enter at least one name."), await Refused(List("Empty")));
         Assert.Equal(("names", "A class list has at most 1,000 names."), await Refused(new ClassList { Name = "Many", Names = [.. Enumerable.Range(0, 1001).Select(i => "c" + i)] }));
         Assert.Equal(("names", "A name holds no line break."), await Refused(List("Break", "a\nb")));
@@ -187,7 +187,7 @@ public sealed class ClassListTests : IDisposable
         Assert.Equal(("Lane", false, 32), (saved.Name, saved.BuiltIn, saved.Id.Length));
         Assert.Equal(["car", "Class 1", "N/A"], saved.Names);
         Assert.Equal(ModelTexts.ClassListBuiltInChanged, (await Assert.ThrowsAsync<ArgumentException>(() => _library.SaveClassListAsync(ClassLists.Coco80 with { Name = "Mine" }, CancellationToken.None))).Message);
-        Assert.Equal(["COCO for DETR and RF-DETR (91)", "COCO for YOLO (80)", "Gate", "Lane"], _library.ClassLists.Select(l => l.Name));
+        Assert.Equal(["COCO, 91 ids", "COCO, 80 classes", "Gate", "Lane"], _library.ClassLists.Select(l => l.Name));
     }
 
     [Fact]
@@ -236,7 +236,7 @@ public sealed class ClassListTests : IDisposable
         File.Delete(ModelLibrary.PathOf(_data.Path, model.Id));
         using var restored = new ModelLibrary(_records, _data.Path, _time);
         await restored.LoadAsync(CancellationToken.None);
-        Assert.Equal(["COCO for DETR and RF-DETR (91)", "COCO for YOLO (80)", "Gate"], restored.ClassLists.Select(l => l.Name));
+        Assert.Equal(["COCO, 91 ids", "COCO, 80 classes", "Gate"], restored.ClassLists.Select(l => l.Name));
         Assert.True(restored.Find(model.Id)!.Missing);
 
         var id = await restored.BeginUploadAsync("again.onnx", file.Length, null, CancellationToken.None);
