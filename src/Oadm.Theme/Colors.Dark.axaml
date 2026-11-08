@@ -70,6 +70,9 @@
   <Color x:Key="Oadm.ChipTextColor">#FFFFFF</Color>
   <Color x:Key="Oadm.OverlayColor">#99000000</Color>
   <Color x:Key="Oadm.VideoBackgroundColor">#0C0C0C</Color>
+  <!-- Node canvas of Vision Center: the canvas a little lighter than the window, the node cards clearly darker than the card around it -->
+  <Color x:Key="Oadm.CanvasBackgroundColor">#1C1C1C</Color>
+  <Color x:Key="Oadm.CanvasNodeColor">#0F0F0F</Color>
   <!-- Code highlighting (ui:CodeView): readable on the input background #232323 -->
   <Color x:Key="Oadm.Code.KeyColor">#7FC8D0</Color>
   <Color x:Key="Oadm.Code.StringColor">#E2B88E</Color>

@@ -305,7 +305,7 @@ public sealed class PipelineCanvas : Control
         ArgumentNullException.ThrowIfNull(context);
         var theme = new OverlayTheme(this);
         var bounds = new Rect(Bounds.Size);
-        context.FillRectangle(theme.Brush("Oadm.WindowBackgroundBrush"), bounds);
+        context.FillRectangle(theme.Brush("Oadm.CanvasBackgroundBrush"), bounds);
         if (Canvas is not { } canvas)
         {
             return;
@@ -401,7 +401,7 @@ public sealed class PipelineCanvas : Control
         var colour = theme.Brush(node.BrushKey);
         var accent = theme.Brush("Oadm.AccentBrush");
         var error = theme.Brush("Oadm.StatusErrorBrush");
-        var fill = theme.Brush("Oadm.InputBackgroundBrush");
+        var fill = theme.Brush("Oadm.CanvasNodeBrush");
         using var dim = node.Fit == LinkFit.Dimmed ? context.PushOpacity(0.35) : default(DrawingContext.PushedState?);
 
         if (node.IsSelected)
@@ -470,7 +470,7 @@ public sealed class PipelineCanvas : Control
             var text = theme.Small(message, error);
             text.MaxTextWidth = CanvasGeometry.NodeWidth + 30;
             // On the canvas's background: the link down from the output passes behind the error, never through it.
-            context.FillRectangle(theme.Brush("Oadm.WindowBackgroundBrush"), new Rect(rect.X - 2, rect.Bottom + 4, text.Width + 4, text.Height + 2), 3);
+            context.FillRectangle(theme.Brush("Oadm.CanvasBackgroundBrush"), new Rect(rect.X - 2, rect.Bottom + 4, text.Width + 4, text.Height + 2), 3);
             context.DrawText(text, new Point(rect.X, rect.Bottom + 5));
         }
     }

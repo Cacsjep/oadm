@@ -96,6 +96,10 @@ public static class VisionTexts
     public const string ClassListNameTaken = "Another class list has this name.";
     public const string EnterNames = "Enter the names, one per line.";
 
+    /// <summary>Below the Class list select when no list fits the model.</summary>
+    public static string NoFittingList(int classes) =>
+        string.Create(CultureInfo.InvariantCulture, $"No class list has {classes} names. Create one or use own names.");
+
     public static string TooManyNames => string.Create(CultureInfo.InvariantCulture, $"Enter at most {VisionLimits.MaxClasses:N0} names.");
 
     public static string NameCount(int count) => count == 1 ? "1 name" : string.Create(CultureInfo.InvariantCulture, $"{count} names");

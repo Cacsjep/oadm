@@ -72,6 +72,8 @@
 
       <!-- Brushes -->
       <SolidColorBrush x:Key="Oadm.WindowBackgroundBrush" Color="{StaticResource Oadm.WindowBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.CanvasBackgroundBrush" Color="{StaticResource Oadm.CanvasBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.CanvasNodeBrush" Color="{StaticResource Oadm.CanvasNodeColor}" />
       <SolidColorBrush x:Key="Oadm.CardBackgroundBrush" Color="{StaticResource Oadm.CardBackgroundColor}" />
       <SolidColorBrush x:Key="Oadm.SurfaceRaisedBrush" Color="{StaticResource Oadm.SurfaceRaisedColor}" />
       <SolidColorBrush x:Key="Oadm.SurfaceHoverBrush" Color="{StaticResource Oadm.SurfaceHoverColor}" />

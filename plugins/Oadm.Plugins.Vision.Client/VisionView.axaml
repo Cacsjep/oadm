@@ -217,10 +217,11 @@
     <!-- Right: the live video with the overlay, below it the selected node (its form and live output) or the pipeline's settings. -->
     <GridSplitter x:Name="RightSplitter" Grid.Column="3" Classes="paneSplitter vertical" />
 
-    <Grid x:Name="RightColumn" Grid.Column="4" RowDefinitions="Auto,*" RowSpacing="16" DataContext="{Binding Editor}" x:DataType="vm:PipelineEditorViewModel"
+    <!-- Two cards with the shared splitter as their gap: dragging it down gives the video more height. -->
+    <Grid x:Name="RightColumn" Grid.Column="4" RowDefinitions="Auto,Auto,*" DataContext="{Binding Editor}" x:DataType="vm:PipelineEditorViewModel"
           IsVisible="{Binding $parent[UserControl].((vm:VisionViewModel)DataContext).HasEditor, FallbackValue=False}">
       <Border x:Name="VideoCard" Classes="card">
-        <Panel x:Name="VideoPanel" Height="{x:Static vm:PageLayout.VideoMinHeight}">
+        <Panel x:Name="VideoPanel" MinHeight="{x:Static vm:PageLayout.VideoMinHeight}">
           <Border Classes="liveViewSurface" />
           <ContentControl x:Name="VideoHost" Content="{Binding VideoView}" IsVisible="{Binding ShowLiveVideo}" />
           <vm:VisionPicture x:Name="Picture" PictureSize="{Binding PictureSize}" Items="{Binding OverlayItems}" Shapes="{Binding Shapes}"
@@ -235,7 +236,9 @@
         </Panel>
       </Border>
 
-      <Border Grid.Row="1" Classes="card">
+      <GridSplitter x:Name="VideoSplitter" Grid.Row="1" Classes="paneSplitter" />
+
+      <Border x:Name="NodeCard" Grid.Row="2" Classes="card">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled">
           <Panel>
             <!-- Nothing selected: the pipeline's own settings. -->

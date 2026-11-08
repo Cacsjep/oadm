@@ -276,6 +276,11 @@ public sealed partial class ModelEditViewModel : ValidatingViewModel
     [NotifyCanExecuteChangedFor(nameof(OkCommand))]
     public partial ClassListChoice? SelectedChoice { get; set; }
 
+    /// <summary>No class list has as many names as the model has classes: why the select offers only its own names.</summary>
+    public string? NoFittingList => IsClassList && Choices.Count == 1 ? VisionTexts.NoFittingList(Own.Count ?? 0) : null;
+
+    public bool HasNoFittingList => NoFittingList is not null;
+
     /// <summary>"Own names" chosen: the names field shows.</summary>
     public bool IsOwn => IsClassList && SelectedChoice?.Id is null;
 
