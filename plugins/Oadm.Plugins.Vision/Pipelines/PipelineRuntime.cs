@@ -66,7 +66,7 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
     private readonly ConcurrentDictionary<string, string> _actionProblems = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Task, byte> _singles = new();
     private readonly ConditionalWeakTable<Pipeline, string> _prints = new();
-    private readonly PipelineStats _stats;
+    private readonly StatsWindow _stats;
     private readonly CancellationTokenSource _stopping = new();
     private readonly ITimer _recheck;
     private readonly ITimer _resets;
@@ -89,7 +89,9 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
         _pipelines = pipelines ?? throw new ArgumentNullException(nameof(pipelines));
         _logger = ctx.Logger;
         _time = parts.Time;
-        _stats = new PipelineStats(_time);
+        _stats = new StatsWindow(_time);
+        _statsLeases = new StatsLeases(_time);
+        _previews = new PreviewRegistry<Preview>(_time, VisionLimits.MaxPreviews, VisionLimits.MaxPreviewsPerUser, VisionLimits.PreviewLease);
         MaxWatching = VisionLimits.MaxWatchingFor(parts.ProcessorCount);
         using (ExecutionContext.SuppressFlow())
         {
@@ -782,7 +784,7 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
                 return;
             }
 
-            _stats.CountFrame(id);
+            _stats.Count(id);
             if (StoredOf(id) is not { } stored || Print(stored) != watch.Print)
             {
                 return; // deleted or changed while the frame ran: the sync stops the loop, nothing is published

@@ -21,8 +21,8 @@ internal sealed partial class PipelineRuntime
 {
     public static readonly TimeSpan PreviewSweepInterval = TimeSpan.FromSeconds(5);
 
-    private readonly Dictionary<string, Preview> _previews = new(StringComparer.Ordinal);
-    private long _previewOrder;
+    /// <summary>The previews, their leases and limits (shared with Text recognition); also the lock of the previews' state.</summary>
+    private readonly PreviewRegistry<Preview> _previews;
     private int _keptPreviews;
     private int _sentPreviews;
 
@@ -56,52 +56,15 @@ internal sealed partial class PipelineRuntime
         try
         {
             ObjectDisposedException.ThrowIf(_stopped, this);
-            Preview? preview = null;
-            Preview? ending = null;
-            lock (_previews)
-            {
-                if (!string.IsNullOrEmpty(previewId) && _previews.TryGetValue(previewId, out var kept) && kept.IsOf(owner, user))
-                {
-                    if (kept.Draft.DeviceId == draft.DeviceId)
-                    {
-                        preview = kept;
-                    }
-                    else
-                    {
-                        ending = kept; // another camera: nothing of the old one stays under this id
-                    }
-                }
-                else
-                {
-                    var mine = _previews.Values.Where(p => p.IsOf(owner, user)).ToList();
-                    if (mine.Count >= VisionLimits.MaxPreviewsPerUser)
-                    {
-                        ending = mine.MinBy(p => p.Order); // a page closed without a word makes room
-                    }
-                    else if (_previews.Count >= VisionLimits.MaxPreviews)
-                    {
-                        throw new InvalidOperationException(PipelineRules.TooManyPreviews);
-                    }
-                }
-            }
-
+            // Another camera: nothing of the old one stays under this id; a user's third preview ends their oldest.
+            var (kept, ending) = _previews.Claim(previewId, owner, user, p => p.Draft.DeviceId == draft.DeviceId, PipelineRules.TooManyPreviews);
             if (ending is not null)
             {
                 await EndPreviewsAsync(p => p == ending).ConfigureAwait(false);
             }
 
             var stored = PipelineRules.Stored(draft) with { OwnerScopeKey = owner == ICallContext.AllDevicesScopeKey ? null : owner };
-            lock (_previews)
-            {
-                if (preview is null)
-                {
-                    var id = PipelineRules.IsId(previewId) && !_previews.ContainsKey(previewId!) ? previewId! : Guid.NewGuid().ToString("N");
-                    preview = new Preview(id, owner, user, Interlocked.Increment(ref _previewOrder));
-                    _previews[preview.Id] = preview;
-                }
-
-                preview.Expires = _time.GetUtcNow() + VisionLimits.PreviewLease;
-            }
+            var preview = _previews.Open(kept, previewId, (id, order) => new Preview(id, owner, user, order));
 
             UpdateDraft(preview, stored);
             if (preview.Held is { } held && !held.Fits(stored))
@@ -173,7 +136,7 @@ internal sealed partial class PipelineRuntime
 
             if (preview.Held is null)
             {
-                if (!Fits(last.Jpeg))
+                if (!HeldPictures.Fits(last.Jpeg, Fits))
                 {
                     return new PauseReply { Problem = PipelineRules.PictureTooLarge };
                 }
@@ -182,7 +145,7 @@ internal sealed partial class PipelineRuntime
                 {
                     // From here on no live result replaces the one held (KeepPreview).
                     var ranFor = preview.SharedWith is null && ReferenceEquals(last.Evaluator, preview.Evaluator) ? preview.DraftPrint : null;
-                    preview.Held = new HeldFrame(last, preview.Draft) { RanFor = ranFor };
+                    preview.Held = new HeldFrame(last, preview.Draft, _previews) { RanFor = ranFor };
                     preview.SharedWith = null;
                 }
             }
@@ -299,63 +262,52 @@ internal sealed partial class PipelineRuntime
     {
         lock (_previews)
         {
-            if (preview.Held is not { } held || held.Working || held.RanFor == preview.DraftPrint)
+            if (preview.Held is { } held)
             {
-                return;
+                held.Worker.Kick(() => preview.Held == held && held.RanFor != preview.DraftPrint, ct => RunHeldOnceAsync(preview, held, ct));
             }
-
-            held.Working = true;
-            var ct = held.Stop.Token;
-            held.Worker = Task.Run(() => RunHeldLoopAsync(preview, held, ct), CancellationToken.None);
         }
     }
 
-    private async Task RunHeldLoopAsync(Preview preview, HeldFrame held, CancellationToken ct)
+    /// <summary>One run of the held frame's worker: the newest draft on the frame.</summary>
+    private async Task RunHeldOnceAsync(Preview preview, HeldFrame held, CancellationToken ct)
     {
-        while (true)
+        Pipeline draft;
+        string print;
+        lock (_previews)
         {
-            Pipeline draft;
-            string print;
-            lock (_previews)
+            draft = preview.Draft;
+            print = preview.DraftPrint;
+        }
+
+        var evaluator = CheckOf(draft).GraphErrors.Count == 0 ? Build(draft, preview: true) : null;
+        var outcome = evaluator is null
+            ? null
+            : await Process(new SerialWork(), evaluator, held.Outcome.Jpeg, ct, held.Outcome.At).ConfigureAwait(false);
+        lock (_previews)
+        {
+            held.RanFor = print;
+        }
+
+        if (outcome is { Cancelled: true })
+        {
+            ct.ThrowIfCancellationRequested();
+            return;
+        }
+
+        if (print == preview.DraftPrint)
+        {
+            if (outcome is null)
             {
-                if (preview.Held != held || held.RanFor == preview.DraftPrint || ct.IsCancellationRequested)
+                lock (preview)
                 {
-                    held.Working = false;
-                    return;
+                    preview.Last = null;
+                    preview.Dirty = true;
                 }
-
-                draft = preview.Draft;
-                print = preview.DraftPrint;
             }
-
-            var evaluator = CheckOf(draft).GraphErrors.Count == 0 ? Build(draft, preview: true) : null;
-            var outcome = evaluator is null
-                ? null
-                : await Process(new SerialWork(), evaluator, held.Outcome.Jpeg, ct, held.Outcome.At).ConfigureAwait(false);
-            lock (_previews)
+            else
             {
-                held.RanFor = print;
-            }
-
-            if (outcome is { Cancelled: true })
-            {
-                continue;
-            }
-
-            if (print == preview.DraftPrint)
-            {
-                if (outcome is null)
-                {
-                    lock (preview)
-                    {
-                        preview.Last = null;
-                        preview.Dirty = true;
-                    }
-                }
-                else
-                {
-                    KeepPreview(preview, outcome, held);
-                }
+                KeepPreview(preview, outcome, held);
             }
         }
     }
@@ -374,9 +326,7 @@ internal sealed partial class PipelineRuntime
             return;
         }
 
-        await held.Stop.CancelAsync().ConfigureAwait(false);
-        await held.Worker.ConfigureAwait(false);
-        held.Stop.Dispose();
+        await held.Worker.StopAsync().ConfigureAwait(false);
         lock (preview)
         {
             preview.Last = null;
@@ -710,11 +660,7 @@ internal sealed partial class PipelineRuntime
         List<Preview> ending;
         lock (_previews)
         {
-            ending = [.. _previews.Values.Where(which)];
-            foreach (var preview in ending)
-            {
-                _previews.Remove(preview.Id);
-            }
+            ending = _previews.RemoveWhere(which);
         }
 
         foreach (var preview in ending)
@@ -739,8 +685,7 @@ internal sealed partial class PipelineRuntime
                 return;
             }
 
-            var now = _time.GetUtcNow();
-            await EndPreviewsAsync(p => p.Expires <= now).ConfigureAwait(false);
+            await EndPreviewsAsync(_previews.Expired()).ConfigureAwait(false);
         }
         finally
         {
@@ -753,15 +698,12 @@ internal sealed partial class PipelineRuntime
         a.DeviceId == b.DeviceId && a.VideoSource == b.VideoSource && a.Resolution == b.Resolution && PipelineRules.StreamFps(a) == PipelineRules.StreamFps(b);
 
     /// <summary>The frame a paused preview keeps: server memory only, one per preview, with the result of its latest run.</summary>
-    private sealed class HeldFrame(FrameOutcome outcome, Pipeline draft)
+    private sealed class HeldFrame(FrameOutcome outcome, Pipeline draft, object gate)
     {
         public FrameOutcome Outcome { get; set; } = outcome;
 
-        public CancellationTokenSource Stop { get; } = new();
-
-        public Task Worker { get; set; } = Task.CompletedTask;
-
-        public bool Working { get; set; }
+        /// <summary>Runs the newest draft on the frame, latest wins (shared with Text recognition).</summary>
+        public LatestWinsWorker Worker { get; } = new(gate);
 
         /// <summary>The print of the draft its latest result is of; null: none fits (it runs once more).</summary>
         public string? RanFor { get; set; }
@@ -784,19 +726,11 @@ internal sealed partial class PipelineRuntime
     }
 
     /// <summary>One page's preview. Its stream and state change under <see cref="_sync"/>; its results under its own lock.</summary>
-    private sealed class Preview(string id, string owner, string user, long order)
+    private sealed class Preview(string id, string owner, string user, long order) : PreviewEntry(id, owner, user, order)
     {
         private volatile Pipeline _draft = new();
         private volatile IPipelineEvaluator? _evaluator;
         private volatile string? _streamProblem;
-
-        public string Id { get; } = id;
-
-        public string Owner { get; } = owner;
-
-        public string User { get; } = user;
-
-        public long Order { get; } = order;
 
         public Pipeline Draft
         {
@@ -819,8 +753,6 @@ internal sealed partial class PipelineRuntime
 
         public SerialWork Serial { get; } = new();
 
-        public DateTimeOffset Expires { get; set; }
-
         public string? SharedWith { get; set; }
 
         public PreviewLoop? Loop { get; set; }
@@ -842,8 +774,5 @@ internal sealed partial class PipelineRuntime
         public Dictionary<string, List<RecentFire>> Fires { get; } = new(StringComparer.Ordinal);
 
         public bool Dirty { get; set; }
-
-        public bool IsOf(string owner, string user) =>
-            Owner == owner && string.Equals(User, user, StringComparison.OrdinalIgnoreCase);
     }
 }

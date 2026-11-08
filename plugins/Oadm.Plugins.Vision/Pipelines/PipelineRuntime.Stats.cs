@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-
 using Oadm.Plugins.Shared;
 using Oadm.Plugins.Vision.Api;
 using Oadm.Plugins.Vision.Model;
@@ -15,7 +13,8 @@ namespace Oadm.Plugins.Vision.Pipelines;
 /// </summary>
 internal sealed partial class PipelineRuntime
 {
-    private readonly ConcurrentDictionary<string, DateTimeOffset> _statsLeases = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>The scopes whose page keeps the live stats on (shared with Text recognition).</summary>
+    private readonly StatsLeases _statsLeases;
 
     /// <summary>The scopes that get the live stats now (tests).</summary>
     public IReadOnlyCollection<string> StatsWatchers => [.. _statsLeases.Keys];
@@ -23,7 +22,7 @@ internal sealed partial class PipelineRuntime
     /// <summary>The stats of the scope <paramref name="owner"/>, and the live event for it during the next <see cref="VisionLimits.PreviewLease"/>.</summary>
     public VisionStats GetStats(string owner)
     {
-        _statsLeases[owner] = _time.GetUtcNow() + VisionLimits.PreviewLease;
+        _statsLeases.Keep(owner);
         return StatsFor(owner);
     }
 
@@ -36,7 +35,7 @@ internal sealed partial class PipelineRuntime
             return (null, false);
         }
 
-        var (_, _, rates) = _stats.Figures();
+        var rates = _stats.Figures().Rates;
         if (!rates.TryGetValue(pipeline.Id, out var rate) || !rate.Judged)
         {
             return (null, false);
@@ -62,7 +61,8 @@ internal sealed partial class PipelineRuntime
             previews = _previews.Values.Count(p => Mine(p.Owner));
         }
 
-        var (load, overloaded, rates) = _stats.Figures();
+        var figures = _stats.Figures();
+        var (load, overloaded, rates) = (figures.Load, figures.Overloaded, figures.Rates);
         var (state, text) = Starting
             ? (LoadState.Starting, PipelineRules.Starting)
             : PipelineStats.Light(load, overloaded, loops.Select(p =>
@@ -86,21 +86,14 @@ internal sealed partial class PipelineRuntime
     {
         try
         {
-            _stats.Sample(_inference);
+            Sample();
             if (_statsLeases.IsEmpty)
             {
                 return;
             }
 
-            var now = _time.GetUtcNow();
-            foreach (var (owner, until) in _statsLeases)
+            foreach (var owner in _statsLeases.Live())
             {
-                if (until <= now)
-                {
-                    _statsLeases.TryRemove(new KeyValuePair<string, DateTimeOffset>(owner, until));
-                    continue;
-                }
-
                 var audience = owner == ICallContext.AllDevicesScopeKey ? PluginEventAudience.AllDevices : PluginEventAudience.DeviceScope(owner);
                 _ctx.Events?.Publish(VisionMethods.StatsTopic, VisionJson.Serialize(StatsFor(owner)), audience);
             }
@@ -111,5 +104,25 @@ internal sealed partial class PipelineRuntime
         {
             LogBackgroundFailed(_logger, "the runtime stats", ex);
         }
+    }
+
+    /// <summary>A sample of the models' busy time and capacity (an inference that cannot tell has no load).</summary>
+    private void Sample()
+    {
+        TimeSpan busy;
+        int capacity;
+        try
+        {
+            busy = _inference.BusyTime;
+            capacity = _inference.Capacity;
+        }
+#pragma warning disable CA1031 // A load the inference cannot tell is no load.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            (busy, capacity) = (TimeSpan.Zero, 1);
+        }
+
+        _stats.Sample(busy, capacity, TimeSpan.Zero);
     }
 }
