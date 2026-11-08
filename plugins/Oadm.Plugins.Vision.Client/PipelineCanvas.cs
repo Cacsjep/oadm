@@ -446,8 +446,8 @@ public sealed class PipelineCanvas : Control
             var condition = inputs[i].Accepts == Vision.Model.PortKind.Condition;
             var dot = lit ? accent : condition ? linkBrush : fill;
             context.DrawEllipse(dot, new Pen(lit ? accent : linkBrush, 1), at, CanvasGeometry.ControlPortRadius, CanvasGeometry.ControlPortRadius);
-            var label = theme.Small(inputs[i].Label, theme.Brush("Oadm.TextSecondaryBrush"));
-            context.DrawText(label, new Point(at.X + CanvasGeometry.ControlPortRadius + 7, at.Y - (label.Height / 2)));
+            var label = theme.Body(inputs[i].Label, theme.Brush("Oadm.TextSecondaryBrush"));
+            context.DrawText(label, new Point(rect.X + 14, at.Y - (label.Height / 2)));
         }
 
         if (node.Live.Length > 0)

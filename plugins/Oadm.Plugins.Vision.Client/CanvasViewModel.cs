@@ -210,7 +210,7 @@ public sealed partial class CanvasViewModel : ObservableObject
         {
             // Below its parent; a second child beside the first.
             x = from.X + (OutputsOf(from).Count() * CanvasGeometry.ColumnStep);
-            y = from.Y + CanvasGeometry.RowStep;
+            y = from.Y + from.Height + CanvasGeometry.RowGap;
         }
         else
         {
@@ -628,20 +628,31 @@ public sealed partial class CanvasViewModel : ObservableObject
     // ---- Layout and view ----
 
     /// <summary>
-    /// Tidy up: from top to bottom by depth from the camera, the branches side by side, a parent centred above its children;
-    /// nodes without a path from the camera to the right. One undo step; the view fits afterwards.
+    /// Tidy up: from top to bottom by depth from the camera, the branches side by side with one gap between the cards
+    /// (<see cref="CanvasGeometry.ColumnGap"/>), a parent centred above its children; each row as high as its tallest card and
+    /// one gap (<see cref="CanvasGeometry.RowGap"/>) below it, room for a link and its count. The nodes without an input that feed
+    /// a control input (Timer, Time window, Device event) go left of the node they feed, top-aligned with it, further left while
+    /// a card is in the way. One undo step; the view fits afterwards.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private void TidyUp()
     {
         Record();
         var column = 0;
-        var done = new HashSet<NodeViewModel>();
+        var depthOf = new Dictionary<NodeViewModel, int>();
+        static bool IsStart(NodeViewModel n) => n.Info is { Accepts.Count: 0 } && !n.IsCamera;
+
+        // A node fed by starts (into a control input) keeps a column free left of it for each of them.
+        var startsOf = Nodes.Where(IsStart)
+            .Select(s => (Start: s, Target: OutputsOf(s).Select(l => l.To).FirstOrDefault(t => !IsStart(t))))
+            .Where(x => x.Target is not null)
+            .GroupBy(x => x.Target!)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Start).ToList());
         double Lay(NodeViewModel node, int depth)
         {
-            done.Add(node);
-            node.Y = CanvasGeometry.Margin + (depth * CanvasGeometry.RowStep);
-            var children = OutputsOf(node).Where(l => !l.IsControl).Select(l => l.To).Where(c => !done.Contains(c)).ToList();
+            depthOf[node] = depth;
+            column += startsOf.GetValueOrDefault(node)?.Count ?? 0;
+            var children = OutputsOf(node).Where(l => !l.IsControl).Select(l => l.To).Where(c => !depthOf.ContainsKey(c)).ToList();
             if (children.Count == 0)
             {
                 node.X = CanvasGeometry.Margin + (column++ * CanvasGeometry.ColumnStep);
@@ -658,24 +669,46 @@ public sealed partial class CanvasViewModel : ObservableObject
             Lay(camera, 0);
         }
 
-        foreach (var node in Nodes.Where(n => !done.Contains(n) && n.Info is not { Accepts.Count: 0 }).ToList())
+        foreach (var node in Nodes.Where(n => !depthOf.ContainsKey(n) && !IsStart(n) && InputOf(n) is null).ToList())
         {
-            if (InputOf(node) is null)
+            Lay(node, 0);
+        }
+
+        // Rows by the real card heights.
+        var rows = depthOf.Count == 0 ? 0 : depthOf.Values.Max() + 1;
+        var top = new double[rows];
+        var y = CanvasGeometry.Margin;
+        for (var d = 0; d < rows; d++)
+        {
+            top[d] = y;
+            y += depthOf.Where(e => e.Value == d).Select(e => e.Key.Height).DefaultIfEmpty(CanvasGeometry.NodeHeight).Max() + CanvasGeometry.RowGap;
+        }
+
+        foreach (var (node, depth) in depthOf)
+        {
+            node.Y = top[depth];
+        }
+
+        // The starts left of the node they feed, top-aligned with it.
+        var placed = depthOf.Keys.ToList();
+        bool Free(Rect rect) => !placed.Any(p => p.Rect.Inflate(CanvasGeometry.ColumnGap / 2).Intersects(rect));
+        foreach (var start in Nodes.Where(IsStart).ToList())
+        {
+            var target = OutputsOf(start).Select(l => l.To).FirstOrDefault(placed.Contains);
+            var slot = target is not null && startsOf.TryGetValue(target, out var starts) ? starts.IndexOf(start) + 1 : 1;
+            var x = target?.X - (slot * CanvasGeometry.ColumnStep) ?? CanvasGeometry.Margin + (column++ * CanvasGeometry.ColumnStep);
+            var startY = target?.Y ?? CanvasGeometry.Margin;
+            while (target is not null && !Free(CanvasGeometry.NodeRect(x, startY, start.Height)))
             {
-                Lay(node, 0);
+                x -= CanvasGeometry.ColumnStep;
             }
+
+            start.X = x;
+            start.Y = startY;
+            placed.Add(start);
         }
 
-        // Timers left of the graph and a row above the node they pulse: their link comes into its left edge from there.
-        var left = Nodes.Where(done.Contains).Select(n => n.X).DefaultIfEmpty(CanvasGeometry.Margin).Min() - CanvasGeometry.ColumnStep;
-        foreach (var timer in Nodes.Where(n => !done.Contains(n) && n.Info is { Accepts.Count: 0 } && !n.IsCamera).ToList())
-        {
-            done.Add(timer);
-            timer.X = left;
-            timer.Y = Math.Max(CanvasGeometry.Margin, (OutputsOf(timer).FirstOrDefault()?.To.Y ?? CanvasGeometry.Margin) - CanvasGeometry.RowStep);
-        }
-
-        foreach (var node in Nodes.Where(n => !done.Contains(n)))
+        foreach (var node in Nodes.Where(n => !placed.Contains(n)))
         {
             node.X = CanvasGeometry.Margin + (column++ * CanvasGeometry.ColumnStep);
             node.Y = CanvasGeometry.Margin;

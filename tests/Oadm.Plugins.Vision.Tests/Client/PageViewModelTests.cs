@@ -56,12 +56,17 @@ public sealed class PageViewModelTests
     public void Fields_follow_the_nodes_input_kind()
     {
         using var editor = Editor(PageSamples.Context(), PageSamples.GatePeople);
-        editor.Canvas.SelectedNode = editor.Canvas.Find("f"); // Count on crossings: Reset daily at
-        Assert.Equal([NodeKinds.ResetAtKey], editor.Form!.Fields.Select(f => f.Field.Key));
+        editor.Canvas.SelectedNode = editor.Canvas.Find("f"); // Count: no fields (a Timer resets it)
+        Assert.Empty(editor.Form!.Fields);
+        Assert.False(editor.Form.HasFields);
         editor.Canvas.SelectedNode = editor.Canvas.Find("i"); // Event on objects: Minimum objects, At least, Off after
         Assert.Equal([NodeKinds.MinObjectsKey, NodeKinds.AtLeastKey, NodeKinds.OffAfterKey], editor.Form!.Fields.Select(f => f.Field.Key));
-        editor.Canvas.SelectedNode = editor.Canvas.Find("g"); // Event on a number: Limit
-        Assert.Equal([NodeKinds.LimitKey], editor.Form!.Fields.Select(f => f.Field.Key));
+        editor.Canvas.SelectedNode = editor.Canvas.Find("g"); // Event on a number: none
+        Assert.Empty(editor.Form!.Fields);
+
+        using var lobby = Editor(PageSamples.Context(), PageSamples.LobbyCount);
+        lobby.Canvas.SelectedNode = lobby.Canvas.Find("f"); // Event on a yes or no: At least, Off after
+        Assert.Equal([NodeKinds.AtLeastKey, NodeKinds.OffAfterKey], lobby.Form!.Fields.Select(f => f.Field.Key));
     }
 
     [Fact]
@@ -124,13 +129,14 @@ public sealed class PageViewModelTests
         Assert.True(shape.HasShape);
         Assert.Equal(4, shape.PointCount);
 
-        editor.Canvas.SelectedNode = editor.Canvas.Find("f");
-        var reset = Assert.IsType<TimeFieldViewModel>(editor.Form!.Fields[0]);
-        Assert.Equal("06:00", reset.Text);
-        reset.Text = "25:00";
-        Assert.Equal(GraphTexts.EnterTime, reset.ErrorOf(nameof(TimeFieldViewModel.Text)));
-        reset.Text = "7:30";
-        Assert.Equal("07:30", NodeValues.Text(editor.Canvas.Find("f")!.Settings[NodeKinds.ResetAtKey]));
+        using var lobby = Editor(PageSamples.Context(), PageSamples.LobbyCount);
+        lobby.Canvas.SelectedNode = lobby.Canvas.Find("t1"); // the Timer Midnight: every day At 00:00
+        var at = Assert.IsType<TimeFieldViewModel>(lobby.Form!.Fields.Single(f => f.Field.Key == NodeKinds.AtKey));
+        Assert.Equal("00:00", at.Text);
+        at.Text = "25:00";
+        Assert.Equal(GraphTexts.EnterTime, at.ErrorOf(nameof(TimeFieldViewModel.Text)));
+        at.Text = "7:30";
+        Assert.Equal("07:30", NodeValues.Text(lobby.Canvas.Find("t1")!.Settings[NodeKinds.AtKey]));
     }
 
     [Fact]

@@ -84,7 +84,9 @@ internal static class PageSamples
         new() { Id = id, Kind = kind, Name = name, X = x, Y = y, Settings = settings ?? [], ShowOnVideo = eye };
 
     /// <summary>Camera > Detect objects > People > Track > Gate line > Gate count > Gate count changed, and Track > Waiting zone > People waiting.</summary>
-    public static Pipeline GatePeople => new()
+    public static Pipeline GatePeople => Tidied(RawGatePeople);
+
+    private static Pipeline RawGatePeople => new()
     {
         Id = "p1",
         Name = "Gate 1 people",
@@ -98,7 +100,7 @@ internal static class PageSamples
             Node("c", NodeKinds.Filter, "People", 160, 300, new JsonObject { ["classes"] = new JsonArray("person"), ["minScore"] = 60 }),
             Node("d", NodeKinds.Track, "Track", 160, 430, eye: true),
             Node("e", NodeKinds.Line, "Gate line", 40, 560, new JsonObject { ["points"] = Points((0.46, 0.55), (0.55, 0.98)) }, eye: true),
-            Node("f", NodeKinds.Count, "Gate count", 40, 690, new JsonObject { ["resetAt"] = "06:00" }),
+            Node("f", NodeKinds.Count, "Gate count", 40, 690),
             Node("g", NodeKinds.Event, "Gate count changed", 40, 820),
             Node("h", NodeKinds.Area, "Waiting zone", 280, 560,
                 new JsonObject { ["points"] = Points((0.65, 0.62), (0.91, 0.62), (0.96, 0.97), (0.62, 0.97)) }, eye: true),
@@ -111,7 +113,9 @@ internal static class PageSamples
     };
 
     /// <summary>"Dock 4 trucks" On action: a Line without Track, and Track and Line refused On action.</summary>
-    public static Pipeline DockTrucks => new()
+    public static Pipeline DockTrucks => Tidied(RawDockTrucks);
+
+    private static Pipeline RawDockTrucks => new()
     {
         Id = "p2",
         Name = "Dock 4 trucks",
@@ -132,7 +136,9 @@ internal static class PageSamples
     /// "Lobby count": Camera > Detect objects > Lobby > People in lobby (Count) > Lobby full (Compare: at least 10) > Lobby full
     /// event; the Timer Midnight (every day at 00:00) into the Count's Reset, the Timer Every hour into the Hourly report's Send now.
     /// </summary>
-    public static Pipeline LobbyCount => new()
+    public static Pipeline LobbyCount => Tidied(RawLobbyCount);
+
+    private static Pipeline RawLobbyCount => new()
     {
         Id = "p3",
         Name = "Lobby count",
@@ -178,27 +184,17 @@ internal static class PageSamples
         ],
     };
 
-    /// <summary>
-    /// The graph check of the samples while the graph stage does not know control links yet: the real check on the pipeline
-    /// without its Timers and the links into control inputs.
-    /// </summary>
-    public static GraphCheck CheckData(Pipeline pipeline)
-    {
-        // The nodes without an input other than the camera (Timer, Time window, Device event) and every link into a control input left out.
-        var starts = pipeline.Nodes.Where(n => n.Kind != NodeKinds.Camera && NodeKinds.Find(n.Kind) is { Accepts.Count: 0 }).Select(n => n.Id).ToHashSet();
-        return Check(pipeline with
-        {
-            Nodes = [.. pipeline.Nodes.Where(n => !starts.Contains(n.Id))],
-            Links = [.. pipeline.Links.Where(l => l.ToPort is null && !starts.Contains(l.From))],
-        });
-    }
+    /// <summary>The graph check of the samples with control links and the nodes without an input (the real check).</summary>
+    public static GraphCheck CheckData(Pipeline pipeline) => Check(pipeline);
 
     /// <summary>
     /// "Entrance": Camera > Detect objects > Track > Entrance line > People in > Busiest hour (Statistics, reset by the Timer
     /// Midnight) and People in > Crowd (Compare: at least 5) > Crowd at open door (And / Or, the Device event Door open as its
     /// second input) > Crowd alert (Event, Only while the Time window Opening hours); Track > Going in (Direction).
     /// </summary>
-    public static Pipeline Entrance => new()
+    public static Pipeline Entrance => Tidied(RawEntrance);
+
+    private static Pipeline RawEntrance => new()
     {
         Id = "p4",
         Name = "Entrance",
@@ -277,6 +273,15 @@ internal static class PageSamples
             new() { Id = "oadm.vision.event.p1.g.countchanged", Path = ["Vision Center", "Gate 1 people"], Name = "Gate count changed" },
         ],
     };
+
+    /// <summary>The sample as Tidy up lays it out (the places the page stores after a Tidy up).</summary>
+    public static Pipeline Tidied(Pipeline pipeline)
+    {
+        ArgumentNullException.ThrowIfNull(pipeline);
+        var canvas = new CanvasViewModel(pipeline.Nodes, pipeline.Links);
+        canvas.TidyUpCommand.Execute(null);
+        return pipeline with { Nodes = canvas.ToNodes(), Links = canvas.ToLinks() };
+    }
 
     public static PipelineList List => new()
     {

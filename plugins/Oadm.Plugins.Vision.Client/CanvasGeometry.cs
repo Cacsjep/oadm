@@ -22,8 +22,8 @@ public static class CanvasGeometry
 
     public const double PortRadius = 7;
 
-    /// <summary>A control input's dot: smaller than the data dots.</summary>
-    public const double ControlPortRadius = 4.5;
+    /// <summary>A control input's dot: the size of the data dots, centred on the card's left edge.</summary>
+    public const double ControlPortRadius = PortRadius - 1;
 
     /// <summary>A press this near a port takes it.</summary>
     public const double PortReach = 11;
@@ -38,10 +38,16 @@ public static class CanvasGeometry
 
     public const double EyeSize = 24;
 
-    /// <summary>The columns and rows of Tidy up (a row: a node, its + and the curve to the next).</summary>
-    public const double ColumnStep = 240;
+    /// <summary>Tidy up: the gap between two cards side by side, and one column (a card and its gap).</summary>
+    public const double ColumnGap = 40;
 
-    public const double RowStep = 150;
+    public const double ColumnStep = NodeWidth + ColumnGap;
+
+    /// <summary>Tidy up: the gap between a row's tallest card and the next row: room for a link and its count.</summary>
+    public const double RowGap = 56;
+
+    /// <summary>Where a node added after another goes: below it, one card and one gap down.</summary>
+    public const double RowStep = NodeHeight + RowGap;
 
     public const double Margin = 40;
 
@@ -69,7 +75,7 @@ public static class CanvasGeometry
 
     /// <summary>A control input (Reset, Send now, Only while, Second): a dot on the card's left edge in its own row below the live line.</summary>
     public static Point ControlPort(double x, double y, int index = 0) =>
-        new(x, y + NodeHeight + (index * ControlRowHeight) + (ControlRowHeight / 2) - 4);
+        new(x, y + NodeHeight + (index * ControlRowHeight) + (ControlRowHeight / 2) - 6);
 
     public static Rect EyeRect(double x, double y) => new(x + NodeWidth - EyeSize - 6, y + 5, EyeSize, EyeSize);
 
