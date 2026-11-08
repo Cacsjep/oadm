@@ -100,15 +100,12 @@ internal static class Decoders
         var shape = outputs.Shape(0);
         var data = outputs.Floats(0);
         var found = new List<RawDetection>();
-        if (shape.Length != 3)
-        {
-            return found;
-        }
-
+        Require(shape.Length == 3 && data.Length >= shape[1] * shape[2]);
         if (OutputFormats.YoloLayoutOf(shape) == YoloLayout.ChannelsFirst)
         {
             var (values, n) = ((int)shape[1], (int)shape[2]);
             var classes = values - 4;
+            Require(classes >= 1);
             for (var i = 0; i < n; i++)
             {
                 var best = -1;
@@ -132,6 +129,7 @@ internal static class Decoders
         {
             var (n, values) = ((int)shape[1], (int)shape[2]);
             var classes = values - 5;
+            Require(classes >= 1);
             for (var i = 0; i < n; i++)
             {
                 var row = data.Slice(i * values, values);
@@ -168,7 +166,8 @@ internal static class Decoders
         var shape = outputs.Shape(0);
         var data = outputs.Floats(0);
         var found = new List<RawDetection>();
-        var n = shape.Length == 3 ? (int)shape[1] : 0;
+        Require(shape.Length == 3 && shape[2] == 6 && data.Length >= shape[1] * 6);
+        var n = (int)shape[1];
         for (var i = 0; i < n; i++)
         {
             var row = data.Slice(i * 6, 6);
@@ -197,10 +196,13 @@ internal static class Decoders
             }
         }
 
+        Require(outputs.Count >= 2);
         var shape = outputs.Shape(logitsAt);
+        Require(shape.Length == 3 && shape[2] >= 2);
         var (queries, values) = ((int)shape[1], (int)shape[2]);
         var logits = outputs.Floats(logitsAt);
         var boxes = outputs.Floats(boxesAt);
+        Require(logits.Length >= queries * values && boxes.Length >= queries * 4);
         var found = new List<RawDetection>();
         for (var q = 0; q < queries; q++)
         {
@@ -236,10 +238,13 @@ internal static class Decoders
     // Output 0 boxes [1, Q, 4] (cx, cy, w, h, 0 to 1), output 1 logits [1, Q, C] (a sigmoid per class).
     private static List<RawDetection> RfDetr(IModelOutputs outputs, float minScore, int width, int height)
     {
+        Require(outputs.Count >= 2);
         var shape = outputs.Shape(1);
+        Require(shape.Length == 3 && shape[2] >= 1);
         var (queries, classes) = ((int)shape[1], (int)shape[2]);
         var boxes = outputs.Floats(0);
         var logits = outputs.Floats(1);
+        Require(logits.Length >= queries * classes && boxes.Length >= queries * 4);
         var found = new List<RawDetection>();
         for (var q = 0; q < queries; q++)
         {
@@ -276,7 +281,7 @@ internal static class Decoders
         var found = new List<RawDetection>();
         if (OutputFormats.LabelsParts(infos) is not { } parts)
         {
-            return found;
+            throw new InvalidOperationException(ModelTexts.OutputsDoNotFit);
         }
 
         var (boxesAt, scoresAt, labelsAt) = parts;
@@ -304,6 +309,14 @@ internal static class Decoders
         }
 
         return found;
+    }
+
+    private static void Require(bool fits)
+    {
+        if (!fits)
+        {
+            throw new InvalidOperationException(ModelTexts.OutputsDoNotFit);
+        }
     }
 
     private static RawDetection FromCentre(int classId, float score, float cx, float cy, float w, float h) =>
@@ -372,7 +385,7 @@ internal sealed class ArrayOutputs(IReadOnlyList<(string Name, long[] Shape, Arr
 
     public bool IsFloat(int index) => outputs[index].Values is float[];
 
-    public ReadOnlySpan<float> Floats(int index) => outputs[index].Values as float[] ?? throw new InvalidOperationException("Not a float output.");
+    public ReadOnlySpan<float> Floats(int index) => outputs[index].Values as float[] ?? throw new InvalidOperationException(ModelTexts.OutputsDoNotFit);
 
     public double ValueAt(int index, int at) => outputs[index].Values switch
     {

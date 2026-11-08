@@ -537,9 +537,9 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
             throw new ArgumentException(ModelTexts.NameTooLong);
         }
 
-        if (All.Any(m => m.Id != id && string.Equals(m.Name, trimmed, StringComparison.OrdinalIgnoreCase)))
+        if (All.FirstOrDefault(m => m.Id != id && string.Equals(m.Name, trimmed, StringComparison.OrdinalIgnoreCase)) is { } other)
         {
-            throw new ArgumentException(ModelTexts.NameTaken(trimmed));
+            throw new ArgumentException(ModelTexts.NameTaken(other.Name));
         }
 
         return trimmed;

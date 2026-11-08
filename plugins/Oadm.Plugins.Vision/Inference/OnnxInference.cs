@@ -31,6 +31,9 @@ public sealed record InferenceOptions
 
     /// <summary>The graphics card's name (tests: a fixed one, no provider is asked).</summary>
     internal Func<ExecutionTarget, string> CardName { get; init; } = SessionFactory.GraphicsCardName;
+
+    /// <summary>Whether a model runs on the card by its test's times (tests: a fixed answer, no timing decides).</summary>
+    internal Func<double?, double, bool> CardWorth { get; init; } = EngineRules.Worth;
 }
 
 /// <summary>
@@ -141,6 +144,9 @@ public sealed class OnnxInference : IInference, IDisposable
 
     /// <summary>Tests: runs inside each CPU call before the model (a gate that holds the worker).</summary>
     internal Func<Task>? BeforeCpuCall { get; set; }
+
+    /// <summary>Tests: runs before each card call of a run (one that throws stands for a failing card).</summary>
+    internal Action? BeforeCardCall { get; set; }
 
     private bool CardInUse => _useGpu && _card is { Failed: false };
 
@@ -400,7 +406,13 @@ public sealed class OnnxInference : IInference, IDisposable
 
             held = Take(new SessionKey(model.Id, model.InputWidth, model.InputHeight, card.Target), path);
             var started = _cardBusy.Start();
-            var call = Task.Run(() => Call(held, model, tensor, fit, read), CancellationToken.None);
+            var call = Task.Run(
+                () =>
+                {
+                    BeforeCardCall?.Invoke();
+                    return Call(held, model, tensor, fit, read);
+                },
+                CancellationToken.None);
             try
             {
                 // Not cut short by the token: the call holds its session and the input until it ends.
@@ -535,7 +547,7 @@ public sealed class OnnxInference : IInference, IDisposable
                 return watch.Elapsed.TotalMilliseconds;
             }, CancellationToken.None).ConfigureAwait(false);
 
-            var onCard = EngineRules.Worth(cardMs, cpuMs);
+            var onCard = _options.CardWorth(cardMs, cpuMs);
             var (card1, cpu1) = (Math.Round(cardMs!.Value, 1), Math.Round(cpuMs, 1));
             if (onCard)
             {
@@ -745,7 +757,8 @@ public sealed class OnnxInference : IInference, IDisposable
 
         public bool IsFloat(int index) => values[index].GetTensorTypeAndShape().ElementDataType == TensorElementType.Float;
 
-        public ReadOnlySpan<float> Floats(int index) => values[index].GetTensorDataAsSpan<float>();
+        public ReadOnlySpan<float> Floats(int index) =>
+            IsFloat(index) ? values[index].GetTensorDataAsSpan<float>() : throw new InvalidOperationException(ModelTexts.OutputsDoNotFit);
 
         public double ValueAt(int index, int at) => values[index].GetTensorTypeAndShape().ElementDataType switch
         {

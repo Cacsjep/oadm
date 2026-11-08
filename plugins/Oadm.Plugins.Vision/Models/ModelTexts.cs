@@ -66,6 +66,9 @@ public static class ModelTexts
 
     public const string Gone = "The model no longer exists.";
 
+    /// <summary>A model run with a format its outputs do not have (the user picked another one).</summary>
+    public const string OutputsDoNotFit = "The model's outputs do not fit its format. Choose another format.";
+
     public const string NameMissing = "Enter a name.";
 
     public static readonly string NameTooLong = string.Create(CultureInfo.InvariantCulture, $"A name has at most {VisionLimits.MaxNameLength} characters.");
