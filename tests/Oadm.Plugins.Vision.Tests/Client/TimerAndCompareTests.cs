@@ -53,7 +53,8 @@ public sealed class TimerAndCompareTests
         var canvas = Canvas(PageSamples.LobbyCount);
         var hourly = canvas.Find("t2")!;
         canvas.OpenPickerAfter(hourly);
-        Assert.Equal([NodeKinds.Count, NodeKinds.Event], canvas.Picker.ShownKinds.Select(k => k.Id));
+        Assert.Equal([NodeKinds.Count, NodeKinds.Statistics, NodeKinds.Event, NodeKinds.Throttle], canvas.Picker.ShownKinds.Select(k => k.Id));
+        canvas.Picker.SearchText = "Count";
         var count = canvas.Choose(NodeKinds.CountKind)!;
         var link = Assert.Single(canvas.Links, l => ReferenceEquals(l.To, count));
         Assert.Equal(NodeKinds.ResetPort, link.ToPort);
@@ -71,7 +72,8 @@ public sealed class TimerAndCompareTests
         var count = canvas.Find("d")!;
         var link = canvas.ControlLinkOf(count, NodeKinds.ResetPort)!;
         Assert.Equal(count.X, link.End.X);
-        Assert.Equal(count.Y + (CanvasGeometry.NodeHeight / 2), link.End.Y);
+        Assert.Equal(CanvasGeometry.ControlPort(count.X, count.Y, 0), link.End); // Reset: the first row below the live line
+        Assert.True(link.End.Y > count.Y + CanvasGeometry.NodeHeight - 4 && link.End.Y < count.Y + count.Height);
         Assert.Same(link, canvas.LinkAt(CanvasGeometry.OnCurve(link.Start, link.End, 0.5, intoSide: true)));
         canvas.SelectedLink = link;
         canvas.DeleteSelectedCommand.Execute(null);
@@ -141,5 +143,122 @@ public sealed class TimerAndCompareTests
         Assert.True(editor.Output.IsNote);
         Assert.Equal("9 ≥ 10 · No", editor.Output.Summary);
         editor.StopPreview();
+    }
+
+    [Fact]
+    public void Condition_inputs_take_only_a_yes_or_no_and_a_drop_on_a_dot_takes_that_input()
+    {
+        var canvas = Canvas(PageSamples.Entrance);
+        var door = canvas.Find("h")!;
+        var both = canvas.Find("g")!;
+        var alert = canvas.Find("i")!;
+        var hours = canvas.Find("w")!;
+        var midnight = canvas.Find("t")!;
+        Assert.Equal(PortKind.Condition, door.OutputKind);
+        Assert.Same(door, canvas.ControlLinkOf(both, NodeKinds.SecondPort)!.From);
+        Assert.Same(hours, canvas.ControlLinkOf(alert, NodeKinds.WhilePort)!.From);
+        Assert.Equal(CanvasGeometry.HeightFor(2), alert.Height); // Send now and Only while
+
+        // A pulse fits Reset and Send now, never Only while or Second.
+        Assert.True(canvas.FitsPort(midnight, alert, NodeKinds.SendPort));
+        Assert.False(canvas.FitsPort(midnight, alert, NodeKinds.WhilePort));
+        Assert.False(canvas.FitsPort(midnight, both, NodeKinds.SecondPort));
+
+        // A yes or no from the Time window: onto the Only while dot it goes there, elsewhere on the card into the data input.
+        canvas.SelectedLink = canvas.ControlLinkOf(alert, NodeKinds.WhilePort);
+        canvas.DeleteSelectedCommand.Execute(null);
+        canvas.BeginLinkDrag(hours, new Point(0, 0));
+        Assert.Equal(LinkFit.Fits, alert.Fit);
+        Assert.True(canvas.EndLinkDrag(alert, alert.ControlPortAt(NodeKinds.WhilePort)));
+        Assert.Same(hours, canvas.ControlLinkOf(alert, NodeKinds.WhilePort)!.From);
+        Assert.Same(both, canvas.InputOf(alert)!.From); // the data input keeps And / Or
+
+        // The + of a yes or no lists the kinds that take one, in the data input or a control input.
+        canvas.OpenPickerAfter(hours);
+        Assert.Contains(canvas.Picker.ShownKinds, k => k.Id == NodeKinds.Hold);
+        Assert.Contains(canvas.Picker.ShownKinds, k => k.Id == NodeKinds.Count); // its Only while
+        Assert.DoesNotContain(canvas.Picker.ShownKinds, k => k.Id == NodeKinds.Statistics);
+    }
+
+    [Fact]
+    public void Days_chips_and_the_event_type_field()
+    {
+        var ctx = PageSamples.Context();
+        var dialogs = new EventDialogs();
+        using var editor = new PipelineEditorViewModel(ctx, PageSamples.Entrance, false, new Oadm.Plugins.Vision.Api.EngineInfo(),
+            id => id == PageSamples.Dock.Id ? "AXIS P1468-LE · 10.0.0.202" : "AXIS Q1798-LE · 10.0.0.48",
+            (_, _) => false, () => PageSamples.Models, PageSamples.Decode, PageSamples.CheckData) { Dialogs = dialogs };
+
+        editor.Canvas.SelectedNode = editor.Canvas.Find("w");
+        var days = Assert.IsType<DaysFieldViewModel>(editor.Form!.Fields[0]);
+        Assert.Equal(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], days.Days.Select(d => d.Text));
+        Assert.Equal(["mon", "tue", "wed", "thu", "fri"], days.Chosen);
+        days.Days[5].IsChecked = true;
+        Assert.Equal(["mon", "tue", "wed", "thu", "fri", "sat"], NodeValues.Strings(editor.Canvas.Find("w")!.Settings[NodeKinds.DaysKey]));
+        foreach (var day in days.Days)
+        {
+            day.IsChecked = false;
+        }
+
+        Assert.Empty(NodeValues.Strings(editor.Canvas.Find("w")!.Settings[NodeKinds.DaysKey])); // none: every day
+
+        editor.Canvas.SelectedNode = editor.Canvas.Find("h");
+        var field = Assert.IsType<EventTypeFieldViewModel>(editor.Form!.Fields[0]);
+        dialogs.Event = form =>
+        {
+            Assert.Equal(["Device status", "Input ports", "Server", "Vision Center / Gate 1 people"], form.Rows.OfType<EventPickerFolder>().Select(f => f.Name));
+            Assert.Equal("io.port.door", form.Chosen!.Id); // the stored one selected
+            form.SearchText = "tamper";
+            Assert.Single(form.Rows.OfType<EventPickerType>());
+            form.Selected = form.Rows.OfType<EventPickerType>().Single();
+            return true;
+        };
+        dialogs.Device = _ => PageSamples.Gate.Id; // a per-device event asks for the device
+        field.ChooseCommand.Execute(null);
+        Assert.Equal(new EventTypeValue("io.port.tamper", PageSamples.Gate.Id), field.Value);
+        Assert.Equal("Tamper alarm · AXIS Q1798-LE · 10.0.0.48", field.Text);
+        Assert.Equal("io.port.tamper", NodeValues.Text(editor.Canvas.Find("h")!.Settings[NodeKinds.EventKey]!["type"]));
+
+        dialogs.Event = form =>
+        {
+            form.Selected = form.Rows.OfType<EventPickerType>().Single(r => r.Type.Id == "server.backup");
+            return true;
+        };
+        field.ChooseCommand.Execute(null);
+        Assert.Equal(new EventTypeValue("server.backup", null), field.Value); // a server event has no device
+        Assert.Equal("Backup failed", field.Text);
+    }
+
+    [Fact]
+    public void Direction_is_an_arrow_with_its_tolerance_and_dwell_like_nodes_mark_their_objects()
+    {
+        var canvas = new CanvasViewModel(PageSamples.Entrance.Nodes, PageSamples.Entrance.Links);
+        var outputs = PageSamples.EntrancePreview("x").Nodes.ToDictionary(o => o.NodeId);
+        var (items, shapes) = VideoOverlay.Build(canvas.Nodes, null, outputs);
+        var arrow = Assert.Single(shapes, s => s.Node.Id == "k");
+        Assert.True(arrow.IsArrow);
+        Assert.False(arrow.Closed);
+        Assert.Equal(30, arrow.Tolerance);
+        Assert.Equal("Going in · 2", arrow.Label);
+        Assert.Contains(items, i => i.NodeId == "k" && i.Filled && i.Label == "3 s");
+    }
+
+    private sealed class EventDialogs : IVisionDialogs
+    {
+        public Func<EventTypePickerViewModel, bool> Event { get; set; } = _ => false;
+
+        public Func<Guid?, Guid?> Device { get; set; } = _ => null;
+
+        public Task<bool> ChooseEventTypeAsync(EventTypePickerViewModel form) => Task.FromResult(Event(form));
+
+        public Task<Guid?> ChooseDeviceAsync(Guid? selected) => Task.FromResult(Device(selected));
+
+        public Task<bool> EditStreamAsync(Oadm.Plugins.Shared.Vision.Client.StreamSettingsViewModel form) => Task.FromResult(false);
+
+        public Task<bool> EditModelAsync(ModelEditViewModel form) => Task.FromResult(false);
+
+        public Task<bool> EditClassListAsync(ClassListEditViewModel form) => Task.FromResult(false);
+
+        public Task<IReadOnlyList<IModelFile>?> PickModelFilesAsync() => Task.FromResult<IReadOnlyList<IModelFile>?>(null);
     }
 }

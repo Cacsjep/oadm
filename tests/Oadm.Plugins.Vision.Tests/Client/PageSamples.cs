@@ -182,11 +182,100 @@ internal static class PageSamples
     /// The graph check of the samples while the graph stage does not know control links yet: the real check on the pipeline
     /// without its Timers and the links into control inputs.
     /// </summary>
-    public static GraphCheck CheckData(Pipeline pipeline) => Check(pipeline with
+    public static GraphCheck CheckData(Pipeline pipeline)
     {
-        Nodes = [.. pipeline.Nodes.Where(n => n.Kind != NodeKinds.Timer)],
-        Links = [.. pipeline.Links.Where(l => l.ToPort is null)],
-    });
+        // The nodes without an input other than the camera (Timer, Time window, Device event) and every link into a control input left out.
+        var starts = pipeline.Nodes.Where(n => n.Kind != NodeKinds.Camera && NodeKinds.Find(n.Kind) is { Accepts.Count: 0 }).Select(n => n.Id).ToHashSet();
+        return Check(pipeline with
+        {
+            Nodes = [.. pipeline.Nodes.Where(n => !starts.Contains(n.Id))],
+            Links = [.. pipeline.Links.Where(l => l.ToPort is null && !starts.Contains(l.From))],
+        });
+    }
+
+    /// <summary>
+    /// "Entrance": Camera > Detect objects > Track > Entrance line > People in > Busiest hour (Statistics, reset by the Timer
+    /// Midnight) and People in > Crowd (Compare: at least 5) > Crowd at open door (And / Or, the Device event Door open as its
+    /// second input) > Crowd alert (Event, Only while the Time window Opening hours); Track > Going in (Direction).
+    /// </summary>
+    public static Pipeline Entrance => new()
+    {
+        Id = "p4",
+        Name = "Entrance",
+        DeviceId = Gate.Id,
+        Mode = PipelineMode.Watching,
+        Fps = 8,
+        Nodes =
+        [
+            Node("a", NodeKinds.Camera, "Camera", 520, 40),
+            Node("b", NodeKinds.Detect, "Detect objects", 520, 180, new JsonObject { ["model"] = "m1", ["classes"] = new JsonArray("person") }),
+            Node("c", NodeKinds.Track, "Track", 520, 320),
+            Node("d", NodeKinds.Line, "Entrance line", 520, 460, new JsonObject { ["points"] = Points((0.30, 0.62), (0.62, 0.62)) }),
+            Node("k", NodeKinds.Direction, "Going in", 780, 460, new JsonObject { ["points"] = Points((0.78, 0.92), (0.78, 0.60)), ["angle"] = 30 }, eye: true),
+            Node("e", NodeKinds.Count, "People in", 520, 600),
+            Node("s", NodeKinds.Statistics, "Busiest hour", 780, 780, new JsonObject { ["function"] = "max" }),
+            Node("f", NodeKinds.Compare, "Crowd", 520, 780, new JsonObject { ["operator"] = "atLeast", ["value"] = 5 }),
+            Node("g", NodeKinds.Logic, "Crowd at open door", 520, 920, new JsonObject { ["operator"] = "and" }),
+            Node("i", NodeKinds.Event, "Crowd alert", 520, 1080),
+            Node("t", NodeKinds.Timer, "Midnight", 780, 600, new JsonObject { ["every"] = "day", ["at"] = "00:00" }),
+            Node("h", NodeKinds.DeviceEvent, "Door open", 260, 780, new JsonObject { ["event"] = new JsonObject { ["type"] = "io.port.door", ["device"] = Dock.Id.ToString() } }),
+            Node("w", NodeKinds.TimeWindow, "Opening hours", 260, 940,
+                new JsonObject { ["days"] = new JsonArray("mon", "tue", "wed", "thu", "fri"), ["from"] = "08:00", ["to"] = "18:00" }),
+        ],
+        Links =
+        [
+            new("a", "b"), new("b", "c"), new("c", "d"), new("c", "k"), new("d", "e"), new("e", "s"), new("e", "f"), new("f", "g"), new("g", "i"),
+            new("t", "s") { ToPort = NodeKinds.ResetPort },
+            new("h", "g") { ToPort = NodeKinds.SecondPort },
+            new("w", "i") { ToPort = NodeKinds.WhilePort },
+        ],
+    };
+
+    public static PreviewEvent EntrancePreview(string previewId)
+    {
+        VisionObject Walker(double x, int id, double seconds) => new()
+        {
+            Detection = new Detection(0, "person", 0.9, new RelativeBox(x, 0.66, 0.04, 0.22)),
+            TrackId = id,
+            InsideSeconds = seconds,
+        };
+
+        return new PreviewEvent
+        {
+            PreviewId = previewId,
+            At = Time,
+            Resolution = new Resolution(1280, 720),
+            Nodes =
+            [
+                new() { NodeId = "a", Kind = PortKind.Picture, Live = "8 pictures per second" },
+                new() { NodeId = "b", Kind = PortKind.Objects, Live = "7 objects · 19 ms" },
+                new() { NodeId = "c", Kind = PortKind.TrackedObjects, Live = "7 tracked" },
+                new() { NodeId = "d", Kind = PortKind.Crossings, In = 41, Out = 33, Live = "In 41 · Out 33" },
+                new() { NodeId = "k", Kind = PortKind.TrackedObjects, Objects = [Walker(0.74, 4, 3), Walker(0.80, 9, 6)], Live = "2 going in" },
+                new() { NodeId = "e", Kind = PortKind.Number, Value = 7, Live = "7 now" },
+                new() { NodeId = "s", Kind = PortKind.Number, Value = 14, Live = "Highest 14" },
+                new() { NodeId = "f", Kind = PortKind.Condition, Live = "7 ≥ 5 · Yes" },
+                new() { NodeId = "g", Kind = PortKind.Condition, Live = "Yes · both" },
+                new() { NodeId = "i", On = true, Live = "On" },
+                new() { NodeId = "t", Kind = PortKind.Pulse, Live = "Next 00:00" },
+                new() { NodeId = "h", Kind = PortKind.Condition, Live = "Yes · Door open" },
+                new() { NodeId = "w", Kind = PortKind.Condition, Live = "Yes · until 18:00" },
+            ],
+        };
+    }
+
+    /// <summary>The event types of the Choose event dialog.</summary>
+    public static PickerEventTypeList EventTypes => new()
+    {
+        Types =
+        [
+            new() { Id = "io.port.door", Group = "Input ports", Name = "Door open", DeviceScope = true },
+            new() { Id = "io.port.tamper", Group = "Input ports", Name = "Tamper alarm", DeviceScope = true },
+            new() { Id = "device.unreachable", Group = "Device status", Name = "Device unreachable", DeviceScope = true },
+            new() { Id = "server.backup", Group = "Server", Name = "Backup failed" },
+            new() { Id = "vision.p1.gate", Group = "Vision Center / Gate 1 people", Name = "Gate count changed" },
+        ],
+    };
 
     public static PipelineList List => new()
     {
@@ -252,8 +341,10 @@ internal static class PageSamples
         {
             "p2" => VisionJson.Serialize(DockTrucks),
             "p3" => VisionJson.Serialize(LobbyCount),
+            "p4" => VisionJson.Serialize(Entrance),
             _ => VisionJson.Serialize(GatePeople),
         };
+        ctx.Answers[PickerEventTypes.Method] = _ => VisionJson.Serialize(EventTypes);
         ctx.Answers[VisionMethods.GetEngine] = _ => VisionJson.Serialize(new EngineInfo { RunsOn = "CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti", GpuAvailable = true });
         ctx.Answers[VisionMethods.GetStats] = _ => VisionJson.Serialize(new VisionStats { State = LoadState.Ok, StateText = "All pipelines keep up", Load = 38 });
         ctx.Answers[VisionMethods.GetCameraOptions] = _ => VisionJson.Serialize(new CameraOptions { VideoSources = [1, 2], Resolutions = [new(1920, 1080), new(1280, 720)] });

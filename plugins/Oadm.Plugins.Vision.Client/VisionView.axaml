@@ -350,6 +350,19 @@
                           <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" />
                         </ui:FormField>
                       </DataTemplate>
+                      <DataTemplate x:DataType="vm:DaysFieldViewModel">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                          <ui:DayChips x:Name="DayChips" ItemsSource="{Binding Days}" />
+                        </ui:FormField>
+                      </DataTemplate>
+                      <DataTemplate x:DataType="vm:EventTypeFieldViewModel">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}" Error="{Binding ValueError}">
+                          <Button x:Name="ChooseEventButton" Classes="secondary" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                  Command="{Binding ChooseCommand}">
+                            <ui:IconLabel Icon="{DynamicResource Icon.bell}" Text="{Binding Text}" />
+                          </Button>
+                        </ui:FormField>
+                      </DataTemplate>
                       <DataTemplate x:DataType="vm:BoolFieldViewModel">
                         <CheckBox Content="{Binding Label}" IsChecked="{Binding Value}" />
                       </DataTemplate>

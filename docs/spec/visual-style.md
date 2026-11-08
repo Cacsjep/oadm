@@ -171,6 +171,8 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   one value; whole steps on the slider). Its error below the whole row through `FormField.Error`, `HasError` gives the
   input the red border. Number fields with a range that users tune (Vision Center's minimum score, sizes, frames, Timer
   minutes); every other number stays a plain input.
+- `DayChips` (`IDayChoice`, `DayChoice.Week()`): the weekday toggle chips, Monday first (the event rules' schedule, Vision
+  Center's Time window).
 - `SearchBox`: every search field. `OadmIcon`: every icon; class `fieldIcon` with `inner` puts an icon into a text box
   through its `InnerLeftContent` (the login's user name and password). `LeadingIcon`: wraps one ComboBox or TextBox and
   puts a `fieldIcon` at its left inside, level with the input's first line (the theme's `ui|LeadingIcon > ComboBox`,

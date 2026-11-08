@@ -220,7 +220,7 @@ public sealed class PipelineCanvas : Control
         switch (drag)
         {
             case Drag.Link:
-                canvas.EndLinkDrag(canvas.NodeAt(world));
+                canvas.EndLinkDrag(canvas.NodeAt(world), world);
                 break;
             case Drag.Node:
                 canvas.EndMove();
@@ -322,7 +322,7 @@ public sealed class PipelineCanvas : Control
 
             if (canvas.LinkDragFrom is { } from)
             {
-                var start = CanvasGeometry.OutputPort(from.X, from.Y);
+                var start = from.OutputPoint;
                 context.DrawGeometry(null, new Pen(theme.Brush("Oadm.AccentBrush"), 1, new DashStyle([3, 2], 0)), Curve(start, canvas.LinkDragTo));
             }
 
@@ -395,7 +395,7 @@ public sealed class PipelineCanvas : Control
 
     private void DrawNode(DrawingContext context, OverlayTheme theme, CanvasViewModel canvas, NodeViewModel node, IBrush linkBrush)
     {
-        var rect = CanvasGeometry.NodeRect(node.X, node.Y);
+        var rect = node.Rect;
         var colour = theme.Brush(node.BrushKey);
         var accent = theme.Brush("Oadm.AccentBrush");
         var error = theme.Brush("Oadm.StatusErrorBrush");
@@ -433,43 +433,42 @@ public sealed class PipelineCanvas : Control
                 theme.Brush(node.ShowOnVideo ? "Oadm.TextPrimaryBrush" : "Oadm.TextDisabledBrush"), eye.Deflate(4));
         }
 
-        // A pulse being dragged lights the control inputs, anything else the data input.
-        var pulse = canvas.LinkDragFrom?.OutputKind == Vision.Model.PortKind.Pulse;
+        // While a link is dragged the inputs it fits light up: the data input or a control input.
+        var dragged = canvas.LinkDragFrom;
 
-        // The control inputs: a dot on the left edge, its label beside it inside the card; the live line starts after them.
-        var liveLeft = rect.X + 14;
+        // The control inputs: a row each below the live line, the dot on the left edge, its label beside it. A pulse input is a
+        // ring, a yes-or-no input a filled dot.
         var inputs = node.ControlInputs;
         for (var i = 0; i < inputs.Count; i++)
         {
-            var at = CanvasGeometry.ControlPort(node.X, node.Y, i, inputs.Count);
-            var lit = node.Fit == LinkFit.Fits && pulse;
-            context.DrawEllipse(lit ? accent : fill, new Pen(lit ? accent : linkBrush, 1), at, CanvasGeometry.ControlPortRadius, CanvasGeometry.ControlPortRadius);
+            var at = CanvasGeometry.ControlPort(node.X, node.Y, i);
+            var lit = dragged is not null && node.Fit == LinkFit.Fits && canvas.FitsPort(dragged, node, inputs[i].Port);
+            var condition = inputs[i].Accepts == Vision.Model.PortKind.Condition;
+            var dot = lit ? accent : condition ? linkBrush : fill;
+            context.DrawEllipse(dot, new Pen(lit ? accent : linkBrush, 1), at, CanvasGeometry.ControlPortRadius, CanvasGeometry.ControlPortRadius);
             var label = theme.Small(inputs[i].Label, theme.Brush("Oadm.TextSecondaryBrush"));
-            var labelAt = new Point(at.X + CanvasGeometry.ControlPortRadius + 6, at.Y - (label.Height / 2));
-            context.DrawText(label, labelAt);
-            liveLeft = Math.Max(liveLeft, labelAt.X + label.Width + 10);
+            context.DrawText(label, new Point(at.X + CanvasGeometry.ControlPortRadius + 7, at.Y - (label.Height / 2)));
         }
 
         if (node.Live.Length > 0)
         {
             var live = theme.Body(node.Live, theme.Brush("Oadm.TextSecondaryBrush"));
-            var top = inputs.Count > 0 ? rect.Y + 37 : rect.Y + 35;
-            live.MaxTextWidth = Math.Max(10, rect.Right - 10 - liveLeft);
+            live.MaxTextWidth = rect.Width - 24;
             live.MaxLineCount = 1;
             live.Trimming = TextTrimming.CharacterEllipsis;
-            context.DrawText(live, new Point(liveLeft, top));
+            context.DrawText(live, new Point(rect.X + 14, rect.Y + 35));
         }
 
         if (node.HasInputPort)
         {
             var at = CanvasGeometry.InputPort(node.X, node.Y);
-            var lit = node.Fit == LinkFit.Fits && !pulse;
+            var lit = dragged is not null && node.Fit == LinkFit.Fits && canvas.FitsPort(dragged, node, null);
             context.DrawEllipse(lit ? accent : fill, new Pen(lit ? accent : linkBrush, 1), at, CanvasGeometry.PortRadius - 1, CanvasGeometry.PortRadius - 1);
         }
 
         if (node.HasOutputPort)
         {
-            var at = CanvasGeometry.OutputPort(node.X, node.Y);
+            var at = node.OutputPoint;
             var lit = ReferenceEquals(canvas.LinkDragFrom, node);
             context.DrawEllipse(lit ? accent : fill, new Pen(lit ? accent : linkBrush, 1), at, CanvasGeometry.PortRadius - 1, CanvasGeometry.PortRadius - 1);
             if (canvas.ShowsPlus(node))

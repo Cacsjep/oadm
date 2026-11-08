@@ -218,7 +218,7 @@ public sealed partial class CanvasViewModel : ObservableObject
             y = ((ViewportSize.Height / 2) - PanY) / Zoom - (CanvasGeometry.NodeHeight / 2);
         }
 
-        var draws = kind.Id is NodeKinds.Area or NodeKinds.Line;
+        var draws = kind.Id is NodeKinds.Area or NodeKinds.Line or NodeKinds.Direction;
         var node = AddViewModel(new PipelineNode { Id = NewId(), Kind = kind.Id, Name = FreeName(kind.Label), X = Math.Round(x), Y = Math.Round(y), ShowOnVideo = draws });
         if (from is not null && TryPort(from, node, out var port))
         {
@@ -276,36 +276,59 @@ public sealed partial class CanvasViewModel : ObservableObject
     /// </summary>
     public bool CanLink(NodeViewModel from, NodeViewModel to) => TryPort(from, to, out _);
 
+    /// <summary>Whether a link from <paramref name="from"/> fits the control input <paramref name="port"/> of <paramref name="to"/>.</summary>
+    public bool FitsPort(NodeViewModel from, NodeViewModel to, string? port)
+    {
+        ArgumentNullException.ThrowIfNull(from);
+        ArgumentNullException.ThrowIfNull(to);
+        return TryPort(from, to, out var chosen, port) && chosen == port;
+    }
+
     /// <summary>
     /// Whether a link from <paramref name="from"/> fits <paramref name="to"/> and into which input: a Timer's pulse only into a
     /// control input (<paramref name="port"/> its id), anything else only into the data input (<paramref name="port"/> null).
     /// </summary>
-    public bool TryPort(NodeViewModel from, NodeViewModel to, out string? port)
+    public bool TryPort(NodeViewModel from, NodeViewModel to, out string? port, string? preferred = null)
     {
         ArgumentNullException.ThrowIfNull(from);
         ArgumentNullException.ThrowIfNull(to);
         port = null;
-        if (ReferenceEquals(from, to) || !from.HasOutputPort || from.OutputKind is not { } kind)
+        if (ReferenceEquals(from, to) || !from.HasOutputPort || from.OutputKind is not { } kind || IsBefore(to, from))
         {
             return false;
         }
 
-        if (kind == PortKind.Pulse)
-        {
-            if (to.ControlInputs.Count == 0)
-            {
-                return false;
-            }
+        bool Free(string? p) => !Links.Any(l => ReferenceEquals(l.From, from) && ReferenceEquals(l.To, to) && l.ToPort == p);
+        var data = to.Info is { Accepts.Count: > 0 } info && info.Takes(kind) && Free(null);
+        var controls = to.ControlInputs.Where(c => c.Accepts == kind && Free(c.Port)).Select(c => c.Port).ToList();
 
-            port = to.ControlInputs[0].Port;
-            var p = port;
-            return !Links.Any(l => ReferenceEquals(l.From, from) && ReferenceEquals(l.To, to) && l.ToPort == p);
+        // A drop on a control input's dot takes that input; else the data input first, then the first control input that fits
+        // (an empty one before one with a link).
+        if (preferred is not null && controls.Contains(preferred))
+        {
+            port = preferred;
+            return true;
         }
 
-        return to.Info is { Accepts.Count: > 0 } info
-            && info.Takes(kind)
-            && !IsBefore(to, from)
-            && !Links.Any(l => ReferenceEquals(l.From, from) && ReferenceEquals(l.To, to) && l.ToPort is null);
+        if (data)
+        {
+            return true;
+        }
+
+        if (controls.Count == 0)
+        {
+            return false;
+        }
+
+        port = controls.FirstOrDefault(c => ControlLinkOf(to, c) is null) ?? controls[0];
+        return true;
+    }
+
+    /// <summary>The control input of <paramref name="node"/> whose dot is under <paramref name="world"/>, or null.</summary>
+    public static string? ControlPortAt(NodeViewModel node, Point world)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        return node.ControlInputs.FirstOrDefault(c => node.ControlPortAt(c.Port) is { } at && CanvasGeometry.Distance(world, at) <= CanvasGeometry.PortReach)?.Port;
     }
 
     /// <summary>Whether <paramref name="node"/> comes before <paramref name="of"/> on its path from the camera (or is it).</summary>
@@ -354,8 +377,11 @@ public sealed partial class CanvasViewModel : ObservableObject
         }
     }
 
-    /// <summary>The drop: on a node that fits it links (replacing that node's input); anywhere else nothing happens.</summary>
-    public bool EndLinkDrag(NodeViewModel? target)
+    /// <summary>
+    /// The drop: on a node that fits it links (replacing that node's input; on a control input's dot <paramref name="at"/> into
+    /// that input); anywhere else nothing happens.
+    /// </summary>
+    public bool EndLinkDrag(NodeViewModel? target, Point? at = null)
     {
         var from = LinkDragFrom;
         LinkDragFrom = null;
@@ -364,17 +390,17 @@ public sealed partial class CanvasViewModel : ObservableObject
             node.Fit = LinkFit.None;
         }
 
-        var linked = from is not null && target is not null && Link(from, target);
+        var linked = from is not null && target is not null && Link(from, target, at is { } p ? ControlPortAt(target, p) : null);
         Bump();
         return linked;
     }
 
     /// <summary>Links <paramref name="from"/> to <paramref name="to"/> when it fits; <paramref name="to"/>'s old input goes.</summary>
-    public bool Link(NodeViewModel from, NodeViewModel to)
+    public bool Link(NodeViewModel from, NodeViewModel to, string? preferredPort = null)
     {
         ArgumentNullException.ThrowIfNull(from);
         ArgumentNullException.ThrowIfNull(to);
-        if (!CanEdit || !TryPort(from, to, out var port))
+        if (!CanEdit || !TryPort(from, to, out var port, preferredPort))
         {
             return false;
         }
@@ -632,7 +658,7 @@ public sealed partial class CanvasViewModel : ObservableObject
             Lay(camera, 0);
         }
 
-        foreach (var node in Nodes.Where(n => !done.Contains(n) && n.Kind != NodeKinds.Timer).ToList())
+        foreach (var node in Nodes.Where(n => !done.Contains(n) && n.Info is not { Accepts.Count: 0 }).ToList())
         {
             if (InputOf(node) is null)
             {
@@ -642,7 +668,7 @@ public sealed partial class CanvasViewModel : ObservableObject
 
         // Timers left of the graph and a row above the node they pulse: their link comes into its left edge from there.
         var left = Nodes.Where(done.Contains).Select(n => n.X).DefaultIfEmpty(CanvasGeometry.Margin).Min() - CanvasGeometry.ColumnStep;
-        foreach (var timer in Nodes.Where(n => !done.Contains(n) && n.Kind == NodeKinds.Timer).ToList())
+        foreach (var timer in Nodes.Where(n => !done.Contains(n) && n.Info is { Accepts.Count: 0 } && !n.IsCamera).ToList())
         {
             done.Add(timer);
             timer.X = left;
@@ -671,7 +697,7 @@ public sealed partial class CanvasViewModel : ObservableObject
         var x0 = Nodes.Min(n => n.X) - 30;
         var y0 = Nodes.Min(n => n.Y) - 30;
         var x1 = Nodes.Max(n => n.X) + CanvasGeometry.NodeWidth + 30;
-        var y1 = Nodes.Max(n => n.Y) + CanvasGeometry.NodeHeight + CanvasGeometry.PlusGap + CanvasGeometry.PlusSize + 30; // the + below the lowest node
+        var y1 = Nodes.Max(n => n.Y + n.Height) + CanvasGeometry.PlusGap + CanvasGeometry.PlusSize + 30; // the + below the lowest node
         var zoom = Math.Clamp(Math.Min(ViewportSize.Width / (x1 - x0), ViewportSize.Height / (y1 - y0)), CanvasGeometry.MinZoom, 1);
         Zoom = zoom;
         PanX = ((ViewportSize.Width - ((x1 - x0) * zoom)) / 2) - (x0 * zoom);
@@ -710,10 +736,10 @@ public sealed partial class CanvasViewModel : ObservableObject
 
     /// <summary>The topmost node card under <paramref name="world"/>.</summary>
     public NodeViewModel? NodeAt(Point world) =>
-        Nodes.LastOrDefault(n => CanvasGeometry.NodeRect(n.X, n.Y).Contains(world));
+        Nodes.LastOrDefault(n => n.Rect.Contains(world));
 
     public NodeViewModel? OutputPortAt(Point world) =>
-        Nodes.LastOrDefault(n => n.HasOutputPort && CanvasGeometry.Distance(world, CanvasGeometry.OutputPort(n.X, n.Y)) <= CanvasGeometry.PortReach / Math.Min(1, Zoom));
+        Nodes.LastOrDefault(n => n.HasOutputPort && CanvasGeometry.Distance(world, n.OutputPoint) <= CanvasGeometry.PortReach / Math.Min(1, Zoom));
 
     /// <summary>The + shows on a node with an output that leads nowhere yet, or on the selected node.</summary>
     public bool ShowsPlus(NodeViewModel node)
@@ -726,7 +752,7 @@ public sealed partial class CanvasViewModel : ObservableObject
     public Rect PlusOf(NodeViewModel node)
     {
         ArgumentNullException.ThrowIfNull(node);
-        return CanvasGeometry.PlusRect(node.X, node.Y, node.HasError, OutputsOf(node).Any());
+        return CanvasGeometry.PlusRect(node.X, node.Y, node.HasError, OutputsOf(node).Any(), node.Height);
     }
 
     public NodeViewModel? PlusAt(Point world) =>

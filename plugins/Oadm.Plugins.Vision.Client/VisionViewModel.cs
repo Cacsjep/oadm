@@ -727,6 +727,9 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
         return text;
     }
 
+    /// <summary>Every device of the user (the device of a Device event).</summary>
+    public IEnumerable<IDeviceInfo> AllDevices => _ctx.Devices;
+
     /// <summary>The cameras a new pipeline may start from (the picker).</summary>
     public IEnumerable<IDeviceInfo> Cameras => _ctx.Devices.Where(d => d.HasVideo);
 

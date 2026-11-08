@@ -123,7 +123,8 @@ public sealed partial class NodeOutputViewModel : ObservableObject
 
         switch (node.Kind)
         {
-            case NodeKinds.Compare or NodeKinds.Timer:
+            case NodeKinds.Compare or NodeKinds.Timer or NodeKinds.TimeWindow or NodeKinds.DeviceEvent or NodeKinds.Hold
+                or NodeKinds.Throttle or NodeKinds.Logic or NodeKinds.Statistics:
                 Note(string.IsNullOrEmpty(output?.Live) ? VisionTexts.NothingYet : output.Live);
                 break;
             case NodeKinds.Line:

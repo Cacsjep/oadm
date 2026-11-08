@@ -77,8 +77,8 @@ public sealed partial class NodePickerViewModel : ObservableObject
         From = null;
     }
 
-    /// <summary>A Timer's pulse fits only the kinds with a control input; anything else their data input.</summary>
-    private static bool Fits(NodeKindInfo kind, PortKind output) => output == PortKind.Pulse ? kind.ControlInputs.Count > 0 : kind.Takes(output);
+    /// <summary>A kind fits an output with its data input or one of its control inputs.</summary>
+    private static bool Fits(NodeKindInfo kind, PortKind output) => kind.Takes(output) || kind.ControlInputs.Any(c => c.Accepts == output);
 
     /// <summary>The kinds the list shows now, in order (tests).</summary>
     public IReadOnlyList<NodeKindInfo> ShownKinds => [.. Entries.OfType<PickerKind>().Select(e => e.Kind)];

@@ -235,7 +235,7 @@ public sealed class CanvasViewModelTests
         var second = canvas.Add(NodeKinds.EventKind, count)!;
         Assert.True(second.Y > count.Y);
         Assert.NotEqual(gate.X, second.X); // the first child already below
-        Assert.Equal(gate.Y, second.Y);
+        Assert.True(second.Y >= count.Y + count.Height); // below its parent
         var below = canvas.Add(NodeKinds.EventKind, canvas.Find("h")!)!;
         Assert.True(below.Y > canvas.Find("h")!.Y);
     }

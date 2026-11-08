@@ -295,4 +295,63 @@ public sealed class PageScreenshotTests
             return true;
         }, CancellationToken.None);
     }
+
+    [Fact]
+    public async Task Logic_time_and_device_events_render()
+    {
+        var suffix = Headless.Appearance;
+        await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = PageSamples.Context();
+            ctx.Video!.Still = PageSamples.GatePicture();
+            var vm = new VisionViewModel(ctx) { Check = PageSamples.CheckData, DecodePicture = PageSamples.Decode };
+            var view = new VisionView();
+            var window = Headless.Host(view, Width, Height);
+            window.Show();
+            view.DataContext = vm;
+            await vm.LoadAsync(CancellationToken.None);
+            using (vm)
+            {
+                vm.ApplyList(new Oadm.Plugins.Vision.Api.PipelineList
+                {
+                    Pipelines = [.. PageSamples.List.Pipelines, new() { Id = "p4", Name = "Entrance", DeviceId = PageSamples.Gate.Id, Fps = 8, Last = "In 41 · Out 33" }],
+                });
+                await vm.OpenAsync(vm.Pipelines.Single(p => p.Id == "p4"), CancellationToken.None);
+                var editor = vm.Editor!;
+                editor.StartPreview();
+                editor.ApplyPreview(PageSamples.EntrancePreview(editor.PreviewId!));
+                await editor.EventTypesAsync(); // the names of the chosen events
+                editor.Canvas.FitView();
+                Headless.Pump();
+                Assert.Equal("Highest 14", editor.Canvas.Find("s")!.Live);
+                Headless.Capture(window, $"vision-logic-{suffix}.png");
+
+                // Time window: the shared day chips.
+                editor.Canvas.SelectedNode = editor.Canvas.Find("w");
+                Headless.Pump();
+                Assert.True(view.GetVisualDescendants().OfType<DayChips>().Single().IsEffectivelyVisible);
+                Headless.Capture(window, $"vision-days-{suffix}.png");
+
+                // Device event: the chosen event with its device on the button.
+                editor.Canvas.SelectedNode = editor.Canvas.Find("h");
+                Headless.Pump();
+                Assert.Contains(view.GetVisualDescendants().OfType<IconLabel>(), l => l.IsEffectivelyVisible && l.Text == "Door open · AXIS P1468-LE · 10.0.0.202");
+                Headless.Capture(window, $"vision-device-event-{suffix}.png");
+                editor.StopPreview();
+            }
+
+            window.Close();
+
+            // The Choose event dialog.
+            var picker = new EventTypePickerViewModel(PageSamples.EventTypes.Types, "io.port.door");
+            var dialog = new EventTypeWindow { DataContext = picker };
+            Oadm.Client.App.ApplyCrispText(dialog);
+            dialog.Show();
+            Headless.Pump();
+            Assert.True(picker.OkCommand.CanExecute(null));
+            Headless.Capture(dialog, $"vision-event-type-dialog-{suffix}.png");
+            dialog.Close();
+            return true;
+        }, CancellationToken.None);
+    }
 }

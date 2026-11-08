@@ -28,6 +28,12 @@ public interface INodeFormHost
 
     /// <summary>Draw: the node's shape is drawn again on the video.</summary>
     void StartDrawing(NodeViewModel node);
+
+    /// <summary>Choose event: the event types in the dialog, then the device of a per-device event; null when cancelled.</summary>
+    Task<EventTypeValue?> ChooseEventAsync(EventTypeValue? current) => Task.FromResult<EventTypeValue?>(null);
+
+    /// <summary>"Door open · AXIS P3265 · 10.0.0.48" of a chosen event.</summary>
+    string EventTypeText(EventTypeValue value) => value.Type;
 }
 
 /// <summary>
@@ -220,6 +226,8 @@ public abstract partial class FieldViewModel : ValidatingViewModel
             NodeFieldType.Shape => new ShapeFieldViewModel(field, node, host, write),
             NodeFieldType.TimeOfDay => new TimeFieldViewModel(field, node, write),
             NodeFieldType.Bool => new BoolFieldViewModel(field, node, write),
+            NodeFieldType.Days => new DaysFieldViewModel(field, node, write),
+            NodeFieldType.EventType => new EventTypeFieldViewModel(field, node, host, write),
             _ => new TextFieldViewModel(field, node, write),
         };
     }
@@ -509,4 +517,93 @@ public sealed partial class BoolFieldViewModel : FieldViewModel
     }
 
     partial void OnValueChanged(bool value) => Write(JsonValue.Create(value));
+}
+
+/// <summary>Weekdays as the shared day chips, Monday first; none on means every day (the field's hint says so).</summary>
+public sealed partial class DaysFieldViewModel : FieldViewModel
+{
+    private static readonly string[] Keys = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
+    public DaysFieldViewModel(NodeFieldInfo field, NodeViewModel node, Action<string, JsonNode?> write)
+        : base(field, node, write)
+    {
+        Days = DayChoice.Week();
+        foreach (var day in Days)
+        {
+            day.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(DayChoice.IsChecked) && !Loading)
+                {
+                    Write(NodeValues.ToJson(Chosen));
+                }
+            };
+        }
+
+        Reload();
+    }
+
+    public IReadOnlyList<DayChoice> Days { get; }
+
+    /// <summary>The keys of the days that are on ("mon", ...), in week order.</summary>
+    public IReadOnlyList<string> Chosen => [.. Days.Select((d, i) => (d, i)).Where(x => x.d.IsChecked).Select(x => Keys[x.i])];
+
+    public override void Reload()
+    {
+        Loading = true;
+        var stored = NodeValues.Strings(Stored);
+        for (var i = 0; i < Days.Count; i++)
+        {
+            Days[i].IsChecked = stored.Contains(Keys[i]);
+        }
+
+        Loading = false;
+    }
+}
+
+/// <summary>An event of the event rules with its device: a button that opens the event list and shows the choice.</summary>
+public sealed partial class EventTypeFieldViewModel : FieldViewModel
+{
+    private readonly INodeFormHost _host;
+
+    public EventTypeFieldViewModel(NodeFieldInfo field, NodeViewModel node, INodeFormHost host, Action<string, JsonNode?> write)
+        : base(field, node, write)
+    {
+        _host = host ?? throw new ArgumentNullException(nameof(host));
+        Reload();
+        Validation.Rule(nameof(Value), () => Value is null && !Field.Optional ? VisionTexts.ChooseAnEvent : null);
+        Validation.Validate();
+    }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Text))]
+    public partial EventTypeValue? Value { get; private set; }
+
+    /// <summary>The button's text: the chosen event and its device, or Choose event.</summary>
+    public string Text => Value is { } value ? _host.EventTypeText(value) : VisionTexts.ChooseEvent;
+
+    /// <summary>The shown error (below the button).</summary>
+    public string? ValueError => ErrorOf(nameof(Value));
+
+    public override void Reload()
+    {
+        Loading = true;
+        Value = EventTypeValue.Of(Stored);
+        Loading = false;
+    }
+
+    protected override void OnValidationChanged()
+    {
+        base.OnValidationChanged();
+        OnPropertyChanged(nameof(ValueError));
+    }
+
+    [RelayCommand]
+    private async Task ChooseAsync()
+    {
+        if (await _host.ChooseEventAsync(Value).ConfigureAwait(true) is { } chosen)
+        {
+            Value = chosen;
+            Write(chosen.ToJson());
+        }
+    }
 }

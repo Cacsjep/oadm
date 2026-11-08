@@ -10,8 +10,9 @@ namespace Oadm.Plugins.Vision.Client;
 
 /// <summary>
 /// How a node kind looks on the canvas, in the node list and on the video (docs/spec/vision-center.md "Page"): its icon and
-/// its one colour, the same everywhere, from the theme's categorical palette (both appearances). A kind this version does not
-/// know gets the neutral colour and the plugin icon.
+/// its one colour, the same everywhere, from the theme's categorical palette (both appearances). The kinds that draw on the
+/// video each have their own colour; the logic nodes share the accent, the time nodes the secondary text colour. A kind
+/// this version does not know gets the neutral colour and the plugin icon.
 /// </summary>
 public static class NodeLook
 {
@@ -28,6 +29,15 @@ public static class NodeLook
         NodeKinds.Event => "zap",
         NodeKinds.Compare => "compare",
         NodeKinds.Timer => "clock",
+        NodeKinds.Dwell => "hourglass",
+        NodeKinds.Stationary => "pin",
+        NodeKinds.Direction => "arrowUpRight",
+        NodeKinds.TimeWindow => "calendarClock",
+        NodeKinds.DeviceEvent => "bell",
+        NodeKinds.Hold => "hold",
+        NodeKinds.Throttle => "gauge",
+        NodeKinds.Statistics => "barChart",
+        NodeKinds.Logic => "merge",
         _ => "plugin",
     };
 
@@ -43,8 +53,12 @@ public static class NodeLook
         NodeKinds.Line => "Oadm.Tag.PinkBrush",
         NodeKinds.Count => "Oadm.Tag.OrangeBrush",
         NodeKinds.Event => "Oadm.Tag.RedBrush",
-        NodeKinds.Compare => "Oadm.AccentBrush",
-        NodeKinds.Timer => "Oadm.TextSecondaryBrush",
+        NodeKinds.Compare or NodeKinds.Logic or NodeKinds.Hold or NodeKinds.Throttle or NodeKinds.DeviceEvent => "Oadm.AccentBrush",
+        NodeKinds.Timer or NodeKinds.TimeWindow => "Oadm.TextSecondaryBrush",
+        NodeKinds.Statistics => "Oadm.Tag.OrangeBrush",
+        NodeKinds.Dwell => "Oadm.StatusWarningBrush",
+        NodeKinds.Stationary => "Oadm.StatusInfoBrush",
+        NodeKinds.Direction => "Oadm.TealBrush",
         _ => "Oadm.Tag.NeutralBrush",
     };
 

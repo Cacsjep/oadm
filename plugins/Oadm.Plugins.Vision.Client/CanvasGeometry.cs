@@ -14,6 +14,12 @@ public static class CanvasGeometry
 
     public const double NodeHeight = 62;
 
+    /// <summary>A row per control input below the live line: its dot on the left edge, its label beside it.</summary>
+    public const double ControlRowHeight = 20;
+
+    /// <summary>The height of a card with <paramref name="controlInputs"/> control inputs.</summary>
+    public static double HeightFor(int controlInputs) => controlInputs == 0 ? NodeHeight : NodeHeight + (controlInputs * ControlRowHeight) + 4;
+
     public const double PortRadius = 7;
 
     /// <summary>A control input's dot: smaller than the data dots.</summary>
@@ -35,7 +41,7 @@ public static class CanvasGeometry
     /// <summary>The columns and rows of Tidy up (a row: a node, its + and the curve to the next).</summary>
     public const double ColumnStep = 240;
 
-    public const double RowStep = 130;
+    public const double RowStep = 150;
 
     public const double Margin = 40;
 
@@ -46,10 +52,10 @@ public static class CanvasGeometry
 
     public const double MaxZoom = 2;
 
-    public static Rect NodeRect(double x, double y) => new(x, y, NodeWidth, NodeHeight);
+    public static Rect NodeRect(double x, double y, double height = NodeHeight) => new(x, y, NodeWidth, height);
 
     /// <summary>The output dot: the bottom centre of the card.</summary>
-    public static Point OutputPort(double x, double y) => new(x + (NodeWidth / 2), y + NodeHeight);
+    public static Point OutputPort(double x, double y, double height = NodeHeight) => new(x + (NodeWidth / 2), y + height);
 
     /// <summary>The input dot: the top centre of the card.</summary>
     public static Point InputPort(double x, double y) => new(x + (NodeWidth / 2), y);
@@ -58,12 +64,12 @@ public static class CanvasGeometry
     /// The + below the output, below the node's error when it has one; beside the links when the output already leads on
     /// (<paramref name="besideLinks"/>), so it never covers their curve and count.
     /// </summary>
-    public static Rect PlusRect(double x, double y, bool belowError = false, bool besideLinks = false) =>
-        new(x + ((NodeWidth - PlusSize) / 2) + (besideLinks ? PlusSize + 16 : 0), y + NodeHeight + PlusGap + (belowError ? ErrorRoom : 0), PlusSize, PlusSize);
+    public static Rect PlusRect(double x, double y, bool belowError = false, bool besideLinks = false, double height = NodeHeight) =>
+        new(x + ((NodeWidth - PlusSize) / 2) + (besideLinks ? PlusSize + 16 : 0), y + height + PlusGap + (belowError ? ErrorRoom : 0), PlusSize, PlusSize);
 
-    /// <summary>A control input (Count's Reset, Event's Send now): a dot on the card's left edge, in its vertical middle.</summary>
-    public static Point ControlPort(double x, double y, int index = 0, int count = 1) =>
-        new(x, y + (NodeHeight * (index + 1) / (count + 1)));
+    /// <summary>A control input (Reset, Send now, Only while, Second): a dot on the card's left edge in its own row below the live line.</summary>
+    public static Point ControlPort(double x, double y, int index = 0) =>
+        new(x, y + NodeHeight + (index * ControlRowHeight) + (ControlRowHeight / 2) - 4);
 
     public static Rect EyeRect(double x, double y) => new(x + NodeWidth - EyeSize - 6, y + 5, EyeSize, EyeSize);
 
