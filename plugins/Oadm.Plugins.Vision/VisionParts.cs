@@ -26,9 +26,13 @@ public sealed record VisionParts
 
     /// <summary>
     /// Builds the evaluator of a page's preview: like <see cref="Evaluator"/>, with every node's output for the page (also of
-    /// branches nothing after needs). Null: <see cref="Evaluator"/>.
+    /// branches nothing after needs): <see cref="Nodes.PipelineEvaluator.Create(Pipeline, Func{string?, VisionModel?}, IInference, PipelineMode, Nodes.EvaluatorOptions)"/>
+    /// with <see cref="Nodes.EvaluatorOptions.AllNodes"/>. Null: <see cref="Evaluator"/>.
     /// </summary>
-    public Func<Pipeline, Func<string?, VisionModel?>, IInference, PipelineMode, IPipelineEvaluator>? PreviewEvaluator { get; init; }
+    public Func<Pipeline, Func<string?, VisionModel?>, IInference, PipelineMode, IPipelineEvaluator>? PreviewEvaluator { get; init; } =
+        static (pipeline, findModel, inference, mode) => Nodes.PipelineEvaluator.Create(pipeline, findModel, inference, mode, PreviewOptions);
+
+    private static readonly Nodes.EvaluatorOptions PreviewOptions = new() { AllNodes = true };
 
     public TimeProvider Time { get; init; } = TimeProvider.System;
 

@@ -90,7 +90,7 @@ public sealed class WatchingTests
         Assert.Null(vision.Runtime.ProblemOf(saved.Id));
         await vision.SendAndWaitAsync(vision.Inside.Id, "fail");
         Assert.Equal(PipelineRules.ModelsFail, vision.Runtime.ProblemOf(saved.Id));
-        Assert.Contains(vision.Publisher.Published, e => e.TypeId == Events.PipelineProblemEvents.TypeIdOf(saved.Id) && e.IsOn == true && e.Data[VisionInfo.ProblemField] == PipelineRules.ModelsFail);
+        Assert.Contains(vision.Publisher.Published, e => e.TypeId == Oadm.Plugins.Vision.Events.PipelineProblemEvents.TypeIdOf(saved.Id) && e.IsOn == true && e.Data[VisionInfo.ProblemField] == PipelineRules.ModelsFail);
 
         await vision.SendAndWaitAsync(vision.Inside.Id, "fine");
         Assert.Null(vision.Runtime.ProblemOf(saved.Id));
