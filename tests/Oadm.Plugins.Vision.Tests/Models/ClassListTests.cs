@@ -94,6 +94,16 @@ public sealed class ClassListTests : IDisposable
         Assert.Equal("dog", model.ClassNames[18]);
     }
 
+    [Fact]
+    public async Task Rf_detr_with_the_outputs_of_rf_detr_onnx_gets_the_coco_91_list()
+    {
+        // rf-detr-medium.onnx (RealModels): pred_boxes first, then pred_logits with 91 columns, the COCO category ids.
+        var rfDetr = OnnxModel.Picture(576, 576).Output("pred_boxes", [1, 300, 4], new float[1200]).Output("pred_logits", [1, 300, 91], new float[300 * 91]).Build();
+        var model = await UploadAsync(rfDetr, "rf-detr-medium.onnx");
+        Assert.Equal((ModelFormat.RfDetr, ModelFit.Stretch, ClassLists.Coco91Id), (model.Format, model.Fit, model.ClassListId));
+        Assert.Equal(("person", "car", "toothbrush"), (model.ClassNames[1], model.ClassNames[3], model.ClassNames[90]));
+    }
+
     [Theory]
     [InlineData(true, true)]
     [InlineData(false, false)]

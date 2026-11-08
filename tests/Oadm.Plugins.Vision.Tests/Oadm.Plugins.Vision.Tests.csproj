@@ -43,4 +43,7 @@
     <Compile Include="..\Oadm.Core.Tests\Hardware\HardwareFactAttribute.cs" Link="Hardware\HardwareFactAttribute.cs" />
     <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!-- The real model and photos of the RealModel tests: downloaded only with -p:OadmRealModels=true (manage test models). -->
+  <Import Project="RealModels\RealModels.targets" />
 </Project>

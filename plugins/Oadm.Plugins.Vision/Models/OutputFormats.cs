@@ -43,11 +43,18 @@ internal static class OutputFormats
 
     public static ModelKind KindOf(ModelFormat format) => format == ModelFormat.Classification ? ModelKind.Classification : ModelKind.Detection;
 
-    // pred_logits [1, Q, C + 1] and pred_boxes [1, Q, 4] by name; without the names two outputs, logits first.
+    // pred_logits [1, Q, C + 1] and pred_boxes [1, Q, 4], logits first: by name, or two outputs without the names. Boxes
+    // first is RF-DETR whatever the names (rf-detr-onnx names its outputs pred_boxes, pred_logits too).
     private static RecognisedFormat? Detr(IReadOnlyList<OutputInfo> outputs)
     {
-        var logits = outputs.FirstOrDefault(o => o.Name.Contains("pred_logits", StringComparison.OrdinalIgnoreCase));
-        var boxes = outputs.FirstOrDefault(o => o.Name.Contains("pred_boxes", StringComparison.OrdinalIgnoreCase));
+        var logitsAt = IndexOf(outputs, "pred_logits");
+        var boxesAt = IndexOf(outputs, "pred_boxes");
+        if (logitsAt >= 0 && boxesAt >= 0 && boxesAt < logitsAt)
+        {
+            return null;
+        }
+
+        var (logits, boxes) = logitsAt >= 0 && boxesAt >= 0 ? (outputs[logitsAt], outputs[boxesAt]) : (null, null);
         if (logits is null || boxes is null)
         {
             if (outputs.Count != 2 || IsBoxes(outputs[0]) || !IsBoxes(outputs[1]))
@@ -154,6 +161,19 @@ internal static class OutputFormats
     /// <summary>YOLOv8 and later put the 4 + C values first (<c>[1, 4 + C, N]</c>, fewer values than boxes); YOLOv5 the boxes.</summary>
     public static YoloLayout YoloLayoutOf(ReadOnlySpan<long> shape) =>
         shape.Length == 3 && shape[1] < shape[2] ? YoloLayout.ChannelsFirst : YoloLayout.BoxesFirst;
+
+    private static int IndexOf(IReadOnlyList<OutputInfo> outputs, string name)
+    {
+        for (var i = 0; i < outputs.Count; i++)
+        {
+            if (outputs[i].Name.Contains(name, StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
 
     private static bool IsBoxes(OutputInfo o) => o.IsFloat && o.Shape is [1, > 0, 4];
 

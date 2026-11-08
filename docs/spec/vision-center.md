@@ -67,8 +67,10 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
     0 to 1), output 1 class logits `[1, Q, C]` with a sigmoid per class and no "no object" class, the best class per
     query, the top 300 queries; a third output (the masks of the segmentation models) is left out until segmentation
     comes ("Later"), so those models detect boxes. Input of a fixed size read from the model, ImageNet mean and
-    deviation, the picture **stretched** to the input (not letterboxed: the export was trained that way). Two outputs
-    without the `pred_` names: logits first is DETR, boxes first is RF-DETR.
+    deviation, the picture **stretched** to the input (not letterboxed: the export was trained that way). The order
+    decides, also with the `pred_` names (rf-detr-onnx names its outputs `pred_boxes`, `pred_logits`): logits first is
+    DETR, boxes first is RF-DETR. `rf-detr-medium.onnx` gives 91 class columns, the COCO category ids (0 unused), and
+    takes "COCO for DETR (91)" (measured 2026-11-08).
   - Detection **DETR with labels**: boxes, scores and labels outputs (RT-DETR, D-FINE and other end-to-end exports); no
     suppression. An optional input `orig_target_sizes` `[1, 2]` is filled with the input size; boxes in input pixels or
     0 to 1; Stretch by default.
@@ -415,6 +417,7 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   external data.
 - **Second real model: RF-DETR** (`https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-medium.onnx`,
   downloaded by the user, uploaded as it is): recognised as RF-DETR without a choice, the same pipeline as DETR works.
+  Covered by the real-model tests below (2026-11-08).
 - **First real model: DETR** (`facebookresearch/detr`, DETR-R50 on COCO). The user docs give the export: the PyTorch
   Hub model, `torch.onnx.export` with the outputs named `pred_logits` and `pred_boxes`, a fixed input of 800 x 800 (or a
   free one), opset 17; the class names come from "COCO for DETR (91)". The upload, the model check and a pipeline Detect
@@ -433,14 +436,23 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
 - Limits, previews and leases, device groups, the permissions, the model upload with its refusals, class lists and the
   backup of the model list.
 - The canvas: adding, linking, refusing a link, undo, the errors below the node; headless screenshots for the look.
-- A real detection model only in tests that download a permissive one at the test build into a cache with its pinned
-  SHA-256 (never shipped, never in git), like the models of Text recognition (not built yet).
+- **Real models** (`tests/Oadm.Plugins.Vision.Tests/RealModels/`, category `RealModel`, `manage test models`; never in
+  `manage test unit` or CI): RF-DETR medium and two COCO val2017 photos, downloaded at the test build only when asked
+  (`-p:OadmRealModels=true`) into the model cache of Text recognition, pinned by revision and SHA-256 (sources in the
+  plugin README), never shipped, never in git; without them the tests skip with the reason. On the CPU only (no card is
+  looked for, a session on anything else fails the test): the model check of a chunked upload through the real
+  `ModelLibrary` (RF-DETR, 576 x 576, Stretch, ImageNet, 91 classes, "COCO for DETR (91)"), the real `OnnxInference` on
+  both photos against COCO's boxes (every person and car at an overlap of 50 % or more, scores of 50 % or more, no "N/A",
+  no person where COCO has none), and Camera > Detect objects > Filter (person) > Count through the real evaluator
+  (Count 2 on the photo with two skaters: COCO's annotation has two people and the photo shows no one else).
 
 ## Measured
 
 - One frame through 32 nodes with 300 objects (Detect, Track, 7 Area > Line > Count > Event branches, a fake model):
   about 7 ms on the development PC (debug build, `EvaluatorPerfTests`), without the model call.
 - The graph check of 30 nodes: about 0.1 ms.
+- RF-DETR medium (576 x 576) on the CPU, one thread per call as a worker runs it: about 860 ms per picture on the
+  development PC (24 cores, 12 workers; real-model tests, 2026-11-08); the model check's CPU time about 880 ms.
 
 ## Later
 
@@ -455,7 +467,11 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
 - A run of both vision add-ons on a graphics card in one server: DirectML on Windows (the shared `DirectML.dll`) and
   CUDA on Linux are not tested.
 - The accuracy with DETR and RF-DETR on the development cameras, the default frame rate and resolution from those
-  measurements, the real-model test with a downloaded model.
+  measurements.
+- "COCO for RF-DETR (90)" and its start rule (a stored model of 90 generated names gets it) came from RF-DETR being read
+  as DETR (its `pred_` names; 91 columns less a "no object" one). Since 2026-11-08 the export is read as RF-DETR with 91
+  classes and takes "COCO for DETR (91)"; no known model needs the 90 list. A model stored before keeps the format DETR:
+  delete it and upload it again. Keep, rename or drop the 90 list: open.
 - macOS and Linux runs of the add-on.
 - One worker budget for both vision add-ons instead of one each: Text recognition's CPU pool and its card memory budget
   are not shared.

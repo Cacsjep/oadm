@@ -137,6 +137,23 @@ public sealed class ModelCheckTests : IDisposable
         Assert.Equal(ModelScaling.ImageNet, OutputFormats.DefaultScaling(found.Format));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Rf_detr_is_recognised_by_its_boxes_first_also_with_the_pred_names(bool masks)
+    {
+        // rf-detr-onnx names its outputs like DETR, in the other order: boxes first is RF-DETR.
+        var model = OnnxModel.Picture(576, 576).Output("pred_boxes", [1, 10, 4], Zeros(40)).Output("pred_logits", [1, 10, 91], Zeros(910));
+        if (masks)
+        {
+            model.Output("pred_masks", [1, 10, 8, 8], Zeros(640));
+        }
+
+        var (found, _) = Check(model);
+        Assert.Equal(ModelFormat.RfDetr, found!.Format);
+        Assert.Equal(91, found.ClassNames.Count); // a sigmoid per column, no "no object" column
+    }
+
     [Fact]
     public void Detr_with_labels_is_recognised_with_its_size_input()
     {

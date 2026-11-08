@@ -11,7 +11,7 @@ detect, classify, filter, track, areas, lines, counts and rule events. Read only
 |---|---|
 | Pictures | MJPEG while Watching, one JPEG for On action, through the shared frame source (`plugins/Shared/Vision/Frames`, device route, sites). Frames live in memory only; SkiaSharp decodes, refusing pictures over `PictureLimits` before any pixel memory is taken. |
 | Models | Stored ONNX files (`plugin-data/oadm.vision/models/<id>.onnx`), the list in the plugin records (`models`). `OnnxScan` reads the file without ONNX Runtime: only the default, `ai.onnx`, `ai.onnx.ml` and `com.microsoft` domains in nodes and functions, no external data. `ModelChecker` then opens a CPU session and runs one blank picture to recognise the format. |
-| Formats | `OutputFormats` recognises the outputs, `Inference/Decoders` reads them: YOLO (`[1, 4 + C, N]` v8 when 4 + C < N, else `[1, N, 5 + C]` v5, own suppression at IoU 0.45 per class), YOLO with suppression (`[1, N, 6]`, N up to 1,000), DETR (`pred_logits` with "no object" last, softmax; `pred_boxes`), RF-DETR (boxes then logits, sigmoid, top 300; a masks output left out), DETR with labels (boxes, scores, labels; `orig_target_sizes` filled with the input size; pixels or 0 to 1), classification (`[1, C]`, softmax unless already probabilities). Two outputs without `pred_` names: logits first is DETR, boxes first RF-DETR. |
+| Formats | `OutputFormats` recognises the outputs, `Inference/Decoders` reads them: YOLO (`[1, 4 + C, N]` v8 when 4 + C < N, else `[1, N, 5 + C]` v5, own suppression at IoU 0.45 per class), YOLO with suppression (`[1, N, 6]`, N up to 1,000), DETR (`pred_logits` with "no object" last, softmax; `pred_boxes`), RF-DETR (boxes then logits, sigmoid, top 300; a masks output left out), DETR with labels (boxes, scores, labels; `orig_target_sizes` filled with the input size; pixels or 0 to 1), classification (`[1, C]`, softmax unless already probabilities). The order decides between DETR and RF-DETR, also with the `pred_` names (rf-detr-onnx: `pred_boxes`, `pred_logits`): logits first is DETR, boxes first RF-DETR. |
 | Fit and scaling | Per model: Letterbox (YOLO), Stretch (RF-DETR, DETR with labels, classification), Keep shape and pad (DETR); 0 to 1 or ImageNet mean and deviation (`Inference/Preprocess`). Free inputs a multiple of 32 from 32 to 2,048 (default 640); fixed inputs 8 to 4,096 per side. |
 | Class names | Metadata `names` (Ultralytics' Python dict, a JSON list or object) when the count fits, else the labels file (another count refused), else a built-in list by count (91: `coco-91`, 80: `coco-80`), else "Class <id>". "N/A" is a gap: never shown, its detections dropped. `Models/ClassLists`: the built-in lists and the user's (collection `classLists`, at most 50); a list's count is a model's class count. |
 | Graph | `Graph/VisionGraph.Check`: one error per node in a fixed order (id first), graph errors for the whole pipeline, the input kind of every reached node. Texts in `Graph/GraphTexts`, read by the page's editor too. Settings are JSON (`NodeSettings`), defaults from the fields of `Model/NodeKinds`. |
@@ -60,7 +60,7 @@ Events to the page: `pipelines`, `preview` (only to its user, at most twice a se
 
 ## Tests
 
-`tests/Oadm.Plugins.Vision.Tests` (run with `--filter "FullyQualifiedName~Vision&Category!=Perf"`; no GPU, no network):
+`tests/Oadm.Plugins.Vision.Tests` (run with `--filter "FullyQualifiedName~Vision&Category!=Perf&Category!=RealModel"`; no GPU, no network):
 
 - `Models/`: generated ONNX models per format (`OnnxWriter`), the check and its refusals, the library, class lists.
 - `Inference/`: decoding and fits on generated models; `TwoRuntimesTests` loads ONNX Runtime in several load contexts.
@@ -71,5 +71,19 @@ Events to the page: `pipelines`, `preview` (only to its user, at most twice a se
   a model failure, an errored branch; `EvaluatorPerfTests` is Perf.
 - `Pipelines/`, `Events/`, `Api/`: the store, previews and leases, event types and actions, page methods and permissions.
 - `Client/`: the canvas and the page view models, class lists, headless screenshots (`OADM_SCREENSHOT_DIR`).
+- `RealModels/` (category `RealModel`, `manage test models`, never in the unit run or CI): RF-DETR medium on two COCO
+  photos, CPU only: the model check of a chunked upload, the detections against COCO's boxes, Detect objects > Filter
+  (person) > Count through the real evaluator. `RealModels.targets` downloads the files below only with
+  `-p:OadmRealModels=true` into the model cache of Text recognition (`$(OADM_MODEL_CACHE)`, else
+  `%LOCALAPPDATA%\Oadm\model-cache` or `~/.cache/oadm/models`), one folder per SHA-256; a failed download or another
+  hash leaves the file out and the tests skip. Never shipped, never in git. A test checks this table against the targets.
+
+| File | Source | Licence and attribution | SHA-256 |
+|---|---|---|---|
+| `rf-detr-medium.onnx` | `https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/94f91976449c187be38e649863e3dadecc312437/rf-detr-medium.onnx` (120,758,287 bytes) | Apache-2.0; RF-DETR by Roboflow, ONNX export by PierreMarieCurie | `18250b5a3a9552ae117d592f8e8c27fe52438d70c914a77a8913fc45d8f29e69` |
+| `coco-000000278705.jpg` | `http://images.cocodataset.org/val2017/000000278705.jpg` (two skaters, two cars) | CC BY 2.0, photo by essers on Flickr (https://www.flickr.com/photos/essers/2875114693/), from COCO val2017 (annotations CC BY 4.0) | `d01c906a85c3f77702bdbf9dc7cedf11310e9aa47c6730927f51d9651dece310` |
+| `coco-000000065350.jpg` | `http://images.cocodataset.org/val2017/000000065350.jpg` (three people at a skate bowl, cars and bicycles behind) | CC BY 2.0, photo by valdeklaur on Flickr (https://www.flickr.com/photos/valdeklaur/4869131880/), from COCO val2017 (annotations CC BY 4.0) | `963a129714e3675b99b6a405a2cb46eca5678241358bb6b6bbefc3c3f1943ae0` |
+
+Measured 2026-11-08 (development PC, 24 cores): RF-DETR medium about 860 ms per picture on one CPU thread.
 
 Open: a real model test (DETR, RF-DETR) on the development cameras, a GPU run of both vision add-ons, macOS and Linux.

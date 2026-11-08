@@ -57,6 +57,7 @@ On the first `run dev`, trust the server, then create the first administrator (n
 | Unit | `manage test unit` | Fast, no network, no devices |
 | `Perf` | `manage test perf` | 100,000 devices, 50,000 tasks |
 | `Hardware` | `manage test hardware` | Read-only, against your cameras in `dev-cameras.yaml` |
+| `RealModel` | `manage test models` | Real models and photos, downloaded once into the model cache |
 | `RecipientStack` | `manage test recipients` | Real MQTT, Modbus and OPC UA servers in Docker |
 | `HardwareWrite` | never on a device from `manage` | Change a device; only on purpose, only on a test device |
 
