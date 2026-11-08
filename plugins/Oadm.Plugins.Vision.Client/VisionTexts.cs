@@ -98,6 +98,7 @@ public static class VisionTexts
     public const string ChooseEvent = "Choose event";
     public const string CopyToCameras = "Copy to cameras";
     public const string SaveFirst = "Save the pipeline first.";
+    public const string CopyToCamerasSaveFirst = "Copy to cameras (save first)";
     public const string ChooseCameras = "Choose cameras";
 
     /// <summary>The most cameras one copy goes to.</summary>

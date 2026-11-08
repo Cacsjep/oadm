@@ -266,6 +266,14 @@ public partial class VisionView : UserControl, IVisionDialogs
         }
     }
 
+    private void OnPipelineActions(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: PipelineListRow row } button && _viewModel is { } vm)
+        {
+            RowActions.Show(button, vm.ActionsOf(row));
+        }
+    }
+
     private void OnModelActions(object? sender, RoutedEventArgs e)
     {
         if (sender is Button { DataContext: ModelRow row } button && _viewModel is { } vm)
