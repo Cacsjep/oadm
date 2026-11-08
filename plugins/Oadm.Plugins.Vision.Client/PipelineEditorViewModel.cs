@@ -351,16 +351,16 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
     string? INodeFormHost.ClassListOf(string? modelId) =>
         _classListName is { } name && _models().FirstOrDefault(m => m.Id == modelId) is { } model ? VisionTexts.ClassListOf(name(model)) : null;
 
-    private IReadOnlyList<PickerEventType>? _eventTypes;
+    private IReadOnlyList<EventTypeChoice>? _eventTypes;
 
     /// <summary>The event types of the event rules (the page method, read once per pipeline shown).</summary>
-    public async Task<IReadOnlyList<PickerEventType>> EventTypesAsync()
+    public async Task<IReadOnlyList<EventTypeChoice>> EventTypesAsync()
     {
         if (_eventTypes is null)
         {
             try
             {
-                _eventTypes = VisionJson.Deserialize<PickerEventTypeList>(await _ctx.InvokeAsync(PickerEventTypes.Method, "{}", CancellationToken.None).ConfigureAwait(true)).Types;
+                _eventTypes = VisionJson.Deserialize<EventTypeList>(await _ctx.InvokeAsync(VisionMethods.ListEventTypes, "{}", CancellationToken.None).ConfigureAwait(true)).Types;
             }
 #pragma warning disable CA1031 // An older server without the list: no event to choose, the dialog says so.
             catch (Exception)
@@ -386,7 +386,7 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
             return null;
         }
 
-        if (!chosen.DeviceScope)
+        if (!chosen.PerDevice)
         {
             return new EventTypeValue(chosen.Id, null);
         }

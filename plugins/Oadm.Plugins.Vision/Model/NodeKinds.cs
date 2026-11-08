@@ -188,12 +188,10 @@ public static class NodeKinds
     public const string AnchorKey = "anchor";
     public const string DirectionsKey = "directions";
     /// <summary>No field any more: a Timer into Count's Reset replaced it (decision 2026-11-08). Kept until the runtime drops its daily reset.</summary>
-    public const string ResetAtKey = "resetAt";
     public const string MinObjectsKey = "minObjects";
     public const string AtLeastKey = "atLeastSeconds";
     public const string OffAfterKey = "offAfterSeconds";
     /// <summary>No field any more: Compare replaced Limit and Above limit (decision 2026-11-08). Kept until the runtime's event types drop it.</summary>
-    public const string LimitKey = "limit";
     public const string OperatorKey = "operator";
     public const string ValueKey = "value";
     public const string Value2Key = "value2";

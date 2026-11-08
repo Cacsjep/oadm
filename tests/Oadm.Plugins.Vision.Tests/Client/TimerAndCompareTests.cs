@@ -82,13 +82,18 @@ public sealed class TimerAndCompareTests
     }
 
     [Fact]
-    public void Tidy_up_puts_the_timers_left_of_the_graph_above_the_nodes_they_pulse()
+    public void Tidy_up_puts_the_timers_left_of_the_nodes_they_pulse_top_aligned()
     {
         var canvas = Canvas(PageSamples.LobbyCount);
         canvas.TidyUpCommand.Execute(null);
         var midnight = canvas.Find("t1")!;
-        Assert.True(midnight.Y < canvas.Find("d")!.Y); // above the Count it resets, its link comes into the left edge
-        Assert.True(midnight.X < canvas.Nodes.Where(n => n.Kind != NodeKinds.Timer).Min(n => n.X));
+        var count = canvas.Find("d")!;
+        Assert.Equal(count.Y, midnight.Y); // top-aligned with the Count it resets, left of it
+        Assert.Equal(count.X - CanvasGeometry.ColumnStep, midnight.X);
+        foreach (var node in canvas.Nodes) // no card on another
+        {
+            Assert.DoesNotContain(canvas.Nodes, other => !ReferenceEquals(other, node) && other.Rect.Intersects(node.Rect));
+        }
     }
 
     [Fact]
@@ -206,7 +211,11 @@ public sealed class TimerAndCompareTests
         var field = Assert.IsType<EventTypeFieldViewModel>(editor.Form!.Fields[0]);
         dialogs.Event = form =>
         {
-            Assert.Equal(["Device status", "Input ports", "Server", "Vision Center / Gate 1 people"], form.Rows.OfType<EventPickerFolder>().Select(f => f.Name));
+            // Vision Center's own events never show; a type of a plugin that is off shows with "(turned off)".
+            Assert.Equal(["Device status", "Input ports", "Server", "Text recognition / Container gate"], form.Rows.OfType<EventPickerFolder>().Select(f => f.Name));
+            var off = form.Rows.OfType<EventPickerType>().Single(r => r.Type.Id == "oadm.ocr.text");
+            Assert.False(off.IsAvailable);
+            Assert.Equal("Text read (turned off)", off.Name);
             Assert.Equal("io.port.door", form.Chosen!.Id); // the stored one selected
             form.SearchText = "tamper";
             Assert.Single(form.Rows.OfType<EventPickerType>());
@@ -260,5 +269,37 @@ public sealed class TimerAndCompareTests
         public Task<bool> EditClassListAsync(ClassListEditViewModel form) => Task.FromResult(false);
 
         public Task<IReadOnlyList<IModelFile>?> PickModelFilesAsync() => Task.FromResult<IReadOnlyList<IModelFile>?>(null);
+    }
+
+    [Fact]
+    public void Tidy_up_stacks_rows_by_their_real_heights_with_one_gap()
+    {
+        var canvas = Canvas(PageSamples.Entrance);
+        canvas.TidyUpCommand.Execute(null);
+        var count = canvas.Find("e")!; // two control rows: a taller card
+        var below = canvas.Find("f")!;
+        Assert.Equal(count.Y + count.Height + CanvasGeometry.RowGap, below.Y);
+        var line = canvas.Find("d")!;
+        var going = canvas.Find("k")!;
+        Assert.Equal(line.Y, going.Y);
+        Assert.True(Math.Abs(going.X - line.X) >= CanvasGeometry.NodeWidth + CanvasGeometry.ColumnGap); // side by side, one gap at least (its subtree may be wider)
+        foreach (var node in canvas.Nodes)
+        {
+            Assert.DoesNotContain(canvas.Nodes, other => !ReferenceEquals(other, node) && other.Rect.Intersects(node.Rect));
+        }
+
+        // Every start sits directly left of the node it feeds, top-aligned: its link only crosses the gap.
+        foreach (var link in canvas.Links.Where(l => l.IsControl))
+        {
+            Assert.Equal(link.To.Y, link.From.Y);
+            Assert.True(link.To.X - link.From.X >= CanvasGeometry.ColumnStep);
+            Assert.DoesNotContain(canvas.Nodes, n => n.Y == link.To.Y && n.X > link.From.X && n.X < link.To.X); // nothing in between
+        }
+
+        // Each data link goes from one row to the next: never under a card.
+        foreach (var link in canvas.Links.Where(l => !l.IsControl))
+        {
+            Assert.True(link.To.Y > link.From.Y + link.From.Height, $"{link.From.Name} > {link.To.Name}");
+        }
     }
 }

@@ -261,6 +261,7 @@ public sealed class PageScreenshotTests
             window.Show();
             view.DataContext = vm;
             await vm.LoadAsync(CancellationToken.None);
+            vm.ApplyStats(new Oadm.Plugins.Vision.Api.VisionStats { State = Oadm.Plugins.Vision.Api.LoadState.Ok, StateText = "All pipelines keep up", Load = 38 });
             using (vm)
             {
                 await vm.OpenAsync(vm.Pipelines.Single(p => p.Id == "p3"), CancellationToken.None);
@@ -310,6 +311,7 @@ public sealed class PageScreenshotTests
             window.Show();
             view.DataContext = vm;
             await vm.LoadAsync(CancellationToken.None);
+            vm.ApplyStats(new Oadm.Plugins.Vision.Api.VisionStats { State = Oadm.Plugins.Vision.Api.LoadState.Ok, StateText = "All pipelines keep up", Load = 38 });
             using (vm)
             {
                 vm.ApplyList(new Oadm.Plugins.Vision.Api.PipelineList

@@ -3,59 +3,39 @@ using System.Text.Json.Nodes;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Plugins.Vision.Api;
 using Oadm.Sdk.Client.Collections;
 
 namespace Oadm.Plugins.Vision.Client;
-
-/// <summary>
-/// An event type of the event rules as the page method <see cref="PickerEventTypes.Method"/> lists it: its id, its folder
-/// ("Device status", "Vision Center / Gate 1"), its name and whether it comes from a device (then the node asks which one).
-/// </summary>
-public sealed record PickerEventType
-{
-    public string Id { get; init; } = string.Empty;
-
-    public string Group { get; init; } = string.Empty;
-
-    public string Name { get; init; } = string.Empty;
-
-    /// <summary>Raised per device: the Device event node names the device.</summary>
-    public bool DeviceScope { get; init; }
-}
-
-/// <summary>The reply of <see cref="PickerEventTypes.Method"/>.</summary>
-public sealed record PickerEventTypeList
-{
-    public IReadOnlyList<PickerEventType> Types { get; init; } = [];
-}
-
-/// <summary>The page method that lists the event types for the Device event node.</summary>
-public static class PickerEventTypes
-{
-    public const string Method = "listEventTypes";
-}
 
 /// <summary>A row of the event list: a folder heading or an event type.</summary>
 public abstract record EventPickerRow;
 
 public sealed record EventPickerFolder(string Name) : EventPickerRow;
 
-public sealed record EventPickerType(PickerEventType Type) : EventPickerRow
+public sealed record EventPickerType(EventTypeChoice Type) : EventPickerRow
 {
-    public string Name => Type.Name;
+    /// <summary>"Door open", or "Door open (turned off)" while the plugin that sends it is off (shown dimmed).</summary>
+    public string Name => Type.Available ? Type.Name : $"{Type.Name} ({VisionTexts.TurnedOff})";
+
+    public bool IsAvailable => Type.Available;
 }
 
 /// <summary>
-/// The Choose event dialog of the Device event node: the event types in their folders (the event rules' picker), a search;
-/// OK takes the chosen one. A per-device event then asks for the device.
+/// The Choose event dialog of the Device event node: the event types (<see cref="VisionMethods.ListEventTypes"/>) in their
+/// folders (the event rules' picker), a search; OK takes the chosen one. A type whose plugin is off shows dimmed with
+/// "(turned off)". A per-device event then asks for the device.
 /// </summary>
 public sealed partial class EventTypePickerViewModel : ObservableObject
 {
-    private readonly IReadOnlyList<PickerEventType> _types;
+    private readonly IReadOnlyList<EventTypeChoice> _types;
 
-    public EventTypePickerViewModel(IReadOnlyList<PickerEventType> types, string? selectedId)
+    public EventTypePickerViewModel(IReadOnlyList<EventTypeChoice> types, string? selectedId)
     {
-        _types = types ?? throw new ArgumentNullException(nameof(types));
+        ArgumentNullException.ThrowIfNull(types);
+
+        // Vision Center's own events never go into one of its nodes (the server leaves them out too).
+        _types = [.. types.Where(t => !IsOwn(t))];
         Fill();
         Selected = Rows.OfType<EventPickerType>().FirstOrDefault(r => r.Type.Id == selectedId);
     }
@@ -82,7 +62,17 @@ public sealed partial class EventTypePickerViewModel : ObservableObject
     public partial bool IsEmpty { get; private set; }
 
     /// <summary>The chosen event type after OK.</summary>
-    public PickerEventType? Chosen => (Selected as EventPickerType)?.Type;
+    public EventTypeChoice? Chosen => (Selected as EventPickerType)?.Type;
+
+    /// <summary>The folder line of a type: its path ("Devices / Any device").</summary>
+    public static string FolderOf(EventTypeChoice type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        return string.Join(" / ", type.Path);
+    }
+
+    private static bool IsOwn(EventTypeChoice type) =>
+        type.Id.StartsWith(VisionInfo.PluginId + ".", StringComparison.Ordinal) || (type.Path.Count > 0 && type.Path[0] == VisionInfo.EventGroup);
 
     partial void OnSearchTextChanged(string value) => Fill();
 
@@ -99,8 +89,8 @@ public sealed partial class EventTypePickerViewModel : ObservableObject
         var query = SearchText.Trim();
         var rows = new List<EventPickerRow>();
         foreach (var group in _types
-            .Where(t => query.Length == 0 || t.Name.Contains(query, StringComparison.OrdinalIgnoreCase) || t.Group.Contains(query, StringComparison.OrdinalIgnoreCase))
-            .GroupBy(t => t.Group)
+            .Where(t => query.Length == 0 || t.Name.Contains(query, StringComparison.OrdinalIgnoreCase) || FolderOf(t).Contains(query, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(FolderOf)
             .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase))
         {
             rows.Add(new EventPickerFolder(group.Key));
