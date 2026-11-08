@@ -52,6 +52,9 @@ public sealed record NodeOutput
     /// <summary>Count: the value (objects now, or In on crossings).</summary>
     public long? Value { get; init; }
 
+    /// <summary>Classify on a picture: the class of the picture (or of its area); null otherwise.</summary>
+    public ClassResult? Label { get; init; }
+
     /// <summary>Model nodes: the time of this frame's model call, ms.</summary>
     public double? Milliseconds { get; init; }
 
