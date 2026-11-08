@@ -11,8 +11,10 @@ namespace Oadm.Plugins.Vision.Graph;
 /// </summary>
 /// <remarks>
 /// One error per node, the first that applies in this order: its id (links name it, so nothing else can be judged
-/// without it); an unknown kind; the camera; its input (none, a loop, more than one); the kind of its input; a Line
-/// without Track; Watching only; the model nodes on its path; its model; its classes; its fields; its name. Deterministic and cheap enough for the editor to run on every edit.
+/// without it); an unknown kind; the camera or another source (Timer); its data input (none, a loop, more than one, a
+/// pulse); the kind of its input; a Line without Track; a Dwell without Area; Watching only; the model nodes on its
+/// path; its control links (a declared port, of the port's kind, one each, the required ones); its model; its classes;
+/// its fields (those shown); its name. Loops count data and control links. Deterministic and cheap enough for the editor to run on every edit.
 /// </remarks>
 public static class VisionGraph
 {
@@ -64,12 +66,19 @@ public static class VisionGraph
         var parent = new int[n];
         Array.Fill(parent, -1);
         var children = new List<int>?[n];
+        var controls = new List<(int From, string Port)>?[n];
         var missingEnd = false;
         foreach (var link in pipeline.Links)
         {
             if (link is null || !index.TryGetValue(link.From ?? string.Empty, out var from) || !index.TryGetValue(link.To ?? string.Empty, out var to))
             {
                 missingEnd = true;
+                continue;
+            }
+
+            if (link.ToPort is { } port)
+            {
+                (controls[to] ??= []).Add((from, port));
                 continue;
             }
 
@@ -87,20 +96,52 @@ public static class VisionGraph
             graphErrors.Add(GraphTexts.MissingLinkEnd);
         }
 
-        // Loops: following the single inputs back from a node leads to the node itself.
-        var inLoop = new bool[n];
+        // Loops: a node that leads back to itself over data or control links.
+        var targets = new List<int>?[n];
         for (var i = 0; i < n; i++)
         {
-            var p = parent[i];
-            for (var steps = 0; p >= 0 && steps < n; steps++)
+            if (controls[i] is { } list)
             {
-                if (p == i)
+                foreach (var (from, _) in list)
                 {
-                    inLoop[i] = true;
-                    break;
+                    (targets[from] ??= []).Add(i);
+                }
+            }
+        }
+
+        var inLoop = new bool[n];
+        var seen = new bool[n];
+        var queue = new Queue<int>();
+        for (var i = 0; i < n; i++)
+        {
+            Array.Clear(seen);
+            queue.Clear();
+            queue.Enqueue(i);
+            while (queue.Count > 0 && !inLoop[i])
+            {
+                var p = queue.Dequeue();
+                foreach (var next in (IEnumerable<int>?)children[p] ?? [])
+                {
+                    Visit(next);
                 }
 
-                p = inputCount[p] == 1 ? parent[p] : -1;
+                foreach (var next in (IEnumerable<int>?)targets[p] ?? [])
+                {
+                    Visit(next);
+                }
+            }
+
+            void Visit(int next)
+            {
+                if (next == i)
+                {
+                    inLoop[i] = true;
+                }
+                else if (!seen[next])
+                {
+                    seen[next] = true;
+                    queue.Enqueue(next);
+                }
             }
         }
 
@@ -111,14 +152,23 @@ public static class VisionGraph
         var modelsOnPath = new int[n];
         var detectBefore = new int[n];
         var classifyBefore = new int[n];
+        var areaBefore = new int[n];
         Array.Fill(detectBefore, -1);
         Array.Fill(classifyBefore, -1);
-        if (camera >= 0)
+        Array.Fill(areaBefore, -1);
         {
-            reached[camera] = true;
-            output[camera] = PortKind.Picture;
+            // From every source: the Camera, Timers, Time windows, Device events.
             var stack = new Stack<int>();
-            stack.Push(camera);
+            for (var i = n - 1; i >= 0; i--)
+            {
+                if (kinds[i] is { Accepts.Count: 0 } source && (source != NodeKinds.CameraKind || i == camera))
+                {
+                    reached[i] = true;
+                    output[i] = source.Output(null);
+                    stack.Push(i);
+                }
+            }
+
             while (stack.Count > 0)
             {
                 var p = stack.Pop();
@@ -129,7 +179,7 @@ public static class VisionGraph
 
                 foreach (var c in list)
                 {
-                    if (reached[c] || inputCount[c] != 1 || inLoop[c] || kinds[c] is not { } kind || kind == NodeKinds.CameraKind)
+                    if (reached[c] || inputCount[c] != 1 || inLoop[c] || kinds[c] is not { } kind || kind.Accepts.Count == 0)
                     {
                         continue;
                     }
@@ -140,6 +190,7 @@ public static class VisionGraph
                     modelsOnPath[c] = modelsOnPath[p] + (kind.RunsModel ? 1 : 0);
                     detectBefore[c] = kinds[p] == NodeKinds.DetectKind ? p : detectBefore[p];
                     classifyBefore[c] = kinds[p] == NodeKinds.ClassifyKind ? p : classifyBefore[p];
+                    areaBefore[c] = kinds[p] == NodeKinds.AreaKind ? p : areaBefore[p];
                     if (kind.Takes(kindOut))
                     {
                         output[c] = kind.Output(kindOut);
@@ -179,7 +230,7 @@ public static class VisionGraph
             var nameError = NameError(node.Name, names);
             var idError = IdError(node.Id, ids);
             var error = idError
-                ?? NodeError(pipeline, nodes, i, kinds, camera, inputCount, parent, inLoop, input, reached, modelsOnPath, detectBefore, classifyBefore, models, findModel)
+                ?? NodeError(pipeline, nodes, i, kinds, camera, inputCount, parent, inLoop, input, reached, modelsOnPath, detectBefore, classifyBefore, models, findModel, controls[i], output, areaBefore)
                 ?? nameError;
             if (error is not null)
             {
@@ -252,7 +303,8 @@ public static class VisionGraph
     private static string? NodeError(
         Pipeline pipeline, IReadOnlyList<PipelineNode> nodes, int i, NodeKindInfo?[] kinds, int camera, int[] inputCount, int[] parent,
         bool[] inLoop, PortKind?[] input, bool[] reached, int[] modelsOnPath, int[] detectBefore, int[] classifyBefore,
-        VisionModel?[] models, Func<string?, VisionModel?> findModel)
+        VisionModel?[] models, Func<string?, VisionModel?> findModel, List<(int From, string Port)>? controls, PortKind?[] output,
+        int[] areaBefore)
     {
         var node = nodes[i];
         if (kinds[i] is not { } kind)
@@ -270,6 +322,19 @@ public static class VisionGraph
             if (inputCount[i] > 0)
             {
                 return GraphTexts.CameraInput;
+            }
+        }
+        else if (kind.Accepts.Count == 0)
+        {
+            // Another source (Timer, Time window, Device event): no data input, its own stream rule.
+            if (inputCount[i] > 0)
+            {
+                return GraphTexts.SourceInput(kind);
+            }
+
+            if (pipeline.Mode == PipelineMode.OnAction && kind.NeedsStream)
+            {
+                return GraphTexts.NeedsStream(kind);
             }
         }
         else
@@ -291,6 +356,11 @@ public static class VisionGraph
 
             if (reached[i] && input[i] is { } kindIn)
             {
+                if (kindIn == PortKind.Pulse && !kind.Takes(kindIn))
+                {
+                    return GraphTexts.PulseIntoData;
+                }
+
                 if (!kind.Takes(kindIn))
                 {
                     return GraphTexts.Takes(kind.Accepts);
@@ -299,6 +369,11 @@ public static class VisionGraph
                 if (kind == NodeKinds.LineKind && kindIn != PortKind.TrackedObjects)
                 {
                     return GraphTexts.LineNeedsTrack;
+                }
+
+                if (kind == NodeKinds.DwellKind && areaBefore[i] < 0)
+                {
+                    return GraphTexts.DwellNeedsArea;
                 }
 
                 if (pipeline.Mode == PipelineMode.OnAction)
@@ -323,6 +398,11 @@ public static class VisionGraph
             {
                 return GraphTexts.NoOutputBefore;
             }
+        }
+
+        if (ControlError(kind, kinds, controls, output) is { } controlError)
+        {
+            return controlError;
         }
 
         var nodeInput = reached[i] ? input[i] : null;
@@ -398,7 +478,7 @@ public static class VisionGraph
         // Every field's type and range.
         foreach (var field in kind.Fields)
         {
-            if (Applies(field, nodeInput) && FieldError(node, field) is { } fieldError)
+            if (Applies(field, nodeInput) && Visible(node, field) && FieldError(node, field) is { } fieldError)
             {
                 return fieldError;
             }
@@ -410,6 +490,84 @@ public static class VisionGraph
             && min > max)
         {
             return GraphTexts.MinAboveMax;
+        }
+
+        if (kind == NodeKinds.CompareKind
+            && NodeSettings.Text(Setting(node, NodeKinds.OperatorKey)) == NodeKinds.OpBetween
+            && NodeSettings.Number(Setting(node, NodeKinds.ValueKey)) is { } low
+            && NodeSettings.Number(Setting(node, NodeKinds.Value2Key)) is { } high
+            && low > high)
+        {
+            return GraphTexts.BetweenOrder;
+        }
+
+        return null;
+    }
+
+    /// <summary>Whether <paramref name="field"/> shows for the node's other settings (<see cref="NodeFieldInfo.VisibleWhenKey"/>).</summary>
+    public static bool Visible(PipelineNode node, NodeFieldInfo field)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(field);
+        if (field.VisibleWhenKey is not { } key)
+        {
+            return true;
+        }
+
+        var value = NodeSettings.Text(Setting(node, key));
+        foreach (var v in field.VisibleWhenValues)
+        {
+            if (string.Equals(v, value, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The control links into a node: a declared port, the kind it takes, one link per port, the required ones linked.</summary>
+    private static string? ControlError(NodeKindInfo kind, NodeKindInfo?[] kinds, List<(int From, string Port)>? controls, PortKind?[] output)
+    {
+        controls ??= [];
+        for (var c = 0; c < controls.Count; c++)
+        {
+            var (from, port) = controls[c];
+            ControlInput? declared = null;
+            foreach (var ci in kind.ControlInputs)
+            {
+                if (string.Equals(ci.Port, port, StringComparison.Ordinal))
+                {
+                    declared = ci;
+                }
+            }
+
+            if (declared is null)
+            {
+                return GraphTexts.UnknownPort;
+            }
+
+            // A source whose kind is known gives that kind; one with an error of its own shows it there.
+            if ((output[from] is { } carried && carried != declared.Accepts) || kinds[from] == NodeKinds.EventKind)
+            {
+                return GraphTexts.ControlTakes(declared);
+            }
+
+            for (var d = 0; d < c; d++)
+            {
+                if (string.Equals(controls[d].Port, port, StringComparison.Ordinal))
+                {
+                    return GraphTexts.OneControlLink(declared);
+                }
+            }
+        }
+
+        foreach (var ci in kind.ControlInputs)
+        {
+            if (ci.Required && !controls.Exists(c => string.Equals(c.Port, ci.Port, StringComparison.Ordinal)))
+            {
+                return GraphTexts.LinkRequired(ci);
+            }
         }
 
         return null;
@@ -436,6 +594,7 @@ public static class VisionGraph
                 NodeFieldType.Shape => GraphTexts.Draw(field),
                 NodeFieldType.TimeOfDay => GraphTexts.EnterTime,
                 NodeFieldType.Bool => GraphTexts.ChooseYesNo,
+                NodeFieldType.EventType => GraphTexts.ChooseEvent,
                 _ => null,
             };
         }
@@ -517,6 +676,12 @@ public static class VisionGraph
 
             case NodeFieldType.Bool:
                 return NodeSettings.Bool(value) is null ? GraphTexts.ChooseYesNo : null;
+
+            case NodeFieldType.Days:
+                return NodeSettings.Days(value) is null ? GraphTexts.ChooseDays : null;
+
+            case NodeFieldType.EventType:
+                return NodeSettings.EventOf(value) is null ? GraphTexts.ChooseEvent : null;
 
             default:
                 return null;

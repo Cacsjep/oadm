@@ -187,10 +187,12 @@ public static class NodeKinds
     public const string PointsKey = "points";
     public const string AnchorKey = "anchor";
     public const string DirectionsKey = "directions";
+    /// <summary>No field any more: a Timer into Count's Reset replaced it (decision 2026-11-08). Kept until the runtime drops its daily reset.</summary>
     public const string ResetAtKey = "resetAt";
     public const string MinObjectsKey = "minObjects";
     public const string AtLeastKey = "atLeastSeconds";
     public const string OffAfterKey = "offAfterSeconds";
+    /// <summary>No field any more: Compare replaced Limit and Above limit (decision 2026-11-08). Kept until the runtime's event types drop it.</summary>
     public const string LimitKey = "limit";
     public const string OperatorKey = "operator";
     public const string ValueKey = "value";
@@ -346,10 +348,6 @@ public static class NodeKinds
         Id = Count, Label = "Count", Group = "Output", Description = "A live number",
         ControlInputs = [new(ResetPort, "Reset"), new(WhilePort, "Only while") { Accepts = PortKind.Condition }],
         Accepts = [.. ObjectKinds, PortKind.Crossings], Output = _ => PortKind.Number,
-        Fields =
-        [
-            new() { Key = ResetAtKey, Label = "Reset daily at", Type = NodeFieldType.TimeOfDay, Optional = true, OnlyForInput = [PortKind.Crossings] }, // goes with the Timer node (graph stage)
-        ],
     };
 
     public static readonly NodeKindInfo TimerKind = new()
@@ -497,7 +495,6 @@ public static class NodeKinds
             new() { Key = MinObjectsKey, Label = "Minimum objects", Type = NodeFieldType.Number, Default = "1", Min = 1, Max = 300, OnlyForInput = ObjectKinds },
             new() { Key = AtLeastKey, Label = "At least", Type = NodeFieldType.Number, Default = "1", Min = 0, Max = 3600, Unit = "s", OnlyForInput = [.. ObjectKinds, PortKind.Condition] },
             new() { Key = OffAfterKey, Label = "Off after", Type = NodeFieldType.Number, Default = "2", Min = 0, Max = 3600, Unit = "s", OnlyForInput = [.. ObjectKinds, PortKind.Condition] },
-            new() { Key = LimitKey, Label = "Limit", Type = NodeFieldType.Number, Optional = true, Min = 0, Max = 1_000_000, OnlyForInput = [PortKind.Number] },
         ],
     };
 
