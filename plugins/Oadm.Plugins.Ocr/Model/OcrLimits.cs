@@ -76,7 +76,7 @@ public static class OcrLimits
     public static readonly TimeSpan SmallTextWait = TimeSpan.FromSeconds(10);
 
     /// <summary>The longest pause before a dropped stream is opened again (the pause grows up to it).</summary>
-    public static readonly TimeSpan MaxReopenPause = TimeSpan.FromMinutes(1);
+    public static readonly TimeSpan MaxReopenPause = Shared.Vision.CameraFrames.MaxReopenPause;
 
     /// <summary>
     /// Threads of one model call: one. Measured on 24 cores: 12 calls at once of one thread read 226 lines per second at 44

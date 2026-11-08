@@ -21,10 +21,10 @@ public static class ReaderRules
     /// <summary>The smallest and largest picture side the readers ask for.</summary>
     public const int MinSide = 160;
 
-    public const int MaxSide = 7680;
+    public const int MaxSide = PictureLimits.MaxSide;
 
     /// <summary>The most pixels a picture may have (8K, 7680 x 4320): a larger one is never decoded (memory).</summary>
-    public const long MaxPixels = 7680L * 4320;
+    public const long MaxPixels = PictureLimits.MaxPixels;
 
     public const string NameMissing = "Enter a name.";
 
@@ -103,7 +103,7 @@ public static class ReaderRules
     public const string NoAreas = "The reader has no area. Draw one on the Text recognition page.";
 
     /// <summary>"CPU (8 cores)": what reads without a graphics card.</summary>
-    public static string CpuText(int cores) => string.Create(CultureInfo.InvariantCulture, $"CPU ({cores} {(cores == 1 ? "core" : "cores")})");
+    public static string CpuText(int cores) => EngineRules.CpuText(cores);
 
     public static readonly string TooManyAreas = string.Create(CultureInfo.InvariantCulture, $"A reader has at most {OcrLimits.MaxAreas} areas.");
 

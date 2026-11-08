@@ -39,7 +39,7 @@ public sealed partial class OcrPlugin : ICorePlugin, IDynamicEventSource, IActio
             return "The model " + Path.GetFileName(model) + " is missing.";
         }
 
-        using var session = Recognition.SessionFactory.Create(model, Recognition.ExecutionTarget.Cpu, threads: 1);
+        using var session = SessionFactory.Create(model, ExecutionTarget.Cpu, threads: 1);
         using var picture = new SkiaSharp.SKBitmap(1, 1);
         return null;
     }
