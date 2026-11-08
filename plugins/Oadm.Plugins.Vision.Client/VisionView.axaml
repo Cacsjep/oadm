@@ -100,9 +100,11 @@
                   </StackPanel>
                   <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding Line}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Details}" />
                   <Button x:Name="ModelActions" Grid.Column="1" Grid.RowSpan="2" Classes="toolbar iconOnly" VerticalAlignment="Center"
-                          ToolTip.Tip="{x:Static ui:RowActions.Tip}" Click="OnModelActions">
+                          ToolTip.Tip="{x:Static ui:RowActions.Tip}" Click="OnModelActions" IsVisible="{Binding !IsSaving}">
                     <ui:OadmIcon Data="{StaticResource Icon.more}" />
                   </Button>
+                  <ui:ProgressRing Grid.Column="1" Grid.RowSpan="2" Width="16" Height="16" VerticalAlignment="Center" HorizontalAlignment="Center"
+                                   IsVisible="{Binding IsSaving}" />
                 </Grid>
               </DataTemplate>
               <DataTemplate x:DataType="vm:UploadRow">

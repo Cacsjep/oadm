@@ -6,6 +6,7 @@ using Oadm.Plugins.Vision.Model;
 using Oadm.Plugins.Vision.Models;
 using Oadm.Plugins.Vision.Pipelines;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Vision.Tests.Client;
 
@@ -133,6 +134,45 @@ public sealed class ModelSettingsTests
         await models.SettingsCommand.ExecuteAsync(models.Rows.OfType<ModelRow>().Single(r => r.Model.Id == "m2"));
         Assert.Single(dialogs.Forms);
         Assert.Equal("The model no longer exists.", Assert.Single(ctx.Messages).Message);
+    }
+
+    [Fact]
+    public async Task The_model_row_shows_a_ring_while_its_settings_are_saved()
+    {
+        var ctx = PageSamples.Context();
+        var dialogs = new Dialogs { Settings = _ => true };
+        var models = new ModelsViewModel(ctx) { Dialogs = dialogs };
+        await models.LoadAsync(CancellationToken.None);
+        var answer = new TaskCompletionSource<string?>();
+        ctx.AsyncAnswers[VisionMethods.UpdateModel] = _ => answer.Task;
+        var row = models.Rows.OfType<ModelRow>().Single(r => r.Model.Id == "m2");
+        var save = models.SettingsCommand.ExecuteAsync(row);
+        await Eventually.TrueAsync(() => ctx.CallsOf(VisionMethods.UpdateModel) == 1, "the save call");
+        Assert.True(row.IsSaving);
+        answer.SetResult(VisionJson.Serialize(PageSamples.Detr));
+        await save;
+        Assert.False(models.Rows.OfType<ModelRow>().Single(r => r.Model.Id == "m2").IsSaving);
+    }
+
+    [Fact]
+    public async Task A_labels_file_that_cannot_be_read_says_so_in_the_upload_row()
+    {
+        var ctx = PageSamples.Context();
+        var models = new ModelsViewModel(ctx);
+        await models.LoadAsync(CancellationToken.None);
+        await models.UploadFilesAsync([new MemoryModelFile("yolo.onnx", [1, 2, 3]), new UnreadableFile("labels.txt")]);
+        var row = Assert.Single(models.Rows.OfType<UploadRow>());
+        Assert.Equal("The file is in use.", row.Refusal);
+        Assert.Equal(0, ctx.CallsOf(VisionMethods.BeginUpload));
+    }
+
+    private sealed class UnreadableFile(string name) : IModelFile
+    {
+        public string Name => name;
+
+        public long Length => 10;
+
+        public Task<Stream> OpenReadAsync() => Task.FromException<Stream>(new IOException("The file is in use."));
     }
 
     [Fact]
