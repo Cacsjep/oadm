@@ -313,10 +313,13 @@ internal sealed class LineNode : VisionNode
 
 /// <summary>
 /// Count: the objects there now, or the crossings In and Out since the last reset. Its value on crossings is In, Out for a
-/// line that counts Out only.
+/// line that counts Out only. Only while no: it counts nothing and keeps its value. A pulse into Reset starts it (and its
+/// Line) again at 0 after this frame's output, so a Report of the same pulse still sees the old value.
 /// </summary>
 internal sealed class CountNode(PipelineNode node, PortKind? input, LineNode? line) : VisionNode(node, NodeKinds.CountKind, input)
 {
+    private long _objects;
+
     public LineNode? Line { get; } = line;
 
     public long In { get; private set; }
@@ -327,38 +330,49 @@ internal sealed class CountNode(PipelineNode node, PortKind? input, LineNode? li
     {
         In = 0;
         Out = 0;
+        Line?.Reset();
     }
 
     public override ValueTask<NodeOutput> RunAsync(NodeOutput? input, FrameContext frame)
     {
         ArgumentNullException.ThrowIfNull(input);
+        var counting = While(frame);
+        NodeOutput output;
         if (Input != PortKind.Crossings)
         {
-            var count = input.Objects.Count;
-            return ValueTask.FromResult(new NodeOutput { NodeId = Id, Kind = PortKind.Number, Value = count, Live = LiveText.Number(count) });
+            if (counting)
+            {
+                _objects = input.Objects.Count;
+            }
+
+            output = new NodeOutput { NodeId = Id, Kind = PortKind.Number, Value = _objects, Live = LiveText.Number(_objects) };
+        }
+        else
+        {
+            if (counting)
+            {
+                foreach (var c in input.Crossings)
+                {
+                    if (c.Direction == CrossDirection.In)
+                    {
+                        In++;
+                    }
+                    else
+                    {
+                        Out++;
+                    }
+                }
+            }
+
+            var value = Line?.Directions == NodeKinds.DirectionsOut ? Out : In;
+            output = new NodeOutput { NodeId = Id, Kind = PortKind.Number, In = In, Out = Out, Value = value, Live = LiveText.Number(value) };
         }
 
-        foreach (var c in input.Crossings)
+        if (Pulsed(frame, NodeKinds.ResetPort))
         {
-            if (c.Direction == CrossDirection.In)
-            {
-                In++;
-            }
-            else
-            {
-                Out++;
-            }
+            Reset();
         }
 
-        var value = Line?.Directions == NodeKinds.DirectionsOut ? Out : In;
-        return ValueTask.FromResult(new NodeOutput
-        {
-            NodeId = Id,
-            Kind = PortKind.Number,
-            In = In,
-            Out = Out,
-            Value = value,
-            Live = LiveText.Number(value),
-        });
+        return ValueTask.FromResult(output);
     }
 }
