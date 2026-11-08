@@ -25,7 +25,7 @@ On the first `run dev`, trust the server, then create the first administrator (n
 | `manage run client [--fake] [--server URL] [--data DIR]` | Run the client; `--fake` uses sample data without a server |
 | `manage run dev [--port N] [--data DIR]` | Server in the background (log in `artifacts/logs/server-dev.log`), then the client; closing the client stops the server |
 | `manage run node\|node-app` | The OADM Site Node on the console and its app, with their own data folder (`artifacts/dev-node`) |
-| `manage test [unit\|perf\|hardware\|recipients\|all] [--filter EXPR]` | Run tests, see [Tests](#tests) |
+| `manage test [unit\|perf\|hardware\|models\|gpu\|recipients\|all] [--filter EXPR]` | Run tests, see [Tests](#tests) |
 | `manage publish [all\|server\|client] [--rid RID] [--version V]` | Self-contained single-file apps in `artifacts/publish/<app>/<rid>`, plugins next to each exe |
 | `manage package <windows\|linux\|macos> [--rid RID] [--version V]` | Installer (MSI, .deb, .pkg) in `artifacts/packages/` |
 | `manage package site-node [--rid RID]` | The OADM Site Node installers (Windows MSI, Linux .deb) |
@@ -58,6 +58,7 @@ On the first `run dev`, trust the server, then create the first administrator (n
 | `Perf` | `manage test perf` | 100,000 devices, 50,000 tasks |
 | `Hardware` | `manage test hardware` | Read-only, against your cameras in `dev-cameras.yaml` |
 | `RealModel` | `manage test models` | Real models and photos, downloaded once into the model cache |
+| `Gpu` | `manage test gpu` | The vision add-ons on the graphics card; skip without one, never in `all` or CI |
 | `RecipientStack` | `manage test recipients` | Real MQTT, Modbus and OPC UA servers in Docker |
 | `HardwareWrite` | never on a device from `manage` | Change a device; only on purpose, only on a test device |
 

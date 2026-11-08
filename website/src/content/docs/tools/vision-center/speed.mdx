@@ -54,26 +54,28 @@ include collecting data. Turn off **Use GPU** and restart the server to keep Dir
 </Aside>
 
 Text recognition and Vision Center each keep their own workers. Both on one server can fill its cores: watch both pages'
-status.
+status. Both can use the graphics card at the same time.
 
 ## Measured
 
-One picture on one CPU core of a development PC (24 cores), November 2026. A server reads up to half its cores in
-parallel; a graphics card is faster.
+One picture on a development PC (24 cores, NVIDIA GeForce RTX 5070 Ti on Windows), November 2026. The CPU column is one
+CPU core; a server reads up to half its cores in parallel. An empty cell was not measured on the card.
 
-| Model | Kind | Time per picture |
-|---|---|---|
-| YOLO11n classification | Classification | About 8 ms |
-| MobileNetV2 | Classification | About 10 ms |
-| ResNet-50 | Classification | About 76 ms |
-| YOLOX nano | Detection | About 27 ms |
-| YOLO26n | Detection | About 79 ms |
-| YOLOv8n, YOLO11n | Detection | About 105 ms |
-| D-FINE S | Detection | About 460 ms |
-| RF-DETR small | Detection | About 645 ms |
-| DETR R50 | Detection | About 690 ms |
-| RT-DETR v2 R18 | Detection | About 710 ms |
-| RF-DETR medium | Detection | About 860 ms |
+| Model | Kind | One CPU core | Graphics card |
+|---|---|---|---|
+| YOLO11n classification | Classification | About 8 ms | |
+| MobileNetV2 | Classification | About 10 ms | |
+| ResNet-50 | Classification | About 76 ms | About 5 ms |
+| YOLOX nano | Detection | About 27 ms | |
+| YOLO26n | Detection | About 79 ms | About 7 ms |
+| YOLOv8n, YOLO11n | Detection | About 105 ms | About 10 ms, exported with `opset=20` or lower |
+| D-FINE S | Detection | About 460 ms | |
+| RF-DETR small | Detection | About 645 ms | |
+| DETR R50 | Detection | About 690 ms | |
+| RT-DETR v2 R18 | Detection | About 710 ms | |
+| RF-DETR medium | Detection | About 860 ms | About 15 ms |
+
+With Text recognition reading on the same card at the same time, Vision Center's times stayed the same.
 
 The nodes after the model cost little: one picture through 32 nodes with 300 objects takes about 7 ms. The model's
 tooltip in **Models** shows its time on the CPU and on the card for your server.

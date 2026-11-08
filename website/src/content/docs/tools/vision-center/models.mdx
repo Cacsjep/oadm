@@ -65,7 +65,7 @@ Times are for one picture on one CPU core.
 
 | Model | Licence | Download | Status |
 |---|---|---|---|
-| YOLO11n | AGPL-3.0 | [yolo11n.onnx](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n.onnx) | Tested: 640 x 640, 0.1 s |
+| YOLO11n | AGPL-3.0 | [yolo11n.onnx](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n.onnx) | Tested: 640 x 640, 0.1 s. On a graphics card on Windows mostly on the CPU: [export it](#yolo-1) with `opset=20` |
 | YOLOv8n | AGPL-3.0 | [yolov8n.onnx](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolov8n.onnx) | Tested: 640 x 640, 0.1 s |
 | YOLO26n | AGPL-3.0 | [yolo26n.onnx](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.onnx) | Tested: 640 x 640, 0.08 s |
 | YOLO26n for Transformers.js | AGPL-3.0 | [model.onnx](https://huggingface.co/onnx-community/yolo26n-ONNX/resolve/a8dc7e14743e1cea8ccd493bd99b4c2827de1acf/onnx/model.onnx) | Tested: 640 x 640, 0.09 s |
@@ -201,10 +201,11 @@ for a free one OADM uses 640 x 640.
 With Ultralytics (`pip install ultralytics`):
 
 ```sh
-yolo export model=yolo11n.pt format=onnx
+yolo export model=yolo11n.pt format=onnx opset=20
 ```
 
-Your own trained model works the same way (`model=best.pt`). The class names travel inside the file.
+Your own trained model works the same way (`model=best.pt`). The class names travel inside the file. With `opset=20` a
+graphics card on Windows runs the whole model; with a newer opset part of it runs on the CPU and the card is slower than the CPU.
 
 ### DETR
 
