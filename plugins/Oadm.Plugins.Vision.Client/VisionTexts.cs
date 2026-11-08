@@ -112,6 +112,8 @@ public static class VisionTexts
     public const string TurnedOff = "turned off";
     public const string SearchEvents = "Search events";
     public const string NoEventMatches = "No event matches the search.";
+    public const string ReadingEvents = "Reading the events";
+    public const string NoEvents = "No event to follow. Turn on the plugins that send events.";
     public const string ChooseDevice = "Choose a device";
     public const string ChooseAnEvent = "Choose an event.";
 

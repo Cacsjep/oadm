@@ -44,6 +44,10 @@ public sealed partial class ModelRow : ModelsRow
     [ObservableProperty]
     public partial string Details { get; private set; } = string.Empty;
 
+    /// <summary>A change of the model is being saved: a ring in place of its menu.</summary>
+    [ObservableProperty]
+    public partial bool IsSaving { get; set; }
+
     public bool IsMissing => Model.Missing;
 
     public static string MissingText => VisionTexts.Missing;
@@ -283,13 +287,7 @@ public sealed partial class ModelsViewModel : ObservableObject
             return;
         }
 
-        string? labels = null;
-        if (files.FirstOrDefault(f => !ReferenceEquals(f, file) && f.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)) is { } labelsFile)
-        {
-            using var reader = new StreamReader(await labelsFile.OpenReadAsync().ConfigureAwait(true));
-            labels = await reader.ReadToEndAsync().ConfigureAwait(true);
-        }
-
+        var labelsFile = files.FirstOrDefault(f => !ReferenceEquals(f, file) && f.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase));
         var row = new UploadRow(file.Name);
         row.Dismissed += (_, _) => RemoveRow(row);
         Rows.Add(row);
@@ -299,6 +297,14 @@ public sealed partial class ModelsViewModel : ObservableObject
         string? uploadId = null;
         try
         {
+            // The labels file is read here: a file that cannot be read says so in the row.
+            string? labels = null;
+            if (labelsFile is not null)
+            {
+                using var reader = new StreamReader(await labelsFile.OpenReadAsync().ConfigureAwait(true));
+                labels = await reader.ReadToEndAsync(ct).ConfigureAwait(true);
+            }
+
             var beginJson = await _ctx.InvokeAsync(VisionMethods.BeginUpload,
                 VisionJson.Serialize(new BeginUploadRequest { FileName = file.Name, Size = file.Length, Labels = labels }), ct).ConfigureAwait(true);
             var begin = VisionJson.Deserialize<BeginUploadReply>(beginJson);
@@ -433,11 +439,14 @@ public sealed partial class ModelsViewModel : ObservableObject
         var form = new ModelSettingsViewModel(row.Model);
         while (await dialogs.EditModelSettingsAsync(form).ConfigureAwait(true))
         {
+            var saving = RowOf(row.Model.Id);
+            saving?.IsSaving = true;
             try
             {
                 var json = await _ctx.InvokeAsync(VisionMethods.UpdateModel, VisionJson.Serialize(new UpdateModelRequest { Model = form.ToModel() }), CancellationToken.None)
                     .ConfigureAwait(true);
                 var model = VisionJson.Deserialize<VisionModel>(json);
+                saving?.IsSaving = false;
                 Apply(new ModelList { Models = [.. Models.Select(m => m.Id == model.Id ? model : m)], UsedBy = _modelsUsedBy });
                 return;
             }
@@ -446,6 +455,7 @@ public sealed partial class ModelsViewModel : ObservableObject
 #pragma warning restore CA1031
             {
                 var message = ServerErrors.Message(ex);
+                saving?.IsSaving = false;
                 if (!form.ShowRefusal(message))
                 {
                     await _ctx.ShowMessageAsync(VisionTexts.ModelSettings, message).ConfigureAwait(true);
@@ -602,8 +612,12 @@ public sealed partial class ModelsViewModel : ObservableObject
         }
     }
 
+    private ModelRow? RowOf(string id) => Rows.OfType<ModelRow>().FirstOrDefault(r => r.Model.Id == id);
+
     private async Task UpdateAsync(string title, VisionModel changed)
     {
+        var saving = RowOf(changed.Id);
+        saving?.IsSaving = true;
         var error = await GuardedRun.RunAsync(async () =>
         {
             var json = await _ctx.InvokeAsync(VisionMethods.UpdateModel, VisionJson.Serialize(new UpdateModelRequest { Model = changed }), CancellationToken.None)
@@ -615,6 +629,7 @@ public sealed partial class ModelsViewModel : ObservableObject
                 UsedBy = _modelsUsedBy,
             });
         }).ConfigureAwait(true);
+        saving?.IsSaving = false;
         if (error is not null)
         {
             await _ctx.ShowMessageAsync(title, error).ConfigureAwait(true);

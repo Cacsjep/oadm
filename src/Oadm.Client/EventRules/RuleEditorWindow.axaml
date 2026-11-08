@@ -83,7 +83,7 @@
                               <ColumnDefinition Width="*" MaxWidth="{StaticResource Oadm.CheckValueWidth}" />
                               <ColumnDefinition Width="Auto" SharedSizeGroup="CheckEnd" />
                             </Grid.ColumnDefinitions>
-                            <vm:EventPicker Grid.ColumnSpan="3" Tree="{Binding Tree}" Selected="{Binding SelectedEventType}" />
+                            <ui:EventPicker Grid.ColumnSpan="3" Tree="{Binding Tree}" Selected="{Binding SelectedEventType}" />
                             <!-- The info icon, then the remove icon of an "And" (right after the select, not at the row's end) -->
                             <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2" VerticalAlignment="Top">
                               <ui:InfoIcon Text="{Binding EventDescription}" />

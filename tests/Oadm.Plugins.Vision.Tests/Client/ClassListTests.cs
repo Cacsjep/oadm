@@ -159,6 +159,27 @@ public sealed class ClassListTests
     }
 
     [Fact]
+    public void The_main_buttons_tooltip_says_why_also_when_only_the_names_are_wrong()
+    {
+        var list = new ClassListEditViewModel(PageSamples.GateClasses, _ => false);
+        Assert.Null(list.Error);
+        list.Names.Text = string.Empty;
+        Assert.False(list.OkCommand.CanExecute(null));
+        Assert.NotNull(list.Error);
+        Assert.Equal(list.Names.FirstError, list.Error);
+        list.Names.Text = "person";
+        Assert.Null(list.Error);
+
+        var model = ModelEditViewModel.ForClassList(PageSamples.RfDetr, PageSamples.ClassLists.Lists);
+        model.SelectedChoice = model.Choices[0]; // own names
+        model.Own.Text = "person\ncar";
+        Assert.False(model.OkCommand.CanExecute(null));
+        Assert.Equal(VisionTexts.WrongClassCount, model.Error);
+        model.SelectedChoice = model.Choices.Single(c => c.Id == "gate6"); // a list: the own names do not count
+        Assert.Null(model.Error);
+    }
+
+    [Fact]
     public async Task Choosing_a_list_updates_the_model_with_its_id_and_names()
     {
         var (models, ctx, dialogs) = await LoadAsync();

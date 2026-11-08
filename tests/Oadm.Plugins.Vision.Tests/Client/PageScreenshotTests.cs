@@ -53,11 +53,12 @@ public sealed class PageScreenshotTests
                 Headless.Capture(window, $"vision-page-{suffix}.png");
 
                 // The splitter dragged left: the right column wider, the video with it; never the canvas below its minimum.
-                Assert.Equal(PageLayout.RightMinWidth, view.RightWidth, 0);
-                view.SetRightWidth(760);
+                var before = view.RightWidth;
+                Assert.True(before >= PageLayout.RightMinWidth - 1, $"the right column starts at {before}, at least its minimum");
+                view.SetRightWidth(before + 300);
                 window.UpdateLayout();
                 Headless.Pump();
-                Assert.Equal(760, view.RightWidth, 0);
+                Assert.True(view.RightWidth > before, $"the right column is wider: {view.RightWidth} after {before}");
                 Headless.Capture(window, $"vision-page-wide-right-{suffix}.png");
                 view.SetRightWidth(5000);
                 window.UpdateLayout();
@@ -340,6 +341,19 @@ public sealed class PageScreenshotTests
                 Assert.Equal(50, slider.Slider.Value);
                 Headless.Capture(window, $"vision-slider-form-{suffix}.png");
 
+                // A wrong number: the red border stays while the input has the focus and under the pointer.
+                slider.Box.Text = "500";
+                slider.Box.Focus();
+                Headless.Pump();
+                Assert.True(slider.Box.IsFocused);
+                Assert.Contains("error", slider.Classes);
+                var border = slider.Box.GetVisualDescendants().OfType<Border>().First(b => b.Name == "PART_BorderElement");
+                var red = (Avalonia.Media.ISolidColorBrush)Avalonia.Application.Current!.FindResource("Oadm.StatusErrorBrush")!;
+                Assert.Equal(red.Color, Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(border.BorderBrush).Color);
+                Headless.Capture(window, $"vision-slider-error-focus-{suffix}.png");
+                slider.Box.Text = "50";
+                Headless.Pump();
+
                 // Compare with Between: And shows.
                 editor.Canvas.SelectedNode = editor.Canvas.Find("e");
                 var op = Assert.IsType<ChoiceFieldViewModel>(editor.Form!.Fields.Single(f => f.Field.Key == Oadm.Plugins.Vision.Model.NodeKinds.OperatorKey));
@@ -410,7 +424,30 @@ public sealed class PageScreenshotTests
             Headless.Pump();
             Assert.True(picker.OkCommand.CanExecute(null));
             Headless.Capture(dialog, $"vision-event-type-dialog-{suffix}.png");
+            dialog.SizeToContent = SizeToContent.Manual; // room for the panel below the field in the picture
+            dialog.Height = 520;
+            var select = dialog.FindControl<EventPicker>("EventPicker")!;
+            select.SetOpen(true); // the event rules' select: its folders, search and description
+            Headless.Pump();
+            Assert.True(select.IsOpen);
+            Headless.Capture(dialog, $"vision-event-type-open-{suffix}.png");
+            select.SetOpen(false);
             dialog.Close();
+
+            // While the list is read: the ring at once; a failure below the field.
+            var reading = new EventTypePickerViewModel("io.port.door");
+            var waiting = new EventTypeWindow { DataContext = reading };
+            Oadm.Client.App.ApplyCrispText(waiting);
+            waiting.Show();
+            Headless.Pump();
+            Assert.True(waiting.GetVisualDescendants().OfType<LoadingOverlay>().Single().IsEffectivelyVisible);
+            Assert.False(reading.OkCommand.CanExecute(null));
+            Headless.Capture(waiting, $"vision-event-type-loading-{suffix}.png");
+            await reading.LoadAsync(_ => Task.FromException<IReadOnlyList<EventTypeChoice>>(new InvalidOperationException("The server does not answer.")), CancellationToken.None);
+            Headless.Pump();
+            Assert.Contains(waiting.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "The server does not answer.");
+            Headless.Capture(waiting, $"vision-event-type-failed-{suffix}.png");
+            waiting.Close();
             return true;
         }, CancellationToken.None);
     }

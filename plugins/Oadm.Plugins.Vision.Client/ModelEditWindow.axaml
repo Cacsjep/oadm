@@ -34,7 +34,7 @@
       </StackPanel>
     </Border>
     <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
-      <Button Classes="primary" Content="{Binding ConfirmText}" Command="{Binding OkCommand}" ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+      <Button Classes="primary" Content="{Binding ConfirmText}" Command="{Binding OkCommand}" ToolTip.Tip="{Binding Error}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>
 </Window>

@@ -122,7 +122,11 @@ public sealed partial class ClassListEditViewModel : ValidatingViewModel
         IsReadOnly = isReadOnly;
         Name = list?.Name ?? string.Empty;
         Names = new ClassNamesEditor(list?.Names ?? [], null, isReadOnly);
-        Names.ValidityChanged += (_, _) => OkCommand.NotifyCanExecuteChanged();
+        Names.ValidityChanged += (_, _) =>
+        {
+            OkCommand.NotifyCanExecuteChanged();
+            UpdateError();
+        };
         Validation.Rule(nameof(Name), () => Name.Trim().Length == 0 ? GraphTexts.EnterName
             : Name.Trim().Length > VisionLimits.MaxNameLength ? GraphTexts.NameTooLong
             : _taken(Name.Trim()) ? VisionTexts.ClassListNameTaken
@@ -152,6 +156,20 @@ public sealed partial class ClassListEditViewModel : ValidatingViewModel
     public partial string Name { get; set; }
 
     public ClassNamesEditor Names { get; }
+
+    /// <summary>Why the main button is off: the name's error, else the names' (the button's tooltip).</summary>
+    public string? Error { get; private set; }
+
+    // Raised only when it changes: a property change revalidates the form, which calls this again.
+    private void UpdateError()
+    {
+        var error = FormError ?? Names?.FormError;
+        if (error != Error)
+        {
+            Error = error;
+            OnPropertyChanged(nameof(Error));
+        }
+    }
 
     /// <summary>The list as it would be saved.</summary>
     public ClassList ToList() => new() { Id = Id, Name = Name.Trim(), Names = Names.Names };
@@ -196,7 +214,11 @@ public sealed partial class ClassListEditViewModel : ValidatingViewModel
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(this, false);
 
-    protected override void OnValidationChanged() => OkCommand.NotifyCanExecuteChanged();
+    protected override void OnValidationChanged()
+    {
+        OkCommand.NotifyCanExecuteChanged();
+        UpdateError();
+    }
 }
 
 /// <summary>A choice of a model's Class list dialog: a list that fits its class count, or its own names (null id).</summary>
@@ -223,7 +245,11 @@ public sealed partial class ModelEditViewModel : ValidatingViewModel
         _taken = taken;
         Name = model.Name;
         Own = new ClassNamesEditor(model.ClassNames, model.ClassNames.Count);
-        Own.ValidityChanged += (_, _) => OkCommand.NotifyCanExecuteChanged();
+        Own.ValidityChanged += (_, _) =>
+        {
+            OkCommand.NotifyCanExecuteChanged();
+            UpdateError();
+        };
         Choices = [new ClassListChoice(null, VisionTexts.OwnNames), .. lists.Where(l => l.Names.Count == model.ClassNames.Count).Select(l => new ClassListChoice(l.Id, l.Name))];
         SelectedChoice = Choices.FirstOrDefault(c => c.Id is not null && c.Id == model.ClassListId) ?? Choices[0];
         if (isRename)
@@ -276,6 +302,8 @@ public sealed partial class ModelEditViewModel : ValidatingViewModel
     [NotifyCanExecuteChangedFor(nameof(OkCommand))]
     public partial ClassListChoice? SelectedChoice { get; set; }
 
+    partial void OnSelectedChoiceChanged(ClassListChoice? value) => UpdateError(); // the own names count only while they show
+
     /// <summary>No class list has as many names as the model has classes: why the select offers only its own names.</summary>
     public string? NoFittingList => IsClassList && Choices.Count == 1 ? VisionTexts.NoFittingList(Own.Count ?? 0) : null;
 
@@ -286,6 +314,20 @@ public sealed partial class ModelEditViewModel : ValidatingViewModel
 
     /// <summary>The model's own names, editable (as many as it has classes).</summary>
     public ClassNamesEditor Own { get; }
+
+    /// <summary>Why the main button is off: the form's error, else the own names' while they show (the button's tooltip).</summary>
+    public string? Error { get; private set; }
+
+    // Raised only when it changes: a property change revalidates the form, which calls this again.
+    private void UpdateError()
+    {
+        var error = FormError ?? (IsOwn ? Own?.FormError : null);
+        if (error != Error)
+        {
+            Error = error;
+            OnPropertyChanged(nameof(Error));
+        }
+    }
 
     /// <summary>A list chosen: its names, read only.</summary>
     public string ChosenNames => SelectedChoice?.Id is { } id && _lists.FirstOrDefault(l => l.Id == id) is { } list
@@ -318,5 +360,9 @@ public sealed partial class ModelEditViewModel : ValidatingViewModel
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(this, false);
 
-    protected override void OnValidationChanged() => OkCommand.NotifyCanExecuteChanged();
+    protected override void OnValidationChanged()
+    {
+        OkCommand.NotifyCanExecuteChanged();
+        UpdateError();
+    }
 }

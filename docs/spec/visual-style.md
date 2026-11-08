@@ -173,6 +173,9 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   minutes); every other number stays a plain input.
 - `DayChips` (`IDayChoice`, `DayChoice.Week()`): the weekday toggle chips, Monday first (the event rules' schedule, Vision
   Center's Time window).
+- `EventPicker` over an `EventTree` of `EventChoice` (id, name, folders, available, description): the event select, a
+  field with the chosen event's folders, its panel with search, the folder tree and the event's description (the event
+  rule dialog's events, Vision Center's Choose event).
 - `SearchBox`: every search field. `OadmIcon`: every icon; class `fieldIcon` with `inner` puts an icon into a text box
   through its `InnerLeftContent` (the login's user name and password). `LeadingIcon`: wraps one ComboBox or TextBox and
   puts a `fieldIcon` at its left inside, level with the input's first line (the theme's `ui|LeadingIcon > ComboBox`,

@@ -66,6 +66,9 @@ public sealed partial class PipelineListRow : ObservableObject
 
     public bool IsOk => !IsError && !IsWarning && Row.Mode == PipelineMode.Watching;
 
+    /// <summary>The camera's label after a change of the device list (no change: nothing raised).</summary>
+    public void SetCamera(string camera) => Camera = camera;
+
     public void Apply(Api.PipelineRow row, string camera)
     {
         ArgumentNullException.ThrowIfNull(row);
@@ -133,6 +136,8 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
     private readonly Dictionary<string, PipelineListRow> _rows = new(StringComparer.Ordinal);
     private readonly List<string> _order = [];
     private readonly Dictionary<Guid, string> _cameraTexts = [];
+    private int _labelsVersion;
+    private bool _disposed;
     private CancellationTokenSource? _active;
     private int _openVersion;
     private bool _applyingEngine;
@@ -432,6 +437,7 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        _disposed = true;
         Deactivate();
         _ctx.PermissionsChanged -= OnPermissionsChanged;
         _ctx.DevicesChanged -= OnDevicesChanged;
@@ -623,6 +629,7 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
     public void ApplyList(PipelineList list)
     {
         ArgumentNullException.ThrowIfNull(list);
+        LearnCameraTexts(list.Pipelines.Select(p => p.DeviceId)); // the new cameras' labels in one pass over the devices
         var ids = new HashSet<string>(StringComparer.Ordinal);
         foreach (var row in list.Pipelines)
         {
@@ -652,10 +659,17 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
     private void ApplyFilter()
     {
         var query = SearchText.Trim();
-        Pipelines.ReplaceAll(_order.Select(id => _rows[id]).Where(r => query.Length == 0
+        var shown = _order.Select(id => _rows[id]).Where(r => query.Length == 0
             || r.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
-            || r.Camera.Contains(query, StringComparison.OrdinalIgnoreCase)));
-        SetSelected(Editor is { IsNew: false } e && _rows.TryGetValue(e.Id, out var shown) && Pipelines.Contains(shown) ? shown : null);
+            || r.Camera.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        // The rows update in place; the list resets only when its rows or their order change (an open menu stays open).
+        if (!shown.SequenceEqual(Pipelines))
+        {
+            Pipelines.ReplaceAll(shown);
+        }
+
+        SetSelected(Editor is { IsNew: false } e && _rows.TryGetValue(e.Id, out var open) && Pipelines.Contains(open) ? open : null);
         OnPropertyChanged(nameof(ShowNoMatch));
         OnPropertyChanged(nameof(ShowEmpty));
         NewCommand.NotifyCanExecuteChanged();
@@ -877,19 +891,89 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
     internal bool PipelineNameTaken(string id, string name) =>
         _rows.Values.Any(r => r.Id != id && string.Equals(r.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>"AXIS Q1798-LE · 10.0.0.48" of the pipelines' cameras (at most 50), found in one pass over the devices.</summary>
+    /// <summary>"AXIS Q1798-LE · 10.0.0.48" of a pipeline's camera (from the labels of <see cref="LearnCameraTexts"/>).</summary>
     internal string CameraText(Guid deviceId)
     {
-        if (_cameraTexts.TryGetValue(deviceId, out var text))
+        if (!_cameraTexts.TryGetValue(deviceId, out var text))
         {
-            return text;
+            LearnCameraTexts([deviceId]);
+            text = _cameraTexts[deviceId];
         }
 
-        var device = _ctx.Devices.FirstOrDefault(d => d.Id == deviceId);
-        text = device is null ? DeviceTexts.Removed(deviceId.ToString("N")) : string.IsNullOrEmpty(device.Model) ? device.Address : $"{device.Model} · {device.Address}";
-        _cameraTexts[deviceId] = text;
         return text;
     }
+
+    /// <summary>
+    /// The labels of the cameras not known yet (a new pipeline, the first list), in one pass over the devices, never one per
+    /// pipeline.
+    /// </summary>
+    private void LearnCameraTexts(IEnumerable<Guid> deviceIds)
+    {
+        var missing = deviceIds.Where(id => !_cameraTexts.ContainsKey(id)).ToHashSet();
+        if (missing.Count > 0)
+        {
+            foreach (var (id, text) in CameraLabels(_ctx.Devices, missing))
+            {
+                _cameraTexts[id] = text;
+            }
+        }
+    }
+
+    /// <summary>"AXIS Q1798-LE · 10.0.0.48" of each of <paramref name="ids"/> in one pass over <paramref name="devices"/>.</summary>
+    private static Dictionary<Guid, string> CameraLabels(IReadOnlyList<IDeviceInfo> devices, HashSet<Guid> ids)
+    {
+        var labels = new Dictionary<Guid, string>(ids.Count);
+        foreach (var device in devices)
+        {
+            if (ids.Contains(device.Id) && !labels.ContainsKey(device.Id))
+            {
+                labels[device.Id] = string.IsNullOrEmpty(device.Model) ? device.Address : $"{device.Model} · {device.Address}";
+                if (labels.Count == ids.Count)
+                {
+                    break;
+                }
+            }
+        }
+
+        foreach (var gone in ids.Where(id => !labels.ContainsKey(id)))
+        {
+            labels[gone] = DeviceTexts.Removed(gone.ToString("N"));
+        }
+
+        return labels;
+    }
+
+    /// <summary>
+    /// The device list changed: the rows' camera labels again, in one pass off the UI thread (several milliseconds at 100,000
+    /// devices); the newest change wins, only rows whose label changed update.
+    /// </summary>
+    private async Task RelabelCamerasAsync()
+    {
+        var version = ++_labelsVersion;
+        var devices = _ctx.Devices;
+        var ids = _rows.Values.Select(r => r.DeviceId).ToHashSet();
+        var labels = await Task.Run(() => CameraLabels(devices, ids)).ConfigureAwait(true);
+        if (version != _labelsVersion || _disposed)
+        {
+            return;
+        }
+
+        _cameraTexts.Clear();
+        foreach (var (id, text) in labels)
+        {
+            _cameraTexts[id] = text;
+        }
+
+        foreach (var row in _rows.Values)
+        {
+            row.SetCamera(CameraText(row.DeviceId));
+        }
+
+        CamerasRelabeled?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>The camera labels follow a change of the device list (tests).</summary>
+    internal event EventHandler? CamerasRelabeled;
 
     /// <summary>Every device of the user (the device of a Device event).</summary>
     public IEnumerable<IDeviceInfo> AllDevices => _ctx.Devices;
@@ -897,7 +981,8 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
     /// <summary>The cameras a new pipeline may start from (the picker).</summary>
     public IEnumerable<IDeviceInfo> Cameras => _ctx.Devices.Where(d => d.HasVideo);
 
-    private void OnDevicesChanged(object? sender, EventArgs e) => _cameraTexts.Clear();
+    /// <summary>The device list changed: the rows' camera labels again, in one pass; only rows whose label changed update.</summary>
+    private void OnDevicesChanged(object? sender, EventArgs e) => _ = RelabelCamerasAsync();
 
     private void OnPermissionsChanged(object? sender, EventArgs e)
     {

@@ -5,29 +5,21 @@
         x:Class="Oadm.Plugins.Vision.Client.EventTypeWindow"
         x:DataType="vm:EventTypePickerViewModel"
         Title="{x:Static vm:EventTypePickerViewModel.Title}"
-        Width="440" SizeToContent="Height"
+        Width="480" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         CanResize="False"
         WindowDecorations="BorderOnly">
-  <!-- Choose event of the Device event node: the event types in their folders, as the event rules' picker shows them. -->
+  <!-- Choose event of the Device event node: the event rules' event select; a ring while the list is read. -->
   <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:EventTypePickerViewModel.Title}" />
     <Border Grid.Row="1" Classes="dialogBody">
-      <DockPanel>
-        <ui:SearchBox x:Name="EventSearch" DockPanel.Dock="Top" Classes="stretch" Text="{Binding SearchText}" Placeholder="{x:Static vm:EventTypePickerViewModel.Placeholder}" Margin="0,0,0,6" />
-        <TextBlock DockPanel.Dock="Top" Classes="secondary" Text="{x:Static vm:EventTypePickerViewModel.EmptyText}" IsVisible="{Binding IsEmpty}" />
-        <ListBox x:Name="EventList" Classes="eventTree" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" SelectionMode="Single" Height="340">
-          <ListBox.DataTemplates>
-            <DataTemplate x:DataType="vm:EventPickerFolder">
-              <TextBlock Classes="eventTreeFolder" Text="{Binding Name}" IsHitTestVisible="False" />
-            </DataTemplate>
-            <DataTemplate x:DataType="vm:EventPickerType">
-              <TextBlock Classes.secondary="{Binding !IsAvailable}" Text="{Binding Name}" Margin="16,0,0,0" TextTrimming="CharacterEllipsis" />
-            </DataTemplate>
-          </ListBox.DataTemplates>
-        </ListBox>
-      </DockPanel>
+      <Panel MinHeight="80">
+        <ui:FormField Classes="wide" LabelAbove="True" Label="Event" Error="{Binding Problem}">
+          <ui:EventPicker x:Name="EventPicker" Tree="{Binding Tree}" Selected="{Binding Selected}" />
+        </ui:FormField>
+        <ui:LoadingOverlay Text="{x:Static vm:EventTypePickerViewModel.LoadingText}" IsVisible="{Binding IsLoading}" />
+      </Panel>
     </Border>
     <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
       <Button Classes="primary" Content="OK" Command="{Binding OkCommand}" />

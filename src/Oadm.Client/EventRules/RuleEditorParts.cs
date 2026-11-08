@@ -16,10 +16,12 @@ using Oadm.Sdk.Formatting;
 
 namespace Oadm.Client.EventRules;
 
-/// <summary>An event type in the condition picker: "Device status: Device unreachable".</summary>
+/// <summary>An event type in the condition picker: "Device status: Device unreachable" (an event of the shared picker).</summary>
 public sealed record EventTypeOption(EventTypeEntry Entry)
+    : EventChoice(Entry.Id, Entry.DisplayName, FoldersOf(Entry), Entry.Available, Entry.Description)
 {
-    public string Id => Entry.Id;
+    // An older server sends no folders: its group is its folder.
+    private static IReadOnlyList<string> FoldersOf(EventTypeEntry entry) => entry.Path.Count > 0 ? [.. entry.Path] : [entry.Group];
 
     public bool Stateful => Entry.Stateful;
 
