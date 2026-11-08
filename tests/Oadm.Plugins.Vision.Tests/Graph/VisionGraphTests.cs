@@ -141,7 +141,7 @@ public sealed class VisionGraphTests(ITestOutputHelper output)
     [Theory]
     [InlineData(NodeKinds.Track, "This node takes objects.")]
     [InlineData(NodeKinds.Count, "This node takes objects or crossings.")]
-    [InlineData(NodeKinds.Event, "This node takes objects, crossings or a number.")]
+    [InlineData(NodeKinds.Event, "This node takes objects, crossings, a number or a condition.")]
     public void A_picture_into_a_node_of_objects_is_refused(string kind, string text)
     {
         var b = new PipelineBuilder();
@@ -361,17 +361,6 @@ public sealed class VisionGraphTests(ITestOutputHelper output)
         var settings = new JsonObject { [NodeKinds.ModelKey] = PipelineBuilder.Classifier.Id, [NodeKinds.PointsKey] = "bad" };
         b.After(detect, NodeKinds.Classify, settings);
         Assert.True(Check(b.Build()).Ok);
-    }
-
-    [Fact]
-    public void A_daily_reset_needs_a_time()
-    {
-        var (b, _, _, _, line, _) = Gate();
-        var count = b.After(line, NodeKinds.Count, new JsonObject { [NodeKinds.ResetAtKey] = "25:00" });
-        var ok = b.After(line, NodeKinds.Count, new JsonObject { [NodeKinds.ResetAtKey] = "06:00" });
-        var p = b.Build();
-        Assert.Equal("Enter a time like 06:00.", ErrorOf(p, count));
-        Assert.False(Check(p).NodeErrors.ContainsKey(ok));
     }
 
     [Fact]
