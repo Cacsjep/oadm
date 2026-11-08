@@ -17,7 +17,7 @@ public sealed record OcrEngineOptions
     public bool UseGraphicsCard { get; init; } = true;
 
     /// <summary>Finds the graphics card's provider (tests count the calls: they never touch a real card).</summary>
-    internal Func<string, ILogger, ExecutionTarget?> FindGraphicsCard { get; init; } = SessionFactory.FindGraphicsCard;
+    internal Func<string, ILogger, ExecutionTarget?> FindGraphicsCard { get; init; } = GraphicsCards.Find;
 
     /// <summary>The clock of the load measurement (tests pass a fake one).</summary>
     public TimeProvider Time { get; init; } = TimeProvider.System;
@@ -233,7 +233,7 @@ public sealed class OnnxTextRecognizer : IDetailedTextRecognizer, IEngineInfo, I
     private static string CpuName(int cores) => Readers.ReaderRules.CpuText(cores);
 
     /// <summary>What reads with a graphics card: "CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti".</summary>
-    internal static string CardName(int cores, string card) => $"{CpuName(cores)} · {card}";
+    internal static string CardName(int cores, string card) => EngineRules.CardText(cores, card);
 
     /// <summary>
     /// What runs the recognition now: the CPU, with the models on the graphics card while there is one and "Use GPU"

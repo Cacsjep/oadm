@@ -68,6 +68,12 @@
   <ItemGroup>
     <!-- The call without a user (the host itself, tests). -->
     <Compile Include="..\Shared\ContextCall.cs" Link="Common\ContextCall.cs" />
+    <!-- The frame source, the engine and the picture limits shared with Vision Center (docs/spec/vision-center.md "Parts and contract"). -->
+    <Compile Include="..\Shared\Vision\**\*.cs" Link="Shared\Vision\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Oadm.Plugins.Shared.Vision" />
   </ItemGroup>
 
   <ItemGroup>

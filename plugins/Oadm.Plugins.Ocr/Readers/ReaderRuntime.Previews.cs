@@ -196,7 +196,7 @@ internal sealed partial class ReaderRuntime
 
                 if (preview.Held is null)
                 {
-                    if (last.Jpeg.Length > Frames.MjpegParser.MaxFrameBytes || !_pictureFits(last.Jpeg))
+                    if (last.Jpeg.Length > MjpegParser.MaxFrameBytes || !_pictureFits(last.Jpeg))
                     {
                         return new PauseReply { Problem = ReaderRules.PictureTooLarge };
                     }
