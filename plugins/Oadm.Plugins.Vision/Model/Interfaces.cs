@@ -86,6 +86,9 @@ public interface IInference
 
     /// <summary>Frees the sessions of <paramref name="modelId"/> (deleted or replaced model).</summary>
     void Forget(string modelId);
+
+    /// <summary>The time of one call of <paramref name="modelId"/> on the graphics card, ms, once it was tested there; null before or without a card (the page's "on the card").</summary>
+    double? GpuMsOf(string modelId) => null;
 }
 
 /// <summary>The outcome of the model check of an upload.</summary>
