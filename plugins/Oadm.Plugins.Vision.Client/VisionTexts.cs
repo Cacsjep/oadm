@@ -52,6 +52,7 @@ public static class VisionTexts
     public const string Mode = "Mode";
     public const string LastCrossings = "Last crossings";
     public const string LastFires = "Last events";
+    public const string Count = "Count";
     public const string On = "On";
     public const string Off = "Off";
     public const string ObjectsNow = "Objects now";

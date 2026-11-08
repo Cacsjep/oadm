@@ -6,8 +6,8 @@ using Oadm.Sdk.Client;
 namespace Oadm.Plugins.Vision.Client;
 
 /// <summary>
-/// Navigation rail page of "Vision Center" (docs/spec/vision-center.md "Page"): pipelines and models | the node canvas |
-/// the live video above the selected node. SKELETON: the view is built by the client stage.
+/// Navigation rail page of "Vision Center" (docs/spec/vision-center.md "Page"): pipelines and models | the node canvas | the
+/// live video above the selected node.
 /// </summary>
 public sealed class VisionPage : ICorePluginPage
 {
@@ -20,6 +20,6 @@ public sealed class VisionPage : ICorePluginPage
     public Control CreateView(ICorePluginClientContext ctx)
     {
         ArgumentNullException.ThrowIfNull(ctx);
-        return new TextBlock { Text = VisionInfo.EmptyText };
+        return new VisionView { DataContext = new VisionViewModel(ctx) };
     }
 }
