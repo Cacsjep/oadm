@@ -42,6 +42,9 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
     private readonly SemaphoreSlim _checking = new(1, 1);
     private readonly Lock _sync = new();
     private readonly Dictionary<string, Upload> _uploads = new(StringComparer.Ordinal);
+
+    /// <summary>Uploads whose file is complete and being checked: their size, reserved until they are stored or refused.</summary>
+    private readonly Dictionary<string, long> _checks = new(StringComparer.Ordinal);
     private List<VisionModel> _models = [];
     private List<ClassList> _lists = [];
     private bool _disposed;
@@ -122,6 +125,21 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
         }
     }
 
+    /// <summary>Tests: the flush of a finished upload (one that fails stands for a full disk).</summary>
+    internal Func<FileStream, CancellationToken, Task> FlushHook { get; set; } = static (file, ct) => file.FlushAsync(ct);
+
+    /// <summary>Tests: the write of a chunk (one that fails stands for a full disk).</summary>
+    internal Func<FileStream, ReadOnlyMemory<byte>, CancellationToken, ValueTask> WriteHook { get; set; } = static (file, chunk, ct) => file.WriteAsync(chunk, ct);
+
+    /// <summary>A model's id: 32 lower-case hex digits (it names the model's file).</summary>
+    public static bool IsModelId(string? id) => id is { Length: 32 } && id.All(char.IsAsciiHexDigitLower);
+
+    /// <summary>The models with a file and the uploads in progress or being checked (inside <see cref="_sync"/>).</summary>
+    private int CountInUse() => _models.Count(m => !m.Missing) + _uploads.Count + _checks.Count;
+
+    /// <summary>Their bytes (inside <see cref="_sync"/>).</summary>
+    private long BytesInUse() => _models.Where(m => !m.Missing).Sum(m => m.SizeBytes) + _uploads.Values.Sum(u => u.Size) + _checks.Values.Sum();
+
     /// <summary>The file of model <paramref name="id"/> in <paramref name="dataDirectory"/>.</summary>
     public static string PathOf(string dataDirectory, string id) => Path.Combine(dataDirectory, FolderName, id + ".onnx");
 
@@ -159,6 +177,13 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
         var models = new List<VisionModel>(stored.Count);
         foreach (var (key, json) in stored)
         {
+            if (!IsModelId(key))
+            {
+                // The id names the model's file: never a path from a record.
+                LogBadId(_logger, key);
+                continue;
+            }
+
             try
             {
                 var model = VisionJson.Deserialize<VisionModel>(json) with { Id = key };
@@ -394,13 +419,14 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
 
-            // Uploads in progress count; a Missing model's file may be the one that comes (checked again when it is stored).
-            if (_models.Count(m => !m.Missing) + _uploads.Count >= VisionLimits.MaxModels)
+            // Uploads in progress and those being checked count until they are stored; Missing models do not (no file, and
+            // the upload may be the one that brings one back).
+            if (CountInUse() + 1 > VisionLimits.MaxModels)
             {
                 throw new ArgumentException(ModelTexts.TooMany);
             }
 
-            if (_models.Where(m => !m.Missing).Sum(m => m.SizeBytes) + _uploads.Values.Sum(u => u.Size) + size > VisionLimits.MaxAllModelsBytes)
+            if (BytesInUse() + size > VisionLimits.MaxAllModelsBytes)
             {
                 throw new ArgumentException(ModelTexts.TooMuchTogether);
             }
@@ -441,8 +467,23 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
             }
 
             upload.Idle?.Change(VisionLimits.UploadIdleTimeout, Timeout.InfiniteTimeSpan);
+            try
+            {
+                await WriteHook(upload.File, chunk, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OperationCanceledException or ObjectDisposedException)
+            {
+                // The file may hold part of the chunk: its size and hash no longer fit, the upload ends.
+                await EndAsync(upload).ConfigureAwait(false);
+                if (ex is OperationCanceledException)
+                {
+                    throw;
+                }
+
+                throw new ArgumentException(ModelTexts.UploadNotWritten, ex);
+            }
+
             upload.Hash.AppendData(chunk.Span);
-            await upload.File.WriteAsync(chunk, ct).ConfigureAwait(false);
             upload.Written += chunk.Length;
         }
         finally
@@ -472,14 +513,30 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
             }
 
             upload.Idle?.Dispose();
-            await upload.File.FlushAsync(ct).ConfigureAwait(false);
-            await upload.File.DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                await FlushHook(upload.File, ct).ConfigureAwait(false);
+                await upload.File.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or OperationCanceledException or ObjectDisposedException)
+            {
+                await EndAsync(upload).ConfigureAwait(false);
+                if (ex is OperationCanceledException)
+                {
+                    throw;
+                }
+
+                return new ModelCheck(null, ModelTexts.UploadNotWritten);
+            }
+
             sha = Convert.ToHexStringLower(upload.Hash.GetHashAndReset());
             part = upload.PartPath;
             upload.Ended = true;
             lock (_sync)
             {
+                // Its bytes stay reserved while it is checked and stored.
                 _uploads.Remove(upload.Id);
+                _checks[upload.Id] = upload.Size;
             }
         }
         finally
@@ -494,6 +551,11 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
         }
         finally
         {
+            lock (_sync)
+            {
+                _checks.Remove(upload.Id);
+            }
+
             TryDelete(part);
         }
     }
@@ -704,9 +766,18 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
             }
             else
             {
-                if (All.Count >= VisionLimits.MaxModels)
+                // The same rule as at the start of the upload, with this upload still counted among those in progress.
+                lock (_sync)
                 {
-                    return new ModelCheck(null, ModelTexts.TooMany);
+                    if (CountInUse() > VisionLimits.MaxModels)
+                    {
+                        return new ModelCheck(null, ModelTexts.TooMany);
+                    }
+
+                    if (BytesInUse() > VisionLimits.MaxAllModelsBytes)
+                    {
+                        return new ModelCheck(null, ModelTexts.TooMuchTogether);
+                    }
                 }
 
                 model = new VisionModel
@@ -911,6 +982,9 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Vision Center: the model {Model} used the class list {ClassListId}, which is not there; it keeps its names as its own")]
     private static partial void LogListGone(ILogger logger, string model, string classListId);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Vision Center: the stored model {Key} has no valid id and is left out")]
+    private static partial void LogBadId(ILogger logger, string key);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Vision Center: the upload of {FileName} ended, no part came for a minute")]
     private static partial void LogUploadIdle(ILogger logger, string fileName);
