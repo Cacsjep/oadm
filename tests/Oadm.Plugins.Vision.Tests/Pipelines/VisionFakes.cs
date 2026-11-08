@@ -522,3 +522,27 @@ internal sealed class VisionHarness : IAsyncDisposable
 
     public async ValueTask DisposeAsync() => await Plugin.DisposeAsync();
 }
+
+/// <summary>A user whose role lacks one permission.</summary>
+internal sealed class FakeCallContextWithout(FakeCallContext inner, string permission) : Oadm.Sdk.Plugins.ICallContext
+{
+    public string UserName => inner.UserName;
+
+    public string SessionId => inner.SessionId;
+
+    public string DeviceScopeKey => inner.DeviceScopeKey;
+
+    public bool HasAllDevices => inner.HasAllDevices;
+
+    public Oadm.Sdk.Devices.IDeviceRepository Devices => inner.Devices;
+
+    public Oadm.Sdk.Vapix.IVapixClientFactory Vapix => inner.Vapix;
+
+    public Oadm.Sdk.Tasks.ITaskRunner Tasks => inner.Tasks;
+
+    public Oadm.Sdk.Devices.IDeviceEventStreams? EventStreams => inner.EventStreams;
+
+    public bool Has(string key) => key != permission && inner.Has(key);
+
+    public bool Contains(Oadm.Sdk.Devices.IDeviceInfo device) => inner.Contains(device);
+}
