@@ -21,6 +21,8 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <!-- The code the vision add-ons share (plugins/Shared/Vision). -->
+    <Using Include="Oadm.Plugins.Shared.Vision" />
   </ItemGroup>
 
   <ItemGroup>

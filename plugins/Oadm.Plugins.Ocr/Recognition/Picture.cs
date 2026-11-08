@@ -77,16 +77,9 @@ internal sealed class Picture : IDisposable
     /// The picture's header says a size within the limits (no pixel is decoded): a page's held frame (docs/spec/ocr.md
     /// "Pause") never passes what a reading would refuse.
     /// </summary>
-    public static bool Fits(ReadOnlyMemory<byte> data)
-    {
-        using var skData = SKData.CreateCopy(data.Span);
-        using var codec = SKCodec.Create(skData);
-        return codec is not null && WithinLimits(codec.Info.Width, codec.Info.Height);
-    }
+    public static bool Fits(ReadOnlyMemory<byte> data) => PictureLimits.Fits(data);
 
-    private static bool WithinLimits(int width, int height) =>
-        width is >= 1 and <= Readers.ReaderRules.MaxSide && height is >= 1 and <= Readers.ReaderRules.MaxSide
-        && (long)width * height <= Readers.ReaderRules.MaxPixels;
+    private static bool WithinLimits(int width, int height) => PictureLimits.WithinLimits(width, height);
 
     /// <summary>The rows and columns of <paramref name="part"/> through the line decoder, or null when the codec cannot.</summary>
     private static SKBitmap? DecodePart(SKCodec codec, SKImageInfo full, SKRectI part)

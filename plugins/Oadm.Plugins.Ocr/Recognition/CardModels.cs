@@ -11,7 +11,7 @@ namespace Oadm.Plugins.Ocr.Recognition;
 internal readonly record struct CardRoute(bool Finder, bool Reader, bool Angle)
 {
     /// <summary>A card may take this many times the CPU's time and still run the model: the CPU stays free.</summary>
-    public const double MostSlower = 1.5;
+    public const double MostSlower = EngineRules.MostSlower;
 
     /// <summary>Every model.</summary>
     public static CardRoute All { get; } = new(true, true, true);
@@ -20,7 +20,7 @@ internal readonly record struct CardRoute(bool Finder, bool Reader, bool Angle)
     public bool Any => Finder || Reader || Angle;
 
     /// <summary>The card's test call in <paramref name="cardMs"/> runs the model there (null: the call failed).</summary>
-    public static bool Worth(double? cardMs, double cpuMs) => cardMs is { } ms && ms <= cpuMs * MostSlower;
+    public static bool Worth(double? cardMs, double cpuMs) => EngineRules.Worth(cardMs, cpuMs);
 }
 
 /// <summary>A graphics card that can fail during a run (<see cref="CardRunner"/>).</summary>

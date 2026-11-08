@@ -57,6 +57,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Using Include="Oadm.Plugins.Shared.Vision" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Oadm.Plugins.Vision.Tests" />
     <InternalsVisibleTo Include="Oadm.Plugins.Vision.Client" />
   </ItemGroup>

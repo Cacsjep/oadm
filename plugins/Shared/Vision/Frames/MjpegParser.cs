@@ -3,15 +3,15 @@ using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Text;
 
-namespace Oadm.Plugins.Ocr.Frames;
+namespace Oadm.Plugins.Shared.Vision;
 
 /// <summary>
-/// Reads the JPEG pictures of a camera's MJPEG answer (<c>multipart/x-mixed-replace</c>, docs/spec/ocr.md "Readers"). Each
+/// Reads the JPEG pictures of a camera's MJPEG answer (<c>multipart/x-mixed-replace</c>, docs/spec/ocr.md "Readers"; shared by the vision add-ons). Each
 /// part starts after a boundary line and its headers; its body is <c>Content-Length</c> bytes when the part says so, else
 /// everything up to the next boundary. Bytes between parts are skipped, parts that are no JPEG are skipped, a part larger
 /// than the limit is skipped without holding it in memory, an unfinished last part is dropped.
 /// </summary>
-public static class MjpegParser
+internal static class MjpegParser
 {
     /// <summary>A picture larger than this is skipped.</summary>
     public const int MaxFrameBytes = 10 * 1024 * 1024;

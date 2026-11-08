@@ -118,6 +118,7 @@ public sealed partial class VisionPlugin : ICorePlugin, IDynamicEventSource, IAc
         var store = new PipelineStore(records, ctx.Logger);
         await store.LoadAsync(ct).ConfigureAwait(false);
         var models = parts.Models(ctx);
+        await models.LoadAsync(ct).ConfigureAwait(false);
         var inference = parts.Inference(ctx);
         var frames = parts.Frames(ctx);
         _ctx = ctx;

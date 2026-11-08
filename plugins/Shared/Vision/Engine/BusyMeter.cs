@@ -1,4 +1,4 @@
-namespace Oadm.Plugins.Ocr.Recognition;
+namespace Oadm.Plugins.Shared.Vision;
 
 /// <summary>
 /// The time model calls held their worker (docs/spec/ocr.md "Runtime stats", recognition load): the sum over all calls since
