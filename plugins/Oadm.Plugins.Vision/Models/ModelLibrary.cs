@@ -198,23 +198,22 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
             }
         }
 
-        // Models stored before RF-DETR's list existed: 90 classes, no list and only the generated "Class N" names get it
-        // (never over names the user or the model gave).
-        var migrated = new List<VisionModel>();
+        // A list that is gone (a user's list missing from a restore, the "coco-90" of an OADM that read RF-DETR as DETR): the
+        // model keeps the names it holds as its own, with one log line; never a failed start.
+        var fallen = new List<VisionModel>();
         for (var i = 0; i < models.Count; i++)
         {
-            var model = models[i];
-            if (model.ClassListId is null && model.ClassNames.Count == Models.ClassLists.Coco90.Names.Count
-                && model.ClassNames.Select((n, id) => n == ModelTexts.ClassName(id)).All(generated => generated))
+            if (models[i].ClassListId is { } listId && FindClassList(listId) is null)
             {
-                models[i] = model with { ClassListId = Models.ClassLists.Coco90Id, ClassNames = Models.ClassLists.Coco90.Names };
-                migrated.Add(models[i]);
+                LogListGone(_logger, models[i].Name, listId);
+                models[i] = models[i] with { ClassListId = null };
+                fallen.Add(models[i]);
             }
         }
 
-        if (migrated.Count > 0)
+        if (fallen.Count > 0)
         {
-            await _records.SetManyAsync(Collection, [.. migrated.Select(m => new KeyValuePair<string, string?>(m.Id, VisionJson.Serialize(m with { Id = string.Empty, Missing = false })))], ct).ConfigureAwait(false);
+            await _records.SetManyAsync(Collection, [.. fallen.Select(m => new KeyValuePair<string, string?>(m.Id, VisionJson.Serialize(m with { Id = string.Empty, Missing = false })))], ct).ConfigureAwait(false);
         }
 
         lock (_sync)
@@ -909,6 +908,9 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Vision Center: the stored model {Key} could not be read and is left out")]
     private static partial void LogUnreadable(ILogger logger, string key, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Vision Center: the model {Model} used the class list {ClassListId}, which is not there; it keeps its names as its own")]
+    private static partial void LogListGone(ILogger logger, string model, string classListId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Vision Center: the upload of {FileName} ended, no part came for a minute")]
     private static partial void LogUploadIdle(ILogger logger, string fileName);

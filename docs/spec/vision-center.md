@@ -70,7 +70,7 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
     deviation, the picture **stretched** to the input (not letterboxed: the export was trained that way). The order
     decides, also with the `pred_` names (rf-detr-onnx names its outputs `pred_boxes`, `pred_logits`): logits first is
     DETR, boxes first is RF-DETR. `rf-detr-medium.onnx` gives 91 class columns, the COCO category ids (0 unused), and
-    takes "COCO for DETR (91)" (measured 2026-11-08).
+    takes "COCO for DETR and RF-DETR (91)" (measured 2026-11-08).
   - Detection **DETR with labels**: boxes, scores and labels outputs (RT-DETR, D-FINE and other end-to-end exports); no
     suppression. An optional input `orig_target_sizes` `[1, 2]` is filled with the input size; boxes in input pixels or
     0 to 1; Stretch by default.
@@ -111,22 +111,24 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
 Profiles of class names (decision 2026-11-08), **chosen on the model**, never on a node: the ids belong to how the model
 was trained.
 
-- Built in, read only, named by the models they fit: "COCO for DETR (91)" (`coco-91`, the COCO 2017 category ids,
-  "N/A" at the gaps 0, 12, 26, 29, 30, 45, 66, 68, 69, 71, 83), "COCO for RF-DETR (90)" (`coco-90`, the same without id
-  90: RF-DETR's 90 slots are the ids 0 to 89, as `class_id_to_name` of roboflow/rf-detr) and "COCO for YOLO (80)"
-  (`coco-80`, the same names without gaps: couch, potted plant, dining table, tv).
-- A built-in list is taken by itself only when neither metadata nor a labels file named the classes and the count is 91,
-  90 or 80. A stored model of 90 classes with only the generated "Class <id>" names and no list gets the RF-DETR list at
-  the start (never over names the user or the model gave).
+- Built in, read only, named by the models they fit: "COCO for DETR and RF-DETR (91)" (`coco-91`, the COCO 2017
+  category ids, "N/A" at the gaps 0, 12, 26, 29, 30, 45, 66, 68, 69, 71, 83) and "COCO for YOLO (80)" (`coco-80`, the
+  same names without gaps: couch, potted plant, dining table, tv). No list of 90 (decision 2026-11-08: it came only from
+  RF-DETR read as DETR).
+- A built-in list is taken by itself only when neither metadata nor a labels file named the classes and the count is 91
+  or 80.
 - The user's own lists: server-wide like the models (plugin records, collection `classLists`), at most 50, names unique
   also against the built-in ones, Manage vision models, audited. An empty name becomes "Class <i>". A list's count of
   names is a model's class count: a list with another count cannot be chosen for a model, and a list in use cannot
   change its count ("Used by models with 2 classes. Keep 2 names.") or be deleted. A list no model uses fits any.
-- At the start a model on a list takes the list's current names when the counts match.
+- At the start a model on a list takes the list's current names when the counts match. A model on a list that is not
+  there (a user's list missing after a restore, the `coco-90` of an earlier build) keeps the names it holds as its own,
+  one log line, never a failed start. An RF-DETR model stored by such a build keeps the format DETR: delete it and
+  upload it again.
 - The page: the section **Class lists** below Models (built-in: View; own: Edit, Delete in red; New); its dialog holds
   Name and the names, one per line. A model's ⋯ menu **Class list** offers "Own names" and the fitting lists, and says
   below the select when none fits ("No class list has 90 names. Create one or use own names."). Detect objects shows
-  the model's list read only ("Class list: COCO for DETR (91)"); the Classes pickers and every label follow the
+  the model's list read only ("Class list: COCO for DETR and RF-DETR (91)"); the Classes pickers and every label follow the
   names in effect. Lists change no live event: the page reads them again after its own changes. Used by shows to every
   user (models are server-wide).
 
@@ -420,7 +422,7 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   Covered by the real-model tests below (2026-11-08).
 - **First real model: DETR** (`facebookresearch/detr`, DETR-R50 on COCO). The user docs give the export: the PyTorch
   Hub model, `torch.onnx.export` with the outputs named `pred_logits` and `pred_boxes`, a fixed input of 800 x 800 (or a
-  free one), opset 17; the class names come from "COCO for DETR (91)". The upload, the model check and a pipeline Detect
+  free one), opset 17; the class names come from "COCO for DETR and RF-DETR (91)". The upload, the model check and a pipeline Detect
   objects > Filter (person) > Track > Line > Count > Event must work with that file. It is slow on the CPU (about a
   second per picture at 800 x 800, to be measured): the page's load and the node's time per frame say so, a graphics card
   or a lower frame rate is the answer.
@@ -441,7 +443,7 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   (`-p:OadmRealModels=true`) into the model cache of Text recognition, pinned by revision and SHA-256 (sources in the
   plugin README), never shipped, never in git; without them the tests skip with the reason. On the CPU only (no card is
   looked for, a session on anything else fails the test): the model check of a chunked upload through the real
-  `ModelLibrary` (RF-DETR, 576 x 576, Stretch, ImageNet, 91 classes, "COCO for DETR (91)"), the real `OnnxInference` on
+  `ModelLibrary` (RF-DETR, 576 x 576, Stretch, ImageNet, 91 classes, "COCO for DETR and RF-DETR (91)"), the real `OnnxInference` on
   both photos against COCO's boxes (every person and car at an overlap of 50 % or more, scores of 50 % or more, no "N/A",
   no person where COCO has none), and Camera > Detect objects > Filter (person) > Count through the real evaluator
   (Count 2 on the photo with two skaters: COCO's annotation has two people and the photo shows no one else).
@@ -468,10 +470,6 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   CUDA on Linux are not tested.
 - The accuracy with DETR and RF-DETR on the development cameras, the default frame rate and resolution from those
   measurements.
-- "COCO for RF-DETR (90)" and its start rule (a stored model of 90 generated names gets it) came from RF-DETR being read
-  as DETR (its `pred_` names; 91 columns less a "no object" one). Since 2026-11-08 the export is read as RF-DETR with 91
-  classes and takes "COCO for DETR (91)"; no known model needs the 90 list. A model stored before keeps the format DETR:
-  delete it and upload it again. Keep, rename or drop the 90 list: open.
 - macOS and Linux runs of the add-on.
 - One worker budget for both vision add-ons instead of one each: Text recognition's CPU pool and its card memory budget
   are not shared.
