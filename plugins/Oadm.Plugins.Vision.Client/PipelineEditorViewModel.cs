@@ -122,6 +122,7 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
         Canvas.Checker = (nodes, links) => _check(ToPipeline() with { Nodes = nodes, Links = links });
         Canvas.Recheck();
         Canvas.Changed += OnCanvasChanged;
+        Canvas.ViewChanged += OnCanvasViewChanged;
         Canvas.DrawRequested += (_, node) => StartDrawing(node);
         Canvas.PropertyChanged += OnCanvasPropertyChanged;
         Validation.Rule(nameof(Name), NameProblem);
@@ -713,7 +714,10 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
             do
             {
                 _sendAgain = false;
-                if (PreviewId is not { } id || ct.IsCancellationRequested)
+
+                // Each send belongs to the preview shown now (a hide and show meanwhile: the new one, not the caller's).
+                var token = _preview is { } current ? current.Token : ct;
+                if (PreviewId is not { } id || token.IsCancellationRequested)
                 {
                     return;
                 }
@@ -721,21 +725,29 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
                 try
                 {
                     var request = new PreviewRequest { PreviewId = id, Pipeline = ToPipeline() };
-                    var json = await _ctx.InvokeAsync(VisionMethods.StartPreview, VisionJson.Serialize(request), ct).ConfigureAwait(true);
+                    var json = await _ctx.InvokeAsync(VisionMethods.StartPreview, VisionJson.Serialize(request), token).ConfigureAwait(true);
                     if (PreviewId == id)
                     {
                         PreviewProblem = VisionJson.Deserialize<PreviewReply>(json).Problem;
                     }
+                    else
+                    {
+                        // Stopped meanwhile: the start may have reached the server after the stop, so end it again.
+                        _ = EndPreviewAsync(id);
+                    }
                 }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
                 {
-                    return;
+                    // The preview stopped; a send for a new one waits in _sendAgain.
                 }
 #pragma warning disable CA1031 // The server's reason above the video; the next change or keep-alive tries again.
                 catch (Exception ex)
 #pragma warning restore CA1031
                 {
-                    PreviewProblem = ServerErrors.Message(ex);
+                    if (PreviewId == id)
+                    {
+                        PreviewProblem = ServerErrors.Message(ex);
+                    }
                 }
             }
             while (_sendAgain && !_disposed);
@@ -790,6 +802,7 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
         try
         {
             var pipeline = ToPipeline();
+            var sent = Signature(pipeline);
             var json = await _ctx.InvokeAsync(VisionMethods.SavePipeline, VisionJson.Serialize(new SavePipelineRequest { Pipeline = pipeline }), CancellationToken.None)
                 .ConfigureAwait(true);
             var reply = VisionJson.Deserialize<SavePipelineReply>(json);
@@ -821,8 +834,13 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
 
             Id = reply.Pipeline.Id;
             IsNew = false;
-            _savedJson = Signature();
-            Canvas.ForgetHistory();
+            // What was sent is saved; an edit made while saving stays unsaved, with its undo.
+            _savedJson = sent;
+            if (Signature() == sent)
+            {
+                Canvas.ForgetHistory();
+            }
+
             UpdateSaveState();
             Saved?.Invoke(this, reply.Pipeline);
         }
@@ -883,6 +901,15 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
 
         RebuildOverlay();
         DraftChanged();
+    }
+
+    private void OnCanvasViewChanged(object? sender, EventArgs e)
+    {
+        RebuildOverlay();
+        if (_preview is { } preview)
+        {
+            _ = SendPreviewAsync(preview.Token);
+        }
     }
 
     private void OnCanvasPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -961,14 +988,16 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
             return;
         }
 
-        IsDirty = IsNew || Signature() != _savedJson;
+        IsDirty = IsNew || (MayChange && Signature() != _savedJson); // a viewer's eye only redraws
         SaveBlockedReason = Canvas.ErrorCount > 0 ? VisionTexts.FixErrors(Canvas.ErrorCount)
             : Validation.FirstError ?? Form?.FirstError;
         OnPropertyChanged(nameof(HasSaveStatus));
         SaveCommand.NotifyCanExecuteChanged();
     }
 
-    private string Signature() => VisionJson.Serialize(ToPipeline() with { Id = string.Empty });
+    private string Signature() => Signature(ToPipeline());
+
+    private static string Signature(Pipeline pipeline) => VisionJson.Serialize(pipeline with { Id = string.Empty });
 
     public void Dispose()
     {
@@ -980,6 +1009,7 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
         StopPreview();
         _disposed = true;
         Canvas.Changed -= OnCanvasChanged;
+        Canvas.ViewChanged -= OnCanvasViewChanged;
         Canvas.PropertyChanged -= OnCanvasPropertyChanged;
         _video?.Dispose();
         HeldPicture?.Dispose();

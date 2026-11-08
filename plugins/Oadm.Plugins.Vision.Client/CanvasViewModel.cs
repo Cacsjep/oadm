@@ -43,6 +43,9 @@ public sealed partial class CanvasViewModel : ObservableObject
     /// <summary>The draft changed (nodes, links, settings, places, eyes): the editor marks it Not saved and previews it again.</summary>
     public event EventHandler? Changed;
 
+    /// <summary>Only what is shown changed (a viewer's eye): the video follows, the draft stays as saved.</summary>
+    public event EventHandler? ViewChanged;
+
     /// <summary>A new Area or Line node: the video starts drawing its shape at once.</summary>
     public event EventHandler<NodeViewModel>? DrawRequested;
 
@@ -331,18 +334,31 @@ public sealed partial class CanvasViewModel : ObservableObject
         return node.ControlInputs.FirstOrDefault(c => node.ControlPortAt(c.Port) is { } at && CanvasGeometry.Distance(world, at) <= CanvasGeometry.PortReach)?.Port;
     }
 
-    /// <summary>Whether <paramref name="node"/> comes before <paramref name="of"/> on its path from the camera (or is it).</summary>
+    /// <summary>
+    /// Whether <paramref name="node"/> leads to <paramref name="of"/> (or is it) over data or control links: a link from
+    /// <paramref name="of"/> to it would close a loop, which the server refuses too.
+    /// </summary>
     public bool IsBefore(NodeViewModel node, NodeViewModel of)
     {
-        var at = of;
-        for (var i = 0; i <= Nodes.Count && at is not null; i++)
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(of);
+        var incoming = Links.ToLookup(l => l.To);
+        var seen = new HashSet<NodeViewModel> { of };
+        var queue = new Queue<NodeViewModel>([of]);
+        while (queue.TryDequeue(out var at))
         {
             if (ReferenceEquals(at, node))
             {
                 return true;
             }
 
-            at = InputOf(at)?.From;
+            foreach (var link in incoming[at])
+            {
+                if (seen.Add(link.From))
+                {
+                    queue.Enqueue(link.From);
+                }
+            }
         }
 
         return false;
@@ -463,7 +479,14 @@ public sealed partial class CanvasViewModel : ObservableObject
 
         node.ShowOnVideo = !node.ShowOnVideo;
         Bump();
-        Changed?.Invoke(this, EventArgs.Empty);
+        if (CanEdit)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+        else
+        {
+            ViewChanged?.Invoke(this, EventArgs.Empty); // a viewer: only the video and the canvas follow, nothing to save
+        }
     }
 
     /// <summary>
@@ -632,7 +655,8 @@ public sealed partial class CanvasViewModel : ObservableObject
     /// (<see cref="CanvasGeometry.ColumnGap"/>), a parent centred above its children; each row as high as its tallest card and
     /// one gap (<see cref="CanvasGeometry.RowGap"/>) below it, room for a link and its count. The nodes without an input that feed
     /// a control input (Timer, Time window, Device event) go left of the node they feed, top-aligned with it, further left while
-    /// a card is in the way. One undo step; the view fits afterwards.
+    /// a card is in the way; one that feeds a data input heads its own chain, top to bottom like the camera's. One undo step;
+    /// the view fits afterwards.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private void TidyUp()
@@ -640,7 +664,11 @@ public sealed partial class CanvasViewModel : ObservableObject
         Record();
         var column = 0;
         var depthOf = new Dictionary<NodeViewModel, int>();
-        static bool IsStart(NodeViewModel n) => n.Info is { Accepts.Count: 0 } && !n.IsCamera;
+        bool IsSource(NodeViewModel n) => n.Info is { Accepts.Count: 0 } && !n.IsCamera;
+
+        // A source that feeds a data input (a Time window into Logic, a Device event into a count) heads its own chain, laid out
+        // top to bottom like the camera's; the others (a Timer's pulse) go beside the node they feed.
+        bool IsStart(NodeViewModel n) => IsSource(n) && !OutputsOf(n).Any(l => !l.IsControl);
 
         // A node fed by starts (into a control input) keeps a column free left of it for each of them.
         var startsOf = Nodes.Where(IsStart)
@@ -669,6 +697,11 @@ public sealed partial class CanvasViewModel : ObservableObject
             Lay(camera, 0);
         }
 
+        foreach (var source in Nodes.Where(n => IsSource(n) && !IsStart(n) && !depthOf.ContainsKey(n)).ToList())
+        {
+            Lay(source, 0);
+        }
+
         foreach (var node in Nodes.Where(n => !depthOf.ContainsKey(n) && !IsStart(n) && InputOf(n) is null).ToList())
         {
             Lay(node, 0);
@@ -692,7 +725,7 @@ public sealed partial class CanvasViewModel : ObservableObject
         // The starts left of the node they feed, top-aligned with it.
         var placed = depthOf.Keys.ToList();
         bool Free(Rect rect) => !placed.Any(p => p.Rect.Inflate(CanvasGeometry.ColumnGap / 2).Intersects(rect));
-        foreach (var start in Nodes.Where(IsStart).ToList())
+        foreach (var start in Nodes.Where(n => IsStart(n) && !placed.Contains(n)).ToList())
         {
             var target = OutputsOf(start).Select(l => l.To).FirstOrDefault(placed.Contains);
             var slot = target is not null && startsOf.TryGetValue(target, out var starts) ? starts.IndexOf(start) + 1 : 1;
