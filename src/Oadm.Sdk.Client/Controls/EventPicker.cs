@@ -10,12 +10,10 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 
-using Oadm.Sdk.Client.Controls;
-
-namespace Oadm.Client.EventRules;
+namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
-/// The event select of the rule dialog: looks like a select field and shows the chosen event with its folders
+/// The event select (the event rule dialog, Vision Center's Device event node): looks like a select field and shows the chosen event with its folders
 /// ("Devices › Selected devices › Device unreachable"); a click opens a panel below it with a search box, the
 /// <see cref="EventTree"/> as one virtualized list (a folder opens or closes on click, an event is chosen on click or
 /// Enter) and the description of the event under the pointer. Escape or a click outside closes it.
@@ -25,8 +23,8 @@ public sealed class EventPicker : UserControl
     public static readonly StyledProperty<EventTree?> TreeProperty =
         AvaloniaProperty.Register<EventPicker, EventTree?>(nameof(Tree));
 
-    public static readonly StyledProperty<EventTypeOption?> SelectedProperty =
-        AvaloniaProperty.Register<EventPicker, EventTypeOption?>(nameof(Selected), defaultBindingMode: BindingMode.TwoWay);
+    public static readonly StyledProperty<EventChoice?> SelectedProperty =
+        AvaloniaProperty.Register<EventPicker, EventChoice?>(nameof(Selected), defaultBindingMode: BindingMode.TwoWay);
 
     public static readonly StyledProperty<string> PlaceholderProperty =
         AvaloniaProperty.Register<EventPicker, string>(nameof(Placeholder), "Choose an event");
@@ -114,7 +112,7 @@ public sealed class EventPicker : UserControl
     }
 
     /// <summary>The chosen event (two way).</summary>
-    public EventTypeOption? Selected
+    public EventChoice? Selected
     {
         get => GetValue(SelectedProperty);
         set => SetValue(SelectedProperty, value);

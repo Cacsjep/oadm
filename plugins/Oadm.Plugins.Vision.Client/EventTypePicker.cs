@@ -4,104 +4,101 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Plugins.Vision.Api;
-using Oadm.Sdk.Client.Collections;
+using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Vision.Client;
 
-/// <summary>A row of the event list: a folder heading or an event type.</summary>
-public abstract record EventPickerRow;
-
-public sealed record EventPickerFolder(string Name) : EventPickerRow;
-
-public sealed record EventPickerType(EventTypeChoice Type) : EventPickerRow
-{
-    /// <summary>"Door open", or "Door open (turned off)" while the plugin that sends it is off (shown dimmed).</summary>
-    public string Name => Type.Available ? Type.Name : $"{Type.Name} ({VisionTexts.TurnedOff})";
-
-    public bool IsAvailable => Type.Available;
-}
-
 /// <summary>
-/// The Choose event dialog of the Device event node: the event types (<see cref="VisionMethods.ListEventTypes"/>) in their
-/// folders (the event rules' picker), a search; OK takes the chosen one. A type whose plugin is off shows dimmed with
-/// "(turned off)". A per-device event then asks for the device.
+/// The Choose event dialog of the Device event node: the event types (<see cref="VisionMethods.ListEventTypes"/>) in the
+/// shared event select of the event rules (<see cref="EventPicker"/>: folders, search, description); OK takes the chosen
+/// one. The dialog shows at once and reads the list while it shows (a ring; a failure below the field, never a silent empty
+/// list). A type whose plugin is off shows with "(turned off)". A per-device event then asks for the device.
 /// </summary>
 public sealed partial class EventTypePickerViewModel : ObservableObject
 {
-    private readonly IReadOnlyList<EventTypeChoice> _types;
+    private readonly string? _selectedId;
+    private IReadOnlyList<EventTypeChoice> _types = [];
 
-    public EventTypePickerViewModel(IReadOnlyList<EventTypeChoice> types, string? selectedId)
+    /// <summary>The dialog before the list is read (<see cref="LoadAsync"/>).</summary>
+    public EventTypePickerViewModel(string? selectedId)
     {
-        ArgumentNullException.ThrowIfNull(types);
-
-        // Vision Center's own events never go into one of its nodes (the server leaves them out too).
-        _types = [.. types.Where(t => !IsOwn(t))];
-        Fill();
-        Selected = Rows.OfType<EventPickerType>().FirstOrDefault(r => r.Type.Id == selectedId);
+        _selectedId = selectedId;
+        IsLoading = true;
     }
+
+    /// <summary>The dialog with the list read already.</summary>
+    public EventTypePickerViewModel(IReadOnlyList<EventTypeChoice> types, string? selectedId)
+        : this(selectedId) => Fill(types);
 
     /// <summary>OK (true) or Cancel (false): the view closes the window.</summary>
     public event EventHandler<bool>? CloseRequested;
 
     public static string Title => VisionTexts.ChooseEvent;
 
-    public static string Placeholder => VisionTexts.SearchEvents;
+    public static string LoadingText => VisionTexts.ReadingEvents;
 
-    public static string EmptyText => VisionTexts.NoEventMatches;
-
-    public RangeObservableCollection<EventPickerRow> Rows { get; } = [];
-
+    /// <summary>The events in their folders (null while reading).</summary>
     [ObservableProperty]
-    public partial string SearchText { get; set; } = string.Empty;
+    public partial EventTree? Tree { get; private set; }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(OkCommand))]
-    public partial EventPickerRow? Selected { get; set; }
+    public partial EventChoice? Selected { get; set; }
 
     [ObservableProperty]
-    public partial bool IsEmpty { get; private set; }
+    [NotifyCanExecuteChangedFor(nameof(OkCommand))]
+    public partial bool IsLoading { get; private set; }
+
+    /// <summary>Why there is no event to choose: the list could not be read, or it is empty. Below the field.</summary>
+    [ObservableProperty]
+    public partial string? Problem { get; private set; }
 
     /// <summary>The chosen event type after OK.</summary>
-    public EventTypeChoice? Chosen => (Selected as EventPickerType)?.Type;
+    public EventTypeChoice? Chosen => Selected is { } chosen ? _types.FirstOrDefault(t => t.Id == chosen.Id) : null;
 
-    /// <summary>The folder line of a type: its path ("Devices / Any device").</summary>
-    public static string FolderOf(EventTypeChoice type)
+    /// <summary>Reads the list while the dialog shows; a failure says why below the field.</summary>
+    public async Task LoadAsync(Func<CancellationToken, Task<IReadOnlyList<EventTypeChoice>>> read, CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(type);
-        return string.Join(" / ", type.Path);
+        ArgumentNullException.ThrowIfNull(read);
+        IsLoading = true;
+        try
+        {
+            Fill(await read(ct).ConfigureAwait(true));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The dialog closed meanwhile.
+        }
+#pragma warning disable CA1031 // The server's reason below the field.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            Problem = ServerErrors.Message(ex);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
     }
 
     private static bool IsOwn(EventTypeChoice type) =>
         type.Id.StartsWith(VisionInfo.PluginId + ".", StringComparison.Ordinal) || (type.Path.Count > 0 && type.Path[0] == VisionInfo.EventGroup);
 
-    partial void OnSearchTextChanged(string value) => Fill();
-
-    partial void OnSelectedChanged(EventPickerRow? value)
+    private void Fill(IReadOnlyList<EventTypeChoice> types)
     {
-        if (value is EventPickerFolder)
-        {
-            Selected = null; // a folder is no choice
-        }
+        ArgumentNullException.ThrowIfNull(types);
+
+        // Vision Center's own events never go into one of its nodes (the server leaves them out too).
+        _types = [.. types.Where(t => !IsOwn(t))];
+        var choices = _types.Select(t => new EventChoice(t.Id, t.Name, t.Path, t.Available)).ToList();
+        Tree = new EventTree(choices);
+        Selected = choices.FirstOrDefault(c => c.Id == _selectedId);
+        Problem = _types.Count == 0 ? VisionTexts.NoEvents : null;
+        IsLoading = false;
     }
 
-    private void Fill()
-    {
-        var query = SearchText.Trim();
-        var rows = new List<EventPickerRow>();
-        foreach (var group in _types
-            .Where(t => query.Length == 0 || t.Name.Contains(query, StringComparison.OrdinalIgnoreCase) || FolderOf(t).Contains(query, StringComparison.OrdinalIgnoreCase))
-            .GroupBy(FolderOf)
-            .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase))
-        {
-            rows.Add(new EventPickerFolder(group.Key));
-            rows.AddRange(group.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).Select(t => new EventPickerType(t)));
-        }
-
-        Rows.ReplaceAll(rows);
-        IsEmpty = rows.Count == 0;
-    }
-
-    private bool CanOk() => Selected is EventPickerType;
+    private bool CanOk() => !IsLoading && Selected is not null;
 
     [RelayCommand(CanExecute = nameof(CanOk))]
     private void Ok() => CloseRequested?.Invoke(this, true);

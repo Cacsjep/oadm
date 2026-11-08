@@ -1,7 +1,10 @@
 using Avalonia;
 
+using Oadm.Plugins.Vision.Api;
 using Oadm.Plugins.Vision.Client;
 using Oadm.Plugins.Vision.Model;
+using Oadm.Sdk.Client.Controls;
+using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Vision.Tests.Client;
 
@@ -212,14 +215,16 @@ public sealed class TimerAndCompareTests
         dialogs.Event = form =>
         {
             // Vision Center's own events never show; a type of a plugin that is off shows with "(turned off)".
-            Assert.Equal(["Device status", "Input ports", "Server", "Text recognition / Container gate"], form.Rows.OfType<EventPickerFolder>().Select(f => f.Name));
-            var off = form.Rows.OfType<EventPickerType>().Single(r => r.Type.Id == "oadm.ocr.text");
-            Assert.False(off.IsAvailable);
-            Assert.Equal("Text read (turned off)", off.Name);
+            // The event rules' tree: the folders of the events, the top ones open.
+            var tree = form.Tree!;
+            Assert.Equal(["Device status", "Input ports", "Server", "Text recognition", "Container gate"], tree.Rows.OfType<EventTreeFolder>().Select(f => f.Text));
+            tree.Query = "text read";
+            var off = Assert.Single(tree.Rows.OfType<EventTreeEvent>());
+            Assert.False(off.Option.Available);
+            Assert.Equal("Text read (turned off)", off.Text);
             Assert.Equal("io.port.door", form.Chosen!.Id); // the stored one selected
-            form.SearchText = "tamper";
-            Assert.Single(form.Rows.OfType<EventPickerType>());
-            form.Selected = form.Rows.OfType<EventPickerType>().Single();
+            tree.Query = "tamper";
+            form.Selected = Assert.Single(tree.Rows.OfType<EventTreeEvent>()).Option;
             return true;
         };
         dialogs.Device = _ => PageSamples.Gate.Id; // a per-device event asks for the device
@@ -230,7 +235,8 @@ public sealed class TimerAndCompareTests
 
         dialogs.Event = form =>
         {
-            form.Selected = form.Rows.OfType<EventPickerType>().Single(r => r.Type.Id == "server.backup");
+            form.Tree!.Query = "backup";
+            form.Selected = form.Tree.Rows.OfType<EventTreeEvent>().Single(r => r.Option.Id == "server.backup").Option;
             return true;
         };
         field.ChooseCommand.Execute(null);
@@ -252,13 +258,51 @@ public sealed class TimerAndCompareTests
         Assert.Contains(items, i => i.NodeId == "k" && i.Filled && i.Label == "3 s");
     }
 
+    [Fact]
+    public async Task Choose_event_shows_at_once_with_a_ring_and_a_failed_read_says_why_below_the_field()
+    {
+        var ctx = PageSamples.Context();
+        var list = new TaskCompletionSource<string?>();
+        ctx.AsyncAnswers[VisionMethods.ListEventTypes] = _ => list.Task;
+        var dialogs = new EventDialogs();
+        using var editor = new PipelineEditorViewModel(ctx, PageSamples.Entrance, false, new Oadm.Plugins.Vision.Api.EngineInfo(),
+            _ => "AXIS Q1798-LE · 10.0.0.48", (_, _) => false, () => PageSamples.Models, PageSamples.Decode, PageSamples.CheckData) { Dialogs = dialogs };
+        editor.Canvas.SelectedNode = editor.Canvas.Find("h");
+        var field = Assert.IsType<EventTypeFieldViewModel>(editor.Form!.Fields[0]);
+
+        var shown = new TaskCompletionSource<EventTypePickerViewModel>();
+        var answer = new TaskCompletionSource<bool>();
+        dialogs.EventAsync = form =>
+        {
+            shown.SetResult(form);
+            return answer.Task;
+        };
+        var choose = field.ChooseCommand.ExecuteAsync(null);
+        var form = await shown.Task; // the dialog before the list came
+        Assert.True(form.IsLoading);
+        Assert.False(form.OkCommand.CanExecute(null));
+        list.SetException(new InvalidOperationException("The server does not answer."));
+        await Eventually.TrueAsync(() => !form.IsLoading, "the read ended");
+        Assert.Equal("The server does not answer.", form.Problem); // never a silent empty list
+        Assert.Null(form.Tree);
+        answer.SetResult(false);
+        await choose;
+        Assert.Equal("io.port.door", field.Value!.Type); // unchanged
+
+        // A list without any event says so too.
+        var empty = new EventTypePickerViewModel([], null);
+        Assert.Equal(VisionTexts.NoEvents, empty.Problem);
+    }
+
     private sealed class EventDialogs : IVisionDialogs
     {
         public Func<EventTypePickerViewModel, bool> Event { get; set; } = _ => false;
 
+        public Func<EventTypePickerViewModel, Task<bool>>? EventAsync { get; set; }
+
         public Func<Guid?, Guid?> Device { get; set; } = _ => null;
 
-        public Task<bool> ChooseEventTypeAsync(EventTypePickerViewModel form) => Task.FromResult(Event(form));
+        public Task<bool> ChooseEventTypeAsync(EventTypePickerViewModel form) => EventAsync?.Invoke(form) ?? Task.FromResult(Event(form));
 
         public Task<Guid?> ChooseDeviceAsync(Guid? selected) => Task.FromResult(Device(selected));
 

@@ -2,6 +2,7 @@ using System.Diagnostics;
 
 using Oadm.Client.EventRules;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Client.Controls;
 
 using Xunit.Abstractions;
 

@@ -360,22 +360,21 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
     /// <summary>The event types of the event rules (the page method, read once per pipeline shown).</summary>
     public async Task<IReadOnlyList<EventTypeChoice>> EventTypesAsync()
     {
-        if (_eventTypes is null)
+        try
         {
-            try
-            {
-                _eventTypes = VisionJson.Deserialize<EventTypeList>(await _ctx.InvokeAsync(VisionMethods.ListEventTypes, "{}", CancellationToken.None).ConfigureAwait(true)).Types;
-            }
-#pragma warning disable CA1031 // An older server without the list: no event to choose, the dialog says so.
-            catch (Exception)
-#pragma warning restore CA1031
-            {
-                return [];
-            }
+            return await ReadEventTypesAsync(CancellationToken.None).ConfigureAwait(true);
         }
-
-        return _eventTypes;
+#pragma warning disable CA1031 // The names of the chosen events only: without the list the ids show.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return [];
+        }
     }
+
+    /// <summary>The event types, read once (a failure throws: the Choose event dialog says why).</summary>
+    private async Task<IReadOnlyList<EventTypeChoice>> ReadEventTypesAsync(CancellationToken ct) =>
+        _eventTypes ??= VisionJson.Deserialize<EventTypeList>(await _ctx.InvokeAsync(VisionMethods.ListEventTypes, "{}", ct).ConfigureAwait(true)).Types;
 
     async Task<EventTypeValue?> INodeFormHost.ChooseEventAsync(EventTypeValue? current)
     {
@@ -384,8 +383,14 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
             return null;
         }
 
-        var form = new EventTypePickerViewModel(await EventTypesAsync().ConfigureAwait(true), current?.Type);
-        if (!await dialogs.ChooseEventTypeAsync(form).ConfigureAwait(true) || form.Chosen is not { } chosen)
+        // The dialog shows at once and reads the list while it shows.
+        var form = new EventTypePickerViewModel(current?.Type);
+        using var reading = new CancellationTokenSource();
+        var load = form.LoadAsync(ReadEventTypesAsync, reading.Token);
+        var ok = await dialogs.ChooseEventTypeAsync(form).ConfigureAwait(true);
+        await reading.CancelAsync().ConfigureAwait(true);
+        await load.ConfigureAwait(true);
+        if (!ok || form.Chosen is not { } chosen)
         {
             return null;
         }
