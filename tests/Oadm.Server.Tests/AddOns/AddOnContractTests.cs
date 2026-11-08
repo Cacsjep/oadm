@@ -35,7 +35,7 @@ public sealed class AddOnContractTests
 
         var list = await op.ListAddOnsAsync(new Proto.ListAddOnsRequest());
 
-        var ocr = Assert.Single(list.AddOns);
+        var ocr = Assert.Single(list.AddOns, a => a.Id == Id);
         Assert.Equal((Id, "Text recognition", "Reads text in camera pictures."), (ocr.Id, ocr.DisplayName, ocr.Description));
         Assert.Equal(Proto.AddOnState.AddOnNotInstalled, ocr.State);
         Assert.False(ocr.CanInstall); // a development build: no hash built in
@@ -95,7 +95,7 @@ public sealed class AddOnContractTests
         var registry = host.Get<PluginRegistry>();
         Assert.True(host.Get<IAddOnInstaller>() is AddOnInstaller);
 
-        var listed = Assert.Single((await host.Plugins.ListAddOnsAsync(new Proto.ListAddOnsRequest())).AddOns);
+        var listed = Assert.Single((await host.Plugins.ListAddOnsAsync(new Proto.ListAddOnsRequest())).AddOns, a => a.Id == Id);
         Assert.True(listed.CanInstall);
         Assert.Equal(AddOnCatalog.DownloadUrl(Id, AddOnRig.Version, AddOnInstallerOptions.CurrentRuntimeId()), listed.DownloadUrl);
 
@@ -123,12 +123,12 @@ public sealed class AddOnContractTests
         Assert.DoesNotContain(part.Files, f => f.Path.Contains("onnxruntime", StringComparison.OrdinalIgnoreCase) || f.Path.StartsWith("models/", StringComparison.Ordinal));
 
         // The list carries the digest of the client part: a client checks its cached copy against it.
-        var installedRow = Assert.Single((await host.Plugins.ListAddOnsAsync(new Proto.ListAddOnsRequest())).AddOns);
+        var installedRow = Assert.Single((await host.Plugins.ListAddOnsAsync(new Proto.ListAddOnsRequest())).AddOns, a => a.Id == Id);
         Assert.Equal(64, part.Digest.Length);
         Assert.Equal(part.Digest, installedRow.ClientDigest);
 
         // Remove: off at once, still loaded, the row says when the files go.
-        var afterRemove = Assert.Single((await host.Plugins.RemoveAddOnAsync(new Proto.AddOnIdRequest { Id = Id })).AddOns);
+        var afterRemove = Assert.Single((await host.Plugins.RemoveAddOnAsync(new Proto.AddOnIdRequest { Id = Id })).AddOns, a => a.Id == Id);
         Assert.Equal((Proto.AddOnState.AddOnRemoved, AddOnTexts.Removed), (afterRemove.State, afterRemove.Message));
         Assert.True(registry.HasPackage(Id));
         Assert.False(registry.IsEnabled(Id));
@@ -148,7 +148,7 @@ public sealed class AddOnContractTests
         }
 
         Assert.True(kept[^1].Done);
-        Assert.Equal(Proto.AddOnState.AddOnInstalled, Assert.Single((await host.Plugins.ListAddOnsAsync(new Proto.ListAddOnsRequest())).AddOns).State);
+        Assert.Equal(Proto.AddOnState.AddOnInstalled, Assert.Single((await host.Plugins.ListAddOnsAsync(new Proto.ListAddOnsRequest())).AddOns, a => a.Id == Id).State);
 
         // Audited as users name it: "optional plugin", never "add-on".
         var audit = (await host.Audit.ListAsync(new Proto.ListAuditRequest())).Entries;

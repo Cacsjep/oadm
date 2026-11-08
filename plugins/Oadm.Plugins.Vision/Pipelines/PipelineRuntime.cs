@@ -333,6 +333,12 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
                 {
                     return inWork;
                 }
+
+                // A frame that ended between the first look and now is the Last already (DeliverSaved sets it first).
+                if (watch.Last is { Result: { } justRead } recent && recent.At >= asked - VisionLimits.FreshFrame)
+                {
+                    return justRead;
+                }
             }
 
             // No stream that ran a frame now: a picture of its own, through an evaluator of its own (no event: the stream
@@ -782,11 +788,7 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
             Interlocked.Increment(ref watch.InWork);
             return Process(watch.Serial, watch.Evaluator, jpeg, token);
         },
-        outcome =>
-        {
-            Interlocked.Decrement(ref watch.InWork);
-            DeliverSaved(watch, outcome);
-        },
+        outcome => DeliverSaved(watch, outcome), // ends the frame's InWork once its result is the pipeline's Last
         problem => SetProblem(_streamProblems, watch.Pipeline.Id, problem),
         ct);
 
@@ -841,6 +843,9 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
         }
         finally
         {
+            // Last first, then no frame in work, then the waiters: Run pipeline never finds neither (it would take a
+            // picture of its own for a frame that was just read).
+            Interlocked.Decrement(ref watch.InWork);
             Interlocked.Increment(ref _delivered);
             watch.Delivered(outcome);
         }

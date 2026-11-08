@@ -25,6 +25,10 @@ public sealed class AddOnInstallerTests
     private const string Id = AddOnCatalog.TextRecognitionId;
     private const string Name = "Text recognition";
 
+    /// <summary>The row of Text recognition, the add-on these tests install (the catalogue lists Vision Center too).</summary>
+    private static AddOnStatus Ocr(IReadOnlyList<AddOnStatus> rows) =>
+        Assert.Single(rows, r => r.Entry.Id == AddOnCatalog.TextRecognitionId);
+
     private static async Task<AddOnRig> StartedAsync(string version = AddOnRig.Version)
     {
         var rig = new AddOnRig(version);
@@ -78,7 +82,7 @@ public sealed class AddOnInstallerTests
 
         Assert.True(rig.Registry.HasPackage(Id));
         Assert.Empty(rig.Installer.NotLoaded);
-        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var row = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
         Assert.Equal((AddOnState.Installed, "4.10.0", true, null), (row.State, row.Version, row.UpdateAvailable, row.Message));
         Assert.True(row.CanInstall);
         Assert.NotNull(row.DownloadUrl);
@@ -95,7 +99,7 @@ public sealed class AddOnInstallerTests
 
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
 
-        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var row = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
         Assert.Equal((AddOnState.Installed, "4.10.0", false), (row.State, row.Version, row.UpdateAvailable));
         Assert.Null(row.Message);
     }
@@ -111,7 +115,7 @@ public sealed class AddOnInstallerTests
 
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
 
-        Assert.True(Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
+        Assert.True(Ocr(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
     }
 
     [Fact]
@@ -131,7 +135,7 @@ public sealed class AddOnInstallerTests
         Assert.Equal(AddOnRig.Version, AddOnFolders.ReadVersion(rig.Folder));
         Assert.True(rig.Registry.HasPackage(Id));
         Assert.Equal([new InstalledAddOn(Id, AddOnRig.Version)], rig.List.Items);
-        Assert.False(Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
+        Assert.False(Ocr(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
         Assert.DoesNotContain(rig.Leftovers(), p => p.StartsWith(".update-", StringComparison.Ordinal));
     }
 
@@ -147,7 +151,7 @@ public sealed class AddOnInstallerTests
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
 
         Assert.Equal("4.10.0", AddOnFolders.ReadVersion(rig.Folder));
-        Assert.True(Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
+        Assert.True(Ocr(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
         Assert.False(Directory.Exists(waiting));
     }
 
@@ -161,7 +165,7 @@ public sealed class AddOnInstallerTests
 
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
 
-        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var row = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
         Assert.Equal((AddOnState.Failed, AddOnTexts.InstallAgain), (row.State, row.Message));
         Assert.Equal([row.Entry.DisplayName], rig.Installer.NotLoaded);
     }
@@ -176,7 +180,7 @@ public sealed class AddOnInstallerTests
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
 
         Assert.False(rig.Registry.HasPackage(Id));
-        Assert.Equal(AddOnTexts.InstallAgain, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).Message);
+        Assert.Equal(AddOnTexts.InstallAgain, Ocr(await rig.Installer.ListAsync(CancellationToken.None)).Message);
     }
 
     [Fact]
@@ -202,7 +206,7 @@ public sealed class AddOnInstallerTests
 
         Assert.Equal("4.10.0", AddOnFolders.ReadVersion(rig.Folder));
         Assert.True(rig.Registry.HasPackage(Id));
-        Assert.True(Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
+        Assert.True(Ocr(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
         Assert.DoesNotContain(rig.Leftovers(), p => p.StartsWith('.') && p != AddOnFolders.UploadFolderName);
     }
 
@@ -256,7 +260,7 @@ public sealed class AddOnInstallerTests
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
 
         Assert.False(rig.Registry.HasPackage(Id));
-        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var row = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
         Assert.Equal((AddOnState.Failed, AddOnTexts.InstallAgain), (row.State, row.Message));
     }
 
@@ -284,7 +288,7 @@ public sealed class AddOnInstallerTests
         Assert.All(rig.Leftovers(), path => Assert.True(path == Id || path.StartsWith(Id + "/", StringComparison.Ordinal) || path == AddOnFolders.UploadFolderName, path));
         Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(rig.Root, AddOnFolders.UploadFolderName)));
         Assert.True(File.Exists(Path.Combine(rig.Folder, "plugin.json")));
-        Assert.Equal(AddOnState.Installed, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).State);
+        Assert.Equal(AddOnState.Installed, Ocr(await rig.Installer.ListAsync(CancellationToken.None)).State);
     }
 
     [Fact]
@@ -315,7 +319,7 @@ public sealed class AddOnInstallerTests
     {
         using var rig = await StartedAsync("4.12.0-rc.1");
 
-        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var row = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
         var status = await rig.InstallAsync();
 
         Assert.True(row.CanInstall);
@@ -334,7 +338,7 @@ public sealed class AddOnInstallerTests
 
         Assert.Equal(AddOnTexts.WrongFile, failed.Message);
         AssertNothingInstalled(rig);
-        Assert.Equal(AddOnState.NotInstalled, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).State);
+        Assert.Equal(AddOnState.NotInstalled, Ocr(await rig.Installer.ListAsync(CancellationToken.None)).State);
     }
 
     [Fact]
@@ -369,7 +373,7 @@ public sealed class AddOnInstallerTests
 
         Assert.Equal(before, rig.Leftovers().Where(p => p != AddOnFolders.UploadFolderName));
         Assert.Equal([new InstalledAddOn(Id, "4.12.0")], rig.List.Items);
-        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var row = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
         Assert.Equal((AddOnState.Failed, AddOnTexts.InstallAgain), (row.State, row.Message));
         Assert.Equal([row.Entry.DisplayName], rig.Installer.NotLoaded); // the event rules hear of it
         Assert.Equal("4.12.0", AddOnFolders.ReadVersion(rig.Folder));
@@ -381,7 +385,7 @@ public sealed class AddOnInstallerTests
         using var rig = await StartedAsync("0.1.0-dev");
         rig.Hashes.Clear();
 
-        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var row = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
         var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => rig.InstallAsync());
 
         Assert.Equal((false, AddOnTexts.NoHash, null), (row.CanInstall, row.Message, row.DownloadUrl));
@@ -632,7 +636,7 @@ public sealed class AddOnInstallerTests
         Assert.Equal(AddOnTexts.CouldNotLoad(Name), failed.Message);
         Assert.Equal("4.12.0", AddOnFolders.ReadVersion(rig.Folder));
         Assert.DoesNotContain(rig.Leftovers(), p => p.StartsWith(".new-", StringComparison.Ordinal) || p.StartsWith(".old-", StringComparison.Ordinal));
-        Assert.Equal(AddOnTexts.InstallAgain, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).Message);
+        Assert.Equal(AddOnTexts.InstallAgain, Ocr(await rig.Installer.ListAsync(CancellationToken.None)).Message);
     }
 
     [Fact]
@@ -646,7 +650,7 @@ public sealed class AddOnInstallerTests
         var remove = await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Installer.RemoveAsync(Id, CancellationToken.None));
 
         Assert.Equal((AddOnTexts.Updating, AddOnTexts.Updating), (install.Message, remove.Message));
-        Assert.False(Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).CanInstall);
+        Assert.False(Ocr(await rig.Installer.ListAsync(CancellationToken.None)).CanInstall);
         Assert.Equal(["off " + Id], rig.Activation.Calls); // the remove changed nothing
     }
 
@@ -660,7 +664,7 @@ public sealed class AddOnInstallerTests
         var first = rig.Installer.InstallFileAsync(
             new AddOnUpload(Id, "x.zip", rig.GenuineZip.Length, Held(rig.GenuineZip, started, hold)), new ProgressLog(), CancellationToken.None);
         await started.Task.WaitAsync(TimeSpan.FromSeconds(30));
-        var installing = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var installing = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
 
         var second = await Assert.ThrowsAsync<InvalidOperationException>(() => rig.InstallAsync());
         var remove = await Assert.ThrowsAsync<InvalidOperationException>(() => rig.Installer.RemoveAsync(Id, CancellationToken.None));
@@ -721,7 +725,7 @@ public sealed class AddOnInstallerTests
         Assert.False(Directory.Exists(rig.Folder));
         Assert.Empty(rig.List.Items);
         Assert.False(rig.Registry.HasPackage(Id));
-        Assert.Equal(AddOnState.NotInstalled, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).State);
+        Assert.Equal(AddOnState.NotInstalled, Ocr(await rig.Installer.ListAsync(CancellationToken.None)).State);
     }
 
     [Fact]
@@ -748,7 +752,7 @@ public sealed class AddOnInstallerTests
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
         await rig.Installer.RemoveAsync(Id, CancellationToken.None);
 
-        var removed = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var removed = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
         var again = await rig.Installer.InstallAsync(Id, new ProgressLog(), CancellationToken.None);
 
         Assert.True(removed.CanInstall);
@@ -768,7 +772,7 @@ public sealed class AddOnInstallerTests
 
         Assert.True(rig.Registry.HasPackage(Id));
         Assert.Empty(rig.Added); // the start reads the registry itself
-        Assert.Equal(AddOnState.Installed, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).State);
+        Assert.Equal(AddOnState.Installed, Ocr(await rig.Installer.ListAsync(CancellationToken.None)).State);
     }
 
     [Fact]
@@ -777,7 +781,7 @@ public sealed class AddOnInstallerTests
         using var rig = await UpdatedAsync();
 
         Assert.False(rig.Registry.HasPackage(Id)); // never the old one
-        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var row = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
         Assert.Equal((AddOnState.Failed, AddOnTexts.InstallAgain, true, "4.12.0"), (row.State, row.Message, row.CanInstall, row.Version));
         Assert.Equal(AddOnCatalog.DownloadUrl(Id, AddOnRig.Version, AddOnRig.Runtime), row.DownloadUrl);
         Assert.True(File.Exists(Path.Combine(rig.Folder, "plugin.json"))); // the old files stay until the new ones are in
@@ -802,7 +806,7 @@ public sealed class AddOnInstallerTests
 
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
 
-        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var row = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
         Assert.Equal((AddOnState.Failed, AddOnTexts.InstallAgain, true), (row.State, row.Message, row.CanInstall));
         Assert.False(rig.Registry.HasPackage(Id));
 
@@ -844,7 +848,7 @@ public sealed class AddOnInstallerTests
             await rig.Installer.LoadInstalledAsync(CancellationToken.None);
 
             Assert.False(rig.Registry.HasPackage(Id));
-            Assert.Equal(AddOnState.NotInstalled, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).State);
+            Assert.Equal(AddOnState.NotInstalled, Ocr(await rig.Installer.ListAsync(CancellationToken.None)).State);
         }
     }
 
@@ -858,7 +862,7 @@ public sealed class AddOnInstallerTests
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
 
         Assert.False(rig.Registry.HasPackage(Id));
-        Assert.Equal(AddOnTexts.InstallAgain, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).Message);
+        Assert.Equal(AddOnTexts.InstallAgain, Ocr(await rig.Installer.ListAsync(CancellationToken.None)).Message);
     }
 
     [Fact]
@@ -885,7 +889,7 @@ public sealed class AddOnInstallerTests
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
 
         Assert.True(rig.Registry.HasPackage(Id));
-        Assert.Equal(AddOnState.Installed, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).State);
+        Assert.Equal(AddOnState.Installed, Ocr(await rig.Installer.ListAsync(CancellationToken.None)).State);
     }
 
     [Theory]
@@ -900,7 +904,7 @@ public sealed class AddOnInstallerTests
 
         Assert.False(rig.Registry.HasPackage(Id));
         Assert.Equal([new InstalledAddOn(Id, version ?? string.Empty)], rig.List.Items);
-        Assert.Equal(AddOnTexts.InstallAgain, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).Message);
+        Assert.Equal(AddOnTexts.InstallAgain, Ocr(await rig.Installer.ListAsync(CancellationToken.None)).Message);
     }
 
     [Fact]
@@ -939,7 +943,7 @@ public sealed class AddOnInstallerTests
         Assert.False(rig.Registry.HasPackage(Id));
         Assert.Empty(rig.List.Items);
         Assert.False(Directory.Exists(rig.Folder)); // the next start must not take it up either
-        Assert.Equal(AddOnState.NotInstalled, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).State);
+        Assert.Equal(AddOnState.NotInstalled, Ocr(await rig.Installer.ListAsync(CancellationToken.None)).State);
     }
 
     [Fact]
@@ -953,13 +957,13 @@ public sealed class AddOnInstallerTests
 
         Assert.False(rig.Registry.HasPackage(Id));
         Assert.False(Directory.Exists(rig.Folder));
-        var status = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var status = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
         Assert.Equal((AddOnState.Failed, AddOnTexts.FolderWasLoose), (status.State, status.Message));
 
         rig.Restart();
         await rig.Installer.LoadInstalledAsync(CancellationToken.None);
         Assert.False(rig.Registry.HasPackage(Id));
-        Assert.Equal(AddOnState.Failed, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).State);
+        Assert.Equal(AddOnState.Failed, Ocr(await rig.Installer.ListAsync(CancellationToken.None)).State);
     }
 
     [Fact]
@@ -973,7 +977,7 @@ public sealed class AddOnInstallerTests
 
         Assert.False(rig.Registry.HasPackage(Id));
         Assert.False(Directory.Exists(rig.Folder));
-        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var row = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
         Assert.Equal((AddOnState.Failed, AddOnTexts.FolderWasLoose, true), (row.State, row.Message, row.CanInstall));
         Assert.Equal([row.Entry.DisplayName], rig.Installer.NotLoaded); // the event rules hear of it
         Assert.Equal([new InstalledAddOn(Id, AddOnRig.Version)], rig.List.Items);
@@ -993,7 +997,7 @@ public sealed class AddOnInstallerTests
         Assert.False(rig.Registry.HasPackage(Id));
         Assert.Empty(rig.List.Items);
         Assert.False(Directory.Exists(rig.Folder));
-        Assert.Equal(AddOnState.NotInstalled, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).State);
+        Assert.Equal(AddOnState.NotInstalled, Ocr(await rig.Installer.ListAsync(CancellationToken.None)).State);
     }
 
     [Fact]
@@ -1011,7 +1015,7 @@ public sealed class AddOnInstallerTests
 
         Assert.True(rig.Registry.HasPackage(Id));
         Assert.True(Directory.Exists(rig.Folder));
-        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var row = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
         Assert.Equal((AddOnState.Installed, null), (row.State, row.Message));
         Assert.Equal([new InstalledAddOn(Id, AddOnRig.Version)], rig.List.Items);
     }
@@ -1029,7 +1033,7 @@ public sealed class AddOnInstallerTests
         Assert.Equal("4.10.0", AddOnFolders.ReadVersion(rig.Folder)); // never swapped in
         Assert.False(Directory.Exists(waiting));
         Assert.True(rig.Registry.HasPackage(Id));
-        Assert.True(Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
+        Assert.True(Ocr(await rig.Installer.ListAsync(CancellationToken.None)).UpdateAvailable);
         Assert.Equal([new InstalledAddOn(Id, "4.10.0")], rig.List.Items);
     }
 
@@ -1044,7 +1048,7 @@ public sealed class AddOnInstallerTests
 
         Assert.False(rig.Registry.HasPackage(Id)); // the waiting update did not take the folder's place
         Assert.Empty(rig.Leftovers());
-        Assert.Equal(AddOnTexts.FolderWasLoose, Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).Message);
+        Assert.Equal(AddOnTexts.FolderWasLoose, Ocr(await rig.Installer.ListAsync(CancellationToken.None)).Message);
     }
 
     /// <summary>A server on which a waiting update cannot be deleted (a file in it is held open).</summary>
@@ -1176,7 +1180,7 @@ public sealed class AddOnInstallerTests
         Assert.Equal(Path.GetFullPath(bundled), Assert.Single(rig.Loader.Packages).Directory);
         var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => rig.InstallAsync());
         Assert.Equal(AddOnTexts.PartOfServer(Name), refused.Message);
-        Assert.False(Assert.Single(await rig.Installer.ListAsync(CancellationToken.None)).CanInstall);
+        Assert.False(Ocr(await rig.Installer.ListAsync(CancellationToken.None)).CanInstall);
     }
 
     [Fact]
@@ -1232,7 +1236,7 @@ public sealed class AddOnInstallerTests
     {
         using var rig = await StartedAsync("4.12.0-rc.1");
 
-        var row = Assert.Single(await rig.Installer.ListAsync(CancellationToken.None));
+        var row = Ocr(await rig.Installer.ListAsync(CancellationToken.None));
 
         Assert.Equal(
             GitHubReleaseFeed.DownloadPrefix + "v4.12.0-rc.1/oadm-addon-oadm.ocr-4.12.0-rc.1-linux-x64.zip",

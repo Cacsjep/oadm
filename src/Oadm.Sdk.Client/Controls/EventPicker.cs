@@ -118,6 +118,7 @@ public sealed class EventPicker : UserControl
         set => SetValue(SelectedProperty, value);
     }
 
+    /// <summary>The button's text while no event is chosen ("Choose an event").</summary>
     public string Placeholder
     {
         get => GetValue(PlaceholderProperty);

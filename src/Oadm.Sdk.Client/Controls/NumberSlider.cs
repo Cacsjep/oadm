@@ -69,42 +69,49 @@ public sealed class NumberSlider : UserControl
         UpdateRange();
     }
 
+    /// <summary>The value as typed (bound like a text box's text, so the form checks it).</summary>
     public string? Text
     {
         get => GetValue(TextProperty);
         set => SetValue(TextProperty, value);
     }
 
+    /// <summary>The slider's lowest value.</summary>
     public double Minimum
     {
         get => GetValue(MinimumProperty);
         set => SetValue(MinimumProperty, value);
     }
 
+    /// <summary>The slider's highest value.</summary>
     public double Maximum
     {
         get => GetValue(MaximumProperty);
         set => SetValue(MaximumProperty, value);
     }
 
+    /// <summary>The slider's step; the number box takes any value the form allows.</summary>
     public double Step
     {
         get => GetValue(StepProperty);
         set => SetValue(StepProperty, value);
     }
 
+    /// <summary>The unit after the number ("%", "s"); null: none.</summary>
     public string? Unit
     {
         get => GetValue(UnitProperty);
         set => SetValue(UnitProperty, value);
     }
 
+    /// <summary>The number box's hint while it is empty.</summary>
     public string? Placeholder
     {
         get => GetValue(PlaceholderProperty);
         set => SetValue(PlaceholderProperty, value);
     }
 
+    /// <summary>The value has an error: the number box gets the red border (the text sits below the row).</summary>
     public bool HasError
     {
         get => GetValue(HasErrorProperty);

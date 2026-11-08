@@ -13,18 +13,23 @@ namespace Oadm.Sdk.Client.Controls;
 /// <summary>A weekday of <see cref="DayChips"/>: its short name and whether it is on.</summary>
 public interface IDayChoice
 {
+    /// <summary>The short name on the chip ("Mon").</summary>
     string Text { get; }
 
+    /// <summary>The day is chosen (the chip is on).</summary>
     bool IsChecked { get; set; }
 }
 
 /// <summary>A plain <see cref="IDayChoice"/> for a weekday, Monday first in <see cref="Week"/>.</summary>
 public sealed partial class DayChoice(DayOfWeek day) : ObservableObject, IDayChoice
 {
+    /// <summary>The weekday.</summary>
     public DayOfWeek Day { get; } = day;
 
+    /// <summary>The short name on the chip ("Mon").</summary>
     public string Text { get; } = CultureInfo.InvariantCulture.DateTimeFormat.GetAbbreviatedDayName(day);
 
+    /// <summary>The day is chosen (the chip is on).</summary>
     [ObservableProperty]
     public partial bool IsChecked { get; set; }
 

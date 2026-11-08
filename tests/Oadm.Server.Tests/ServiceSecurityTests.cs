@@ -428,7 +428,7 @@ public sealed class ServiceSecurityTests : IDisposable
     }
 
     private static async Task<AddOnStatus> TextRecognitionAsync(WebApplication app) =>
-        Assert.Single(await app.Services.GetRequiredService<AddOnInstaller>().ListAsync(CancellationToken.None));
+        Assert.Single(await app.Services.GetRequiredService<AddOnInstaller>().ListAsync(CancellationToken.None), r => r.Entry.Id == AddOnCatalog.TextRecognitionId);
 
     [Fact]
     public async Task ALooseFileElsewhereInTheDataFolderIsFixedAndChangesNothingForTheOptionalPlugins()

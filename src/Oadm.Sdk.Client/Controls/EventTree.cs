@@ -12,6 +12,11 @@ namespace Oadm.Sdk.Client.Controls;
 /// plugin's own lists (Vision Center's Device event node) derive from it or build it. Equal by its values (the folders by
 /// their names).
 /// </summary>
+/// <param name="Id">The event type id.</param>
+/// <param name="Name">The event's name in its folder.</param>
+/// <param name="Folders">Its folders, top first.</param>
+/// <param name="Available">Its plugin is on; an unavailable event shows dimmed.</param>
+/// <param name="Description">What it means (the bottom line of the picker); empty when the source gives nothing.</param>
 public record EventChoice(string Id, string Name, IReadOnlyList<string> Folders, bool Available = true, string Description = "")
 {
     public virtual bool Equals(EventChoice? other) =>
@@ -49,6 +54,7 @@ public sealed partial class EventTreeFolder : EventTreeRow
 
     internal List<EventTreeEvent> Events { get; } = [];
 
+    /// <summary>The user opened the folder.</summary>
     [ObservableProperty]
     public partial bool IsExpanded { get; set; }
 
@@ -66,6 +72,7 @@ public sealed class EventTreeEvent : EventTreeRow
         SearchText = searchText;
     }
 
+    /// <summary>The event this row stands for.</summary>
     public EventChoice Option { get; }
 
     /// <summary>The event's folders and name in lower case: what the search looks in.</summary>
@@ -82,12 +89,14 @@ public sealed class EventTreeEvent : EventTreeRow
 /// </summary>
 public sealed partial class EventTree : ObservableObject
 {
+    /// <summary>Joins the folder names of a path ("Devices › Any device").</summary>
     public const string Separator = " › ";
 
     private readonly List<EventTreeFolder> _roots = [];
     private readonly Dictionary<string, EventTreeFolder> _folders = new(StringComparer.Ordinal);
     private readonly Dictionary<EventChoice, EventTreeEvent> _events = [];
 
+    /// <summary>The tree of <paramref name="options"/>, every folder closed.</summary>
     public EventTree(IEnumerable<EventChoice> options)
     {
         foreach (var option in options)
