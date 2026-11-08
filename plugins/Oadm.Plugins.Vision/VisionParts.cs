@@ -68,6 +68,9 @@ public sealed record VisionParts
                 return new OnnxInference(new InferenceOptions { FileOf = id => FileOf(data, id), Time = clock }, ctx.Logger);
             },
             Frames = ctx => new Inference.VapixFrameSource(ctx.System.Vapix, clock, ctx.Logger),
+            // The Device event nodes read the event states; a preview gets every node's output.
+            EvaluatorWithStates = (pipeline, findModel, inference, mode, states, preview) => Nodes.PipelineEvaluator.Create(
+                pipeline, findModel, inference, mode, new Nodes.EvaluatorOptions { AllNodes = preview, EventStates = states, Time = clock }),
             Time = clock,
         };
     }

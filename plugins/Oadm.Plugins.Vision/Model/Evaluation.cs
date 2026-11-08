@@ -82,8 +82,7 @@ public enum VisionEventKind
     /// <summary>Stateless, input Number, at most once a second.</summary>
     CountChanged = 4,
 
-    /// <summary>Stateful, input Number with a Limit.</summary>
-    AboveLimit = 5,
+    // 5 was Above limit, replaced by Compare and Condition holds (decision 2026-11-08); never reuse the number.
 
     /// <summary>On action, input Objects: once per run.</summary>
     ObjectsFound = 6,

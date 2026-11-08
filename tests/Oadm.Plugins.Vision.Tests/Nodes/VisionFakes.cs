@@ -150,6 +150,13 @@ internal sealed class PipelineBuilder
         return this;
     }
 
+    /// <summary>A link into the control input <paramref name="port"/> of <paramref name="to"/>.</summary>
+    public PipelineBuilder Control(string from, string to, string port)
+    {
+        _links.Add(new PipelineLink(from, to) { ToPort = port });
+        return this;
+    }
+
     public Pipeline Build() => new()
     {
         Id = "00000000000000000000000000000001",

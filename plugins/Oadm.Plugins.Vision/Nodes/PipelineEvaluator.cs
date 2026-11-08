@@ -16,6 +16,12 @@ public sealed record EvaluatorOptions
 
     /// <summary>Measures the model calls (their ms); never the frame's time, which comes with the frame.</summary>
     public TimeProvider Time { get; init; } = TimeProvider.System;
+
+    /// <summary>The server's time zone: Timers and Time windows judge the frame times in it.</summary>
+    public TimeZoneInfo TimeZone { get; init; } = TimeZoneInfo.Local;
+
+    /// <summary>The events of the event rules that are on, for Device event nodes; null: none is ever on.</summary>
+    public IEventStates? EventStates { get; init; }
 }
 
 /// <summary>Builds the evaluator of a checked pipeline (docs/spec/vision-center.md "Running" and "Events").</summary>
@@ -42,15 +48,15 @@ public static class PipelineEvaluator
 }
 
 /// <summary>
-/// One pipeline at work: the nodes that can run (no error on them or before them) in the order from the camera, each once
-/// per frame, the outputs handed by reference. A node runs only when an Event, a Count or "Show on video" after it (or
-/// itself) needs it, unless <see cref="EvaluatorOptions.AllNodes"/>. Event nodes run last, so a failing model call ends
-/// the frame before any event.
+/// One pipeline at work: the nodes that can run (no error on them or before them, their required control inputs linked
+/// to nodes that run) in the order of their data and control links, each once per frame, the outputs handed by reference.
+/// A node runs only when an Event, a Count or "Show on video" after it (or itself) needs it, unless
+/// <see cref="EvaluatorOptions.AllNodes"/>. Event nodes run last, so a failing model call ends the frame before any event.
 /// </summary>
 internal sealed class Evaluator : IPipelineEvaluator
 {
     private readonly IInference _inference;
-    private readonly TimeProvider _time;
+    private readonly EvaluatorOptions _options;
     private readonly IReadOnlyList<PipelineNode> _all;
     private readonly Dictionary<string, NodeOutput> _skipped = new(StringComparer.Ordinal);
     private readonly List<(VisionNode Node, string? Parent)> _work = [];
@@ -60,7 +66,7 @@ internal sealed class Evaluator : IPipelineEvaluator
     public Evaluator(Pipeline pipeline, GraphCheck check, Func<string?, VisionModel?> findModel, IInference inference, PipelineMode mode, EvaluatorOptions options)
     {
         _inference = inference;
-        _time = options.Time;
+        _options = options;
         _all = pipeline.Nodes;
         foreach (var node in _all)
         {
@@ -78,59 +84,123 @@ internal sealed class Evaluator : IPipelineEvaluator
             nodes.TryAdd(node.Id, node);
         }
 
-        var children = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        // Data links (one input each) and control links (port -> the node linked into it).
         var parentOf = new Dictionary<string, string>(StringComparer.Ordinal);
+        var controlsOf = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
+        var after = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         foreach (var link in pipeline.Links)
         {
-            if (!nodes.ContainsKey(link.From) || !nodes.ContainsKey(link.To) || !parentOf.TryAdd(link.To, link.From))
+            if (!nodes.ContainsKey(link.From) || !nodes.ContainsKey(link.To))
             {
                 continue;
             }
 
-            if (!children.TryGetValue(link.From, out var list))
+            if (link.ToPort is { } port)
             {
-                children[link.From] = list = [];
+                if (!controlsOf.TryGetValue(link.To, out var ports))
+                {
+                    controlsOf[link.To] = ports = new(StringComparer.Ordinal);
+                }
+
+                ports.TryAdd(port, link.From);
+            }
+            else if (!parentOf.TryAdd(link.To, link.From))
+            {
+                continue;
+            }
+
+            if (!after.TryGetValue(link.From, out var list))
+            {
+                after[link.From] = list = [];
             }
 
             list.Add(link.To);
         }
 
-        var camera = _all.FirstOrDefault(n => n.Kind == NodeKinds.Camera);
-        if (camera is null || check.NodeErrors.ContainsKey(camera.Id))
+        // Candidates: no error, a source or a node with a known input.
+        bool Candidate(PipelineNode node) =>
+            !check.NodeErrors.ContainsKey(node.Id)
+            && NodeKinds.Find(node.Kind) is { } kind
+            && (kind.Accepts.Count == 0 || check.InputKinds.ContainsKey(node.Id));
+
+        // The order over data and control links (Kahn, stable by the node list); runnable: its input and its required
+        // control inputs come from nodes that run.
+        var pending = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var node in _all)
         {
-            return;
+            if (Candidate(node))
+            {
+                pending.TryAdd(node.Id, 0);
+            }
         }
 
-        // The runnable nodes from the camera on, parents first (a node with an error stops its branch).
-        var order = new List<PipelineNode>();
-        var stack = new Stack<PipelineNode>();
-        stack.Push(camera);
-        while (stack.Count > 0)
+        foreach (var (from, list) in after)
         {
-            var node = stack.Pop();
-            order.Add(node);
-            if (!children.TryGetValue(node.Id, out var list))
+            if (!pending.ContainsKey(from))
             {
                 continue;
             }
 
-            for (var i = list.Count - 1; i >= 0; i--)
+            foreach (var to in list)
             {
-                var child = nodes[list[i]];
-                if (!check.NodeErrors.ContainsKey(child.Id) && check.InputKinds.ContainsKey(child.Id))
+                if (pending.TryGetValue(to, out var count))
                 {
-                    stack.Push(child);
+                    pending[to] = count + 1;
                 }
             }
         }
 
-        // Needed: a Count or an Event, shown on the video, or anything before one of those.
+        var order = new List<PipelineNode>();
+        var runnable = new HashSet<string>(StringComparer.Ordinal);
+        var ready = new Queue<string>(_all.Where(n => pending.TryGetValue(n.Id, out var d) && d == 0).Select(n => n.Id).Distinct());
+        while (ready.Count > 0)
+        {
+            var id = ready.Dequeue();
+            var node = nodes[id];
+            var kind = NodeKinds.Find(node.Kind)!;
+            var ok = kind.Accepts.Count == 0 || (parentOf.TryGetValue(id, out var p) && runnable.Contains(p));
+            foreach (var control in kind.ControlInputs)
+            {
+                if (control.Required && !(controlsOf.TryGetValue(id, out var ports) && ports.TryGetValue(control.Port, out var from) && runnable.Contains(from)))
+                {
+                    ok = false;
+                }
+            }
+
+            if (kind == NodeKinds.CameraKind && order.Exists(n => n.Kind == NodeKinds.Camera))
+            {
+                ok = false;
+            }
+
+            if (ok)
+            {
+                runnable.Add(id);
+                order.Add(node);
+            }
+
+            if (after.TryGetValue(id, out var next))
+            {
+                foreach (var to in next)
+                {
+                    if (pending.TryGetValue(to, out var d))
+                    {
+                        pending[to] = d - 1;
+                        if (d == 1)
+                        {
+                            ready.Enqueue(to);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Needed: a Count or an Event, shown on the video, or anything before one of those (over both kinds of link).
         var needed = new HashSet<string>(StringComparer.Ordinal);
         for (var i = order.Count - 1; i >= 0; i--)
         {
             var node = order[i];
             var need = options.AllNodes || node.ShowOnVideo || node.Kind is NodeKinds.Count or NodeKinds.Event;
-            if (!need && children.TryGetValue(node.Id, out var list))
+            if (!need && after.TryGetValue(node.Id, out var list))
             {
                 foreach (var c in list)
                 {
@@ -162,17 +232,28 @@ internal sealed class Evaluator : IPipelineEvaluator
 
             keepLost[node.Id] = keep;
             check.InputKinds.TryGetValue(node.Id, out var inputKind);
-            PortKind? input = node.Kind == NodeKinds.Camera ? null : inputKind;
+            PortKind? input = NodeKinds.Find(node.Kind)!.Accepts.Count == 0 ? null : inputKind;
             VisionNode? built = node.Kind switch
             {
                 NodeKinds.Camera => new CameraNode(node),
+                NodeKinds.Timer => new TimerNode(node),
+                NodeKinds.TimeWindow => new TimeWindowNode(node),
+                NodeKinds.DeviceEvent => new DeviceEventNode(node),
                 NodeKinds.Detect => new DetectNode(node, input, Model(node, findModel)),
                 NodeKinds.Classify => new ClassifyNode(node, input, Model(node, findModel), keep),
                 NodeKinds.Filter => new FilterNode(node, input),
                 NodeKinds.Track => new TrackNode(node, input),
                 NodeKinds.Area => new AreaNode(node, input, keep),
                 NodeKinds.Line => new LineNode(node, input, keep),
+                NodeKinds.Dwell => new DwellNode(node, input),
+                NodeKinds.Stationary => new StationaryNode(node, input, keep),
+                NodeKinds.Direction => new DirectionNode(node, input, keep),
                 NodeKinds.Count => new CountNode(node, input, parent is not null ? _byId.GetValueOrDefault(parent) as LineNode : null),
+                NodeKinds.Statistics => new StatisticsNode(node, input),
+                NodeKinds.Compare => new CompareNode(node, input),
+                NodeKinds.Logic => new LogicNode(node, input),
+                NodeKinds.Hold => new HoldNode(node, input),
+                NodeKinds.Throttle => new ThrottleNode(node, input),
                 NodeKinds.Event => new EventNode(node, input, mode, keep,
                     input == PortKind.Number && parent is not null && check.InputKinds.GetValueOrDefault(parent) == PortKind.Crossings),
                 _ => null,
@@ -180,6 +261,17 @@ internal sealed class Evaluator : IPipelineEvaluator
             if (built is null)
             {
                 continue;
+            }
+
+            if (controlsOf.TryGetValue(node.Id, out var ports))
+            {
+                foreach (var (port, from) in ports)
+                {
+                    if (runnable.Contains(from))
+                    {
+                        built.Controls[port] = from;
+                    }
+                }
             }
 
             _byId[node.Id] = built;
@@ -211,14 +303,13 @@ internal sealed class Evaluator : IPipelineEvaluator
     public async Task<FrameResult> RunAsync(IVisionFrame frame, DateTimeOffset at, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(frame);
-        var context = new FrameContext(frame, at, _inference, _time, ct);
-        var outputs = new Dictionary<string, NodeOutput>(_all.Count, StringComparer.Ordinal);
+        var context = new FrameContext(frame, at, _inference, _options.Time, ct) { Zone = _options.TimeZone, EventStates = _options.EventStates };
+        var outputs = context.Outputs;
         string? failure = null;
         foreach (var (node, parent) in _work)
         {
             ct.ThrowIfCancellationRequested();
-            NodeOutput? input = null;
-            if (parent is not null && (!outputs.TryGetValue(parent, out input) || input.Kind is null))
+            if (!Ready(node, parent, outputs, context, out var input))
             {
                 continue;
             }
@@ -238,22 +329,23 @@ internal sealed class Evaluator : IPipelineEvaluator
         {
             foreach (var (node, parent) in _events)
             {
-                if (outputs.TryGetValue(parent, out var input) && input.Kind is not null)
+                if (Ready(node, parent, outputs, context, out var input))
                 {
                     outputs[node.Id] = await node.RunAsync(input, context).ConfigureAwait(false);
                 }
             }
         }
 
+        var result = new Dictionary<string, NodeOutput>(outputs, StringComparer.Ordinal);
         foreach (var (id, skipped) in _skipped)
         {
-            outputs.TryAdd(id, skipped);
+            result.TryAdd(id, skipped);
         }
 
         return new FrameResult
         {
             At = at,
-            Nodes = outputs,
+            Nodes = result,
             Emissions = failure is null ? context.Emissions : [],
             ModelFailure = failure,
         };
@@ -265,13 +357,36 @@ internal sealed class Evaluator : IPipelineEvaluator
         {
             case CountNode count:
                 count.Reset();
-                count.Line?.Reset();
                 break;
 
             case LineNode line:
                 line.Reset();
                 break;
+
+            case StatisticsNode statistics:
+                statistics.Reset();
+                break;
         }
+    }
+
+    /// <summary>A node runs when its data input gave a result this frame and every required control input did too.</summary>
+    private static bool Ready(VisionNode node, string? parent, Dictionary<string, NodeOutput> outputs, FrameContext context, out NodeOutput? input)
+    {
+        input = null;
+        if (parent is not null && (!outputs.TryGetValue(parent, out input) || input.Kind is null))
+        {
+            return false;
+        }
+
+        foreach (var control in node.Kind.ControlInputs)
+        {
+            if (control.Required && node.Control(context, control.Port) is null)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static VisionModel Model(PipelineNode node, Func<string?, VisionModel?> findModel) =>

@@ -6,11 +6,57 @@ using Oadm.Plugins.Vision.Model;
 
 namespace Oadm.Plugins.Vision.Nodes;
 
+/// <summary>On and off with a time to become on and a time to become off again (Objects present, Condition holds).</summary>
+internal sealed class EdgeState
+{
+    private DateTimeOffset? _trueSince;
+    private DateTimeOffset? _falseSince;
+
+    public bool On { get; private set; }
+
+    /// <summary>Takes this frame's condition; +1 when it went on, -1 when it went off, else 0.</summary>
+    public int Step(bool condition, DateTimeOffset at, TimeSpan onAfter, TimeSpan offAfter)
+    {
+        if (condition)
+        {
+            _trueSince ??= at;
+            _falseSince = null;
+        }
+        else
+        {
+            _falseSince ??= at;
+            _trueSince = null;
+        }
+
+        if (!On && condition && at - _trueSince!.Value >= onAfter)
+        {
+            On = true;
+            return 1;
+        }
+
+        if (On && !condition && at - _falseSince!.Value >= offAfter)
+        {
+            On = false;
+            return -1;
+        }
+
+        return 0;
+    }
+
+    /// <summary>How long until the state changes while the condition stays as it is; null: it will not.</summary>
+    public TimeSpan? Left(bool condition, DateTimeOffset at, TimeSpan onAfter, TimeSpan offAfter) =>
+        condition && !On && _trueSince is { } t ? onAfter - (at - t)
+        : !condition && On && _falseSince is { } f ? offAfter - (at - f)
+        : null;
+}
+
 /// <summary>
 /// Event (docs/spec/vision-center.md "Events"): what it publishes follows its input. Objects: the stateful Objects present
 /// (Minimum objects, At least, Off after), with tracked objects also Object entered and Object left; Crossings: Line
 /// crossed per crossing; Number: Count changed (the value, or In or Out of crossings) at most once per
-/// <see cref="VisionLimits.CountChangedEvery"/> with the latest values, and the stateful Above limit. In On action mode Objects gives Objects found or No objects found once per run.
+/// <see cref="VisionLimits.CountChangedEvery"/> with the latest values; Condition: the stateful Condition holds. In On
+/// action mode Objects gives Objects found or No objects found once per run. A pulse into Send now gives a Report with the
+/// input's current values. Only while no: the stateful kinds count it as "not there", nothing stateless is sent.
 /// </summary>
 internal sealed class EventNode : VisionNode
 {
@@ -20,27 +66,21 @@ internal sealed class EventNode : VisionNode
     private readonly int _minObjects;
     private readonly TimeSpan _atLeast;
     private readonly TimeSpan _offAfter;
-    private readonly double? _limit;
     private readonly TimeSpan _keepLost;
     private readonly bool _numberHasInOut;
 
-    // Objects present.
-    private bool _presentOn;
-    private DateTimeOffset? _trueSince;
-    private DateTimeOffset? _falseSince;
-    private IReadOnlyDictionary<string, string> _presentValues = NoValues;
+    private readonly EdgeState _state = new();
+    private IReadOnlyDictionary<string, string> _stateValues = NoValues;
 
     // Object entered and left.
     private readonly Dictionary<int, Seen> _seen = [];
     private readonly HashSet<int> _now = [];
 
-    // Count changed and Above limit.
+    // Count changed.
     private long _lastCount;
     private long _lastIn;
     private long _lastOut;
     private DateTimeOffset? _lastCountAt;
-    private bool _aboveOn;
-    private IReadOnlyDictionary<string, string> _aboveValues = NoValues;
 
     private DateTimeOffset? _lastFired;
 
@@ -51,51 +91,55 @@ internal sealed class EventNode : VisionNode
         _minObjects = (int)Math.Max(1, Math.Round(NodeSettings.Number(VisionGraph.Setting(node, NodeKinds.MinObjectsKey)) ?? 1));
         _atLeast = TimeSpan.FromSeconds(Math.Max(0, NodeSettings.Number(VisionGraph.Setting(node, NodeKinds.AtLeastKey)) ?? 1));
         _offAfter = TimeSpan.FromSeconds(Math.Max(0, NodeSettings.Number(VisionGraph.Setting(node, NodeKinds.OffAfterKey)) ?? 2));
-        _limit = NodeSettings.Number(VisionGraph.Setting(node, NodeKinds.LimitKey));
         _keepLost = keepLost;
         _numberHasInOut = numberHasInOut;
     }
 
-    /// <summary>Whether it has a state that can be on (Objects present, Above limit).</summary>
-    private bool Stateful => (_mode == PipelineMode.Watching && Input is PortKind.Objects or PortKind.TrackedObjects)
-        || (Input == PortKind.Number && _limit is not null);
+    /// <summary>The stateful kind it has; null: none.</summary>
+    private VisionEventKind? StatefulKind => Input switch
+    {
+        PortKind.Objects or PortKind.TrackedObjects when _mode == PipelineMode.Watching => VisionEventKind.ObjectsPresent,
+        PortKind.Condition => VisionEventKind.ConditionHolds,
+        _ => null,
+    };
 
     /// <summary>Its kinds that are on now, with their last values.</summary>
     public IEnumerable<Emission> OnStates()
     {
-        if (_presentOn)
+        if (_state.On && StatefulKind is { } kind)
         {
-            yield return new Emission(Id, VisionEventKind.ObjectsPresent, EmissionState.On, _presentValues);
-        }
-
-        if (_aboveOn)
-        {
-            yield return new Emission(Id, VisionEventKind.AboveLimit, EmissionState.On, _aboveValues);
+            yield return new Emission(Id, kind, EmissionState.On, _stateValues);
         }
     }
 
     public override ValueTask<NodeOutput> RunAsync(NodeOutput? input, FrameContext frame)
     {
         ArgumentNullException.ThrowIfNull(input);
+        ArgumentNullException.ThrowIfNull(frame);
         var at = frame.At;
         var emissions = frame.Emissions;
         var before = emissions.Count;
+        var sending = While(frame);
         switch (Input)
         {
             case PortKind.Objects or PortKind.TrackedObjects when _mode == PipelineMode.OnAction:
-                Found(input.Objects, emissions);
-                break;
-
-            case PortKind.Objects or PortKind.TrackedObjects:
-                Present(input.Objects, at, emissions);
-                if (Input == PortKind.TrackedObjects)
+                if (sending)
                 {
-                    EnteredLeft(input.Objects, at, emissions);
+                    Found(input.Objects, emissions);
                 }
 
                 break;
 
-            case PortKind.Crossings:
+            case PortKind.Objects or PortKind.TrackedObjects:
+                Edge(VisionEventKind.ObjectsPresent, sending && input.Objects.Count >= _minObjects, CountAndClasses(input.Objects), at, emissions);
+                if (Input == PortKind.TrackedObjects)
+                {
+                    EnteredLeft(input.Objects, at, sending ? emissions : null);
+                }
+
+                break;
+
+            case PortKind.Crossings when sending:
                 foreach (var c in input.Crossings)
                 {
                     emissions.Add(new Emission(Id, VisionEventKind.LineCrossed, EmissionState.Fired, new Dictionary<string, string>
@@ -109,9 +153,21 @@ internal sealed class EventNode : VisionNode
 
                 break;
 
-            case PortKind.Number:
+            case PortKind.Number when sending:
                 Number(input, at, emissions);
                 break;
+
+            case PortKind.Condition:
+                Edge(VisionEventKind.ConditionHolds, sending && input.On == true, new Dictionary<string, string>
+                {
+                    [VisionInfo.CountField] = Text(input.Value ?? 0),
+                }, at, emissions);
+                break;
+        }
+
+        if (sending && Pulsed(frame, NodeKinds.SendPort))
+        {
+            emissions.Add(new Emission(Id, VisionEventKind.Report, EmissionState.Fired, ReportValues(input)));
         }
 
         for (var i = before; i < emissions.Count; i++)
@@ -123,12 +179,27 @@ internal sealed class EventNode : VisionNode
             }
         }
 
-        var on = _presentOn || _aboveOn;
-        var live = on ? "On"
+        var stateful = StatefulKind is not null;
+        var live = _state.On ? "On"
             : _lastFired is { } fired ? LiveText.FiredAgo(fired, at)
-            : Stateful ? "Off"
+            : stateful ? "Off"
             : string.Empty;
-        return ValueTask.FromResult(new NodeOutput { NodeId = Id, On = Stateful ? on : null, Live = live });
+        return ValueTask.FromResult(new NodeOutput { NodeId = Id, On = stateful ? _state.On : null, Live = live });
+    }
+
+    private void Edge(VisionEventKind kind, bool condition, IReadOnlyDictionary<string, string> values, DateTimeOffset at, List<Emission> emissions)
+    {
+        var edge = _state.Step(condition, at, _atLeast, _offAfter);
+        if (edge != 0 || _state.On)
+        {
+            // While on, the values follow without an edge (CurrentStates reports them).
+            _stateValues = values;
+        }
+
+        if (edge != 0)
+        {
+            emissions.Add(new Emission(Id, kind, edge > 0 ? EmissionState.On : EmissionState.Off, values));
+        }
     }
 
     private void Found(IReadOnlyList<VisionObject> objects, List<Emission> emissions)
@@ -146,40 +217,20 @@ internal sealed class EventNode : VisionNode
         }
     }
 
-    private void Present(IReadOnlyList<VisionObject> objects, DateTimeOffset at, List<Emission> emissions)
+    /// <summary>The input's current values for a Report.</summary>
+    private Dictionary<string, string> ReportValues(NodeOutput input) => Input switch
     {
-        var condition = objects.Count >= _minObjects;
-        if (condition)
+        PortKind.Objects or PortKind.TrackedObjects => CountAndClasses(input.Objects),
+        PortKind.Crossings => new Dictionary<string, string>
         {
-            _trueSince ??= at;
-            _falseSince = null;
-        }
-        else
-        {
-            _falseSince ??= at;
-            _trueSince = null;
-        }
+            [VisionInfo.InField] = Text(input.In),
+            [VisionInfo.OutField] = Text(input.Out),
+        },
+        PortKind.Number => NumberValues(input, input.Value ?? 0),
+        _ => new Dictionary<string, string> { [VisionInfo.CountField] = Text(input.Value ?? 0) },
+    };
 
-        if (!_presentOn && condition && at - _trueSince!.Value >= _atLeast)
-        {
-            _presentOn = true;
-            _presentValues = CountAndClasses(objects);
-            emissions.Add(new Emission(Id, VisionEventKind.ObjectsPresent, EmissionState.On, _presentValues));
-        }
-        else if (_presentOn && !condition && at - _falseSince!.Value >= _offAfter)
-        {
-            _presentOn = false;
-            _presentValues = CountAndClasses(objects);
-            emissions.Add(new Emission(Id, VisionEventKind.ObjectsPresent, EmissionState.Off, _presentValues));
-        }
-        else if (_presentOn)
-        {
-            // While on, the values follow without an edge (CurrentStates reports them).
-            _presentValues = CountAndClasses(objects);
-        }
-    }
-
-    private void EnteredLeft(IReadOnlyList<VisionObject> objects, DateTimeOffset at, List<Emission> emissions)
+    private void EnteredLeft(IReadOnlyList<VisionObject> objects, DateTimeOffset at, List<Emission>? emissions)
     {
         _now.Clear();
         foreach (var o in objects)
@@ -197,7 +248,7 @@ internal sealed class EventNode : VisionNode
             }
 
             _seen[id] = new Seen(at, at, o.Detection.ClassName, o.InsideSeconds);
-            emissions.Add(new Emission(Id, VisionEventKind.ObjectEntered, EmissionState.Fired, new Dictionary<string, string>
+            emissions?.Add(new Emission(Id, VisionEventKind.ObjectEntered, EmissionState.Fired, new Dictionary<string, string>
             {
                 [VisionInfo.ClassField] = o.Detection.ClassName,
                 [VisionInfo.ObjectField] = Text(id),
@@ -225,7 +276,7 @@ internal sealed class EventNode : VisionNode
             var seen = _seen[id];
             _seen.Remove(id);
             var inside = seen.Inside ?? (seen.LastSeen - seen.FirstSeen).TotalSeconds;
-            emissions.Add(new Emission(Id, VisionEventKind.ObjectLeft, EmissionState.Fired, new Dictionary<string, string>
+            emissions?.Add(new Emission(Id, VisionEventKind.ObjectLeft, EmissionState.Fired, new Dictionary<string, string>
             {
                 [VisionInfo.ClassField] = seen.ClassName,
                 [VisionInfo.ObjectField] = Text(id),
@@ -245,23 +296,6 @@ internal sealed class EventNode : VisionNode
             _lastOut = input.Out;
             _lastCountAt = at;
             emissions.Add(new Emission(Id, VisionEventKind.CountChanged, EmissionState.Fired, NumberValues(input, value)));
-        }
-
-        if (_limit is not { } limit)
-        {
-            return;
-        }
-
-        var above = value >= limit;
-        if (above != _aboveOn)
-        {
-            _aboveOn = above;
-            _aboveValues = NumberValues(input, value);
-            emissions.Add(new Emission(Id, VisionEventKind.AboveLimit, above ? EmissionState.On : EmissionState.Off, _aboveValues));
-        }
-        else if (above)
-        {
-            _aboveValues = NumberValues(input, value);
         }
     }
 

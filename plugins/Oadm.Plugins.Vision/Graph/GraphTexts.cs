@@ -21,6 +21,12 @@ public static class GraphTexts
     public const string Loop = "Links cannot form a loop.";
     public const string Merge = "This node takes only one input.";
     public const string NoOutputBefore = "The node before this one has no output.";
+    public const string PulseIntoData = "A Timer links only to Reset, Send now or Throttle.";
+    public const string DwellNeedsArea = "Dwell needs an Area node before it.";
+    public const string ChooseDays = "Choose the days.";
+    public const string ChooseEvent = "Choose an event.";
+    public const string UnknownPort = "This node has no such input.";
+    public const string BetweenOrder = "And must not be below Value.";
     public const string LineNeedsTrack = "A line needs a Track node before it.";
     public const string CrossingsNeedStream = "Counting crossings works only while Watching.";
     public static readonly string TooManyModels = $"A path has at most {VisionLimits.MaxModelNodesPerPath} model nodes.";
@@ -66,6 +72,34 @@ public static class GraphTexts
         return $"This node takes {list}.";
     }
 
+    /// <summary>"The Timer node takes no input."</summary>
+    public static string SourceInput(NodeKindInfo kind)
+    {
+        ArgumentNullException.ThrowIfNull(kind);
+        return $"The {kind.Label} node takes no input.";
+    }
+
+    /// <summary>"Reset takes a pulse." (a Timer), "Only while takes a condition."</summary>
+    public static string ControlTakes(ControlInput port)
+    {
+        ArgumentNullException.ThrowIfNull(port);
+        return $"{port.Label} takes {KindName(port.Accepts)}.";
+    }
+
+    /// <summary>"Reset takes one link."</summary>
+    public static string OneControlLink(ControlInput port)
+    {
+        ArgumentNullException.ThrowIfNull(port);
+        return $"{port.Label} takes one link.";
+    }
+
+    /// <summary>"Link the second input."</summary>
+    public static string LinkRequired(ControlInput port)
+    {
+        ArgumentNullException.ThrowIfNull(port);
+        return $"Link the {port.Label.ToLowerInvariant()} input.";
+    }
+
     /// <summary>"Track works only while Watching."</summary>
     public static string NeedsStream(NodeKindInfo kind)
     {
@@ -105,6 +139,8 @@ public static class GraphTexts
         PortKind.Objects or PortKind.TrackedObjects => "objects",
         PortKind.Crossings => "crossings",
         PortKind.Number => "a number",
+        PortKind.Condition => "a condition",
+        PortKind.Pulse => "a pulse",
         _ => kind.ToString().ToLowerInvariant(),
     };
 }
