@@ -1,0 +1,889 @@
+using System.Collections.ObjectModel;
+using System.Globalization;
+using System.Text.Json.Nodes;
+
+using Avalonia;
+
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+
+using Oadm.Plugins.Vision.Model;
+
+namespace Oadm.Plugins.Vision.Client;
+
+/// <summary>
+/// The node canvas of a pipeline's draft (docs/spec/vision-center.md "Page", "Graph"): nodes, links, the selection, the node
+/// list, linking by drag with the fitting inputs highlighted, undo and redo until the draft is saved, copy and paste within
+/// the pipeline, Tidy up, Fit view, pan and zoom. The graph check runs after every change (<see cref="Checker"/>, the same
+/// check as the server's save) and puts its errors on the nodes. Pure: the canvas control only routes input here.
+/// </summary>
+public sealed partial class CanvasViewModel : ObservableObject
+{
+    /// <summary>Undo keeps at most this many steps.</summary>
+    public const int MaxUndo = 100;
+
+    private readonly Stack<Snapshot> _undo = new();
+    private readonly Stack<Snapshot> _redo = new();
+    private readonly Dictionary<string, NodeViewModel> _byId = new(StringComparer.Ordinal);
+    private PipelineNode? _clipboard;
+    private string? _editKey;
+    private Snapshot? _moveStart;
+    private bool _moved;
+
+    public CanvasViewModel(IReadOnlyList<PipelineNode> nodes, IReadOnlyList<PipelineLink> links)
+    {
+        ArgumentNullException.ThrowIfNull(nodes);
+        ArgumentNullException.ThrowIfNull(links);
+        Load(nodes, links);
+    }
+
+    /// <summary>The graph check of the draft (set by the editor: the whole pipeline with its mode and models).</summary>
+    public Func<IReadOnlyList<PipelineNode>, IReadOnlyList<PipelineLink>, GraphCheck>? Checker { get; set; }
+
+    /// <summary>The draft changed (nodes, links, settings, places, eyes): the editor marks it Not saved and previews it again.</summary>
+    public event EventHandler? Changed;
+
+    /// <summary>A new Area or Line node: the video starts drawing its shape at once.</summary>
+    public event EventHandler<NodeViewModel>? DrawRequested;
+
+    public ObservableCollection<NodeViewModel> Nodes { get; } = [];
+
+    public ObservableCollection<LinkViewModel> Links { get; } = [];
+
+    public NodePickerViewModel Picker { get; } = new();
+
+    /// <summary>Raised whenever the canvas must draw again (live lines, selection, places): the control redraws, nothing is rebuilt.</summary>
+    [ObservableProperty]
+    public partial int Version { get; private set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(DeleteSelectedCommand), nameof(CopyCommand))]
+    public partial NodeViewModel? SelectedNode { get; set; }
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(DeleteSelectedCommand))]
+    public partial LinkViewModel? SelectedLink { get; set; }
+
+    /// <summary>Errors of the whole graph (no camera, too many nodes), shown below the canvas.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasGraphError))]
+    public partial string? GraphError { get; private set; }
+
+    public bool HasGraphError => GraphError is not null;
+
+    /// <summary>Errors on nodes and of the graph: Save waits for none.</summary>
+    [ObservableProperty]
+    public partial int ErrorCount { get; private set; }
+
+    /// <summary>The user may change the draft (the change right): without it the canvas only shows.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(AddNodeCommand), nameof(UndoCommand), nameof(RedoCommand), nameof(TidyUpCommand), nameof(DeleteSelectedCommand), nameof(CopyCommand), nameof(PasteCommand))]
+    public partial bool CanEdit { get; set; } = true;
+
+    // The view: canvas units to screen pixels (screen = world * Zoom + Pan).
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ZoomText))]
+    public partial double Zoom { get; private set; } = 1;
+
+    [ObservableProperty]
+    public partial double PanX { get; private set; }
+
+    [ObservableProperty]
+    public partial double PanY { get; private set; }
+
+    /// <summary>"100 %" at the canvas's bottom left.</summary>
+    public string ZoomText => VisionTexts.Zoom(Zoom);
+
+    /// <summary>The canvas control's size in pixels (Fit view and a new node's place).</summary>
+    public Size ViewportSize { get; set; } = new(800, 500);
+
+    /// <summary>A link being dragged: its output node and where the pointer is (canvas units).</summary>
+    public NodeViewModel? LinkDragFrom { get; private set; }
+
+    public Point LinkDragTo { get; private set; }
+
+    public bool CanUndo => _undo.Count > 0;
+
+    public bool CanRedo => _redo.Count > 0;
+
+    public NodeViewModel? Find(string? id) => id is not null && _byId.TryGetValue(id, out var node) ? node : null;
+
+    /// <summary>The link into <paramref name="node"/> (its only input), or null.</summary>
+    public LinkViewModel? InputOf(NodeViewModel node) => Links.FirstOrDefault(l => ReferenceEquals(l.To, node));
+
+    public IEnumerable<LinkViewModel> OutputsOf(NodeViewModel node) => Links.Where(l => ReferenceEquals(l.From, node));
+
+    public IReadOnlyList<PipelineNode> ToNodes() => [.. Nodes.Select(n => n.ToNode())];
+
+    public IReadOnlyList<PipelineLink> ToLinks() => [.. Links.Select(l => l.ToLink())];
+
+    // ---- Selection ----
+
+    partial void OnSelectedNodeChanged(NodeViewModel? oldValue, NodeViewModel? newValue)
+    {
+        oldValue?.IsSelected = false;
+        if (newValue is not null)
+        {
+            newValue.IsSelected = true;
+            SelectedLink = null;
+        }
+
+        _editKey = null;
+        Bump();
+    }
+
+    partial void OnSelectedLinkChanged(LinkViewModel? oldValue, LinkViewModel? newValue)
+    {
+        oldValue?.IsSelected = false;
+        if (newValue is not null)
+        {
+            newValue.IsSelected = true;
+            SelectedNode = null;
+        }
+
+        Bump();
+    }
+
+    public void ClearSelection()
+    {
+        SelectedNode = null;
+        SelectedLink = null;
+    }
+
+    // ---- Adding ----
+
+    /// <summary>Add node in the toolbar: the node list with every kind, at the canvas's top left.</summary>
+    [RelayCommand(CanExecute = nameof(CanEdit))]
+    private void AddNode()
+    {
+        if (Picker.IsOpen && Picker.From is null)
+        {
+            Picker.Close();
+            return;
+        }
+
+        Picker.Open(null, null, 10, 8);
+    }
+
+    /// <summary>The + of <paramref name="from"/>: the node list with only the kinds that take its output, next to the +.</summary>
+    public void OpenPickerAfter(NodeViewModel from)
+    {
+        ArgumentNullException.ThrowIfNull(from);
+        if (!CanEdit)
+        {
+            return;
+        }
+
+        var plus = CanvasGeometry.PlusRect(from.X, from.Y);
+        Picker.Open(from, from.OutputKind, (plus.Right * Zoom) + PanX + 8, (plus.Top * Zoom) + PanY - 10);
+    }
+
+    /// <summary>A kind chosen in the node list: the new node (linked after the + node), selected.</summary>
+    public NodeViewModel? Choose(NodeKindInfo kind)
+    {
+        ArgumentNullException.ThrowIfNull(kind);
+        var from = Picker.From;
+        Picker.Close();
+        return Add(kind, from);
+    }
+
+    /// <summary>
+    /// A new node of <paramref name="kind"/>: after <paramref name="from"/> (to its right, below its other outputs, linked) or in
+    /// the middle of the view; named with the lowest free number, its defaults, selected. An Area or Line starts drawing.
+    /// </summary>
+    public NodeViewModel? Add(NodeKindInfo kind, NodeViewModel? from = null)
+    {
+        ArgumentNullException.ThrowIfNull(kind);
+        if (!CanEdit || kind.Id == NodeKinds.Camera || Nodes.Count >= VisionLimits.MaxNodes)
+        {
+            return null;
+        }
+
+        Record();
+        double x;
+        double y;
+        if (from is not null)
+        {
+            x = from.X + CanvasGeometry.ColumnStep;
+            y = from.Y + (OutputsOf(from).Count() * CanvasGeometry.RowStep);
+        }
+        else
+        {
+            x = ((ViewportSize.Width / 2) - PanX) / Zoom - (CanvasGeometry.NodeWidth / 2);
+            y = ((ViewportSize.Height / 2) - PanY) / Zoom - (CanvasGeometry.NodeHeight / 2);
+        }
+
+        var draws = kind.Id is NodeKinds.Area or NodeKinds.Line;
+        var node = AddViewModel(new PipelineNode { Id = NewId(), Kind = kind.Id, Name = FreeName(kind.Label), X = Math.Round(x), Y = Math.Round(y), ShowOnVideo = draws });
+        if (from is not null && CanLink(from, node))
+        {
+            Links.Add(new LinkViewModel(from, node));
+        }
+
+        AfterChange();
+        SelectedNode = node;
+        if (draws)
+        {
+            DrawRequested?.Invoke(this, node);
+        }
+
+        return node;
+    }
+
+    /// <summary>"Area 1" with the lowest free number for most kinds, the kind's own name first for the model and Track nodes (the approved draft).</summary>
+    public string FreeName(string label)
+    {
+        ArgumentNullException.ThrowIfNull(label);
+        var used = Nodes.Select(n => n.Name.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var plainFirst = label is "Detect objects" or "Classify" or "Track";
+        if (plainFirst && !used.Contains(label))
+        {
+            return label;
+        }
+
+        for (var i = plainFirst ? 2 : 1; ; i++)
+        {
+            var name = string.Create(CultureInfo.InvariantCulture, $"{label} {i}");
+            if (!used.Contains(name))
+            {
+                return name;
+            }
+        }
+    }
+
+    private string NewId()
+    {
+        for (var i = Nodes.Count + 1; ; i++)
+        {
+            var id = string.Create(CultureInfo.InvariantCulture, $"n{i}");
+            if (!_byId.ContainsKey(id))
+            {
+                return id;
+            }
+        }
+    }
+
+    // ---- Linking ----
+
+    /// <summary>
+    /// Whether a link from <paramref name="from"/>'s output fits <paramref name="to"/>'s input: another node that takes what the
+    /// output carries now and is not before <paramref name="from"/> (no loop). A node with an input gets the new one instead.
+    /// </summary>
+    public bool CanLink(NodeViewModel from, NodeViewModel to)
+    {
+        ArgumentNullException.ThrowIfNull(from);
+        ArgumentNullException.ThrowIfNull(to);
+        return !ReferenceEquals(from, to)
+            && to.Info is { Accepts.Count: > 0 } info
+            && from.HasOutputPort
+            && from.OutputKind is { } kind
+            && info.Takes(kind)
+            && !IsBefore(to, from)
+            && !Links.Any(l => ReferenceEquals(l.From, from) && ReferenceEquals(l.To, to));
+    }
+
+    /// <summary>Whether <paramref name="node"/> comes before <paramref name="of"/> on its path from the camera (or is it).</summary>
+    public bool IsBefore(NodeViewModel node, NodeViewModel of)
+    {
+        var at = of;
+        for (var i = 0; i <= Nodes.Count && at is not null; i++)
+        {
+            if (ReferenceEquals(at, node))
+            {
+                return true;
+            }
+
+            at = InputOf(at)?.From;
+        }
+
+        return false;
+    }
+
+    /// <summary>A drag starts at <paramref name="from"/>'s output: the inputs that fit light up, the others dim.</summary>
+    public void BeginLinkDrag(NodeViewModel from, Point at)
+    {
+        ArgumentNullException.ThrowIfNull(from);
+        if (!CanEdit || !from.HasOutputPort)
+        {
+            return;
+        }
+
+        Picker.Close();
+        LinkDragFrom = from;
+        LinkDragTo = at;
+        foreach (var node in Nodes)
+        {
+            node.Fit = ReferenceEquals(node, from) ? LinkFit.None : CanLink(from, node) ? LinkFit.Fits : LinkFit.Dimmed;
+        }
+
+        Bump();
+    }
+
+    public void DragLinkTo(Point at)
+    {
+        if (LinkDragFrom is not null)
+        {
+            LinkDragTo = at;
+            Bump();
+        }
+    }
+
+    /// <summary>The drop: on a node that fits it links (replacing that node's input); anywhere else nothing happens.</summary>
+    public bool EndLinkDrag(NodeViewModel? target)
+    {
+        var from = LinkDragFrom;
+        LinkDragFrom = null;
+        foreach (var node in Nodes)
+        {
+            node.Fit = LinkFit.None;
+        }
+
+        var linked = from is not null && target is not null && Link(from, target);
+        Bump();
+        return linked;
+    }
+
+    /// <summary>Links <paramref name="from"/> to <paramref name="to"/> when it fits; <paramref name="to"/>'s old input goes.</summary>
+    public bool Link(NodeViewModel from, NodeViewModel to)
+    {
+        ArgumentNullException.ThrowIfNull(from);
+        ArgumentNullException.ThrowIfNull(to);
+        if (!CanEdit || !CanLink(from, to))
+        {
+            return false;
+        }
+
+        Record();
+        if (InputOf(to) is { } old)
+        {
+            Links.Remove(old);
+        }
+
+        Links.Add(new LinkViewModel(from, to));
+        AfterChange();
+        return true;
+    }
+
+    // ---- Moving, eye, settings ----
+
+    public void BeginMove()
+    {
+        _moveStart = Capture();
+        _moved = false;
+    }
+
+    /// <summary>The node follows the pointer (canvas units); one undo step for the whole drag.</summary>
+    public void MoveNode(NodeViewModel node, double x, double y)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        if (!CanEdit || (node.X == x && node.Y == y))
+        {
+            return;
+        }
+
+        node.X = x;
+        node.Y = y;
+        _moved = true;
+        Bump();
+    }
+
+    public void EndMove()
+    {
+        if (_moved && _moveStart is { } start)
+        {
+            Push(start);
+            _editKey = null;
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+
+        _moveStart = null;
+        _moved = false;
+    }
+
+    /// <summary>The eye: the node's result on the video, or not.</summary>
+    public void ToggleEye(NodeViewModel node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        if (!node.CanShowOnVideo)
+        {
+            return;
+        }
+
+        node.ShowOnVideo = !node.ShowOnVideo;
+        Bump();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// A setting of a node's form changed: one undo step for a run of edits of the same field (typing a name or a number).
+    /// A null value removes the setting (its default applies).
+    /// </summary>
+    public void SetSetting(NodeViewModel node, string key, JsonNode? value)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(key);
+        var editKey = node.Id + "/" + key;
+        if (_editKey != editKey)
+        {
+            Record();
+        }
+
+        var settings = (JsonObject)node.Settings.DeepClone();
+        if (value is null)
+        {
+            settings.Remove(key);
+        }
+        else
+        {
+            settings[key] = value.DeepClone();
+        }
+
+        node.Settings = settings;
+        AfterChange();
+        _editKey = editKey;
+    }
+
+    /// <summary>The node's name from its form; one undo step while typing.</summary>
+    public void Rename(NodeViewModel node, string name)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        if (node.Name == name)
+        {
+            return;
+        }
+
+        var editKey = node.Id + "/name";
+        if (_editKey != editKey)
+        {
+            Record();
+        }
+
+        node.Name = name;
+        AfterChange();
+        _editKey = editKey;
+    }
+
+    // ---- Deleting, undo, copy ----
+
+    private bool CanDelete() => CanEdit && (SelectedLink is not null || SelectedNode is { IsCamera: false });
+
+    /// <summary>Delete: the selected link, or the selected node with its links (never the Camera).</summary>
+    [RelayCommand(CanExecute = nameof(CanDelete))]
+    private void DeleteSelected()
+    {
+        if (SelectedLink is { } link)
+        {
+            Record();
+            Links.Remove(link);
+            SelectedLink = null;
+            AfterChange();
+            return;
+        }
+
+        if (SelectedNode is not { IsCamera: false } node)
+        {
+            return;
+        }
+
+        Record();
+        foreach (var l in Links.Where(l => ReferenceEquals(l.From, node) || ReferenceEquals(l.To, node)).ToList())
+        {
+            Links.Remove(l);
+        }
+
+        Nodes.Remove(node);
+        _byId.Remove(node.Id);
+        SelectedNode = null;
+        AfterChange();
+    }
+
+    private bool CanUndoNow() => CanEdit && CanUndo;
+
+    private bool CanRedoNow() => CanEdit && CanRedo;
+
+    [RelayCommand(CanExecute = nameof(CanUndoNow))]
+    private void Undo()
+    {
+        if (_undo.Count == 0)
+        {
+            return;
+        }
+
+        _redo.Push(Capture());
+        Restore(_undo.Pop());
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRedoNow))]
+    private void Redo()
+    {
+        if (_redo.Count == 0)
+        {
+            return;
+        }
+
+        _undo.Push(Capture());
+        Restore(_redo.Pop());
+    }
+
+    /// <summary>The draft was saved: undo starts again from here.</summary>
+    public void ForgetHistory()
+    {
+        _undo.Clear();
+        _redo.Clear();
+        _editKey = null;
+        NotifyHistory();
+    }
+
+    private bool CanCopy() => SelectedNode is { IsCamera: false };
+
+    /// <summary>Ctrl+C: the selected node (not the Camera), within this pipeline.</summary>
+    [RelayCommand(CanExecute = nameof(CanCopy))]
+    private void Copy()
+    {
+        if (SelectedNode is { IsCamera: false } node)
+        {
+            _clipboard = node.ToNode();
+            PasteCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private bool CanPaste() => CanEdit && _clipboard is not null && Nodes.Count < VisionLimits.MaxNodes;
+
+    /// <summary>Ctrl+V: a copy of the copied node with a free name, a little below and right of it, without links.</summary>
+    [RelayCommand(CanExecute = nameof(CanPaste))]
+    private void Paste()
+    {
+        if (_clipboard is not { } copy || !CanPaste())
+        {
+            return;
+        }
+
+        Record();
+        var label = NodeLook.Label(copy.Kind);
+        var node = AddViewModel(copy with
+        {
+            Id = NewId(),
+            Name = FreeName(label),
+            X = copy.X + 40,
+            Y = copy.Y + 40,
+            Settings = (JsonObject)copy.Settings.DeepClone(),
+        });
+        _clipboard = copy with { X = copy.X + 40, Y = copy.Y + 40 };
+        AfterChange();
+        SelectedNode = node;
+    }
+
+    // ---- Layout and view ----
+
+    /// <summary>
+    /// Tidy up: from left to right by depth from the camera, the branches stacked, a parent in the middle of its children;
+    /// nodes without a path from the camera below. One undo step; the view fits afterwards.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanEdit))]
+    private void TidyUp()
+    {
+        Record();
+        var row = 0;
+        var done = new HashSet<NodeViewModel>();
+        double Lay(NodeViewModel node, int depth)
+        {
+            done.Add(node);
+            node.X = CanvasGeometry.Margin + (depth * CanvasGeometry.ColumnStep);
+            var children = OutputsOf(node).Select(l => l.To).Where(c => !done.Contains(c)).ToList();
+            if (children.Count == 0)
+            {
+                node.Y = CanvasGeometry.Margin + (row++ * CanvasGeometry.RowStep);
+                return node.Y;
+            }
+
+            var ys = children.Select(c => Lay(c, depth + 1)).ToList();
+            node.Y = Math.Round((ys.Min() + ys.Max()) / 2);
+            return node.Y;
+        }
+
+        foreach (var camera in Nodes.Where(n => n.IsCamera).ToList())
+        {
+            Lay(camera, 0);
+        }
+
+        foreach (var node in Nodes.Where(n => !done.Contains(n)).ToList())
+        {
+            if (InputOf(node) is null)
+            {
+                Lay(node, 0);
+            }
+        }
+
+        foreach (var node in Nodes.Where(n => !done.Contains(n)))
+        {
+            node.X = CanvasGeometry.Margin;
+            node.Y = CanvasGeometry.Margin + (row++ * CanvasGeometry.RowStep);
+        }
+
+        AfterChange();
+        FitView();
+    }
+
+    /// <summary>Fit view: every node in the view, at most 100 %.</summary>
+    [RelayCommand]
+    public void FitView()
+    {
+        if (Nodes.Count == 0 || ViewportSize.Width <= 0 || ViewportSize.Height <= 0)
+        {
+            return;
+        }
+
+        var x0 = Nodes.Min(n => n.X) - 30;
+        var y0 = Nodes.Min(n => n.Y) - 30;
+        var x1 = Nodes.Max(n => n.X) + CanvasGeometry.NodeWidth + CanvasGeometry.PlusGap + CanvasGeometry.PlusSize + 30;
+        var y1 = Nodes.Max(n => n.Y) + CanvasGeometry.NodeHeight + 50; // room for an error below the lowest node
+        var zoom = Math.Clamp(Math.Min(ViewportSize.Width / (x1 - x0), ViewportSize.Height / (y1 - y0)), CanvasGeometry.MinZoom, 1);
+        Zoom = zoom;
+        PanX = ((ViewportSize.Width - ((x1 - x0) * zoom)) / 2) - (x0 * zoom);
+        PanY = ((ViewportSize.Height - ((y1 - y0) * zoom)) / 2) - (y0 * zoom);
+        Bump();
+    }
+
+    /// <summary>The wheel: zoom by <paramref name="factor"/> around <paramref name="screen"/> (it stays under the pointer), 25 % to 200 %.</summary>
+    public void ZoomAt(Point screen, double factor)
+    {
+        var zoom = Math.Clamp(Zoom * factor, CanvasGeometry.MinZoom, CanvasGeometry.MaxZoom);
+        if (zoom == Zoom)
+        {
+            return;
+        }
+
+        PanX = screen.X - ((screen.X - PanX) * zoom / Zoom);
+        PanY = screen.Y - ((screen.Y - PanY) * zoom / Zoom);
+        Zoom = zoom;
+        Picker.Close();
+        Bump();
+    }
+
+    public void PanTo(double x, double y)
+    {
+        PanX = x;
+        PanY = y;
+        Bump();
+    }
+
+    public Point ToWorld(Point screen) => new((screen.X - PanX) / Zoom, (screen.Y - PanY) / Zoom);
+
+    public Point ToScreen(Point world) => new((world.X * Zoom) + PanX, (world.Y * Zoom) + PanY);
+
+    // ---- Hit tests (canvas units) ----
+
+    /// <summary>The topmost node card under <paramref name="world"/>.</summary>
+    public NodeViewModel? NodeAt(Point world) =>
+        Nodes.LastOrDefault(n => CanvasGeometry.NodeRect(n.X, n.Y).Contains(world));
+
+    public NodeViewModel? OutputPortAt(Point world) =>
+        Nodes.LastOrDefault(n => n.HasOutputPort && CanvasGeometry.Distance(world, CanvasGeometry.OutputPort(n.X, n.Y)) <= CanvasGeometry.PortReach / Math.Min(1, Zoom));
+
+    /// <summary>The + shows on a node with an output that leads nowhere yet, or on the selected node.</summary>
+    public bool ShowsPlus(NodeViewModel node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        return CanEdit && node.HasOutputPort && node.OutputKind is not null && (node.IsSelected || !OutputsOf(node).Any());
+    }
+
+    public NodeViewModel? PlusAt(Point world) =>
+        Nodes.LastOrDefault(n => ShowsPlus(n) && CanvasGeometry.PlusRect(n.X, n.Y).Inflate(2).Contains(world));
+
+    public NodeViewModel? EyeAt(Point world) =>
+        Nodes.LastOrDefault(n => n.CanShowOnVideo && CanvasGeometry.EyeRect(n.X, n.Y).Contains(world));
+
+    public LinkViewModel? LinkAt(Point world) => Links.LastOrDefault(l =>
+        CanvasGeometry.DistanceToCurve(world, CanvasGeometry.OutputPort(l.From.X, l.From.Y), CanvasGeometry.InputPort(l.To.X, l.To.Y))
+            <= CanvasGeometry.LinkReach / Zoom);
+
+    // ---- The live outputs ----
+
+    /// <summary>
+    /// A preview's node outputs: each card's live line and each link's number of objects, in place (no node is rebuilt, the
+    /// canvas draws once). A node with an error says it is not running.
+    /// </summary>
+    public void ApplyOutputs(IReadOnlyList<NodeOutput> outputs)
+    {
+        ArgumentNullException.ThrowIfNull(outputs);
+        var byId = outputs.GroupBy(o => o.NodeId, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Last(), StringComparer.Ordinal);
+        foreach (var node in Nodes)
+        {
+            node.Live = node.HasError ? VisionTexts.NotRunning
+                : byId.TryGetValue(node.Id, out var output) ? output.Live
+                : string.Empty;
+        }
+
+        foreach (var link in Links)
+        {
+            link.Count = byId.TryGetValue(link.From.Id, out var output) && output.Kind is PortKind.Objects or PortKind.TrackedObjects
+                ? output.Objects.Count.ToString(CultureInfo.InvariantCulture)
+                : null;
+        }
+
+        Bump();
+    }
+
+    /// <summary>The mode or the models changed: the check runs again.</summary>
+    public void Recheck() => Check();
+
+    // ---- Internals ----
+
+    private void Load(IReadOnlyList<PipelineNode> nodes, IReadOnlyList<PipelineLink> links)
+    {
+        var selected = SelectedNode?.Id;
+        Nodes.Clear();
+        Links.Clear();
+        _byId.Clear();
+        foreach (var node in nodes)
+        {
+            if (!_byId.ContainsKey(node.Id))
+            {
+                AddViewModel(node);
+            }
+        }
+
+        foreach (var link in links)
+        {
+            if (Find(link.From) is { } from && Find(link.To) is { } to && !Links.Any(l => ReferenceEquals(l.To, to)))
+            {
+                Links.Add(new LinkViewModel(from, to));
+            }
+        }
+
+        RecomputeKinds();
+        SelectedNode = Find(selected);
+        SelectedLink = null;
+    }
+
+    private NodeViewModel AddViewModel(PipelineNode node)
+    {
+        var vm = new NodeViewModel(node);
+        Nodes.Add(vm);
+        _byId[vm.Id] = vm;
+        return vm;
+    }
+
+    /// <summary>What each link carries now, from the camera along the links (a loop or a missing input carries nothing).</summary>
+    private void RecomputeKinds()
+    {
+        foreach (var node in Nodes)
+        {
+            node.InputKind = null;
+            node.OutputKind = null;
+        }
+
+        var done = new HashSet<NodeViewModel>();
+        var queue = new Queue<NodeViewModel>(Nodes.Where(n => n.IsCamera));
+        foreach (var camera in queue)
+        {
+            camera.OutputKind = camera.Info?.Output(null);
+        }
+
+        while (queue.Count > 0)
+        {
+            var node = queue.Dequeue();
+            if (!done.Add(node))
+            {
+                continue;
+            }
+
+            foreach (var link in OutputsOf(node))
+            {
+                var next = link.To;
+                next.InputKind = node.OutputKind;
+                next.OutputKind = node.OutputKind is { } input && next.Info is { } info && info.Takes(input) ? info.Output(input) : null;
+                queue.Enqueue(next);
+            }
+        }
+    }
+
+    private void Check()
+    {
+        RecomputeKinds();
+        GraphCheck? check = null;
+        if (Checker is { } checker)
+        {
+            check = checker(ToNodes(), ToLinks());
+        }
+
+        foreach (var node in Nodes)
+        {
+            node.Error = check?.NodeErrors.GetValueOrDefault(node.Id);
+            if (check?.InputKinds.TryGetValue(node.Id, out var input) == true && node.InputKind is null)
+            {
+                node.InputKind = input;
+            }
+
+            if (node.HasError)
+            {
+                node.Live = VisionTexts.NotRunning;
+            }
+            else if (node.Live == VisionTexts.NotRunning)
+            {
+                node.Live = string.Empty;
+            }
+        }
+
+        GraphError = check is { GraphErrors.Count: > 0 } c ? string.Join(" ", c.GraphErrors) : null;
+        ErrorCount = (check?.NodeErrors.Count ?? 0) + (check?.GraphErrors.Count ?? 0);
+        Bump();
+    }
+
+    private void AfterChange()
+    {
+        Check();
+        NotifyHistory();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void Record()
+    {
+        Push(Capture());
+        _editKey = null;
+    }
+
+    private void Push(Snapshot snapshot)
+    {
+        _undo.Push(snapshot);
+        if (_undo.Count > MaxUndo)
+        {
+            var keep = _undo.Take(MaxUndo).Reverse().ToList();
+            _undo.Clear();
+            foreach (var s in keep)
+            {
+                _undo.Push(s);
+            }
+        }
+
+        _redo.Clear();
+        NotifyHistory();
+    }
+
+    private Snapshot Capture() => new(ToNodes(), ToLinks(), SelectedNode?.Id);
+
+    private void Restore(Snapshot snapshot)
+    {
+        Picker.Close();
+        var selected = snapshot.Selected;
+        Load(snapshot.Nodes, snapshot.Links);
+        SelectedNode = Find(selected);
+        _editKey = null;
+        Check();
+        NotifyHistory();
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void NotifyHistory()
+    {
+        OnPropertyChanged(nameof(CanUndo));
+        OnPropertyChanged(nameof(CanRedo));
+        UndoCommand.NotifyCanExecuteChanged();
+        RedoCommand.NotifyCanExecuteChanged();
+        PasteCommand.NotifyCanExecuteChanged();
+    }
+
+    private void Bump() => Version++;
+
+    private sealed record Snapshot(IReadOnlyList<PipelineNode> Nodes, IReadOnlyList<PipelineLink> Links, string? Selected);
+}
