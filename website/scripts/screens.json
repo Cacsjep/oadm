@@ -115,5 +115,15 @@
   "text-recognition-status-overloaded.png": "ocr-docs-status-overloaded-dark.png",
   "text-recognition-stream-settings.png": "ocr-docs-stream-settings-dark.png",
   "update-dialog.png": "update-dialog-notes.png",
+  "vision-center-class-list.png": "vision-class-list-none-dark.png",
+  "vision-center-copy.png": "vision-copy-picker-dark.png",
+  "vision-center-detect.png": "vision-page-detect-dark.png",
+  "vision-center-errors.png": "vision-page-errors-dark.png",
+  "vision-center-event-type.png": "vision-event-type-dialog-dark.png",
+  "vision-center-logic.png": "vision-logic-dark.png",
+  "vision-center-node-picker.png": "vision-node-picker-dark.png",
+  "vision-center-page.png": "vision-page-dark.png",
+  "vision-center-timers.png": "vision-timers-dark.png",
+  "vision-center-upload.png": "vision-models-upload-dark.png",
   "web-view-page.png": "web-view-page.png"
 }

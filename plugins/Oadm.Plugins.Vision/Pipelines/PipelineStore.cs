@@ -223,6 +223,89 @@ internal sealed partial class PipelineStore(IPluginRecords records, ILogger logg
         }
     }
 
+    /// <summary>
+    /// Stores <paramref name="copies"/> (from <see cref="PipelineCopies.CopyOf"/>) for <paramref name="caller"/>, owned by the
+    /// caller's scope, in one batch: each with the checks of a save (its fields, <paramref name="check"/>, its camera in the
+    /// owner's devices) and a name made unique; a copy that fails is refused with its first error, as are the copies beyond
+    /// <see cref="VisionLimits.MaxPipelines"/>. The watching limits are not checked: a copy beyond them is stored and shows
+    /// the limit as its problem.
+    /// </summary>
+    public async Task<(List<Pipeline> Created, Dictionary<Guid, string> Refused)> AddCopiesAsync(
+        ICorePluginContext ctx,
+        ICallContext caller,
+        IReadOnlyList<Pipeline> copies,
+        Func<Pipeline, GraphCheck> check,
+        CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(copies);
+        ArgumentNullException.ThrowIfNull(check);
+        var owner = OwnerScope.ForSave(ctx, caller, null, isNew: true);
+        var created = new List<Pipeline>();
+        var refused = new Dictionary<Guid, string>();
+        await _write.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var all = All;
+            var taken = all.Where(p => string.Equals(OwnerScope.Of(p.OwnerScopeKey), owner, StringComparison.OrdinalIgnoreCase))
+                .Select(p => p.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var incoming in copies)
+            {
+                var copy = PipelineRules.Normalize(incoming);
+                copy = copy with { Name = PipelineCopies.Unique(copy.Name, taken) };
+                var graph = check(copy);
+                var error = PipelineRules.Problems(copy).Values.FirstOrDefault() ?? PipelineRules.FirstError(graph, copy);
+                if (error is null)
+                {
+                    try
+                    {
+                        await OwnerScope.RequireDevicesAsync(ctx, caller, owner, [copy.DeviceId], ct).ConfigureAwait(false);
+                    }
+                    catch (DevicesNotAvailableException)
+                    {
+                        error = PipelineRules.CameraNotAvailable;
+                    }
+                }
+
+                if (error is null && all.Count + created.Count >= VisionLimits.MaxPipelines)
+                {
+                    error = PipelineRules.CopyLimit;
+                }
+
+                if (error is not null)
+                {
+                    refused[copy.DeviceId] = error;
+                    continue;
+                }
+
+                taken.Add(copy.Name);
+                created.Add(copy with
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    OwnerScopeKey = owner == ICallContext.AllDevicesScopeKey ? null : owner,
+                });
+            }
+
+            if (created.Count == 0)
+            {
+                return (created, refused);
+            }
+
+            await records.SetManyAsync(Collection, [.. created.Select(p => new KeyValuePair<string, string?>(p.Id, VisionJson.Serialize(p with { Id = string.Empty })))], ct).ConfigureAwait(false);
+            lock (_sync)
+            {
+                _pipelines = Sorted([.. _pipelines, .. created]);
+            }
+
+            Changed?.Invoke(this, EventArgs.Empty);
+            return (created, refused);
+        }
+        finally
+        {
+            _write.Release();
+        }
+    }
+
     public void Dispose() => _write.Dispose();
 
     private static List<Pipeline> Sorted(IEnumerable<Pipeline> pipelines) =>

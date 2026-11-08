@@ -18,6 +18,16 @@ internal static class PageSamples
 
     public static readonly TestDevice Dock = new("10.0.0.202", "AXIS P1468-LE") { Id = Guid.Parse("11111111-0000-0000-0000-000000000202") };
 
+    /// <summary>Five more cameras: a pipeline is copied to them.</summary>
+    public static readonly TestDevice[] MoreCameras =
+    [
+        new("10.0.0.51", "AXIS Q1798-LE") { Id = Guid.Parse("11111111-0000-0000-0000-000000000051") },
+        new("10.0.0.52", "AXIS Q1798-LE") { Id = Guid.Parse("11111111-0000-0000-0000-000000000052") },
+        new("10.0.0.53", "AXIS P1468-LE") { Id = Guid.Parse("11111111-0000-0000-0000-000000000053") },
+        new("10.0.0.54", "AXIS M4317-PLVE") { Id = Guid.Parse("11111111-0000-0000-0000-000000000054") },
+        new("10.0.0.55", "AXIS M3215-LVE") { Id = Guid.Parse("11111111-0000-0000-0000-000000000055") },
+    ];
+
     public static readonly DateTimeOffset Time = new(2026, 11, 8, 14, 32, 5, TimeSpan.Zero);
 
     public static readonly string[] Coco = ["person", "bicycle", "car", "motorcycle", "bus", "truck"];
@@ -333,7 +343,7 @@ internal static class PageSamples
     public static FakePageContext Context()
     {
         var ctx = new FakePageContext();
-        ctx.DeviceList.AddRange([Gate, Dock]);
+        ctx.DeviceList.AddRange([Gate, Dock, .. MoreCameras]);
         ctx.Answers[VisionMethods.ListPipelines] = _ => VisionJson.Serialize(List);
         ctx.Answers[VisionMethods.ListModels] = _ => VisionJson.Serialize(ModelList);
         ctx.Answers[VisionMethods.ListClassLists] = _ => VisionJson.Serialize(ClassLists);

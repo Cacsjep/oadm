@@ -96,6 +96,18 @@ public static class VisionTexts
     public const string ClassListNameTaken = "Another class list has this name.";
     public const string EnterNames = "Enter the names, one per line.";
     public const string ChooseEvent = "Choose event";
+    public const string CopyToCameras = "Copy to cameras";
+    public const string SaveFirst = "Save the pipeline first.";
+    public const string CopyToCamerasSaveFirst = "Copy to cameras (save first)";
+    public const string ChooseCameras = "Choose cameras";
+
+    /// <summary>The most cameras one copy goes to.</summary>
+    public const int MaxCopies = 100;
+
+    public static string TooManyCameras => string.Create(CultureInfo.InvariantCulture, $"Choose at most {MaxCopies} cameras.");
+
+    /// <summary>One line per refused camera: "AXIS M3215-LVE · 10.0.0.202: At most 50 pipelines."</summary>
+    public static string CopyRefusals(IEnumerable<string> lines) => string.Join(Environment.NewLine, lines);
     public const string TurnedOff = "turned off";
     public const string SearchEvents = "Search events";
     public const string NoEventMatches = "No event matches the search.";

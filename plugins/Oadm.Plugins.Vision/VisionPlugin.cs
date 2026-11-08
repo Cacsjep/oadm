@@ -269,7 +269,7 @@ public sealed partial class VisionPlugin : ICorePlugin, IDynamicEventSource, IAc
     /// <summary>Pipelines: "change"; models: "models"; the rest (the page's preview too): "show".</summary>
     public string? RequiredPermission(string method) => method switch
     {
-        VisionMethods.SavePipeline or VisionMethods.DeletePipeline or VisionMethods.SetUseGpu => VisionInfo.ChangePermission,
+        VisionMethods.SavePipeline or VisionMethods.CopyPipeline or VisionMethods.DeletePipeline or VisionMethods.SetUseGpu => VisionInfo.ChangePermission,
         _ when IsModelMethod(method) => VisionInfo.ModelsPermission,
         _ => PermissionKeys.Show,
     };
@@ -282,7 +282,7 @@ public sealed partial class VisionPlugin : ICorePlugin, IDynamicEventSource, IAc
         ? "counts the watching pipelines per site (a limit of the site node), shows no device data"
         : null;
 
-    public bool IsAudited(string method) => method is VisionMethods.SavePipeline or VisionMethods.DeletePipeline or VisionMethods.SetUseGpu
+    public bool IsAudited(string method) => method is VisionMethods.SavePipeline or VisionMethods.CopyPipeline or VisionMethods.DeletePipeline or VisionMethods.SetUseGpu
         or VisionMethods.FinishUpload or VisionMethods.UpdateModel or VisionMethods.DeleteModel
         or VisionMethods.SaveClassList or VisionMethods.DeleteClassList;
 

@@ -61,6 +61,8 @@ and the event log.
 | Any event a device offers (inputs, virtual inputs, Object Analytics, Image Health Analytics, storage, ...) and its "connection lost" | [Device triggers](../device-triggers/) you create |
 | Text read (group Text recognition, one per reader): Area, Text, Text read, All matches, Number, Confidence, Matches format | The readers of [Text recognition](../text-recognition/events/#event-text-read) |
 | Reader problem (one per reader), Any reader problem | On while a text reader cannot read, see [Text recognition](../text-recognition/events/#event-reader-problem) |
+| The events of the Event nodes (group Vision Center, one folder per pipeline): Count, Classes, Class, Object, Direction, In, Out and more | The pipelines of [Vision Center](../vision-center/events/) |
+| Pipeline problem (one per pipeline), Any pipeline problem | On while a vision pipeline cannot run, see [Vision Center](../vision-center/events/#event-pipeline-problem) |
 | Optional plugin not loaded (group Optional plugins) | On while an optional plugin must be installed again; `{count}` and `{plugin}` |
 | Recipient not connected | On while an MQTT, Modbus or OPC UA recipient cannot be reached; `{count}` and `{recipient}` |
 
@@ -105,6 +107,8 @@ falls back the rule turns off. An event that does not send the value never passe
   a rule.
 - **Read text**: reads one picture with a reader of [Text recognition](../text-recognition/events/#action-read-text) now
   and sends its **Text read** and **No text read** events. No devices to choose: the reader names its camera.
+- **Run pipeline**: runs one picture through a pipeline of [Vision Center](../vision-center/events/#action-run-pipeline)
+  now. **Reset counter** sets a counter of a pipeline back to 0.
 
 Email, HTTP and TCP run once each time the rule turns on or fires. Check **Also send when the rule turns off** for a second
 message when it ends; `{state}` tells which one it is.

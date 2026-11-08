@@ -53,6 +53,7 @@ internal sealed class OnnxModel
     public const int Float = 1;
     public const int Int32 = 6;
     public const int Int64 = 7;
+    public const int Float16 = 10;
 
     private readonly List<Proto> _nodes = [];
     private readonly List<Proto> _inputs = [];
@@ -62,9 +63,9 @@ internal sealed class OnnxModel
     private readonly List<(string Domain, long Version)> _opsets = [("", 17)];
     private readonly List<(string Key, string Value)> _metadata = [];
 
-    /// <summary>A model with the picture input <c>images [1, 3, H, W]</c>; null sides are free.</summary>
-    public static OnnxModel Picture(int? width = 640, int? height = 640) =>
-        new OnnxModel().Input("images", Float, Dim(1), Dim(3), height is { } h ? Dim(h) : Param("height"), width is { } w ? Dim(w) : Param("width"));
+    /// <summary>A model with the picture input <c>images [1, 3, H, W]</c> of <paramref name="type"/>; null sides are free.</summary>
+    public static OnnxModel Picture(int? width = 640, int? height = 640, int type = Float) =>
+        new OnnxModel().Input("images", type, Dim(1), Dim(3), height is { } h ? Dim(h) : Param("height"), width is { } w ? Dim(w) : Param("width"));
 
     public OnnxModel Input(string name, int type, params Proto[] dims)
     {
@@ -78,6 +79,18 @@ internal sealed class OnnxModel
         var raw = new byte[values.Length * 4];
         Buffer.BlockCopy(values, 0, raw, 0, raw.Length);
         return Constant(name, dims, Float, raw);
+    }
+
+    /// <summary>A half precision output of fixed values (a model exported with <c>--half</c>).</summary>
+    public OnnxModel OutputHalf(string name, long[] dims, float[] values)
+    {
+        var raw = new byte[values.Length * 2];
+        for (var i = 0; i < values.Length; i++)
+        {
+            BitConverter.TryWriteBytes(raw.AsSpan(i * 2), BitConverter.HalfToUInt16Bits((Half)values[i]));
+        }
+
+        return Constant(name, dims, Float16, raw);
     }
 
     /// <summary>An int64 output of fixed values (labels).</summary>

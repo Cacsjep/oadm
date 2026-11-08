@@ -1,0 +1,240 @@
+---
+title: Models
+description: Models that work with Vision Center, with their links and licences, the upload, class lists and how to export your own.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import upload from '../../../../assets/screens/vision-center-upload.png';
+import classList from '../../../../assets/screens/vision-center-class-list.png';
+
+A model is a file that finds objects in a picture (**Detection**: boxes with a class and a score) or names what a picture
+shows (**Classification**: one class and a score). OADM ships no model: an administrator uploads them. Models are shared by
+all pipelines of the server.
+
+## Formats OADM reads
+
+Models are ONNX files (`.onnx`) that take one colour picture. OADM recognises the kind of model from its outputs when you
+upload it:
+
+| Format | Models | Notes |
+|---|---|---|
+| **YOLO** | YOLOv5, YOLOv8, YOLO11 and later, exported to ONNX | OADM removes the double boxes itself |
+| **YOLO with suppression** | YOLO models exported with the double boxes already removed | At most 1,000 boxes per picture |
+| **DETR** | DETR of Facebook Research, also as Hugging Face exports it | Class names from **COCO for DETR and RF-DETR (91)** |
+| **RT-DETR** | RT-DETR, D-FINE and YOLO26 as Hugging Face exports them (onnx-community) | Class names from **COCO for YOLO (80)** |
+| **RF-DETR** | RF-DETR of Roboflow | Also the segmentation models: they find boxes |
+| **DETR with labels** | RT-DETR, D-FINE and other models that give boxes, scores and labels | Upload a labels file |
+| **Classification** | Models with one score per class | For the [Classify](../nodes/#classify) node. Upload a labels file |
+
+OADM also chooses how the picture is fitted to the model's input: with bars (YOLO), stretched (RF-DETR, RT-DETR, DETR with
+labels, classification) or scaled with its shape kept (DETR).
+
+## Models that work
+
+**Tested** means the model ran in OADM's tests on real pictures. **Should work** means it has a format OADM reads but was
+not tested yet. The download links go to the files of their makers.
+
+### RF-DETR
+
+RF-DETR of Roboflow, exported to ONNX by PierreMarieCurie (the export code is MIT). Trained on COCO (people, vehicles,
+animals and everyday objects, 80 kinds) unless the row says otherwise. Upload the file as it is.
+
+| Model | Size | Licence | Download | Status |
+|---|---|---|---|---|
+| RF-DETR medium | 121 MB | Apache-2.0 | [rf-detr-medium.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-medium.onnx) | Tested: input 576 x 576, class list **COCO for DETR and RF-DETR (91)** taken by itself |
+| RF-DETR nano | 108 MB | Apache-2.0 | [rf-detr-nano.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-nano.onnx) | Should work. Fastest |
+| RF-DETR small | 114 MB | Apache-2.0 | [rf-detr-small.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-small.onnx) | Tested: input 512 x 512, class list **COCO for DETR and RF-DETR (91)** taken by itself, 0.6 s per picture on one CPU core |
+| RF-DETR base | 108 MB | Apache-2.0 | [rf-detr-base-coco.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-base-coco.onnx) | Should work |
+| RF-DETR large | 122 MB | Apache-2.0 | [rf-detr-large-2026.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-large-2026.onnx) | Should work. Slower, finds more |
+| RF-DETR xlarge | 458 MB | Platform Model License 1.0 | [rf-detr-xlarge.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-xlarge.onnx) | Should work. Very slow without a graphics card |
+| RF-DETR 2xlarge | 460 MB | Platform Model License 1.0 | [rf-detr-xxlarge.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-xxlarge.onnx) | Should work. Very slow without a graphics card |
+| RF-DETR base, Objects365 (365 kinds of objects) | 108 MB | Apache-2.0 | [rf-detr-base-o365.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-base-o365.onnx) | Should work. Upload it with a labels file of the Objects365 names |
+| RF-DETR segmentation nano to large | 123 to 131 MB | Apache-2.0 | [All files](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/tree/main) (`rf-detr-seg-*.onnx`) | Should work. OADM uses their boxes only |
+
+<Aside type="caution">
+RF-DETR xlarge and 2xlarge, also as segmentation models, come under Roboflow's
+[Platform Model License 1.0](https://roboflow.com/platform-model-license-1-0), not Apache-2.0. Read its terms before you
+use them. The other RF-DETR models are Apache-2.0.
+</Aside>
+
+### YOLO
+
+Trained on COCO (80 kinds). Upload the file as it is; the class names come with the file or from **COCO for YOLO (80)**.
+Times are for one picture on one CPU core.
+
+| Model | Licence | Download | Status |
+|---|---|---|---|
+| YOLO11n | AGPL-3.0 | [yolo11n.onnx](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n.onnx) | Tested: 640 x 640, 0.1 s |
+| YOLOv8n | AGPL-3.0 | [yolov8n.onnx](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolov8n.onnx) | Tested: 640 x 640, 0.1 s |
+| YOLO26n | AGPL-3.0 | [yolo26n.onnx](https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.onnx) | Tested: 640 x 640, 0.08 s |
+| YOLO26n for Transformers.js | AGPL-3.0 | [model.onnx](https://huggingface.co/onnx-community/yolo26n-ONNX/resolve/a8dc7e14743e1cea8ccd493bd99b4c2827de1acf/onnx/model.onnx) | Tested: 640 x 640, 0.09 s |
+| YOLOv10n | AGPL-3.0 | [model.onnx](https://huggingface.co/onnx-community/yolov10n/resolve/57657320425ee34056408a57ad9d29c4d4815bd8/onnx/model.onnx) | Tested: 640 x 640, 0.09 s |
+| YOLOv5n | AGPL-3.0 | [yolov5n.onnx](https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5n.onnx) | Tested: 640 x 640, 0.09 s. Finds fewer objects than the other small models |
+| YOLO11n, 16-bit | AGPL-3.0 | [yolo11n.onnx](https://huggingface.co/unity/inference-engine-yolo/resolve/1aea2ce54d688c056bc80ab94ffbc55f1e279b44/models/yolo11n.onnx) | Tested: 640 x 640, 0.1 s, the same boxes as the 32-bit file |
+| YOLOX nano | Apache-2.0 | [yolox_nano.onnx](https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx) | Tested: 416 x 416, 0.03 s |
+| YOLOX tiny | Apache-2.0 | [yolox_tiny.onnx](https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_tiny.onnx) | Tested: 416 x 416, 0.07 s |
+| Larger YOLO11 and YOLOv8 (s, m, l, x) | AGPL-3.0 | [Ultralytics' releases](https://github.com/ultralytics/assets/releases) (`.pt`) | `yolo export model=yolo11s.pt format=onnx`. Should work |
+
+The small models (n, nano, tiny) miss far or half hidden objects that the larger ones find.
+
+<Aside type="caution">
+Ultralytics YOLO models and their weights are under AGPL-3.0. You may run them in OADM. OADM never ships them, and other
+uses, such as building them into your own product, can need a licence from Ultralytics.
+</Aside>
+
+### DETR, RT-DETR, D-FINE
+
+Trained on COCO (80 kinds). Upload the file as it is. Times are for one picture on one CPU core.
+
+| Model | Licence | Download | Status |
+|---|---|---|---|
+| DETR R50 | Apache-2.0 | [model.onnx](https://huggingface.co/Xenova/detr-resnet-50/resolve/8be7ab59ff663484ee9ba2e8d8f267330d5ad03e/onnx/model.onnx) (167 MB) | Tested: input 640 x 640 (choose another size if you like), 0.7 s |
+| DETR R50, smaller file | Apache-2.0 | [model_quantized.onnx](https://huggingface.co/Xenova/detr-resnet-50/resolve/8be7ab59ff663484ee9ba2e8d8f267330d5ad03e/onnx/model_quantized.onnx) (43 MB) | Tested: the same objects, 1 s |
+| DETR R50 from Facebook Research | Apache-2.0 | [detr-r50-e632da11.pth](https://dl.fbaipublicfiles.com/detr/detr-r50-e632da11.pth) | [Export DETR](#detr) below. Should work |
+| RT-DETR v2 R18 | Apache-2.0 | [model.onnx](https://huggingface.co/onnx-community/rtdetr_v2_r18vd-ONNX/resolve/936f90b6a476c6da4dfe053fc521af55285976ba/onnx/model.onnx) (81 MB) | Tested: 640 x 640, 0.7 s. Use a Minimum score of 60 % or more |
+| D-FINE S | Apache-2.0 | [model.onnx](https://huggingface.co/onnx-community/dfine_s_coco-ONNX/resolve/a3cf03147a9b86c78475139115c8ac142577352d/onnx/model.onnx) (42 MB) | Tested: 640 x 640, 0.5 s |
+| Other sizes of RT-DETR and D-FINE | Apache-2.0 | [onnx-community](https://huggingface.co/onnx-community) (`rtdetr_*`, `dfine_*`, the file `onnx/model.onnx`) | Should work |
+
+### Classification
+
+Classifiers name what a box or a picture shows. These files carry no class names: upload them with a labels file of the
+1,000 ImageNet names, one per line (the `id2label` list of the
+[config.json](https://huggingface.co/Xenova/resnet-50/resolve/a16f29143f08c4e5c5a4a89f6f185d8edac4b6af/config.json) of
+ResNet-50, in its order).
+
+| Model | Licence | Download | Status |
+|---|---|---|---|
+| ResNet-50 | Apache-2.0 | [model.onnx](https://huggingface.co/Xenova/resnet-50/resolve/a16f29143f08c4e5c5a4a89f6f185d8edac4b6af/onnx/model.onnx) (102 MB) | Tested: 224 x 224, 0.08 s, names cars right |
+| MobileNetV2 | Apache-2.0 | [mobilenetv2-12.onnx](https://github.com/onnx/models/raw/c5cae0f1942c8d7727372c7b1f6b485aa39e4421/validated/vision/classification/mobilenet/model/mobilenetv2-12.onnx) (14 MB) | Tested: 224 x 224, 0.01 s, less sure than ResNet-50 |
+| YOLO11n-cls | AGPL-3.0 | [yolo11n-cls.onnx](https://huggingface.co/mobilint/YOLO11n-cls/resolve/ea1f8e6d3e3f4441bbc09052ab532d36e694186d/yolo11n-cls.onnx) | Works only once an administrator sets its scaling to 0 to 1, which the page does not offer yet. A file exported with `yolo export model=yolo11n-cls.pt format=onnx` keeps the right scaling |
+| Your own classifier | Yours | | Export with one picture in and one score per class out. Should work |
+
+## Upload a model
+
+Uploading needs the permission **Manage vision models** (administrators).
+
+<Image src={upload} alt="The Models card with three models and an upload at 40 %" class="screen" />
+
+<Steps>
+
+1. In the **Models** card on the left of the page, click **Upload model**.
+2. Choose the `.onnx` file. To give the classes their names, choose a labels file (`.txt`, one name per line, one line
+   per class) together with it.
+3. The row shows **Upload** with its progress (**Cancel** stops it), then a ring while OADM checks the model.
+4. The model shows with its kind, input size, classes and size, for example
+   `Detection · 576x576 · 91 classes · 121 MB`. Hover over it for the pipelines that use it, the SHA-256 and the time of
+   one call on the CPU and on the graphics card.
+
+</Steps>
+
+A new model is named after its file. The ⋯ menu of a model has **Rename**, **Class list** and **Delete**. **Delete** is
+refused while a pipeline uses the model, for example **Used by 2 pipelines: Gate 1, Lane 2.**
+
+### The model check
+
+Before OADM keeps a model, it opens it and runs it once on a blank picture. A model that fails is not kept and the row
+says why, for example **This model cannot run here: it needs data in other files. Export it as one file.** See
+[Troubleshooting](../troubleshooting/#model-upload) for every reason.
+
+### Models are data, never code
+
+A model runs only with the standard operations of ONNX Runtime. OADM refuses a model that needs code of its own or
+data in other files. For you this means:
+
+- A model exported with the standard tools of PyTorch or Ultralytics works.
+- A model that needs a custom operator, for example from TensorRT or an own plugin, is refused. Export it again without.
+- A model exported into several files is refused. Export it as one file.
+
+## Class names
+
+A model knows its classes by number. OADM names them, in this order:
+
+1. The names inside the model file, as Ultralytics writes them.
+2. A labels file uploaded with the model.
+3. A built-in class list, when the model has 91 or 80 classes.
+4. Else `Class 0`, `Class 1` and so on.
+
+### Class lists
+
+A class list is a set of names for a model's classes. You choose it on the model, never on a node, because the numbers
+belong to how the model was trained.
+
+| Class list | Fits |
+|---|---|
+| **COCO for DETR and RF-DETR (91)** | DETR and RF-DETR trained on COCO. 80 names; the 11 unused numbers are never shown |
+| **COCO for YOLO (80)** | YOLO trained on COCO, the same names without gaps |
+| Your own lists | Any model with as many classes as the list has names |
+
+The section **Class lists** below **Models** shows them. **New** creates a list: a **Name** and the names, one per line.
+Built-in lists have **View**; your own **Edit** and **Delete**.
+
+To change a model's names, open **Class list** in the model's ⋯ menu. It offers **Own names** and the lists with the
+model's number of classes.
+
+<Image src={classList} alt="The Class list dialog of a model with 2 classes: Own names, the note No class list has 2 names, and the names helmet and no helmet" class="screen fit" />
+
+- A list in use cannot change its number of names: **Used by models with 2 classes. Keep 2 names.**
+- A list in use cannot be deleted.
+- **Detect objects** shows the model's list below the model, for example **Class list: COCO for DETR and RF-DETR (91)**.
+- At most 50 own lists.
+
+## Export your own model
+
+Export with one picture as the input, in floating point numbers, as one file. A fixed input size is read from the model;
+for a free one OADM uses 640 x 640.
+
+### YOLO
+
+With Ultralytics (`pip install ultralytics`):
+
+```sh
+yolo export model=yolo11n.pt format=onnx
+```
+
+Your own trained model works the same way (`model=best.pt`). The class names travel inside the file.
+
+### DETR
+
+With PyTorch 2.5 or later:
+
+```python
+import torch
+
+model = torch.hub.load('facebookresearch/detr', 'detr_resnet50', pretrained=True).eval()
+picture = torch.zeros(1, 3, 800, 800)
+torch.onnx.export(model, picture, 'detr-r50.onnx', input_names=['images'],
+                  output_names=['pred_logits', 'pred_boxes'], opset_version=17, dynamo=False)
+```
+
+OADM names the classes with **COCO for DETR and RF-DETR (91)**. The ready
+[DETR R50 file](https://huggingface.co/Xenova/detr-resnet-50/resolve/8be7ab59ff663484ee9ba2e8d8f267330d5ad03e/onnx/model.onnx)
+saves you the export.
+
+### RF-DETR
+
+Your own trained RF-DETR: the [rf-detr-onnx](https://github.com/PierreMarieCurie/rf-detr-onnx) project exports it with
+`uv run export.py --checkpoint your-model.pth`.
+
+### Classification
+
+Any model with one picture in and one score per class out, for example a classifier of PyTorch exported with
+`torch.onnx.export` like DETR above, with one output. Upload a labels file with it. OADM gives a classifier a 224 x 224
+input when the file leaves the size open, and scales the picture as ImageNet models are trained, except for Ultralytics'
+files, which say so in the file.
+
+## Limits
+
+| What | At most |
+|---|---|
+| Models | 20 |
+| Size of one model | 500 MB |
+| All models together | 4 GB |
+| Classes of a model | 1,000 |
+| Input size | 4,096 pixels per side |
+
+## Backups
+
+A backup keeps the model list, its settings and your class lists, never the model files. After a restore a model shows
+**Missing** and its pipelines say **Upload the model Gate people again.** Upload the same file: the model comes back with
+its settings.

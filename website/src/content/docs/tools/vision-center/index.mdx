@@ -1,0 +1,100 @@
+---
+title: Vision Center
+description: Run your own detection models on camera pictures and count objects in areas or over lines for the event rules.
+---
+
+import { Steps, Aside, LinkCard, CardGrid } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import page from '../../../../assets/screens/vision-center-page.png';
+
+Vision Center runs your own detection and classification models on your cameras' pictures. You build what you need from
+nodes on a canvas: objects in an area, objects that cross a line, counts, times and conditions. At the end an Event node
+sends an event to the [event rules](../event-rules/).
+
+<Image src={page} alt="The Vision Center page: the pipelines and models on the left, a pipeline of nodes on the canvas, the live video and the selected node's live output on the right" class="screen" />
+
+## What it needs
+
+| You need | Why |
+|---|---|
+| A model you upload | OADM ships no model. See [Models](models/) for models that work, with their links |
+| A camera OADM manages | Each pipeline works on one camera's video |
+| **Watching** or **On action** | **Watching** runs on the stream all the time. **On action** runs one picture when a rule runs **Run pipeline** |
+
+## Install
+
+Vision Center is an optional plugin: it is not in the OADM installers.
+
+<Steps>
+
+1. On the [Plugins page](../../admin/plugins/#optional-plugins), under **Optional plugins**, click **Download ZIP** in the
+   row of Vision Center.
+2. Click **Install** and choose the ZIP.
+3. Turn on **Vision Center** in the list above. It opens under **Vision** in the navigation rail.
+
+</Steps>
+
+After an OADM update it keeps running. See [Updates and backups](../../admin/plugins/#updates-and-backups).
+
+## Quick start
+
+Count the people who pass a door, per day.
+
+<Steps>
+
+1. Download a model, for example
+   [rf-detr-medium.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-medium.onnx) (121 MB).
+   In the **Models** card click **Upload model** and choose the file.
+2. Click **New** in **Pipelines** and choose the camera. Enter a name and leave **Mode** on **Watching**.
+3. Click **Add node** and add **Detect objects**. Choose the model and, under **Classes**, `person`. Then add **Track**
+   and **Line** below it with the **+** under each node. Drag the line across the door on the video.
+4. Add **Count** below the line and **Event** below the count. Add a **Timer** with **Every** **Day** at `00:00` and drag
+   from its output to **Reset** on the count.
+5. Watch the In and Out numbers on the video and in **Live output**, then click **Save**.
+
+</Steps>
+
+The event (the Event node's name, under **Vision Center** > pipeline name) now fires when the count changes. See
+[Events and rules](events/).
+
+## What happens to one picture
+
+```mermaid
+flowchart TB
+    A[Camera<br/>picture] --> B[Detect objects<br/>your model]
+    B --> C[Filter<br/>class, score, size]
+    C --> D[Track<br/>an id per object]
+    D --> E[Line<br/>crossings]
+    D --> F[Area<br/>objects inside]
+    E --> G[Count]
+    F --> H[Event]
+    G --> I[Event]
+```
+
+A pipeline starts at its camera and branches as often as you like. Nodes never form a loop and two branches never join
+again.
+
+## What it never does
+
+- **Changes nothing on the camera.** It only receives pictures.
+- **Stores no picture.** Pictures stay in the server's memory while a pipeline works on them. Events carry numbers and
+  classes, never pictures.
+- **Keeps no history.** Counts live in memory and start at 0 after a server restart. Rules and
+  [dashboards](../dashboards/) get them as events.
+- **Ships no model.** You upload your models. OADM ships no face, person identity or license plate model.
+
+<Aside type="caution">
+You choose what your models detect. You are responsible for the models you run, their licences and the privacy law at
+your site.
+</Aside>
+
+## Learn more
+
+<CardGrid>
+	<LinkCard title="Models" description="Models that work, with links, licences and the upload." href="models/" />
+	<LinkCard title="Pipelines and the canvas" description="Build a pipeline, the live video, Pause, Copy to cameras." href="pipelines/" />
+	<LinkCard title="Nodes" description="Every node with its settings." href="nodes/" />
+	<LinkCard title="Events and rules" description="What each Event node sends, the actions, examples." href="events/" />
+	<LinkCard title="Speed and limits" description="CPU, graphics card, frame rates, limits." href="speed/" />
+	<LinkCard title="Troubleshooting" description="Permissions and what each message means." href="troubleshooting/" />
+</CardGrid>

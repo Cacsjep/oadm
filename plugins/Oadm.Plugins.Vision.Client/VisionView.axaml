@@ -54,7 +54,8 @@
             <ListBox x:Name="PipelineList" Classes="deviceTree" ItemsSource="{Binding Pipelines}" SelectedItem="{Binding SelectedPipeline}" SelectionMode="Single">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:PipelineListRow">
-                  <!-- The name keeps its room: a long chip moves to the next line. -->
+                  <!-- The name keeps its room: a long chip moves to the next line. The row's ⋯ menu right: Copy to cameras, Delete. -->
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
                   <StackPanel Spacing="2">
                     <WrapPanel ItemSpacing="8" LineSpacing="2">
                       <TextBlock x:Name="PipelineName" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
@@ -64,6 +65,14 @@
                     <TextBlock Text="{Binding Last}" TextTrimming="CharacterEllipsis"
                                IsVisible="{Binding Last, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                   </StackPanel>
+                  <Panel Grid.Column="1" VerticalAlignment="Top" IsVisible="{Binding $parent[UserControl].((vm:VisionViewModel)DataContext).MayChange, FallbackValue=False}">
+                    <Button x:Name="PipelineActions" Classes="toolbar iconOnly" ToolTip.Tip="{x:Static ui:RowActions.Tip}" Click="OnPipelineActions"
+                            IsVisible="{Binding !IsCopying}">
+                      <ui:OadmIcon Data="{StaticResource Icon.more}" />
+                    </Button>
+                    <ui:ProgressRing Width="16" Height="16" IsVisible="{Binding IsCopying}" />
+                  </Panel>
+                  </Grid>
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>

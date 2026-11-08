@@ -1,6 +1,6 @@
 <Project>
 
-  <!-- The real model and photos of the RealModel tests (docs/spec/vision-center.md "Tests"): never in git, never shipped.
+  <!-- The real models and photos of the RealModel tests (docs/spec/vision-center.md "Tests"): never in git, never shipped.
        Downloaded only when the build is asked for them (-p:OadmRealModels=true; manage test models) from their pinned
        revisions into the cache Text recognition uses ($(OADM_MODEL_CACHE), else %LOCALAPPDATA%\Oadm\model-cache or
        ~/.cache/oadm/models), each in a folder named after its SHA-256, and checked. A failed download or another hash never
@@ -19,6 +19,34 @@
     <VisionRealModelFile Include="rf-detr-medium.onnx"
                          Url="https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/94f91976449c187be38e649863e3dadecc312437/rf-detr-medium.onnx"
                          Sha256="18250b5a3a9552ae117d592f8e8c27fe52438d70c914a77a8913fc45d8f29e69" />
+    <!-- The YOLO family (Ultralytics weights AGPL-3.0, YOLOX Apache-2.0): tested here, never shipped. -->
+    <VisionRealModelFile Include="yolov8n.onnx"
+                         Url="https://github.com/ultralytics/assets/releases/download/v8.4.0/yolov8n.onnx"
+                         Sha256="b2bc52f40e8e1c532427d5bde3575a5d5b571b739fab2c6df443733ed1589cbd" />
+    <VisionRealModelFile Include="yolo11n.onnx"
+                         Url="https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n.onnx"
+                         Sha256="634279b40c07c6391472c51ad45b81ebc48706a9a1fe72dd3396322acd0c053b" />
+    <VisionRealModelFile Include="yolo11n-fp16.onnx"
+                         Url="https://huggingface.co/unity/inference-engine-yolo/resolve/1aea2ce54d688c056bc80ab94ffbc55f1e279b44/models/yolo11n.onnx"
+                         Sha256="0690c675a942f4dc4f463b3e4e89520117aeea3fd767784df2934705c91ed11b" />
+    <VisionRealModelFile Include="yolo11n-no-names.onnx"
+                         Url="https://huggingface.co/Kalray/yolo11/resolve/1ca8238e34795b3beaa40c3a24e9ff4fb168f511/yolo11n.onnx"
+                         Sha256="d59282c9467eff7b8d567f61ea9a7a8adca1681761edad39c12877e39909e8bd" />
+    <VisionRealModelFile Include="yolov5n.onnx"
+                         Url="https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5n.onnx"
+                         Sha256="04f0e55c26f58d17145b36045780fe1250d5bd2187543e11568e5141d05b3262" />
+    <VisionRealModelFile Include="yolov10n.onnx"
+                         Url="https://huggingface.co/onnx-community/yolov10n/resolve/57657320425ee34056408a57ad9d29c4d4815bd8/onnx/model.onnx"
+                         Sha256="a77dd863933f184a19e84361c64b788228a7c7dacc2c78939239a96ad3efca3b" />
+    <VisionRealModelFile Include="yolo26n.onnx"
+                         Url="https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.onnx"
+                         Sha256="2e947b787d9e787b93a16772a5f55b1d4d8c4d86f53146149c5d6a642442d6f7" />
+    <VisionRealModelFile Include="yolox_nano.onnx"
+                         Url="https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_nano.onnx"
+                         Sha256="c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d" />
+    <VisionRealModelFile Include="yolox_tiny.onnx"
+                         Url="https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_tiny.onnx"
+                         Sha256="427cc366d34e27ff7a03e2899b5e3671425c262ea2291f88bb942bc1cc70b0f7" />
     <VisionRealModelFile Include="rf-detr-small.onnx"
                          Url="https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/94f91976449c187be38e649863e3dadecc312437/rf-detr-small.onnx"
                          Sha256="0e0817f4cafa479ccba17662a142092932b0b10c98947e7cf60f3badd0f5c219" />
@@ -34,6 +62,9 @@
     <VisionRealModelFile Include="dfine-s-coco.onnx"
                          Url="https://huggingface.co/onnx-community/dfine_s_coco-ONNX/resolve/a3cf03147a9b86c78475139115c8ac142577352d/onnx/model.onnx"
                          Sha256="cd8a49a945feda6d28c6304ae8ae85c2759ba1d78a5a83a22c5ce8db82ef7238" />
+    <VisionRealModelFile Include="yolo26n-transformersjs.onnx"
+                         Url="https://huggingface.co/onnx-community/yolo26n-ONNX/resolve/a8dc7e14743e1cea8ccd493bd99b4c2827de1acf/onnx/model.onnx"
+                         Sha256="cda08d9440217e243e075ee839f40383c59b3f973e493f9f6c7452922a69436e" />
     <VisionRealModelFile Include="resnet-50.onnx"
                          Url="https://huggingface.co/Xenova/resnet-50/resolve/a16f29143f08c4e5c5a4a89f6f185d8edac4b6af/onnx/model.onnx"
                          Sha256="7e6fd9fa712c93139c2dab22fe109232d9fb760e3ddea117110f72de9d4f665a" />
@@ -46,6 +77,9 @@
     <VisionRealModelFile Include="yolo11n-cls.onnx"
                          Url="https://huggingface.co/mobilint/YOLO11n-cls/resolve/ea1f8e6d3e3f4441bbc09052ab532d36e694186d/yolo11n-cls.onnx"
                          Sha256="fe2a60c3a3dd68bc5ef28195caa0300e5622ef814cfab01f6c14c1e5589edd55" />
+    <VisionRealModelFile Include="coco-000000097679.jpg"
+                         Url="http://images.cocodataset.org/val2017/000000097679.jpg"
+                         Sha256="7d636d406352e1643cab6f85925dd2fccd7ac11c471f1c58bd627a9512154efc" />
     <VisionRealModelFile Include="coco-000000278705.jpg"
                          Url="http://images.cocodataset.org/val2017/000000278705.jpg"
                          Sha256="d01c906a85c3f77702bdbf9dc7cedf11310e9aa47c6730927f51d9651dece310" />

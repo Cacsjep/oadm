@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 using Oadm.Plugins.Vision.Inference;
 using Oadm.Plugins.Vision.Model;
 using Oadm.Plugins.Vision.Models;
@@ -13,9 +15,9 @@ public sealed class RealModelGroup : ICollectionFixture<RealModelFixture>
 }
 
 /// <summary>
-/// The real models, each uploaded once through one real <see cref="ModelLibrary"/> into a temp data folder, and the real
-/// <see cref="OnnxInference"/> over them on the CPU only: no graphics card is looked for and a session on anything but the
-/// CPU fails the test.
+/// Each real model uploaded once through the real <see cref="ModelLibrary"/> (a library of its own per model in a temp data
+/// folder, so the library's model limit never decides), and one real <see cref="OnnxInference"/> over all of them on the CPU
+/// only: no graphics card is looked for and a session on anything but the CPU fails the test.
 /// </summary>
 public sealed class RealModelFixture : IDisposable
 {
@@ -24,19 +26,29 @@ public sealed class RealModelFixture : IDisposable
 
     private readonly TempFolder _data = new();
     private readonly SemaphoreSlim _once = new(1, 1);
-    private readonly Dictionary<string, ModelCheck> _checks = [];
-    private ModelLibrary? _library;
-    private OnnxInference? _inference;
+    private readonly Dictionary<string, (ModelLibrary Library, ModelCheck Check)> _uploads = [];
+    private readonly ConcurrentDictionary<string, ModelLibrary> _libraryOf = new();
+    private readonly OnnxInference _inference;
 
-    public ModelLibrary Library => _library ?? throw new InvalidOperationException("Not uploaded yet.");
+    public RealModelFixture()
+    {
+        _inference = new OnnxInference(new InferenceOptions
+        {
+            FileOf = id => _libraryOf.TryGetValue(id, out var library) ? library.FileOf(id) : null,
+            FindGraphicsCard = _ => throw new InvalidOperationException("The RealModel tests run on the CPU only."),
+            CreateSession = static (file, target) => target == ExecutionTarget.Cpu
+                ? SessionFactory.Create(file, target, threads: 1)
+                : throw new InvalidOperationException("The RealModel tests run on the CPU only."),
+        });
+    }
 
-    public OnnxInference Inference => _inference ?? throw new InvalidOperationException("Not uploaded yet.");
+    public OnnxInference Inference => _inference;
 
-    /// <summary>Uploads RF-DETR medium on the first call; every later call returns the same check.</summary>
-    public Task<ModelCheck> UploadAsync() => UploadAsync(RealModelFiles.RfDetrMedium);
+    /// <summary>The library <paramref name="file"/> was uploaded to (after <see cref="UploadAsync"/>).</summary>
+    public ModelLibrary LibraryOf(string file) => _uploads.TryGetValue(file, out var upload) ? upload.Library : throw new InvalidOperationException("Not uploaded yet.");
 
     /// <summary>
-    /// Uploads the real model <paramref name="file"/> (with the labels file <paramref name="labels"/>) in chunks on the first
+    /// Uploads the model file <paramref name="file"/> (with the labels file <paramref name="labels"/>) in chunks on the first
     /// call; every later call returns the same check.
     /// </summary>
     public async Task<ModelCheck> UploadAsync(string file, string? labels = null)
@@ -44,29 +56,16 @@ public sealed class RealModelFixture : IDisposable
         await _once.WaitAsync();
         try
         {
-            if (_checks.TryGetValue(file, out var done))
+            if (_uploads.TryGetValue(file, out var done))
             {
-                return done;
-            }
-
-            if (_library is null)
-            {
-                _library = new ModelLibrary(new MemoryPluginRecords(), _data.Path, TimeProvider.System);
-                await _library.LoadAsync(CancellationToken.None);
-                var library = _library;
-                _inference = new OnnxInference(new InferenceOptions
-                {
-                    FileOf = library.FileOf,
-                    FindGraphicsCard = _ => throw new InvalidOperationException("The RealModel tests run on the CPU only."),
-                    CreateSession = static (path, target) => target == ExecutionTarget.Cpu
-                        ? SessionFactory.Create(path, target, threads: 1)
-                        : throw new InvalidOperationException("The RealModel tests run on the CPU only."),
-                });
+                return done.Check;
             }
 
             var path = RealModelFiles.PathOf(file);
+            var library = new ModelLibrary(new MemoryPluginRecords(), Path.Combine(_data.Path, _uploads.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)), TimeProvider.System);
+            await library.LoadAsync(CancellationToken.None);
             var size = new FileInfo(path).Length;
-            var id = await _library.BeginUploadAsync(file, size, labels, CancellationToken.None);
+            var id = await library.BeginUploadAsync(file, size, labels, CancellationToken.None);
             var buffer = new byte[Chunk];
             await using (var stream = File.OpenRead(path))
             {
@@ -74,13 +73,18 @@ public sealed class RealModelFixture : IDisposable
                 int read;
                 while ((read = await stream.ReadAsync(buffer)) > 0)
                 {
-                    await _library.AppendAsync(id, offset, buffer.AsMemory(0, read), CancellationToken.None);
+                    await library.AppendAsync(id, offset, buffer.AsMemory(0, read), CancellationToken.None);
                     offset += read;
                 }
             }
 
-            var check = await _library.FinishUploadAsync(id, CancellationToken.None);
-            _checks[file] = check;
+            var check = await library.FinishUploadAsync(id, CancellationToken.None);
+            if (check.Model is { } model)
+            {
+                _libraryOf[model.Id] = library;
+            }
+
+            _uploads[file] = (library, check);
             return check;
         }
         finally
@@ -89,20 +93,21 @@ public sealed class RealModelFixture : IDisposable
         }
     }
 
-    /// <summary>The uploaded RF-DETR medium (the check must have passed).</summary>
-    public Task<VisionModel> ModelAsync() => ModelAsync(RealModelFiles.RfDetrMedium);
-
-    /// <summary>The uploaded model <paramref name="file"/> (the check must have passed).</summary>
+    /// <summary>The uploaded model of <paramref name="file"/> (the check must have passed).</summary>
     public async Task<VisionModel> ModelAsync(string file, string? labels = null)
     {
         var check = await UploadAsync(file, labels);
-        return check.Model ?? throw new InvalidOperationException($"The model check refused {file}: {check.Refusal}");
+        return check.Model ?? throw new InvalidOperationException("The model check refused the model: " + check.Refusal);
     }
 
     public void Dispose()
     {
-        _inference?.Dispose();
-        _library?.Dispose();
+        _inference.Dispose();
+        foreach (var (library, _) in _uploads.Values)
+        {
+            library.Dispose();
+        }
+
         _data.Dispose();
         _once.Dispose();
     }

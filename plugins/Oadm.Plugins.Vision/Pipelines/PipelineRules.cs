@@ -102,6 +102,20 @@ public static class PipelineRules
 
     public static readonly string TooManyPipelines = string.Create(CultureInfo.InvariantCulture, $"OADM keeps at most {VisionLimits.MaxPipelines} pipelines. Delete one first.");
 
+    /// <summary>A copy beyond the pipeline limit (the others were made).</summary>
+    public static readonly string CopyLimit = string.Create(CultureInfo.InvariantCulture, $"OADM keeps at most {VisionLimits.MaxPipelines} pipelines.");
+
+    /// <summary>A copy to the pipeline's own camera.</summary>
+    public const string OwnCamera = "This is the pipeline's own camera.";
+
+    /// <summary>The most cameras one copy call takes.</summary>
+    public const int MaxCopyCameras = 100;
+
+    public static readonly string TooManyCopyCameras = string.Create(CultureInfo.InvariantCulture, $"Copy to at most {MaxCopyCameras} cameras at once.");
+
+    /// <summary>A camera outside the caller's devices (the same answer as for an unknown one).</summary>
+    public static readonly string CameraNotAvailable = Oadm.Sdk.Devices.DeviceMessages.NoLongerAvailable(1);
+
     public static string NameTaken(string name) => $"A pipeline named {name} exists already.";
 
     public static string FpsNotAllowed()

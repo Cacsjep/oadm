@@ -2,11 +2,11 @@ using Oadm.Plugins.Vision.Model;
 
 namespace Oadm.Plugins.Vision.Models;
 
-/// <summary>
-/// One output of a model as its blank call gave it: name, shape and whether it holds floating point numbers;
-/// <paramref name="LastClassShare"/> of a <c>[1, Q, C]</c> output the share of queries whose best column is the last one
-/// (null when not measured).
-/// </summary>
+/// <summary>One output of a model as its blank call gave it: name, shape and whether it holds floating point numbers.</summary>
+/// <remarks>
+/// <paramref name="LastClassShare"/>: of a <c>[1, Q, C]</c> output the share of queries whose best column is the last one
+/// in the blank call (null when not measured).
+/// </remarks>
 internal sealed record OutputInfo(string Name, long[] Shape, bool IsFloat, double? LastClassShare = null);
 
 /// <summary>The format the outputs show and the class count they give (null: the outputs do not tell, the class names do).</summary>
@@ -21,8 +21,8 @@ internal static class OutputFormats
     /// <summary>The largest N of <c>[1, N, 6]</c> that is read as YOLO with suppression (end-to-end exports keep 300).</summary>
     private const long MaxSuppressedBoxes = 1000;
 
-    /// <summary>The format of <paramref name="outputs"/>, or null when it matches none.</summary>
-    public static RecognisedFormat? Recognise(IReadOnlyList<OutputInfo> outputs)
+    /// <summary>The format of <paramref name="outputs"/> of a model with an input of <paramref name="width"/> x <paramref name="height"/>, or null when it matches none.</summary>
+    public static RecognisedFormat? Recognise(IReadOnlyList<OutputInfo> outputs, int width = 0, int height = 0)
     {
         ArgumentNullException.ThrowIfNull(outputs);
         if (outputs.Count == 0)
@@ -30,23 +30,49 @@ internal static class OutputFormats
             return null;
         }
 
-        return RtDetr(outputs) ?? Detr(outputs) ?? RfDetr(outputs) ?? DetrWithLabels(outputs) ?? Single(outputs);
+        var format = RtDetr(outputs) ?? Detr(outputs) ?? RfDetr(outputs) ?? DetrWithLabels(outputs) ?? Single(outputs);
+        return format?.Format == ModelFormat.Yolo && IsYoloxGrid(outputs[0].Shape, width, height) ? format with { Format = ModelFormat.Yolox } : format;
     }
+
+    /// <summary>The strides of YOLOX's three heads.</summary>
+    public static ReadOnlySpan<int> YoloxStrides => [8, 16, 32];
+
+    /// <summary>The grid cells of YOLOX's heads for an input of <paramref name="width"/> x <paramref name="height"/>: one box per cell, no anchors.</summary>
+    public static long YoloxCells(int width, int height)
+    {
+        long cells = 0;
+        foreach (var stride in YoloxStrides)
+        {
+            cells += (long)(height / stride) * (width / stride);
+        }
+
+        return cells;
+    }
+
+    // [1, N, 5 + C] with one row per grid cell of the strides 8, 16, 32 (YOLOv5 has three anchors per cell): YOLOX.
+    private static bool IsYoloxGrid(long[] shape, int width, int height) =>
+        width > 0 && height > 0 && YoloLayoutOf(shape) == YoloLayout.BoxesFirst && shape[1] == YoloxCells(width, height);
 
     /// <summary>How the picture is fitted for <paramref name="format"/>: Letterbox (YOLO), Keep shape and pad (DETR), else Stretch.</summary>
     public static ModelFit DefaultFit(ModelFormat format) => format switch
     {
-        ModelFormat.Yolo or ModelFormat.YoloWithSuppression => ModelFit.Letterbox,
+        ModelFormat.Yolo or ModelFormat.YoloWithSuppression or ModelFormat.Yolox => ModelFit.Letterbox,
         ModelFormat.Detr => ModelFit.KeepShapePad,
         _ => ModelFit.Stretch,
     };
 
-    /// <summary>ImageNet for DETR and RF-DETR (trained that way), else 0 to 1.</summary>
-    public static ModelScaling DefaultScaling(ModelFormat format) =>
-        format is ModelFormat.Detr or ModelFormat.RfDetr ? ModelScaling.ImageNet : ModelScaling.ZeroToOne;
+    /// <summary>ImageNet for DETR and RF-DETR, 0 to 255 BGR for YOLOX (trained that way), else 0 to 1.</summary>
+    public static ModelScaling DefaultScaling(ModelFormat format) => format switch
+    {
+        ModelFormat.Detr or ModelFormat.RfDetr => ModelScaling.ImageNet,
+        ModelFormat.Yolox => ModelScaling.ZeroTo255Bgr,
+        _ => ModelScaling.ZeroToOne,
+    };
 
     public static ModelKind KindOf(ModelFormat format) => format == ModelFormat.Classification ? ModelKind.Classification : ModelKind.Detection;
 
+    // pred_logits [1, Q, C + 1] and pred_boxes [1, Q, 4], logits first: by name, or two outputs without the names. Boxes
+    // first is RF-DETR whatever the names (rf-detr-onnx names its outputs pred_boxes, pred_logits too).
     /// <summary>
     /// The indexes of the <c>logits</c> and <c>pred_boxes</c> outputs of a Hugging Face DETR export (<c>logits</c>, never
     /// <c>pred_logits</c>: that name is the original DETR's), or null.
@@ -70,10 +96,10 @@ internal static class OutputFormats
         return IsQueries(logits) && IsBoxes(boxes) && logits.Shape[1] == boxes.Shape[1] ? (logitsAt, boxesAt) : null;
     }
 
-    // Hugging Face exports name the outputs of DETR (softmax, the last class "no object") and of RT-DETR and D-FINE (a sigmoid
-    // per class, no "no object") alike: logits and pred_boxes. The blank picture tells them apart: a model with a "no object"
-    // class gives it as the best class of nearly every query (DETR R50: 100 of 100), one without gives the last class no such
-    // place (RT-DETR, D-FINE: 0 of 300). Not measured: not RT-DETR.
+    // Hugging Face exports name the outputs of DETR (softmax, the last class "no object") and of RT-DETR, D-FINE and
+    // Transformers.js YOLO26 (a sigmoid per class, no "no object") alike: logits and pred_boxes. The blank picture tells them
+    // apart: a model with a "no object" class gives it as the best class of nearly every query (DETR R50: 100 of 100, also
+    // quantized), one without gives the last class no such place (RT-DETR v2, D-FINE: 0 of 300). Not measured: not RT-DETR.
     private static RecognisedFormat? RtDetr(IReadOnlyList<OutputInfo> outputs)
     {
         if (HfDetrParts(outputs) is not { } parts || outputs[parts.Logits].LastClassShare is not { } share || share >= 0.5)
@@ -84,8 +110,6 @@ internal static class OutputFormats
         return new RecognisedFormat(ModelFormat.RtDetr, (int)Math.Min(outputs[parts.Logits].Shape[2], int.MaxValue));
     }
 
-    // pred_logits [1, Q, C + 1] and pred_boxes [1, Q, 4], logits first: by name, or two outputs without the names. Boxes
-    // first is RF-DETR whatever the names (rf-detr-onnx names its outputs pred_boxes, pred_logits too).
     private static RecognisedFormat? Detr(IReadOnlyList<OutputInfo> outputs)
     {
         var logitsAt = IndexOf(outputs, "pred_logits");

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Nodes;
 
 using Oadm.Plugins.Vision.Graph;
@@ -23,11 +24,7 @@ public sealed class RfDetrTests(RealModelFixture fixture, ITestOutputHelper outp
     [RealModelFact(RealModelFiles.RfDetrMedium)]
     public async Task The_model_check_recognises_RF_DETR_with_the_COCO_91_list()
     {
-        var check = await fixture.UploadAsync();
-
-        Assert.Null(check.Refusal);
-        var model = check.Model!;
-        CocoPhotos.WriteFacts(model, RealModelFiles.RfDetrMedium, output);
+        var model = RealModelChecks.Describe(await fixture.UploadAsync(RealModelFiles.RfDetrMedium), RealModelFiles.RfDetrMedium, output);
 
         Assert.Equal(ModelFormat.RfDetr, model.Format);
         Assert.Equal(ModelKind.Detection, model.Kind);
@@ -39,44 +36,42 @@ public sealed class RfDetrTests(RealModelFixture fixture, ITestOutputHelper outp
         Assert.Equal(91, model.ClassNames.Count);
         Assert.Equal(ClassLists.Coco91Id, model.ClassListId);
         Assert.Equal(("person", "car", "toothbrush"), (model.ClassNames[1], model.ClassNames[3], model.ClassNames[90]));
-        Assert.Equal(RealModelFiles.Sha256Of(RealModelFiles.RfDetrMedium), model.Sha256);
-        Assert.True(model.CpuMs > 0);
     }
 
     [RealModelFact(RealModelFiles.RfDetrMedium)]
-    public Task Two_skaters_and_two_cars_are_found_where_COCO_has_them() => FindsTheTruthAsync(RealModelFiles.Skaters);
+    public async Task Two_skaters_and_two_cars_are_found_where_COCO_has_them() =>
+        await RealModelChecks.FindsTheTruthAsync(fixture, await fixture.ModelAsync(RealModelFiles.RfDetrMedium), RealModelFiles.Skaters, output);
 
     [RealModelFact(RealModelFiles.RfDetrMedium)]
-    public Task Three_people_and_the_car_behind_the_fence_are_found_where_COCO_has_them() => FindsTheTruthAsync(RealModelFiles.SkateBowl);
+    public async Task Three_people_and_the_car_behind_the_fence_are_found_where_COCO_has_them() =>
+        await RealModelChecks.FindsTheTruthAsync(fixture, await fixture.ModelAsync(RealModelFiles.RfDetrMedium), RealModelFiles.SkateBowl, output);
 
     [RealModelFact(RealModelFiles.RfDetrMedium)]
     public async Task A_pipeline_counts_the_two_skaters()
     {
-        var model = await fixture.ModelAsync();
+        var model = await fixture.ModelAsync(RealModelFiles.RfDetrMedium);
+        var library = fixture.LibraryOf(RealModelFiles.RfDetrMedium);
         var b = new PipelineBuilder();
         var camera = b.Add(NodeKinds.Camera);
         var detect = b.After(camera, NodeKinds.Detect, new JsonObject { [NodeKinds.ModelKey] = model.Id, [NodeKinds.MinScoreKey] = 50 });
         var filter = b.After(detect, NodeKinds.Filter, new JsonObject { [NodeKinds.ClassesKey] = new JsonArray("person") });
         var count = b.After(filter, NodeKinds.Count);
         var pipeline = b.Build();
-        var check = VisionGraph.Check(pipeline, fixture.Library.Find);
+        var check = VisionGraph.Check(pipeline, library.Find);
         Assert.True(check.Ok, string.Join("; ", check.GraphErrors.Concat(check.NodeErrors.Select(e => e.Key + ": " + e.Value))));
 
-        var evaluator = PipelineEvaluator.Create(pipeline, fixture.Library.Find, fixture.Inference, PipelineMode.OnAction);
+        var evaluator = PipelineEvaluator.Create(pipeline, library.Find, fixture.Inference, PipelineMode.OnAction);
         var frames = new PhotoFrames(RealModelFiles.PathOf(RealModelFiles.Skaters));
         using var frame = fixture.Inference.Decode(await frames.SingleAsync(new FrameRequest(Guid.Empty, 1, Resolution.Default), CancellationToken.None));
         var result = await evaluator.RunAsync(frame, DateTimeOffset.UnixEpoch, CancellationToken.None);
 
         Assert.Null(result.ModelFailure);
         var people = result.Nodes[filter].Objects;
-        output.WriteLine($"Count {result.Nodes[count].Value}; " + string.Join("; ", people.Select(p => CocoPhotos.Describe(p.Detection))));
+        output.WriteLine($"Count {result.Nodes[count].Value}; " + string.Join("; ", people.Select(p => RealModelChecks.Describe(p.Detection))));
         // Two: COCO's annotation of the photo has two people (no crowd region) and the photo shows no one else.
         Assert.Equal(2, result.Nodes[count].Value);
         Assert.All(people, p => Assert.Equal("person", p.Detection.ClassName));
     }
-
-    private async Task FindsTheTruthAsync(string photo) =>
-        await CocoPhotos.FindsTheTruthAsync(fixture, await fixture.ModelAsync(), photo, output);
 
     /// <summary>A camera whose every picture is the photo.</summary>
     private sealed class PhotoFrames(string path) : IFrameSource

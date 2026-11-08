@@ -762,6 +762,7 @@ public sealed class OnnxInference : IInference, IDisposable
     private sealed class OrtOutputs(string[] names, IDisposableReadOnlyCollection<OrtValue> values) : IModelOutputs
     {
         private readonly long[]?[] _shapes = new long[]?[names.Length];
+        private readonly float[]?[] _converted = new float[]?[names.Length];
 
         public int Count => names.Length;
 
@@ -769,14 +770,14 @@ public sealed class OnnxInference : IInference, IDisposable
 
         public long[] Shape(int index) => _shapes[index] ??= values[index].GetTensorTypeAndShape().Shape;
 
-        public bool IsFloat(int index) => values[index].GetTensorTypeAndShape().ElementDataType == TensorElementType.Float;
+        public bool IsFloat(int index) => HalfPrecision.IsFloat(values[index].GetTensorTypeAndShape().ElementDataType);
 
         public ReadOnlySpan<float> Floats(int index) =>
-            IsFloat(index) ? values[index].GetTensorDataAsSpan<float>() : throw new InvalidOperationException(ModelTexts.OutputsDoNotFit);
+            IsFloat(index) ? HalfPrecision.Floats(values[index], ref _converted[index]) : throw new InvalidOperationException(ModelTexts.OutputsDoNotFit);
 
         public double ValueAt(int index, int at) => values[index].GetTensorTypeAndShape().ElementDataType switch
         {
-            TensorElementType.Float => values[index].GetTensorDataAsSpan<float>()[at],
+            TensorElementType.Float or TensorElementType.Float16 => Floats(index)[at],
             TensorElementType.Int64 => values[index].GetTensorDataAsSpan<long>()[at],
             TensorElementType.Int32 => values[index].GetTensorDataAsSpan<int>()[at],
             TensorElementType.Double => values[index].GetTensorDataAsSpan<double>()[at],

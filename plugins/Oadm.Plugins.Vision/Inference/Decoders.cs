@@ -40,6 +40,7 @@ internal static class Decoders
         var found = format switch
         {
             ModelFormat.Yolo => Suppress(Yolo(outputs, minScore)),
+            ModelFormat.Yolox => Suppress(Yolox(outputs, minScore, width, height)),
             ModelFormat.YoloWithSuppression => YoloSuppressed(outputs, minScore),
             ModelFormat.Detr => Detr(outputs, minScore, width, height),
             ModelFormat.RfDetr => RfDetr(outputs, minScore, width, height),
@@ -154,6 +155,53 @@ internal static class Decoders
                 if (best >= 0)
                 {
                     found.Add(FromCentre(best, score, row[0], row[1], row[2], row[3]));
+                }
+            }
+        }
+
+        return found;
+    }
+
+    // [1, N, 5 + C], one row per grid cell (strides 8, 16, 32; row by row): x and y offsets in the cell, log width and
+    // height in strides, objectness and class scores (both after their sigmoid). Score = objectness x class.
+    private static List<RawDetection> Yolox(IModelOutputs outputs, float minScore, int width, int height)
+    {
+        var shape = outputs.Shape(0);
+        var data = outputs.Floats(0);
+        Require(shape.Length == 3 && shape[1] == OutputFormats.YoloxCells(width, height) && shape[2] >= 6 && data.Length >= shape[1] * shape[2]);
+        var values = (int)shape[2];
+        var classes = values - 5;
+        var found = new List<RawDetection>();
+        var i = 0;
+        foreach (var stride in OutputFormats.YoloxStrides)
+        {
+            var (rows, columns) = (height / stride, width / stride);
+            for (var gy = 0; gy < rows; gy++)
+            {
+                for (var gx = 0; gx < columns; gx++, i++)
+                {
+                    var row = data.Slice(i * values, values);
+                    var objectness = row[4];
+                    if (objectness < minScore)
+                    {
+                        continue;
+                    }
+
+                    var best = -1;
+                    var score = minScore;
+                    for (var c = 0; c < classes; c++)
+                    {
+                        var s = objectness * row[5 + c];
+                        if (s >= score && (best < 0 || s > score))
+                        {
+                            (best, score) = (c, s);
+                        }
+                    }
+
+                    if (best >= 0)
+                    {
+                        found.Add(FromCentre(best, score, (row[0] + gx) * stride, (row[1] + gy) * stride, MathF.Exp(row[2]) * stride, MathF.Exp(row[3]) * stride));
+                    }
                 }
             }
         }

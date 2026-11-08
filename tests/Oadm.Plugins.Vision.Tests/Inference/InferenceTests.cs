@@ -149,6 +149,38 @@ public sealed class InferenceTests : IDisposable
     }
 
     [Fact]
+    public async Task Half_precision_inputs_and_outputs_are_converted()
+    {
+        var onnx = OnnxModel.Picture(type: OnnxModel.Float16).OutputHalf("output0", [1, 6, YoloBoxes], YoloV8(2, (320, 320, 64, 32, 1, 0.9f)));
+        var model = Model(onnx, ModelFormat.Yolo, ["person", "car"]);
+        var inference = Inference();
+        using var frame = inference.Decode(Jpeg(1280, 640));
+
+        var car = Assert.Single(await inference.DetectAsync(model, frame, 0.5, CancellationToken.None));
+
+        Assert.Equal(("car", 0.9), (car.ClassName, Math.Round(car.Score, 2)));
+        Near(new RelativeBox(0.45, 0.45, 0.1, 0.1), car.Box);
+    }
+
+    [Fact]
+    public async Task Yolox_boxes_are_decoded_from_their_grid_cell()
+    {
+        // 64 x 64: rows 0 to 63 stride 8, 64 to 79 stride 16, 80 to 83 stride 32. Row 73 = stride 16, column 1, row 2:
+        // offsets 0.5 and log size 0 give a 16 x 16 box at (24, 40); score = objectness x class.
+        var data = new float[84 * 7];
+        new float[] { 0.5f, 0.5f, 0, 0, 0.9f, 0.1f, 0.8f }.CopyTo(data, 73 * 7);
+        new float[] { 0.5f, 0.5f, 0, 0, 0.2f, 0.9f, 0 }.CopyTo(data, 3 * 7); // below the score
+        var model = Model(OnnxModel.Picture(64, 64).Output("output", [1, 84, 7], data), ModelFormat.Yolox, ["a", "b"], width: 64, height: 64);
+        var inference = Inference();
+        using var frame = inference.Decode(Jpeg(64, 64));
+
+        var found = Assert.Single(await inference.DetectAsync(model, frame, 0.5, CancellationToken.None));
+
+        Assert.Equal(("b", 0.72), (found.ClassName, Math.Round(found.Score, 2)));
+        Near(new RelativeBox(0.25, 0.5, 0.25, 0.25), found.Box);
+    }
+
+    [Fact]
     public async Task Yolo_with_suppression_keeps_every_box_and_at_most_300()
     {
         // 400 boxes in a grid, x1 y1 x2 y2 score class.
@@ -186,6 +218,24 @@ public sealed class InferenceTests : IDisposable
         Assert.Equal("b", found.ClassName);
         Assert.Equal(Math.Round(Math.Exp(5) / (Math.Exp(5) + 2), 4), found.Score, 4);
         Near(new RelativeBox(0.45, 0.4, 0.1, 0.2), found.Box);
+    }
+
+    [Fact]
+    public async Task Rt_detr_takes_a_sigmoid_per_class_and_finds_its_outputs_by_name()
+    {
+        // logits [1, 2, 3] first (every column a class), pred_boxes second. Query 0 class 2 at sigmoid(3); query 1 unsure.
+        var logits = new float[] { -4, -4, 3, -1, -2, -3 };
+        var boxes = new float[] { 0.5f, 0.5f, 0.2f, 0.4f, 0.1f, 0.1f, 0.1f, 0.1f };
+        var model = Model(OnnxModel.Picture().Output("logits", [1, 2, 3], logits).Output("pred_boxes", [1, 2, 4], boxes), ModelFormat.RtDetr, ["a", "b", "c"]);
+        var inference = Inference();
+
+        // Stretched: the box is relative to the whole picture.
+        using var frame = inference.Decode(Jpeg(1280, 640));
+        var found = Assert.Single(await inference.DetectAsync(model, frame, 0.5, CancellationToken.None));
+
+        Assert.Equal("c", found.ClassName);
+        Assert.Equal(Math.Round(1 / (1 + Math.Exp(-3)), 4), found.Score, 4);
+        Near(new RelativeBox(0.4, 0.3, 0.2, 0.4), found.Box);
     }
 
     [Fact]
