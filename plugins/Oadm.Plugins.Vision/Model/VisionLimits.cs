@@ -47,6 +47,9 @@ public static class VisionLimits
 
     public const int DefaultInputSize = 640;
 
+    /// <summary>The size a classification model with a free input gets (ImageNet models are trained at 224 x 224).</summary>
+    public const int DefaultClassificationInputSize = 224;
+
     /// <summary>Non-maximum suppression of the YOLO format.</summary>
     public const double SuppressionIoU = 0.45;
 

@@ -221,6 +221,24 @@ public sealed class InferenceTests : IDisposable
     }
 
     [Fact]
+    public async Task Rt_detr_takes_a_sigmoid_per_class_and_finds_its_outputs_by_name()
+    {
+        // logits [1, 2, 3] first (every column a class), pred_boxes second. Query 0 class 2 at sigmoid(3); query 1 unsure.
+        var logits = new float[] { -4, -4, 3, -1, -2, -3 };
+        var boxes = new float[] { 0.5f, 0.5f, 0.2f, 0.4f, 0.1f, 0.1f, 0.1f, 0.1f };
+        var model = Model(OnnxModel.Picture().Output("logits", [1, 2, 3], logits).Output("pred_boxes", [1, 2, 4], boxes), ModelFormat.RtDetr, ["a", "b", "c"]);
+        var inference = Inference();
+
+        // Stretched: the box is relative to the whole picture.
+        using var frame = inference.Decode(Jpeg(1280, 640));
+        var found = Assert.Single(await inference.DetectAsync(model, frame, 0.5, CancellationToken.None));
+
+        Assert.Equal("c", found.ClassName);
+        Assert.Equal(Math.Round(1 / (1 + Math.Exp(-3)), 4), found.Score, 4);
+        Near(new RelativeBox(0.4, 0.3, 0.2, 0.4), found.Box);
+    }
+
+    [Fact]
     public async Task Detr_never_shows_a_gap_class()
     {
         var logits = new float[] { 9, 0, 0 };

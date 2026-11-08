@@ -35,6 +35,38 @@ internal static class RealModelFiles
 
     public const string YoloxTiny = "yolox_tiny.onnx";
 
+    public const string RfDetrSmall = "rf-detr-small.onnx";
+
+    /// <summary>facebook/detr-resnet-50 as Transformers.js exports it (Xenova): <c>logits</c>, <c>pred_boxes</c>, a free input and a pixel mask.</summary>
+    public const string DetrResNet50 = "detr-resnet-50.onnx";
+
+    /// <summary>The same export quantized (8-bit weights).</summary>
+    public const string DetrResNet50Quantized = "detr-resnet-50-quantized.onnx";
+
+    /// <summary>PekingU/rtdetr_v2_r18vd as onnx-community exports it: <c>logits</c> (a sigmoid, 80 classes), <c>pred_boxes</c>.</summary>
+    public const string RtDetrV2R18 = "rtdetr-v2-r18vd.onnx";
+
+    /// <summary>ustc-community/dfine_s_coco as onnx-community exports it, the outputs of RT-DETR.</summary>
+    public const string DFineSmall = "dfine-s-coco.onnx";
+
+    /// <summary>YOLO26n as onnx-community exports it for Transformers.js: the outputs of RT-DETR.</summary>
+    public const string Yolo26nTransformersJs = "yolo26n-transformersjs.onnx";
+
+    /// <summary>microsoft/resnet-50 as Transformers.js exports it (Xenova): <c>logits [1, 1000]</c>, a free input.</summary>
+    public const string ResNet50 = "resnet-50.onnx";
+
+    /// <summary>The config.json of the ResNet-50 export: the ImageNet class names (<c>id2label</c>) for a labels file.</summary>
+    public const string ResNet50Config = "resnet-50-config.json";
+
+    /// <summary>MobileNetV2 of the ONNX Model Zoo (opset 12).</summary>
+    public const string MobileNetV2 = "mobilenetv2-12.onnx";
+
+    /// <summary>Ultralytics YOLO11n-cls on ImageNet, the ONNX file of mobilint's repository (no metadata).</summary>
+    public const string Yolo11Cls = "yolo11n-cls.onnx";
+
+    /// <summary>COCO val2017 97679: a silver sedan and a white station wagon side by side, nothing in front of them.</summary>
+    public const string TwoCars = "coco-000000097679.jpg";
+
     /// <summary>COCO val2017 278705: two skateboarders, two parked cars.</summary>
     public const string Skaters = "coco-000000278705.jpg";
 

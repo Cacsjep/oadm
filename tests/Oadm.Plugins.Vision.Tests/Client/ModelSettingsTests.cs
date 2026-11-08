@@ -37,7 +37,7 @@ public sealed class ModelSettingsTests
     public void The_formats_follow_the_models_kind_and_the_choices_start_at_the_models_values()
     {
         var detection = new ModelSettingsViewModel(PageSamples.Detr);
-        Assert.Equal(["YOLO", "YOLO with suppression", "DETR", "RF-DETR", "DETR with labels", "YOLOX"], detection.Formats.Select(f => f.Name));
+        Assert.Equal(["YOLO", "YOLO with suppression", "DETR", "RF-DETR", "DETR with labels", "YOLOX", "RT-DETR"], detection.Formats.Select(f => f.Name));
         Assert.Equal(ModelFormat.Detr, detection.Format.Value);
         Assert.Equal(["Letterbox", "Stretch", "Keep shape and pad"], ModelSettingsViewModel.Fits.Select(f => f.Name));
         Assert.Equal(["0 to 1", "ImageNet", "0 to 255, BGR"], ModelSettingsViewModel.Scalings.Select(s => s.Name));

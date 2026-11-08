@@ -28,7 +28,8 @@ public sealed partial class ModelSettingsViewModel : ValidatingViewModel
         Model = model ?? throw new ArgumentNullException(nameof(model));
         Formats = model.Kind == ModelKind.Detection
             ? [new(ModelFormat.Yolo, "YOLO"), new(ModelFormat.YoloWithSuppression, "YOLO with suppression"), new(ModelFormat.Detr, "DETR"),
-                new(ModelFormat.RfDetr, "RF-DETR"), new(ModelFormat.DetrWithLabels, "DETR with labels"), new(ModelFormat.Yolox, "YOLOX")]
+                new(ModelFormat.RfDetr, "RF-DETR"), new(ModelFormat.DetrWithLabels, "DETR with labels"), new(ModelFormat.Yolox, "YOLOX"),
+                new(ModelFormat.RtDetr, "RT-DETR")]
             : [new(ModelFormat.Classification, "Classification")];
         Format = Formats.FirstOrDefault(f => f.Value == model.Format) ?? Formats[0];
         Fit = Fits.First(f => f.Value == model.Fit);

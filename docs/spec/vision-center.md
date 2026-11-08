@@ -67,6 +67,17 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
     the best class other than "no object" with its probability as the score; no suppression. Input with ImageNet mean and
     deviation (preselected for this format), the picture scaled to the input with its shape kept, padded. The COCO models
     have 91 class ids with gaps ("N/A"): a class named "N/A" is never shown or chosen, and its detections are dropped.
+    Hugging Face exports of DETR (Transformers.js, e.g. `Xenova/detr-resnet-50`) name the logits `logits` and have a
+    second input `pixel_mask` `[1, h, w]` (integers): it is filled with ones of its declared size (or the input's when
+    free), "all picture", as the original DETR without a mask (2026-11-08).
+  - Detection **RT-DETR** (2026-11-08): Hugging Face exports of DETR models without a "no object" class (RT-DETR, D-FINE,
+    the Transformers.js YOLO26; onnx-community): `logits` `[1, Q, C]` with a sigmoid per class and `pred_boxes` `[1, Q,
+    4]` (centre x, centre y, width, height, 0 to 1), found by name; the best class per query; no suppression. Stretch, 0
+    to 1, a free input taking 640 (their processors resize to 640 x 640 without normalising). The same names as a
+    Hugging Face DETR: the blank call of the model check tells them apart. A model with a "no object" class makes it the
+    best class of nearly every query on a blank picture (DETR R50: 100 of 100, also quantized), one without never does
+    (RT-DETR v2, D-FINE S: 0 of 300); half the queries or more with the last class best is DETR, else RT-DETR. The
+    original names `pred_logits` and `pred_boxes` stay DETR whatever the blank picture gives.
   - Detection **RF-DETR**: RF-DETR of Roboflow as exported by `PierreMarieCurie/rf-detr-onnx` (code MIT, models
     Apache-2.0 except xlarge and 2xlarge, which are under the Platform Model License 1.0; the second model the maintainer
     tests, `rf-detr-medium.onnx`, decision 2026-11-08): output 0 boxes `[1, Q, 4]` (centre x, centre y, width, height,
@@ -81,8 +92,10 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
     suppression. An optional input `orig_target_sizes` `[1, 2]` is filled with the input size; boxes in input pixels or
     0 to 1; Stretch by default.
   - Classification: `[1, C]`, logits or probabilities (softmax when the values are not already probabilities), fitted by
-    its model's Fit (Stretch by default).
-  - **Fit**: Letterbox (YOLO, YOLOX), Stretch (RF-DETR, DETR with labels, classification) or Keep shape and pad (DETR),
+    its model's Fit (Stretch by default). A free input takes 224 x 224, the size ImageNet models are trained at.
+    Scaling ImageNet mean and deviation (torchvision, timm, Hugging Face and the ONNX Model Zoo train that way), except
+    Ultralytics' exports (metadata `author`, `task` or `names`), which take 0 to 1 (2026-11-08).
+  - **Fit**: Letterbox (YOLO, YOLOX), Stretch (RF-DETR, RT-DETR, DETR with labels, classification) or Keep shape and pad (DETR),
     preselected by the format, a choice per model, since the wrong fit loses accuracy without an error. A format whose
     outputs do not fit the model is refused: "The model's outputs do not fit its format. Choose another format."
 - **Input**: one picture tensor `[1, 3, H, W]` in floating point, 32 or 16 bits (an export with `--half`, its outputs
@@ -480,6 +493,12 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   YOLOv10n (onnx-community), YOLO26n, YOLOX nano and tiny. The format, input size, fit, scaling and the 80 names or
   "COCO for YOLO (80)" are checked; a nano model may miss only the COCO objects it was measured to miss ("Measured"),
   every other person and car at an overlap of 50 % or more, no person where COCO has none.
+  The DETR family the same way (2026-11-08, minimum score 50 %; the nano YOLO26 25 %): DETR R50 of Transformers.js in
+  full precision and quantized, RT-DETR v2 R18, D-FINE S, YOLO26n of Transformers.js, RF-DETR small. Three ImageNet
+  classifiers (ResNet-50 of Transformers.js, MobileNetV2 of the ONNX Model Zoo, YOLO11n-cls) uploaded with a labels
+  file of the 1,000 ImageNet names (the `id2label` of the ResNet-50 export's `config.json`: none of the files names its
+  classes) classify the two cars of COCO val2017 97679 (COCO's boxes as the regions): a car class of ImageNet at 20 % or
+  more.
 
 ## Measured
 
@@ -505,6 +524,24 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
 
   The boxes of every format land where COCO has them (the people within a few pixels); the misses are the nano
   models' accuracy, not the reading: RF-DETR medium finds all of them.
+- The DETR family and the classifiers on the same PC and CPU thread (real-model tests, 2026-11-08; detection minimum score
+  50 %, the classifiers on the two cars of COCO 97679).
+
+  | Model | Format | Classes | ms per picture | Result |
+  |---|---|---|---|---|
+  | DETR R50, Transformers.js | DETR, free input at 640, Keep shape and pad, ImageNet | 91, "COCO for DETR and RF-DETR (91)" | 690 | all but the person behind (overlap 0.47) |
+  | DETR R50, Transformers.js, quantized (8-bit weights) | DETR, as above | 91, as above | 990 | all; passes the scan, slower than full precision on this CPU |
+  | RT-DETR v2 R18 | RT-DETR, free input at 640 | 80, "COCO for YOLO (80)" | 710 | all; a person at 51 % where COCO has none (read at 60 %) |
+  | D-FINE S | RT-DETR, free input at 640 | 80, "COCO for YOLO (80)" | 460 | all but the right parked car (boxed with the skater, overlap 0.41) and the person behind (0.48) |
+  | YOLO26n, Transformers.js | RT-DETR, 640 | 80, "COCO for YOLO (80)" | 85 | at 25 %: all but the person behind (0.49) |
+  | RF-DETR small | RF-DETR, 512 | 91, "COCO for DETR and RF-DETR (91)" | 645 | all |
+  | ResNet-50, Transformers.js | Classification, free input at 224, ImageNet | 1,000 from the labels file | 76 | minivan 100 % and 90 % |
+  | MobileNetV2, ONNX Model Zoo | Classification, 224, ImageNet | 1,000 from the labels file | 10 | minivan 28 % and 71 % |
+  | YOLO11n-cls (no metadata) | Classification, 224, ImageNet; set to 0 to 1 | 1,000 from the labels file | 8 | minivan 66 % and 69 % at 0 to 1; with ImageNet "spotlight" 100 % |
+
+  Before 2026-11-08 the Hugging Face DETR was refused (its `pixel_mask` input), RT-DETR and D-FINE read as DETR with 79
+  classes (softmax, the last class taken for "no object"), and ResNet-50 ran at 640 x 640 with 0 to 1 (MobileNetV2 then
+  says "mosquito net" for a car).
 
 ## Later
 
@@ -525,11 +562,20 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   are not shared.
 - A detection below 50 % never starts a track, it only keeps one: with a Minimum score below 50 % such objects are
   never tracked.
-- The page has no choice of format, fit, scaling or input size after the upload; the server takes them (`updateModel`).
-- YOLO26n as onnx-community exports it for Transformers.js (`logits [1, 300, 80]` first, `pred_boxes [1, 300, 4]`
-  second, a sigmoid per class, centre and size 0 to 1, stretched, 0 to 1) is read as DETR with 79 classes: by names and
-  shapes it cannot be told from a DETR exported by Hugging Face (`logits` with "no object" last). Ultralytics' own
-  `yolo26n.onnx` works. A format for it, or the class count from a labels file deciding, is open (2026-11-08).
+- YOLO26n as onnx-community exports it for Transformers.js is read as RT-DETR since the blank call tells a "no object"
+  class apart (2026-11-08, "Output formats"). A sigmoid model with one or two classes can still look like DETR to that
+  rule; the model's Settings choose the format.
+- Classifiers without metadata that want 0 to 1 (an Ultralytics classifier whose metadata was stripped, as mobilint's
+  YOLO11n-cls) get ImageNet scaling and answer nonsense until the model's Settings set 0 to 1.
+- Hugging Face and ONNX Model Zoo classifiers carry no class names: the user uploads a labels file (the 1,000 ImageNet
+  names from the export's `config.json` `id2label`); a built-in ImageNet list is not decided. Google's MobileNet of
+  Hugging Face (1,001 classes with a background class, mean and deviation 0.5) is not covered by the scalings.
+- "COCO for YOLO (80)" is also the list of RT-DETR, D-FINE and Transformers.js YOLO26 (the same 80 names): its name says
+  YOLO only.
+- DETR of Hugging Face is trained with the shorter side at 800; the free input takes 640 by default (690 ms per
+  picture), 800 is not measured.
+- Not tested, no ready ONNX file: DEIM (Intellindust publishes PyTorch weights, OpenVINO files only), a YOLO
+  classification export of Ultralytics with its metadata (only `.pt` releases).
 - YOLO exports that end before the decoding (three raw head outputs, e.g. Kalray's `yolov8n.optimized.onnx`) are refused
   as outputs of no known format; exports with the channels last (`[1, 640, 640, 3]`, AMD's quantized YOLOv5s) as having
   no picture input.

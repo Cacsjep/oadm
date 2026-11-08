@@ -165,6 +165,85 @@ public sealed class ModelCheckTests : IDisposable
         Assert.Equal(["a", "b", "c"], found.ClassNames); // the outputs do not tell the count: the labels file does
     }
 
+    /// <summary>Logits of <paramref name="queries"/> rows of <paramref name="columns"/>; <paramref name="lastWins"/>: the last column the best of every row.</summary>
+    private static float[] HfLogits(int queries, int columns, bool lastWins)
+    {
+        var values = new float[queries * columns];
+        for (var q = 0; q < queries; q++)
+        {
+            values[(q * columns) + (lastWins ? columns - 1 : q % (columns - 1))] = 5;
+        }
+
+        return values;
+    }
+
+    [Fact]
+    public void A_hugging_face_detr_export_with_no_object_winning_on_the_blank_picture_is_detr()
+    {
+        // Transformers.js DETR: logits [1, Q, C + 1] and pred_boxes; on a blank picture "no object" is every query's best class.
+        var (model, refusal) = Check(OnnxModel.Picture(null, null).Output("logits", [1, 10, 6], HfLogits(10, 6, lastWins: true)).Output("pred_boxes", [1, 10, 4], Zeros(40)));
+        Assert.Null(refusal);
+        Assert.Equal(ModelFormat.Detr, model!.Format);
+        Assert.Equal(5, model.ClassNames.Count);
+    }
+
+    [Fact]
+    public void A_hugging_face_export_without_no_object_is_rt_detr_with_every_column_a_class()
+    {
+        // RT-DETR, D-FINE, Transformers.js YOLO26: the same names, a sigmoid per class; the last class is no query's favourite.
+        var (model, refusal) = Check(OnnxModel.Picture(null, null).Output("logits", [1, 10, 6], HfLogits(10, 6, lastWins: false)).Output("pred_boxes", [1, 10, 4], Zeros(40)));
+        Assert.Null(refusal);
+        Assert.Equal(ModelFormat.RtDetr, model!.Format);
+        Assert.Equal(6, model.ClassNames.Count);
+        Assert.Equal(ModelFit.Stretch, OutputFormats.DefaultFit(model.Format));
+        Assert.Equal(ModelScaling.ZeroToOne, OutputFormats.DefaultScaling(model.Format));
+    }
+
+    [Fact]
+    public void The_original_detr_names_stay_detr_whatever_the_blank_picture_gives()
+    {
+        var (model, _) = Check(OnnxModel.Picture(800, 800).Output("pred_logits", [1, 10, 6], HfLogits(10, 6, lastWins: false)).Output("pred_boxes", [1, 10, 4], Zeros(40)));
+        Assert.Equal(ModelFormat.Detr, model!.Format);
+    }
+
+    [Theory]
+    [InlineData(new[] { 0f, 1, 9, 2, 9, 0 }, 0.5)]
+    [InlineData(new[] { 9f, 1, 2, 2, 3, 0 }, 0.0)]
+    public void The_last_class_share_counts_the_rows_whose_best_column_is_the_last(float[] values, double share) =>
+        Assert.Equal(share, ModelChecker.LastClassShare([1, 2, 3], values));
+
+    [Fact]
+    public void The_pixel_mask_of_a_hugging_face_detr_export_is_filled_not_refused()
+    {
+        // Xenova/detr-resnet-50: pixel_values [-1, -1, -1, -1] and pixel_mask [-1, 64, 64] int64.
+        var onnx = new OnnxModel()
+            .Input("pixel_values", OnnxModel.Float, OnnxModel.Param("batch"), OnnxModel.Param("channels"), OnnxModel.Param("height"), OnnxModel.Param("width"))
+            .Input("pixel_mask", OnnxModel.Int64, OnnxModel.Param("batch"), OnnxModel.Dim(64), OnnxModel.Dim(64))
+            .Output("logits", [1, 10, 6], HfLogits(10, 6, lastWins: true)).Output("pred_boxes", [1, 10, 4], Zeros(40));
+        var (model, refusal) = Check(onnx);
+        Assert.Null(refusal);
+        Assert.Equal(ModelFormat.Detr, model!.Format);
+        Assert.False(model.FixedInput);
+    }
+
+    [Fact]
+    public void A_classification_model_with_a_free_input_gets_224()
+    {
+        var (model, _) = Check(OnnxModel.Picture(null, null).Output("logits", [1, 4], Zeros(4)));
+        Assert.Equal(ModelFormat.Classification, model!.Format);
+        Assert.False(model.FixedInput);
+        Assert.Equal((224, 224), (model.InputWidth, model.InputHeight));
+    }
+
+    [Fact]
+    public void A_classification_model_takes_imagenet_scaling_unless_ultralytics_exported_it()
+    {
+        Assert.Equal(ModelScaling.ImageNet, Check(OnnxModel.Picture(224, 224).Output("logits", [1, 2], Zeros(2))).Model!.Scaling);
+        Assert.Equal(ModelScaling.ZeroToOne, Check(OnnxModel.Picture(224, 224).Output("output0", [1, 2], Zeros(2)).Metadata("names", "{0: 'cat', 1: 'dog'}")).Model!.Scaling);
+        Assert.Equal(ModelScaling.ZeroToOne, Check(OnnxModel.Picture(224, 224).Output("output0", [1, 2], Zeros(2)).Metadata("author", "Ultralytics")).Model!.Scaling);
+        Assert.Null(Check(OnnxModel.Picture().Output("output0", [1, 7, 50], Zeros(350))).Model!.Scaling); // detection: the format's default
+    }
+
     [Fact]
     public void Classification_is_recognised()
     {

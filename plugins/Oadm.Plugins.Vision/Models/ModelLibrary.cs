@@ -716,7 +716,7 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
                     Kind = OutputFormats.KindOf(facts.Format),
                     Format = facts.Format,
                     Fit = OutputFormats.DefaultFit(facts.Format),
-                    Scaling = OutputFormats.DefaultScaling(facts.Format),
+                    Scaling = facts.Scaling ?? OutputFormats.DefaultScaling(facts.Format),
                     InputWidth = facts.InputWidth,
                     InputHeight = facts.InputHeight,
                     FixedInput = facts.FixedInput,

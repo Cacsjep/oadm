@@ -47,8 +47,11 @@ public sealed class RealModelFixture : IDisposable
     /// <summary>The library <paramref name="file"/> was uploaded to (after <see cref="UploadAsync"/>).</summary>
     public ModelLibrary LibraryOf(string file) => _uploads.TryGetValue(file, out var upload) ? upload.Library : throw new InvalidOperationException("Not uploaded yet.");
 
-    /// <summary>Uploads the model file <paramref name="file"/> in chunks on the first call; every later call returns the same check.</summary>
-    public async Task<ModelCheck> UploadAsync(string file)
+    /// <summary>
+    /// Uploads the model file <paramref name="file"/> (with the labels file <paramref name="labels"/>) in chunks on the first
+    /// call; every later call returns the same check.
+    /// </summary>
+    public async Task<ModelCheck> UploadAsync(string file, string? labels = null)
     {
         await _once.WaitAsync();
         try
@@ -62,7 +65,7 @@ public sealed class RealModelFixture : IDisposable
             var library = new ModelLibrary(new MemoryPluginRecords(), Path.Combine(_data.Path, _uploads.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)), TimeProvider.System);
             await library.LoadAsync(CancellationToken.None);
             var size = new FileInfo(path).Length;
-            var id = await library.BeginUploadAsync(file, size, null, CancellationToken.None);
+            var id = await library.BeginUploadAsync(file, size, labels, CancellationToken.None);
             var buffer = new byte[Chunk];
             await using (var stream = File.OpenRead(path))
             {
@@ -91,9 +94,9 @@ public sealed class RealModelFixture : IDisposable
     }
 
     /// <summary>The uploaded model of <paramref name="file"/> (the check must have passed).</summary>
-    public async Task<VisionModel> ModelAsync(string file)
+    public async Task<VisionModel> ModelAsync(string file, string? labels = null)
     {
-        var check = await UploadAsync(file);
+        var check = await UploadAsync(file, labels);
         return check.Model ?? throw new InvalidOperationException("The model check refused the model: " + check.Refusal);
     }
 
