@@ -277,9 +277,23 @@ public sealed class OnnxInference : IInference, IDisposable
         return target;
     }
 
+    /// <summary>Looks for the card's provider; never faults (a failure: the CPU, one log line).</summary>
     private void FindCard()
     {
-        if (_options.FindGraphicsCard(_logger) is not { } target)
+        ExecutionTarget? found;
+        try
+        {
+            found = _options.FindGraphicsCard(_logger);
+        }
+#pragma warning disable CA1031 // Whatever the provider check throws, the CPU works.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            InferenceLog.GraphicsCardFailed(_logger, ex.Message);
+            return;
+        }
+
+        if (found is not { } target)
         {
             return;
         }

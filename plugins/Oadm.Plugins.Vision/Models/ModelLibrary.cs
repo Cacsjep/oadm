@@ -451,6 +451,12 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
         await _write.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            if (All.FirstOrDefault(m => m.Sha256 == sha && !m.Missing) is { } stored)
+            {
+                // The same file finished its upload twice at once.
+                return new ModelCheck(null, ModelTexts.AlreadyStored(stored.Name));
+            }
+
             VisionModel model;
             if (Find(same?.Id) is { Missing: true } missing)
             {
