@@ -264,16 +264,17 @@ internal static class PageSamples
         };
     }
 
-    /// <summary>The event types of the Choose event dialog.</summary>
-    public static PickerEventTypeList EventTypes => new()
+    /// <summary>The event types of the Choose event dialog (one of Vision Center's own, which never shows).</summary>
+    public static EventTypeList EventTypes => new()
     {
         Types =
         [
-            new() { Id = "io.port.door", Group = "Input ports", Name = "Door open", DeviceScope = true },
-            new() { Id = "io.port.tamper", Group = "Input ports", Name = "Tamper alarm", DeviceScope = true },
-            new() { Id = "device.unreachable", Group = "Device status", Name = "Device unreachable", DeviceScope = true },
-            new() { Id = "server.backup", Group = "Server", Name = "Backup failed" },
-            new() { Id = "vision.p1.gate", Group = "Vision Center / Gate 1 people", Name = "Gate count changed" },
+            new() { Id = "io.port.door", Path = ["Input ports"], Name = "Door open", PerDevice = true },
+            new() { Id = "io.port.tamper", Path = ["Input ports"], Name = "Tamper alarm", PerDevice = true },
+            new() { Id = "device.unreachable", Path = ["Device status"], Name = "Device unreachable", PerDevice = true },
+            new() { Id = "server.backup", Path = ["Server"], Name = "Backup failed" },
+            new() { Id = "oadm.ocr.text", Path = ["Text recognition", "Container gate"], Name = "Text read", PerDevice = true, Available = false },
+            new() { Id = "oadm.vision.event.p1.g.countchanged", Path = ["Vision Center", "Gate 1 people"], Name = "Gate count changed" },
         ],
     };
 
@@ -344,7 +345,7 @@ internal static class PageSamples
             "p4" => VisionJson.Serialize(Entrance),
             _ => VisionJson.Serialize(GatePeople),
         };
-        ctx.Answers[PickerEventTypes.Method] = _ => VisionJson.Serialize(EventTypes);
+        ctx.Answers[VisionMethods.ListEventTypes] = _ => VisionJson.Serialize(EventTypes);
         ctx.Answers[VisionMethods.GetEngine] = _ => VisionJson.Serialize(new EngineInfo { RunsOn = "CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti", GpuAvailable = true });
         ctx.Answers[VisionMethods.GetStats] = _ => VisionJson.Serialize(new VisionStats { State = LoadState.Ok, StateText = "All pipelines keep up", Load = 38 });
         ctx.Answers[VisionMethods.GetCameraOptions] = _ => VisionJson.Serialize(new CameraOptions { VideoSources = [1, 2], Resolutions = [new(1920, 1080), new(1280, 720)] });

@@ -206,7 +206,11 @@ public sealed class TimerAndCompareTests
         var field = Assert.IsType<EventTypeFieldViewModel>(editor.Form!.Fields[0]);
         dialogs.Event = form =>
         {
-            Assert.Equal(["Device status", "Input ports", "Server", "Vision Center / Gate 1 people"], form.Rows.OfType<EventPickerFolder>().Select(f => f.Name));
+            // Vision Center's own events never show; a type of a plugin that is off shows with "(turned off)".
+            Assert.Equal(["Device status", "Input ports", "Server", "Text recognition / Container gate"], form.Rows.OfType<EventPickerFolder>().Select(f => f.Name));
+            var off = form.Rows.OfType<EventPickerType>().Single(r => r.Type.Id == "oadm.ocr.text");
+            Assert.False(off.IsAvailable);
+            Assert.Equal("Text read (turned off)", off.Name);
             Assert.Equal("io.port.door", form.Chosen!.Id); // the stored one selected
             form.SearchText = "tamper";
             Assert.Single(form.Rows.OfType<EventPickerType>());

@@ -23,7 +23,7 @@
               <TextBlock Classes="eventTreeFolder" Text="{Binding Name}" IsHitTestVisible="False" />
             </DataTemplate>
             <DataTemplate x:DataType="vm:EventPickerType">
-              <TextBlock Text="{Binding Name}" Margin="16,0,0,0" TextTrimming="CharacterEllipsis" />
+              <TextBlock Classes.secondary="{Binding !IsAvailable}" Text="{Binding Name}" Margin="16,0,0,0" TextTrimming="CharacterEllipsis" />
             </DataTemplate>
           </ListBox.DataTemplates>
         </ListBox>
