@@ -77,6 +77,12 @@ public static class VisionMethods
     /// <summary><see cref="SavePipelineRequest"/> -> <see cref="SavePipelineReply"/>; field and node errors in the reply, nothing stored. Change, audited.</summary>
     public const string SavePipeline = "savePipeline";
 
+    /// <summary>
+    /// <see cref="CopyPipelineRequest"/> -> <see cref="CopyPipelineReply"/>: independent copies of a saved pipeline on other
+    /// cameras, one per camera, in one call (decision 2026-11-08). Change, audited.
+    /// </summary>
+    public const string CopyPipeline = "copyPipeline";
+
     /// <summary><see cref="PipelineRequest"/> -> {}. Change, audited.</summary>
     public const string DeletePipeline = "deletePipeline";
 
@@ -439,4 +445,21 @@ public sealed record EventTypeChoice
 public sealed record EventTypeList
 {
     public IReadOnlyList<EventTypeChoice> Types { get; init; } = [];
+}
+
+public sealed record CopyPipelineRequest
+{
+    public string PipelineId { get; init; } = string.Empty;
+
+    /// <summary>The cameras the copies go to; the pipeline's own camera is refused, a camera twice counts once.</summary>
+    public IReadOnlyList<Guid> DeviceIds { get; init; } = [];
+}
+
+public sealed record CopyPipelineReply
+{
+    /// <summary>The new pipelines, in the order of the cameras.</summary>
+    public IReadOnlyList<Pipeline> Created { get; init; } = [];
+
+    /// <summary>By camera: why no copy was made for it (another device group, the pipeline limit, ...).</summary>
+    public IReadOnlyDictionary<Guid, string> Refused { get; init; } = new Dictionary<Guid, string>();
 }
