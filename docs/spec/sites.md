@@ -63,7 +63,8 @@ side.
   `NodeStatusRules` (256 cards, 1,024 addresses, 256 extra networks, 2,048 allowed and 1,024 requested ports, 256
   relays); a Hello or status that breaks the rules is kept nowhere and ends the session (logged). The allowed ports and
   the networks of a status are read once, outside the manager's lock (`SiteEntry.ConnectPorts`, `SiteNetworks`); a dial
-  asks a set. A range scan probes each address of the range once whatever the node answers
+  asks a set. Until the node's first status the site carries no dial and counts as not usable (`SiteManager.IsUsable`):
+  a dial then is Site offline, never "port not allowed" with a port request (a race found by CI 2026-11-08). A range scan probes each address of the range once whatever the node answers
   (`DiscoveryService.ScanSiteAsync`); a TCP relay keeps at most 512 connections (`SiteTcpRelay.MaxConnections`, the
   node holds 256) and at most 512 refusals waiting for the link, a UDP relay nothing longer than a datagram.
 - **A reset node's old key:** once a site is Not bound (Reset on the node), a link with the site's key that says Bound
