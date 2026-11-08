@@ -10,8 +10,9 @@ namespace Oadm.Plugins.Vision.Client;
 
 /// <summary>
 /// The node canvas (docs/spec/vision-center.md "Page"): our own control, no node editor exists for Avalonia. Draws the dot grid,
-/// the links as curves with their number of objects, the node cards (colour stripe, icon, name, eye, live line, input dot left,
-/// output dot right, + after an output, the error directly below a red-bordered node) and a link being dragged. Everything is
+/// the links as vertical curves with their number of objects, the node cards (colour stripe, icon, name, eye, live line, input
+/// dot at the top, output dot at the bottom, + below an output, the error directly below a red-bordered node: the graph runs
+/// from top to bottom) and a link being dragged. Everything is
 /// drawn from <see cref="CanvasViewModel"/>; a change of a live line only draws again, nothing is rebuilt. The input goes to
 /// the view model: press, drag and release, the wheel, Delete, Ctrl+Z, Ctrl+Y, Ctrl+C, Ctrl+V, Esc. Colours from the theme.
 /// </summary>
@@ -453,8 +454,8 @@ public sealed class PipelineCanvas : Control
             context.DrawEllipse(lit ? accent : fill, new Pen(lit ? accent : linkBrush, 2), at, CanvasGeometry.PortRadius - 1, CanvasGeometry.PortRadius - 1);
             if (canvas.ShowsPlus(node))
             {
-                var plus = CanvasGeometry.PlusRect(node.X, node.Y);
-                context.DrawLine(new Pen(linkBrush, 1), new Point(at.X + CanvasGeometry.PortRadius, at.Y), new Point(plus.X, at.Y));
+                var plus = canvas.PlusOf(node);
+                context.DrawLine(new Pen(linkBrush, 1), new Point(at.X, at.Y + CanvasGeometry.PortRadius), new Point(plus.Center.X, plus.Y));
                 context.DrawRectangle(fill, new Pen(linkBrush, 1), plus, 4, 4);
                 DrawIcon(context, "add", theme.Brush("Oadm.TextSecondaryBrush"), plus.Deflate(5));
             }
@@ -464,6 +465,8 @@ public sealed class PipelineCanvas : Control
         {
             var text = theme.Small(message, error);
             text.MaxTextWidth = CanvasGeometry.NodeWidth + 30;
+            // On the canvas's background: the link down from the output passes behind the error, never through it.
+            context.FillRectangle(theme.Brush("Oadm.WindowBackgroundBrush"), new Rect(rect.X - 2, rect.Bottom + 4, text.Width + 4, text.Height + 2), 3);
             context.DrawText(text, new Point(rect.X, rect.Bottom + 5));
         }
     }

@@ -22,6 +22,7 @@ public enum OverlayItemKind
 /// <summary>One thing drawn over the video, relative to the picture, in its node's colour.</summary>
 /// <param name="Label">The tag on a box ("person 87 %", "#3"), a badge's name.</param>
 /// <param name="Value">A badge's number.</param>
+/// <param name="ShortLabel">The label when objects stand close: the score or the id alone; null: none then.</param>
 /// <param name="Dashed">A box Filter left out.</param>
 /// <param name="Filled">An object inside an Area, filled lightly.</param>
 public sealed record OverlayItem(
@@ -32,7 +33,8 @@ public sealed record OverlayItem(
     string? Label = null,
     string? Value = null,
     bool Dashed = false,
-    bool Filled = false);
+    bool Filled = false,
+    string? ShortLabel = null);
 
 /// <summary>
 /// An Area's polygon or a Line's line on the video: drawn in its node's colour with its name and live numbers, edited there
@@ -94,7 +96,8 @@ public static class VideoOverlay
             switch (node.Kind)
             {
                 case NodeKinds.Detect:
-                    items.AddRange(output.Objects.Select(o => Box(node, o, $"{o.Detection.ClassName} {VisionTexts.Score(o.Detection.Score)}")));
+                    items.AddRange(output.Objects.Select(o => Box(node, o, $"{o.Detection.ClassName} {VisionTexts.Score(o.Detection.Score)}")
+                        with { ShortLabel = VisionTexts.Score(o.Detection.Score) }));
                     break;
                 case NodeKinds.Classify:
                     if (output.Label is { } picture)
@@ -103,7 +106,8 @@ public static class VideoOverlay
                         items.Add(new OverlayItem(OverlayItemKind.Badge, node.Id, brush, [], node.Name, $"{picture.ClassName} {VisionTexts.Score(picture.Score)}"));
                     }
 
-                    items.AddRange(output.Objects.Select(o => Box(node, o, o.Label is { } l ? $"{l.ClassName} {VisionTexts.Score(l.Score)}" : o.Detection.ClassName)));
+                    items.AddRange(output.Objects.Select(o => Box(node, o, o.Label is { } l ? $"{l.ClassName} {VisionTexts.Score(l.Score)}" : o.Detection.ClassName)
+                        with { ShortLabel = o.Label is { } s ? VisionTexts.Score(s.Score) : null }));
                     break;
                 case NodeKinds.Filter:
                     items.AddRange(output.Objects.Select(o => Box(node, o, o.Detection.ClassName)));
@@ -117,14 +121,18 @@ public static class VideoOverlay
                             items.Add(new OverlayItem(OverlayItemKind.Trail, node.Id, brush, [.. o.Trail.Select(p => new Point(p.X, p.Y))]));
                         }
 
-                        items.Add(Box(node, o, o.TrackId is { } id ? VisionTexts.ObjectId(id) : null));
+                        var trackLabel = o.TrackId is { } id ? VisionTexts.ObjectId(id) : null;
+                        items.Add(Box(node, o, trackLabel) with { ShortLabel = trackLabel });
                     }
 
                     break;
                 case NodeKinds.Area:
-                    items.AddRange(output.Objects.Select(o => Box(node, o, o.InsideSeconds is { } s && o.TrackId is not null
-                        ? string.Create(CultureInfo.InvariantCulture, $"{Math.Round(s)} s")
-                        : null) with { Filled = true }));
+                    foreach (var o in output.Objects)
+                    {
+                        var inside = o.InsideSeconds is { } s && o.TrackId is not null ? string.Create(CultureInfo.InvariantCulture, $"{Math.Round(s)} s") : null;
+                        items.Add(Box(node, o, inside) with { Filled = true, ShortLabel = inside });
+                    }
+
                     break;
                 case NodeKinds.Count:
                     items.Add(new OverlayItem(OverlayItemKind.Badge, node.Id, brush, [], node.Name, (output.Value ?? 0).ToString(CultureInfo.InvariantCulture)));
@@ -165,6 +173,35 @@ public static class VideoOverlay
         var dy = b.Y - a.Y;
         var length = Math.Sqrt((dx * dx) + (dy * dy));
         return (new Point((a.X + b.X) / 2, (a.Y + b.Y) / 2), length <= 0 ? new Vector(0, 1) : new Vector(-dy / length, dx / length));
+    }
+
+    /// <summary>
+    /// The label and its place: the whole label above the box, else inside its top edge, else the short label (the score or the
+    /// id alone) the same two ways; null when none keeps clear of <paramref name="taken"/> inside the picture.
+    /// </summary>
+    public static (string Label, Rect At)? PlaceLabel(OverlayItem item, Rect box, Rect picture, Func<string, Size> measure, IReadOnlyList<Rect> taken)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        ArgumentNullException.ThrowIfNull(measure);
+        ArgumentNullException.ThrowIfNull(taken);
+        foreach (var label in new[] { item.Label, item.ShortLabel }.Distinct())
+        {
+            if (string.IsNullOrEmpty(label))
+            {
+                continue;
+            }
+
+            var size = measure(label);
+            foreach (var at in new[] { ShapePainter.TagAbove(size, box.TopLeft, picture), ShapePainter.TagInside(size, box.TopLeft) })
+            {
+                if (picture.Contains(at) && !taken.Any(t => t.Intersects(at)))
+                {
+                    return (label, at);
+                }
+            }
+        }
+
+        return null;
     }
 
     private static OverlayItem Box(NodeViewModel node, VisionObject o, string? label)

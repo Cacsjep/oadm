@@ -66,16 +66,16 @@ internal static class PageSamples
         Fps = 8,
         Nodes =
         [
-            Node("a", NodeKinds.Camera, "Camera", 40, 150),
-            Node("b", NodeKinds.Detect, "Detect objects", 310, 150, new JsonObject { ["model"] = "m1" }),
-            Node("c", NodeKinds.Filter, "People", 540, 150, new JsonObject { ["classes"] = new JsonArray("person"), ["minScore"] = 60 }),
-            Node("d", NodeKinds.Track, "Track", 770, 150, eye: true),
-            Node("e", NodeKinds.Line, "Gate line", 1000, 40, new JsonObject { ["points"] = Points((0.46, 0.55), (0.55, 0.98)) }, eye: true),
-            Node("f", NodeKinds.Count, "Gate count", 1230, 40, new JsonObject { ["resetAt"] = "06:00" }),
-            Node("g", NodeKinds.Event, "Gate count changed", 1460, 40),
-            Node("h", NodeKinds.Area, "Waiting zone", 1000, 260,
+            Node("a", NodeKinds.Camera, "Camera", 160, 40),
+            Node("b", NodeKinds.Detect, "Detect objects", 160, 170, new JsonObject { ["model"] = "m1" }),
+            Node("c", NodeKinds.Filter, "People", 160, 300, new JsonObject { ["classes"] = new JsonArray("person"), ["minScore"] = 60 }),
+            Node("d", NodeKinds.Track, "Track", 160, 430, eye: true),
+            Node("e", NodeKinds.Line, "Gate line", 40, 560, new JsonObject { ["points"] = Points((0.46, 0.55), (0.55, 0.98)) }, eye: true),
+            Node("f", NodeKinds.Count, "Gate count", 40, 690, new JsonObject { ["resetAt"] = "06:00" }),
+            Node("g", NodeKinds.Event, "Gate count changed", 40, 820),
+            Node("h", NodeKinds.Area, "Waiting zone", 280, 560,
                 new JsonObject { ["points"] = Points((0.65, 0.62), (0.91, 0.62), (0.96, 0.97), (0.62, 0.97)) }, eye: true),
-            Node("i", NodeKinds.Event, "People waiting", 1230, 260, new JsonObject { ["minObjects"] = 3, ["atLeastSeconds"] = 2 }),
+            Node("i", NodeKinds.Event, "People waiting", 280, 690, new JsonObject { ["minObjects"] = 3, ["atLeastSeconds"] = 2 }),
         ],
         Links =
         [
@@ -92,11 +92,11 @@ internal static class PageSamples
         Mode = PipelineMode.OnAction,
         Nodes =
         [
-            Node("a", NodeKinds.Camera, "Camera", 40, 120),
-            Node("b", NodeKinds.Detect, "Detect objects", 300, 120, new JsonObject { ["model"] = "m2" }, eye: true),
-            Node("c", NodeKinds.Filter, "Trucks", 560, 120, new JsonObject { ["classes"] = new JsonArray("truck") }),
-            Node("d", NodeKinds.Line, "Dock entry", 820, 120, new JsonObject { ["points"] = Points((0.5, 0.5), (0.5, 0.98)) }),
-            Node("e", NodeKinds.Event, "Truck arrived", 1080, 120),
+            Node("a", NodeKinds.Camera, "Camera", 40, 40),
+            Node("b", NodeKinds.Detect, "Detect objects", 40, 170, new JsonObject { ["model"] = "m2" }, eye: true),
+            Node("c", NodeKinds.Filter, "Trucks", 40, 300, new JsonObject { ["classes"] = new JsonArray("truck") }),
+            Node("d", NodeKinds.Line, "Dock entry", 40, 430, new JsonObject { ["points"] = Points((0.5, 0.5), (0.5, 0.98)) }),
+            Node("e", NodeKinds.Event, "Truck arrived", 40, 600),
         ],
         Links = [new("a", "b"), new("b", "c"), new("c", "d"), new("d", "e")],
     };

@@ -202,7 +202,7 @@ public sealed class CanvasViewModelTests
     }
 
     [Fact]
-    public void Tidy_up_lays_out_by_depth_with_the_branches_stacked_and_fits()
+    public void Tidy_up_lays_out_from_top_to_bottom_with_the_branches_side_by_side()
     {
         var canvas = Canvas(PageSamples.GatePeople);
         foreach (var node in canvas.Nodes)
@@ -212,13 +212,43 @@ public sealed class CanvasViewModelTests
         }
 
         canvas.TidyUpCommand.Execute(null);
+        double Row(string id) => canvas.Find(id)!.Y;
         double Col(string id) => canvas.Find(id)!.X;
-        Assert.True(Col("a") < Col("b") && Col("b") < Col("c") && Col("c") < Col("d") && Col("d") < Col("e"));
-        Assert.Equal(Col("e"), Col("h")); // the two branches after Track in one column
-        Assert.NotEqual(canvas.Find("e")!.Y, canvas.Find("h")!.Y);
-        var parent = canvas.Find("d")!.Y;
-        Assert.InRange(parent, Math.Min(canvas.Find("e")!.Y, canvas.Find("h")!.Y), Math.Max(canvas.Find("e")!.Y, canvas.Find("h")!.Y));
+        Assert.True(Row("a") < Row("b") && Row("b") < Row("c") && Row("c") < Row("d") && Row("d") < Row("e") && Row("e") < Row("f") && Row("f") < Row("g"));
+        Assert.Equal(Row("e"), Row("h")); // the two branches after Track in one row, side by side
+        Assert.NotEqual(Col("e"), Col("h"));
+        Assert.Equal(Col("e"), Col("g")); // each branch a column
+        Assert.Equal((Col("e") + Col("h")) / 2, Col("d"), 0); // the parent centred above its children
+        Assert.Equal(Col("d"), Col("a"));
         Assert.True(canvas.UndoCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void A_new_node_goes_below_its_parent_and_a_second_child_beside_the_first()
+    {
+        var canvas = Canvas(PageSamples.GatePeople);
+        var gate = canvas.Find("g")!;
+        var count = canvas.Find("f")!;
+        var second = canvas.Add(NodeKinds.EventKind, count)!;
+        Assert.True(second.Y > count.Y);
+        Assert.NotEqual(gate.X, second.X); // the first child already below
+        Assert.Equal(gate.Y, second.Y);
+        var below = canvas.Add(NodeKinds.EventKind, canvas.Find("h")!)!;
+        Assert.True(below.Y > canvas.Find("h")!.Y);
+    }
+
+    [Fact]
+    public void Links_run_from_the_bottom_of_an_output_to_the_top_of_an_input()
+    {
+        var node = new NodeViewModel(new PipelineNode { Id = "x", Kind = NodeKinds.Track, X = 100, Y = 200 });
+        Assert.Equal(new Point(100 + (CanvasGeometry.NodeWidth / 2), 200), CanvasGeometry.InputPort(node.X, node.Y));
+        Assert.Equal(new Point(100 + (CanvasGeometry.NodeWidth / 2), 200 + CanvasGeometry.NodeHeight), CanvasGeometry.OutputPort(node.X, node.Y));
+        var plus = CanvasGeometry.PlusRect(node.X, node.Y);
+        Assert.True(plus.Top > 200 + CanvasGeometry.NodeHeight);
+        Assert.Equal(CanvasGeometry.OutputPort(node.X, node.Y).X, plus.Center.X);
+        Assert.True(CanvasGeometry.PlusRect(node.X, node.Y, belowError: true).Top > plus.Top);
+        var (c1, c2) = CanvasGeometry.Curve(new Point(0, 0), new Point(0, 200));
+        Assert.True(c1.Y > 0 && c2.Y < 200); // vertical curve
     }
 
     [Fact]
@@ -259,9 +289,9 @@ public sealed class CanvasViewModelTests
         Assert.Same(track, canvas.NodeAt(new Point(track.X + 50, track.Y + 20)));
         Assert.Same(track, canvas.OutputPortAt(CanvasGeometry.OutputPort(track.X, track.Y)));
         Assert.Same(track, canvas.EyeAt(CanvasGeometry.EyeRect(track.X, track.Y).Center));
-        Assert.Null(canvas.PlusAt(CanvasGeometry.PlusRect(track.X, track.Y).Center)); // its output leads on, not selected
+        Assert.Null(canvas.PlusAt(canvas.PlusOf(track).Center)); // its output leads on, not selected
         canvas.SelectedNode = track;
-        Assert.Same(track, canvas.PlusAt(CanvasGeometry.PlusRect(track.X, track.Y).Center));
+        Assert.Same(track, canvas.PlusAt(canvas.PlusOf(track).Center));
         var gate = canvas.Find("g")!;
         Assert.Null(canvas.OutputPortAt(CanvasGeometry.OutputPort(gate.X, gate.Y))); // Event has no output
 
@@ -296,5 +326,62 @@ public sealed class CanvasViewModelTests
         Assert.True(canvas.ErrorCount > 0);
         Assert.Null(canvas.Find("b")!.Error);
         Assert.Equal(VisionTexts.NotRunning, canvas.Find("d")!.Live);
+    }
+}
+
+/// <summary>The labels on the video never cover each other.</summary>
+public sealed class OverlayLabelTests
+{
+    private static readonly Rect Picture = new(0, 0, 640, 360);
+
+    private static Size Measure(string label) => new(label.Length * 6, 12);
+
+    private static OverlayItem Box(string label, string? shortLabel) =>
+        new(OverlayItemKind.Box, "b", "Oadm.Tag.TealBrush", [], label, ShortLabel: shortLabel);
+
+    [Fact]
+    public void Close_boxes_put_their_labels_inside_shorten_them_or_leave_them_out_never_overlapping()
+    {
+        var taken = new List<Rect>();
+        var placed = new List<(string Label, Rect At)>();
+        // Five people side by side, 20 px apart: the labels "person 88 %" are wider than the gap.
+        for (var i = 0; i < 5; i++)
+        {
+            var box = new Rect(100 + (i * 20), 100 + (i % 2 * 4), 18, 80);
+            if (VideoOverlay.PlaceLabel(Box("person 88 %", "88 %"), box, Picture, Measure, taken) is { } p)
+            {
+                placed.Add(p);
+                taken.Add(p.At);
+            }
+        }
+
+        Assert.Equal("person 88 %", placed[0].Label); // the first one whole, above its box
+        Assert.Contains(placed, p => p.At.Top > 100); // another inside its box's top edge
+        for (var i = 0; i < placed.Count; i++)
+        {
+            for (var j = i + 1; j < placed.Count; j++)
+            {
+                Assert.False(placed[i].At.Intersects(placed[j].At), $"{i} and {j} overlap");
+            }
+
+            Assert.True(Picture.Contains(placed[i].At));
+        }
+    }
+
+    [Fact]
+    public void A_label_without_room_keeps_only_its_score()
+    {
+        var box = new Rect(100, 100, 40, 80);
+        var taken = new List<Rect> { new(140, 80, 160, 45) };
+        Assert.Equal("88 %", VideoOverlay.PlaceLabel(Box("person 88 %", "88 %"), box, Picture, Measure, taken)!.Value.Label);
+    }
+
+    [Fact]
+    public void A_label_without_a_short_form_is_left_out_when_it_has_no_room()
+    {
+        var box = new Rect(100, 100, 40, 80);
+        var taken = new List<Rect> { new(80, 80, 120, 60) };
+        Assert.Null(VideoOverlay.PlaceLabel(Box("person", null), box, Picture, Measure, taken));
+        Assert.NotNull(VideoOverlay.PlaceLabel(Box("person", null), box, Picture, Measure, []));
     }
 }

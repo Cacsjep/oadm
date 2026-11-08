@@ -174,7 +174,7 @@ public sealed partial class CanvasViewModel : ObservableObject
             return;
         }
 
-        var plus = CanvasGeometry.PlusRect(from.X, from.Y);
+        var plus = PlusOf(from);
         Picker.Open(from, from.OutputKind, (plus.Right * Zoom) + PanX + 8, (plus.Top * Zoom) + PanY - 10);
     }
 
@@ -204,8 +204,9 @@ public sealed partial class CanvasViewModel : ObservableObject
         double y;
         if (from is not null)
         {
-            x = from.X + CanvasGeometry.ColumnStep;
-            y = from.Y + (OutputsOf(from).Count() * CanvasGeometry.RowStep);
+            // Below its parent; a second child beside the first.
+            x = from.X + (OutputsOf(from).Count() * CanvasGeometry.ColumnStep);
+            y = from.Y + CanvasGeometry.RowStep;
         }
         else
         {
@@ -576,29 +577,29 @@ public sealed partial class CanvasViewModel : ObservableObject
     // ---- Layout and view ----
 
     /// <summary>
-    /// Tidy up: from left to right by depth from the camera, the branches stacked, a parent in the middle of its children;
-    /// nodes without a path from the camera below. One undo step; the view fits afterwards.
+    /// Tidy up: from top to bottom by depth from the camera, the branches side by side, a parent centred above its children;
+    /// nodes without a path from the camera to the right. One undo step; the view fits afterwards.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private void TidyUp()
     {
         Record();
-        var row = 0;
+        var column = 0;
         var done = new HashSet<NodeViewModel>();
         double Lay(NodeViewModel node, int depth)
         {
             done.Add(node);
-            node.X = CanvasGeometry.Margin + (depth * CanvasGeometry.ColumnStep);
+            node.Y = CanvasGeometry.Margin + (depth * CanvasGeometry.RowStep);
             var children = OutputsOf(node).Select(l => l.To).Where(c => !done.Contains(c)).ToList();
             if (children.Count == 0)
             {
-                node.Y = CanvasGeometry.Margin + (row++ * CanvasGeometry.RowStep);
-                return node.Y;
+                node.X = CanvasGeometry.Margin + (column++ * CanvasGeometry.ColumnStep);
+                return node.X;
             }
 
-            var ys = children.Select(c => Lay(c, depth + 1)).ToList();
-            node.Y = Math.Round((ys.Min() + ys.Max()) / 2);
-            return node.Y;
+            var xs = children.Select(c => Lay(c, depth + 1)).ToList();
+            node.X = Math.Round((xs.Min() + xs.Max()) / 2);
+            return node.X;
         }
 
         foreach (var camera in Nodes.Where(n => n.IsCamera).ToList())
@@ -616,8 +617,8 @@ public sealed partial class CanvasViewModel : ObservableObject
 
         foreach (var node in Nodes.Where(n => !done.Contains(n)))
         {
-            node.X = CanvasGeometry.Margin;
-            node.Y = CanvasGeometry.Margin + (row++ * CanvasGeometry.RowStep);
+            node.X = CanvasGeometry.Margin + (column++ * CanvasGeometry.ColumnStep);
+            node.Y = CanvasGeometry.Margin;
         }
 
         AfterChange();
@@ -635,8 +636,8 @@ public sealed partial class CanvasViewModel : ObservableObject
 
         var x0 = Nodes.Min(n => n.X) - 30;
         var y0 = Nodes.Min(n => n.Y) - 30;
-        var x1 = Nodes.Max(n => n.X) + CanvasGeometry.NodeWidth + CanvasGeometry.PlusGap + CanvasGeometry.PlusSize + 30;
-        var y1 = Nodes.Max(n => n.Y) + CanvasGeometry.NodeHeight + 50; // room for an error below the lowest node
+        var x1 = Nodes.Max(n => n.X) + CanvasGeometry.NodeWidth + 30;
+        var y1 = Nodes.Max(n => n.Y) + CanvasGeometry.NodeHeight + CanvasGeometry.PlusGap + CanvasGeometry.PlusSize + 30; // the + below the lowest node
         var zoom = Math.Clamp(Math.Min(ViewportSize.Width / (x1 - x0), ViewportSize.Height / (y1 - y0)), CanvasGeometry.MinZoom, 1);
         Zoom = zoom;
         PanX = ((ViewportSize.Width - ((x1 - x0) * zoom)) / 2) - (x0 * zoom);
@@ -687,8 +688,15 @@ public sealed partial class CanvasViewModel : ObservableObject
         return CanEdit && node.HasOutputPort && node.OutputKind is not null && (node.IsSelected || !OutputsOf(node).Any());
     }
 
+    /// <summary>Where the + of <paramref name="node"/> is (below its output, beside its links when it has some).</summary>
+    public Rect PlusOf(NodeViewModel node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        return CanvasGeometry.PlusRect(node.X, node.Y, node.HasError, OutputsOf(node).Any());
+    }
+
     public NodeViewModel? PlusAt(Point world) =>
-        Nodes.LastOrDefault(n => ShowsPlus(n) && CanvasGeometry.PlusRect(n.X, n.Y).Inflate(2).Contains(world));
+        Nodes.LastOrDefault(n => ShowsPlus(n) && PlusOf(n).Inflate(2).Contains(world));
 
     public NodeViewModel? EyeAt(Point world) =>
         Nodes.LastOrDefault(n => n.CanShowOnVideo && CanvasGeometry.EyeRect(n.X, n.Y).Contains(world));

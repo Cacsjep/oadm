@@ -3,18 +3,16 @@ using Avalonia;
 namespace Oadm.Plugins.Vision.Client;
 
 /// <summary>
-/// Where the parts of the canvas are, in canvas units (docs/spec/vision-center.md "Page"): node cards of one size, the input
-/// dot on the left edge, the output dot on the right edge, the + right of the output, the eye top right; links as curves from
-/// an output to an input. The canvas control draws with these and its view model finds what a press hit with them.
+/// Where the parts of the canvas are, in canvas units (docs/spec/vision-center.md "Page"): node cards of one size, the graph
+/// drawn from top to bottom: the input dot at the top centre of a card, the output dot at its bottom centre, the + below the
+/// output (below the error when the node has one), the eye top right; links as vertical curves from an output down to an
+/// input. The canvas control draws with these and its view model finds what a press hit with them.
 /// </summary>
 public static class CanvasGeometry
 {
     public const double NodeWidth = 200;
 
     public const double NodeHeight = 62;
-
-    /// <summary>The ports sit this far below the node's top.</summary>
-    public const double PortY = 31;
 
     public const double PortRadius = 7;
 
@@ -23,15 +21,18 @@ public static class CanvasGeometry
 
     public const double PlusSize = 22;
 
-    /// <summary>The + sits this far right of the node's right edge.</summary>
+    /// <summary>The + sits this far below the node's bottom edge.</summary>
     public const double PlusGap = 18;
+
+    /// <summary>The room of an error below a node (two lines of small text): the + moves below it.</summary>
+    public const double ErrorRoom = 34;
 
     public const double EyeSize = 24;
 
-    /// <summary>The columns and rows of Tidy up.</summary>
-    public const double ColumnStep = 260;
+    /// <summary>The columns and rows of Tidy up (a row: a node, its + and the curve to the next).</summary>
+    public const double ColumnStep = 240;
 
-    public const double RowStep = 110;
+    public const double RowStep = 130;
 
     public const double Margin = 40;
 
@@ -44,19 +45,26 @@ public static class CanvasGeometry
 
     public static Rect NodeRect(double x, double y) => new(x, y, NodeWidth, NodeHeight);
 
-    public static Point OutputPort(double x, double y) => new(x + NodeWidth, y + PortY);
+    /// <summary>The output dot: the bottom centre of the card.</summary>
+    public static Point OutputPort(double x, double y) => new(x + (NodeWidth / 2), y + NodeHeight);
 
-    public static Point InputPort(double x, double y) => new(x, y + PortY);
+    /// <summary>The input dot: the top centre of the card.</summary>
+    public static Point InputPort(double x, double y) => new(x + (NodeWidth / 2), y);
 
-    public static Rect PlusRect(double x, double y) => new(x + NodeWidth + PlusGap, y + PortY - (PlusSize / 2), PlusSize, PlusSize);
+    /// <summary>
+    /// The + below the output, below the node's error when it has one; beside the links when the output already leads on
+    /// (<paramref name="besideLinks"/>), so it never covers their curve and count.
+    /// </summary>
+    public static Rect PlusRect(double x, double y, bool belowError = false, bool besideLinks = false) =>
+        new(x + ((NodeWidth - PlusSize) / 2) + (besideLinks ? PlusSize + 16 : 0), y + NodeHeight + PlusGap + (belowError ? ErrorRoom : 0), PlusSize, PlusSize);
 
     public static Rect EyeRect(double x, double y) => new(x + NodeWidth - EyeSize - 6, y + 5, EyeSize, EyeSize);
 
-    /// <summary>The control points of a link's curve from <paramref name="from"/> (an output) to <paramref name="to"/> (an input).</summary>
+    /// <summary>The control points of a link's curve from <paramref name="from"/> (an output) down to <paramref name="to"/> (an input).</summary>
     public static (Point C1, Point C2) Curve(Point from, Point to)
     {
-        var dx = Math.Max(40, Math.Abs(to.X - from.X) / 2);
-        return (new Point(from.X + dx, from.Y), new Point(to.X - dx, to.Y));
+        var dy = Math.Max(40, Math.Abs(to.Y - from.Y) / 2);
+        return (new Point(from.X, from.Y + dy), new Point(to.X, to.Y - dy));
     }
 
     /// <summary>A point on the curve at <paramref name="t"/> (0 to 1).</summary>

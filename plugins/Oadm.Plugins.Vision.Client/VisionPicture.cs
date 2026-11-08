@@ -425,6 +425,7 @@ public sealed class VisionPicture : Control
 
         var onColour = theme.Brush("Oadm.TextOnLightBrush");
         var badges = 0;
+        var taken = ShapeTags(theme, picture);
         foreach (var item in items)
         {
             var brush = theme.Brush(item.BrushKey);
@@ -438,9 +439,10 @@ public sealed class VisionPicture : Control
                     var rect = new Rect(PictureFit.ToControl(item.Points[0], picture), PictureFit.ToControl(item.Points[1], picture));
                     var pen = item.Dashed ? new Pen(OverlayTheme.Tint(brush, 0.6), 1.5, new DashStyle([4, 3], 0)) : new Pen(brush, 2);
                     context.DrawRectangle(item.Filled ? OverlayTheme.Tint(brush, 0.2) : null, pen, rect);
-                    if (!string.IsNullOrEmpty(item.Label))
+                    if (PlaceTag(theme, item, rect, picture, onColour, taken) is { } placed)
                     {
-                        ShapePainter.DrawTag(context, theme.Small(item.Label, onColour), rect.TopLeft, picture, brush);
+                        ShapePainter.DrawTagAt(context, placed.Text, placed.At, brush);
+                        taken.Add(placed.At);
                     }
 
                     break;
@@ -450,11 +452,45 @@ public sealed class VisionPicture : Control
                     var width = Math.Max(name.Width, value.Width) + 20;
                     var badge = new Rect(picture.Right - width - 10, picture.Y + 10 + (badges++ * (name.Height + value.Height + 18)), width, name.Height + value.Height + 12);
                     context.FillRectangle(theme.Brush("Oadm.OverlayBrush"), badge, 4);
+                    taken.Add(badge);
                     context.DrawText(name, new Point(badge.X + 10, badge.Y + 5));
                     context.DrawText(value, new Point(badge.X + 10, badge.Y + 7 + name.Height));
                     break;
             }
         }
+    }
+
+    /// <summary>
+    /// Where a box's label goes without covering another label: above the box, else inside its top edge; with the short label
+    /// (the score or the id alone) when the whole one does not fit; nowhere when neither fits.
+    /// </summary>
+    private static (FormattedText Text, Rect At)? PlaceTag(OverlayTheme theme, OverlayItem item, Rect box, Rect picture, IBrush brush, List<Rect> taken)
+    {
+        var texts = new Dictionary<string, FormattedText>(StringComparer.Ordinal);
+        Size Measure(string label)
+        {
+            var text = theme.Small(label, brush);
+            texts[label] = text;
+            return new Size(text.Width, text.Height);
+        }
+
+        var place = VideoOverlay.PlaceLabel(item, box, picture, Measure, taken);
+        return place is { } p ? (texts[p.Label], p.At) : null;
+    }
+
+    /// <summary>The tags of the shapes (drawn last, never moved): the box labels keep clear of them.</summary>
+    private List<Rect> ShapeTags(OverlayTheme theme, Rect picture)
+    {
+        var tags = new List<Rect>();
+        foreach (var shape in Shapes ?? [])
+        {
+            if (shape.Points.Count > 0)
+            {
+                tags.Add(ShapePainter.TagAbove(theme.Small(shape.Label, Brushes.Black), PictureFit.ToControl(shape.Points[0], picture), picture));
+            }
+        }
+
+        return tags;
     }
 
     private void DrawShapes(DrawingContext context, OverlayTheme theme, Rect picture)

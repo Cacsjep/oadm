@@ -185,17 +185,35 @@ public static class ShapePainter
     /// </summary>
     public static Rect DrawTag(DrawingContext context, FormattedText text, Point corner, Rect picture, IBrush fill)
     {
+        var tag = TagAbove(text, corner, picture);
+        DrawTagAt(context, text, tag, fill);
+        return tag;
+    }
+
+    /// <summary>Where <see cref="DrawTag"/> puts the tag: above the corner, inside the top edge when there is no room above.</summary>
+    public static Rect TagAbove(FormattedText text, Point corner, Rect picture)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return TagAbove(new Size(text.Width, text.Height), corner, picture);
+    }
+
+    /// <summary>The same for a text of <paramref name="text"/> size.</summary>
+    public static Rect TagAbove(Size text, Point corner, Rect picture)
+    {
+        var tag = new Rect(corner.X - 1, corner.Y - text.Height - 4, text.Width + 10, text.Height + 4);
+        return tag.Y < picture.Y ? tag.WithY(corner.Y + 1) : tag;
+    }
+
+    /// <summary>A tag just inside the top edge of a shape whose top left is <paramref name="corner"/>.</summary>
+    public static Rect TagInside(Size text, Point corner) => new(corner.X + 1, corner.Y + 1, text.Width + 10, text.Height + 4);
+
+    /// <summary>A tag at <paramref name="tag"/>: the fill and the text.</summary>
+    public static void DrawTagAt(DrawingContext context, FormattedText text, Rect tag, IBrush fill)
+    {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(text);
-        var tag = new Rect(corner.X - 1, corner.Y - text.Height - 4, text.Width + 10, text.Height + 4);
-        if (tag.Y < picture.Y)
-        {
-            tag = tag.WithY(corner.Y + 1);
-        }
-
         context.FillRectangle(fill, tag, 3);
         context.DrawText(text, new Point(tag.X + 5, tag.Y + 2));
-        return tag;
     }
 
     /// <summary>The square handles of a selected shape.</summary>
