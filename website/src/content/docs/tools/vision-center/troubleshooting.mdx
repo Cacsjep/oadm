@@ -61,7 +61,7 @@ The row of an upload says why a model was not kept.
 |---|---|
 | No boxes | Lower the **Minimum score** of Detect objects. Use [Pause](../pipelines/#pause) to tune it on one picture. Check that **Classes** holds what you look for |
 | Wrong class names | Choose the right [class list](../models/#class-lists) in the model's ⋯ menu. **No class list has 90 names. Create one or use own names.** means none fits: create one |
-| Boxes in the wrong place or nonsense classes on a model that worked before | Delete the model and upload it again, so OADM recognises its format anew |
+| Boxes in the wrong place or nonsense classes | Check the model's **Settings** ([Change how a model is read](../models/#change-how-a-model-is-read)). A model stored by an earlier version: delete it and upload it again, so OADM recognises its format anew |
 | People far away count as well | Raise **Minimum size** in a Filter |
 | A person counted twice at a line | Raise **Confirm after** or **Keep lost objects** of the Track node, and check the frames per second: tracking needs about 5 or more |
 | Objects never get an id | Track starts only on detections of 50 % or more. Keep the **Minimum score** at 50 % or more |

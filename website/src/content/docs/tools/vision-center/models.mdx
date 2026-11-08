@@ -137,6 +137,18 @@ Before OADM keeps a model, it opens it and runs it once on a blank picture. A mo
 says why, for example **This model cannot run here: it needs data in other files. Export it as one file.** See
 [Troubleshooting](../troubleshooting/#model-upload) for every reason.
 
+### Change how a model is read
+
+The model check picks the format, the fit and the scaling for you. When boxes land in the wrong place or the classes
+make no sense, open the model's **⋯** menu > **Settings**:
+
+| Setting | Choices | When to change it |
+|---|---|---|
+| **Format** | YOLO, YOLO with suppression, YOLOX, DETR, RF-DETR, DETR with labels, RT-DETR, Classification | The model was read as another family. OADM refuses a format the outputs do not fit |
+| **Fit** | Letterbox, Stretch, Keep shape and pad | Boxes are shifted or squeezed. YOLO uses Letterbox, RF-DETR and RT-DETR Stretch, DETR Keep shape and pad |
+| **Scaling** | 0 to 1, ImageNet, 0 to 255 BGR | Scores stay low or classes are nonsense. Ultralytics models use 0 to 1, DETR and most classifiers ImageNet, YOLOX 0 to 255 BGR |
+| **Input width**, **Input height** | 32 to 2048, in steps of 32 | Only for a model without a fixed size. Larger finds smaller objects and takes longer |
+
 ### Models are data, never code
 
 A model runs only with the standard operations of ONNX Runtime. OADM refuses a model that needs code of its own or

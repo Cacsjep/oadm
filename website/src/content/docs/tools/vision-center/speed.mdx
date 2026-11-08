@@ -58,14 +58,25 @@ status.
 
 ## Measured
 
-| What | Time |
-|---|---|
-| RF-DETR medium (576 x 576), one picture on one CPU core | About 860 ms |
-| One picture through 32 nodes with 300 objects, without the model | About 7 ms |
+One picture on one CPU core of a development PC (24 cores), November 2026. A server reads up to half its cores in
+parallel; a graphics card is faster.
 
-Measured on a development PC with 24 cores. With 12 workers, RF-DETR medium on the CPU gives about 14 pictures per second
-for all pipelines together, for example 3 pipelines at 4 frames per second. A graphics card or a smaller model gives more.
-The model's tooltip in **Models** shows its time on the CPU and on the card for your server.
+| Model | Kind | Time per picture |
+|---|---|---|
+| YOLO11n classification | Classification | About 8 ms |
+| MobileNetV2 | Classification | About 10 ms |
+| ResNet-50 | Classification | About 76 ms |
+| YOLOX nano | Detection | About 27 ms |
+| YOLO26n | Detection | About 79 ms |
+| YOLOv8n, YOLO11n | Detection | About 105 ms |
+| D-FINE S | Detection | About 460 ms |
+| RF-DETR small | Detection | About 645 ms |
+| DETR R50 | Detection | About 690 ms |
+| RT-DETR v2 R18 | Detection | About 710 ms |
+| RF-DETR medium | Detection | About 860 ms |
+
+The nodes after the model cost little: one picture through 32 nodes with 300 objects takes about 7 ms. The model's
+tooltip in **Models** shows its time on the CPU and on the card for your server.
 
 ## Limits
 
