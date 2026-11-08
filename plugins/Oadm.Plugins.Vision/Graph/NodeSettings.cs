@@ -102,6 +102,58 @@ public static class NodeSettings
     public static TimeOnly? TimeOfDay(JsonNode? value) =>
         Text(value) is { } s && TimeOnly.TryParseExact(s, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var t) ? t : null;
 
+    /// <summary>The weekday keys "mon" .. "sun" of a Days field, as days; null when the value is no such list.</summary>
+    public static IReadOnlyList<DayOfWeek>? Days(JsonNode? value)
+    {
+        if (Texts(value) is not { } keys)
+        {
+            return null;
+        }
+
+        var days = new List<DayOfWeek>();
+        foreach (var key in keys)
+        {
+            if (Day(key) is not { } day)
+            {
+                return null;
+            }
+
+            days.Add(day);
+        }
+
+        return days;
+    }
+
+    /// <summary>"mon" .. "sun" as a day; null for another text.</summary>
+    public static DayOfWeek? Day(string? key) => key switch
+    {
+        "mon" => DayOfWeek.Monday,
+        "tue" => DayOfWeek.Tuesday,
+        "wed" => DayOfWeek.Wednesday,
+        "thu" => DayOfWeek.Thursday,
+        "fri" => DayOfWeek.Friday,
+        "sat" => DayOfWeek.Saturday,
+        "sun" => DayOfWeek.Sunday,
+        _ => null,
+    };
+
+    /// <summary>An EventType value <c>{"type": "...", "device": "..."}</c>: the type id and the device (null: none); null when it is no such value.</summary>
+    public static (string Type, Guid? Device)? EventOf(JsonNode? value)
+    {
+        if (value is not JsonObject o || Text(o["type"]) is not { Length: > 0 } type)
+        {
+            return null;
+        }
+
+        var device = Text(o["device"]);
+        if (string.IsNullOrEmpty(device))
+        {
+            return (type, null);
+        }
+
+        return Guid.TryParse(device, out var id) ? (type, id) : null;
+    }
+
     /// <summary>The JSON of a list of points, as the page stores a shape.</summary>
     public static JsonArray ToJson(IEnumerable<RelativePoint> points)
     {

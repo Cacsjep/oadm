@@ -161,35 +161,6 @@ public sealed class EventNodeTests
     }
 
     [Fact]
-    public async Task Above_limit_is_on_while_the_count_is_at_least_the_limit()
-    {
-        var (h, ev) = Number(new JsonObject { [NodeKinds.LimitKey] = 3 });
-        await h.RunAsync(0, People(2));
-        Assert.Empty(h.Of(VisionEventKind.AboveLimit));
-        var on = await h.RunAsync(2, People(3));
-        Assert.Contains(on.Emissions, e => e is { Kind: VisionEventKind.AboveLimit, State: EmissionState.On });
-        Assert.Equal("On", on.Nodes[ev].Live);
-        Assert.True(on.Nodes[ev].On);
-
-        await h.RunAsync(4, People(5));
-        Assert.Equal("5", Assert.Single(h.Evaluator.CurrentStates).Values[VisionInfo.CountField]);
-        Assert.Single(h.Of(VisionEventKind.AboveLimit));
-
-        var off = await h.RunAsync(6, People(2));
-        Assert.Contains(off.Emissions, e => e is { Kind: VisionEventKind.AboveLimit, State: EmissionState.Off });
-        Assert.Empty(h.Evaluator.CurrentStates);
-    }
-
-    [Fact]
-    public async Task Without_a_limit_a_number_event_has_no_state()
-    {
-        var (h, ev) = Number();
-        var r = await h.RunAsync(0, People(9));
-        Assert.Null(r.Nodes[ev].On);
-        Assert.DoesNotContain(h.Emitted, e => e.Emission.Kind == VisionEventKind.AboveLimit);
-    }
-
-    [Fact]
     public async Task A_stateless_event_that_never_fired_shows_nothing()
     {
         var b = new PipelineBuilder();

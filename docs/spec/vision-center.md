@@ -1,11 +1,14 @@
 # Vision Center
 
-Status: **spec, not built** (2026-11-08). Decisions of the maintainer on 2026-11-08: no model ships, the user uploads
-their own; pipelines branch but never loop or merge; counts are live and reach rules as events, nothing is stored;
-free; detection and classification in the first version, anomaly later; own nodes only, designed for an SDK later; page
-with the pipeline list, the canvas and the live video side by side.
+Status: **built** (2026-11-08). Open: a run of both vision add-ons on a graphics card in one server (DirectML and CUDA),
+the accuracy with real models on the development cameras (DETR, RF-DETR), macOS and Linux runs ("Open points").
+Decisions of the maintainer on 2026-11-08: no model ships, the user uploads their own; pipelines branch but never loop
+or merge; counts are live and reach rules as events, nothing is stored; free; detection and classification in the first
+version, anomaly later; own nodes only, designed for an SDK later; page with the pipeline list, the canvas and the live
+video side by side.
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
+The developer details: `plugins/Oadm.Plugins.Vision/README.md`.
 
 Runs the user's own ONNX models on the cameras' pictures and lets the user build what they need from nodes, like n8n:
 objects in an area, objects that cross a line, counting both, filtered by class, score or size, with rule events at the
@@ -24,8 +27,9 @@ Core plugin `plugins/Oadm.Plugins.Vision` (+ `.Client`), id `oadm.vision`, rail 
 3. **No model ships.** The add-on holds the runtime, never a model (decision 2026-11-08). An administrator uploads the
    models; models we tested may be offered later as downloads on oadm.app, never fetched by the server.
 4. **A model is data, never code.** A model runs only through ONNX Runtime's standard operators: no custom operator
-   library is ever loaded, a model with an operator domain other than `ai.onnx`, `ai.onnx.ml` and `com.microsoft` or with
-   external data files is refused at upload ("Models"). Uploading needs **Manage vision models** and is audited.
+   library is ever loaded; a model whose nodes or functions use an operator domain other than the default, `ai.onnx`,
+   `ai.onnx.ml` and `com.microsoft`, or that needs external data files, is refused at upload ("Models"). Uploading needs
+   **Manage vision models** and is audited.
 5. **Choose the camera first.** A pipeline starts from one camera (`DevicePickerWindow.ShowOneAsync`) and one of its
    video sources; nothing streams before that. Only cameras of the user's device group; pipelines are owned by the device
    scope that made them (`docs/spec/device-scope.md`). A saved pipeline keeps its camera.
@@ -46,52 +50,83 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
 - **Kinds** (first version): **Detection** (boxes with class and score) and **Classification** (one class and score per
   picture). Anomaly detection (a score and a heat map per picture, e.g. models exported from Anomalib) is the next kind:
   the node model below takes it without a change of the pipeline format ("Later").
-- **Output formats**, recognised from the output names and shapes, the user confirms or picks:
+- **Output formats**, recognised from the output names and shapes (`Models/OutputFormats`):
   - Detection **YOLO**: `[1, 4 + C, N]` (YOLOv8 and later) or `[1, N, 5 + C]` with objectness (YOLOv5); the plugin runs
-    the non-maximum suppression (IoU 0.45, per class).
-  - Detection **YOLO with suppression**: `[1, N, 6]` (x1, y1, x2, y2, score, class; models exported end to end).
+    the non-maximum suppression (IoU 0.45, per class). A `[1, a, b]` output with `a < b` is v8, else v5.
+  - Detection **YOLO with suppression**: `[1, N, 6]` with N up to 1,000 (x1, y1, x2, y2, score, class; models exported
+    end to end).
   - Detection **DETR**: the original DETR of Facebook Research (`facebookresearch/detr`, Apache-2.0; the first model the
     maintainer tests, decision 2026-11-08) exported to ONNX: `pred_logits` `[1, Q, C + 1]` (the last class is "no
     object") and `pred_boxes` `[1, Q, 4]` (centre x, centre y, width, height, 0 to 1 of the input). Softmax per query,
     the best class other than "no object" with its probability as the score; no suppression. Input with ImageNet mean and
     deviation (preselected for this format), the picture scaled to the input with its shape kept, padded. The COCO models
-    have 91 class ids with gaps ("N/A"): the labels file names them, a class named "N/A" is never shown or chosen.
+    have 91 class ids with gaps ("N/A"): a class named "N/A" is never shown or chosen, and its detections are dropped.
   - Detection **RF-DETR**: RF-DETR of Roboflow as exported by `PierreMarieCurie/rf-detr-onnx` (code MIT, models
     Apache-2.0 except xlarge and 2xlarge, which are under the Platform Model License 1.0; the second model the maintainer
     tests, `rf-detr-medium.onnx`, decision 2026-11-08): output 0 boxes `[1, Q, 4]` (centre x, centre y, width, height,
     0 to 1), output 1 class logits `[1, Q, C]` with a sigmoid per class and no "no object" class, the best class per
     query, the top 300 queries; a third output (the masks of the segmentation models) is left out until segmentation
     comes ("Later"), so those models detect boxes. Input of a fixed size read from the model, ImageNet mean and
-    deviation, the picture **stretched** to the input (not letterboxed: the export was trained that way).
-  - **Fit**: Letterbox (YOLO), Stretch (RF-DETR) or Keep shape and pad (DETR), preselected by the format, a choice per
-    model, since the wrong fit loses accuracy without an error.
+    deviation, the picture **stretched** to the input (not letterboxed: the export was trained that way). Two outputs
+    without the `pred_` names: logits first is DETR, boxes first is RF-DETR.
   - Detection **DETR with labels**: boxes, scores and labels outputs (RT-DETR, D-FINE and other end-to-end exports); no
-    suppression.
-  - Classification: `[1, C]`, logits or probabilities (softmax when the values are not already probabilities).
-- **Input**: one picture tensor `[1, 3, H, W]`. A fixed size is read from the model, a free one takes the user's size
-  (default 640 x 640, a multiple of 32). The picture is fitted as the model's Fit says (detection) or resized
-  (classification), RGB.
-  Scaling: 0 to 1 (default) or ImageNet mean and deviation, a choice per model.
-- **Class names**: from the model's metadata (`names`, as Ultralytics exports write it) when there is one, else a
-  labels file uploaded with it (one name per line, as many as classes), else a built-in class list by the class count
-  (91: COCO with its ids, 80: COCO for YOLO), else "Class 0", "Class 1", ...
-- **Class lists** (decision 2026-11-08): profiles of class names, **chosen on the model**, never on a node (the ids
-  belong to how the model was trained). Built in, read only: "COCO (91 ids)" (`coco-91`, the COCO category ids DETR and
-  RF-DETR use, gaps "N/A") and "COCO (80 classes)" (`coco-80`, YOLO). The user's own lists are server-wide like the
-  models (at most 50, Manage vision models, audited); a list with another count of names than the model's classes
-  cannot be chosen for it; a list in use cannot be deleted. A model's ⋯ menu **Class list** offers the fitting lists
-  and "Own names" (edited one per line). Detect objects shows the model's list read only; the Classes pickers and every
-  label follow the names in effect. Backups keep the user's lists.
-- **Upload** (Settings card **Models** on the page, Administrators): the client sends the file in chunks like an add-on
-  ZIP (`docs/spec/add-ons.md` "Server" step 2), hashed on the way, to `plugin-data/oadm.vision/models/<id>.onnx`. Then the
-  **model check**: refused domains and external data (rule 4), a session on the CPU, one call with a blank picture, the
-  output format recognised. A model that fails the check is not kept: "This model cannot run here: <reason>." Shown
-  per model: name, kind, input size, classes, size, SHA-256, the time of one call on the CPU and on the card.
-- **Limits**: at most 20 models, each at most 500 MB, 4 GB together, at most 1,000 classes.
-- **Delete** is refused while a pipeline uses the model ("Used by 2 pipelines: Gate 1, Lane 2.").
-- **Backups** keep the model list (name, kind, settings, SHA-256), never the files, like add-on files. After a restore a
-  model without its file is **Missing**: its pipelines show "Upload the model Gate people again." Uploading a file with
-  the same SHA-256 brings it back with its settings.
+    suppression. An optional input `orig_target_sizes` `[1, 2]` is filled with the input size; boxes in input pixels or
+    0 to 1; Stretch by default.
+  - Classification: `[1, C]`, logits or probabilities (softmax when the values are not already probabilities), fitted by
+    its model's Fit (Stretch by default).
+  - **Fit**: Letterbox (YOLO), Stretch (RF-DETR, DETR with labels, classification) or Keep shape and pad (DETR),
+    preselected by the format, a choice per model, since the wrong fit loses accuracy without an error. A format whose
+    outputs do not fit the model is refused: "The model's outputs do not fit its format. Choose another format."
+- **Input**: one picture tensor `[1, 3, H, W]` in floating point. A fixed size (8 to 4,096 per side) is read from the
+  model, a free one takes the user's size (default 640 x 640, a multiple of 32 from 32 to 2,048). RGB. Scaling: 0 to 1
+  (default) or ImageNet mean and deviation, a choice per model.
+- **Class names**: from the model's metadata (`names`, as Ultralytics exports write it) when its count fits the classes,
+  else a labels file uploaded with it (one name per line, as many as classes; another count is refused), else a built-in
+  class list by the class count ("Class lists"), else "Class 0", "Class 1", ... Formats whose outputs do not give the
+  class count (YOLO with suppression, DETR with labels) take the names of the metadata or the labels file, else "Class
+  <id>" for the ids they report.
+- **Upload** (card **Models** on the page, Manage vision models): the client sends the file in chunks like an add-on
+  ZIP (`docs/spec/add-ons.md` "Server" step 2), hashed on the way, to `plugin-data/oadm.vision/models/<id>.onnx`; an
+  upload without a chunk for 1 minute ends. Then the **model check** (`Models/ModelChecker`): refused domains and
+  external data (rule 4), a session on the CPU, one call with a blank picture, the output format recognised. A model
+  that fails the check is not kept: "This model cannot run here: <reason>." (a load error gives ONNX Runtime's message,
+  at most 200 characters). A new model is named after its file ("name 2" when taken). A file whose SHA-256 is already
+  stored is refused: "This model is already stored as <name>." Shown per model: kind, input size, classes, class list,
+  size, the pipelines that use it, SHA-256, the time of one call on the CPU and on the card. The page's ⋯ menu of a model:
+  Rename, Class list, Delete; the server also takes format, fit, scaling and input size changes (`updateModel`).
+- **Limits**: at most 20 models, each at most 500 MB, 4 GB together, at most 1,000 classes. Uploads in progress count;
+  a Missing model counts once its file is stored again.
+- **Delete** is refused while a pipeline uses the model ("Used by 2 pipelines: Gate 1, Lane 2."), checked against every
+  pipeline; a user limited to a device group sees only their own pipelines in Used by.
+- **Backups** keep the model list (name, kind, settings, SHA-256) and the user's class lists, never the files, like
+  add-on files. At the start a model whose file is absent or of another size is **Missing** (no hash at every start):
+  its pipelines show "Upload the model Gate people again." Uploading a file with the same SHA-256 brings it back with its
+  settings, the CPU time measured again.
+- Idle model sessions are freed after 2 minutes.
+
+### Class lists
+
+Profiles of class names (decision 2026-11-08), **chosen on the model**, never on a node: the ids belong to how the model
+was trained.
+
+- Built in, read only, named by the models they fit: "COCO for DETR (91)" (`coco-91`, the COCO 2017 category ids,
+  "N/A" at the gaps 0, 12, 26, 29, 30, 45, 66, 68, 69, 71, 83), "COCO for RF-DETR (90)" (`coco-90`, the same without id
+  90: RF-DETR's 90 slots are the ids 0 to 89, as `class_id_to_name` of roboflow/rf-detr) and "COCO for YOLO (80)"
+  (`coco-80`, the same names without gaps: couch, potted plant, dining table, tv).
+- A built-in list is taken by itself only when neither metadata nor a labels file named the classes and the count is 91,
+  90 or 80. A stored model of 90 classes with only the generated "Class <id>" names and no list gets the RF-DETR list at
+  the start (never over names the user or the model gave).
+- The user's own lists: server-wide like the models (plugin records, collection `classLists`), at most 50, names unique
+  also against the built-in ones, Manage vision models, audited. An empty name becomes "Class <i>". A list's count of
+  names is a model's class count: a list with another count cannot be chosen for a model, and a list in use cannot
+  change its count ("Used by models with 2 classes. Keep 2 names.") or be deleted. A list no model uses fits any.
+- At the start a model on a list takes the list's current names when the counts match.
+- The page: the section **Class lists** below Models (built-in: View; own: Edit, Delete in red; New); its dialog holds
+  Name and the names, one per line. A model's ⋯ menu **Class list** offers "Own names" and the fitting lists, and says
+  below the select when none fits ("No class list has 90 names. Create one or use own names."). Detect objects shows
+  the model's list read only ("Class list: COCO for DETR (91)"); the Classes pickers and every label follow the
+  names in effect. Lists change no live event: the page reads them again after its own changes. Used by shows to every
+  user (models are server-wide).
 
 ## Pipelines
 
@@ -104,16 +139,38 @@ recognition).
     tracking needs at least about 5), the same stream rules as a reader (`VapixRequestOptions.LiveStream`, reopened after a
     drop, the problems in the list).
   - **On action**: runs on one picture when a rule runs the action **Run pipeline**. Nodes that need a stream (Track,
-    Line, and Count on crossings) are refused in this mode, on their node: "Track works only while Watching."
+    Line, Dwell, Stationary, Direction, Timer, and Count on crossings) are refused in this mode, on their node: "Track works only while Watching."
 - **Resolution**: default 1280x720 or the camera's largest below it (the model sees its own input size; a larger picture
-  only helps small objects).
-- **Graph**: branches, no loops, no merges (decision 2026-11-08). Exactly one Camera node, the start. Every other node has
-  exactly one input and any number of links from its output. At most 32 nodes, at most 2 model nodes (Detect, Classify)
+  only helps small objects). The save checks 160 to 7,680 pixels per side and video source 1 to 16, not the camera's
+  own list.
+- A saved pipeline restarts only when its graph, node settings, stream, owner or the models it uses change; a new name,
+  node places or an eye never restart it.
+- **Graph**: branches, no loops, no merges (decision 2026-11-08). The sources: exactly one Camera node, the start, and
+  any number of Timer, Time window and Device event nodes. Every other node has exactly one data input and any number of
+  links from its output. **Control inputs** (decision 2026-11-08) sit beside the data input (`NodeKindInfo.ControlInputs`,
+  the link's `ToPort`), each of one kind (`ControlInput.Accepts`) and with at most one link: Reset of Count and
+  Statistics and Send now of Event take a pulse; Only while of Count and Event and Second of And / Or take a condition;
+  Second is required (`ControlInput.Required`), the others optional. A pulse goes only into a control input or a
+  Throttle. Loops count data and control links. At most 32 nodes, at most 2 model nodes (Detect, Classify)
   per path from the camera. The server checks the graph at every save (`VisionGraph.Check`) and the editor checks it while
-  the user edits, with the same rules and texts.
+  the user edits, with the same rules and texts (`Graph/GraphTexts`).
+- **The check**: one error per node, the first that applies in this order: its id (letters and digits, at most 32,
+  unique; links name nodes by id, so nothing else can be judged without it), an unknown kind, the Camera (one, no input)
+  or another source (no input, Watching only for a Timer), its data input (none, a loop, more than one), the kind of its
+  input (a pulse: "A Timer links only to Reset, Send now or Throttle."), a Line without a Track before it, a Dwell
+  without an Area on its path, Watching only, the model nodes on its path, its control links (a declared port, of the
+  port's kind, one each, a required one linked), its model (chosen, of the field's kind, not Missing), its classes (in its model or in the one
+  of the Detect node before it; the class of Classify in the Classify node before it), every field's type and range,
+  its name. Errors of the whole graph: no Camera, more than 32 nodes, a link to a node that does not exist, a pipeline
+  format newer than this version. Input kinds pass on past a node with a field error, so the nodes after it still show
+  their own errors. Fast enough for every edit (about 0.1 ms for 30 nodes).
 - **Typed links**: every output has one kind; an input takes only the kinds its node lists. Kinds: **Picture**,
   **Objects** (boxes with class, score, attributes; **tracked** once a Track node passed them: each object keeps an id),
-  **Crossings** (an object crossed a line, with its direction), **Number** (a live value).
+  **Crossings** (an object crossed a line, with its direction), **Number** (a live value), **Condition** (yes or no),
+  **Pulse** (a Timer's tick, into a control input or a Throttle).
+- Number fields with a known small range (scores, sizes, Confirm after, Keep lost objects, Minutes, Movement allowed,
+  Tolerance, Minimum movement) show a slider with the number beside it (decision 2026-11-08). A field may show only for
+  a value of another (`VisibleWhenKey`: And of Compare only for Between); a hidden field is not checked.
 
 ### Nodes
 
@@ -121,68 +178,134 @@ recognition).
 |---|---|---|---|
 | **Camera** | none | Picture | The pipeline's camera and stream (summary "AXIS Q1798-LE · 1280x720 @ 8 fps"); Stream opens the Stream settings dialog of Text recognition |
 | **Detect objects** | Picture | Objects | A detection model; Minimum score (default 50 %), Classes (all, or the chosen ones); at most 300 objects per picture, the highest scores first |
-| **Classify** | Picture or Objects | Picture or Objects | A classification model. On a picture: the whole picture or an area drawn on it. On objects: each box cut out with a margin of 10 %, the class and score added as an attribute (`label`), at most 16 objects per picture; on tracked objects once per object and again every 2 s |
-| **Filter** | Objects | Objects | Keeps the objects that pass all its checks: class, score, box size (min and max share of the picture), the attribute of a Classify node (class, score) |
-| **Track** | Objects | Objects (tracked) | Gives each object an id that stays while it moves (own C#, ByteTrack-like: Kalman filter and two rounds of IoU matching). Confirm after (default 3 frames), Keep lost objects for (default 1 s) |
-| **Area** | Objects | Objects | A polygon of 3 to 16 points drawn on the video; passes the objects inside. Inside by (default) the box's bottom centre (feet, wheels), its centre or any overlap. With tracked objects also the time each one has been inside |
-| **Line** | Objects (tracked) | Crossings | A line of 2 to 8 points drawn on the video, with the direction In shown as an arrow; counts a crossing when a tracked object's bottom centre passes it. Directions: In, Out or both |
-| **Count** | Objects or Crossings | Number | Objects: how many are there now. Crossings: In, Out and In minus Out since the last reset. Reset daily at a time (optional), by the rule action **Reset counter**, and on a server restart |
-| **Event** | Objects, Crossings or Number | none | Publishes a rule event ("Events"); its name is the event's name |
+| **Classify** | Picture or Objects | Picture or Objects | A classification model. On a picture: the whole picture or the bounding box of an area drawn on it. On objects: each box cut out with a margin of 10 %, the class and score added as an attribute (`label`), at most 16 objects per picture; on tracked objects once per object and again every 2 s |
+| **Filter** | Objects | Objects | Keeps the objects that pass all its checks: class, score, box height (min and max share of the picture's height), the class of a Classify node before it (case does not matter) |
+| **Track** | Objects | Objects (tracked) | Gives each object an id that stays while it moves ("Tracking"). Confirm after (default 3 frames), Keep lost objects (default 1 s) |
+| **Area** | Objects | Objects | A polygon of 3 to 16 points drawn on the video; passes the objects inside. Inside by (default) the box's bottom centre (feet, wheels), its centre or any overlap. With tracked objects also the time each one has been inside; a lost object keeps its time while the Track node keeps it |
+| **Line** | Objects (tracked) | Crossings | A line of 2 to 8 points drawn on the video, with the direction In shown as an arrow; counts a crossing when a tracked object's bottom centre passes it. Counts In and Out, In only or Out only |
+| **Dwell** | Objects (tracked) | Objects (tracked) | The objects inside the Area before it longer than **Longer than** (default 30 s); works only while Watching |
+| **Stationary** | Objects (tracked) | Objects (tracked) | The objects whose bottom centre stayed within **Movement allowed** (default 3 % of the picture) of where it settled for **Still for** (default 60 s); a larger move settles it again where it is; works only while Watching |
+| **Direction** | Objects (tracked) | Objects (tracked) | The objects whose bottom centre moved over the last second within **Tolerance** (default 45°) of the arrow drawn on the video (2 points) and at least **Minimum movement** (default 5 % of the picture's height); angles in picture pixels; works only while Watching |
+| **Count** | Objects or Crossings | Number | Objects: how many are there now. Crossings: In and Out since the last reset; its value is In, or Out for a line that counts Out only. Reset by a pulse into its **Reset** (after this frame's value, so a Report of the same pulse still sees it), by the rule action **Reset counter** (both also reset its Line), and on a server restart. With **Only while** linked it counts only while that says yes and keeps its value meanwhile |
+| **Statistics** | Number | Number | The highest, lowest, average or sum of the number over the frames since a pulse into its **Reset** or the start |
+| **Compare** | Number | Condition | Yes while the number is greater than, at least, equal to, at most or less than **Value**, or between **Value** and **And** (both included) |
+| **And / Or** | Condition, Second (Condition) | Condition | Both or either yes |
+| **Hold** | Condition | Condition | Yes once its input said yes for **Yes after** (default 5 s), no once it said no for **No after** (default 5 s) |
+| **Throttle** | Crossings or Pulse | the same | Passes at most one per **At most one per** (default 60 s); the others are dropped |
+| **Device event** | none | Condition | Yes while the chosen event of the event rules (`event`: type and device) is on (`IEventStates`) |
+| **Timer** | none | Pulse | A pulse every few minutes (**Minutes**, 1 to 59), every hour, every day **At**, or every week on **Day** **At**, in the server's local time; works only while Watching |
+| **Time window** | none | Condition | Yes from **From** until **To** on the chosen **Days** (none: every day), the server's local time at the frame; a window over midnight belongs to the day it starts, From equal to To is the whole day |
+| **Event** | Objects, Crossings, Number or Condition; Send now, Only while | none | Publishes a rule event ("Events"); its name is the event's name |
 
-- A node has a name (unique in the pipeline, at most 64 characters, "Area 1" with the lowest free number like the areas
-  of Text recognition); rules and dashboards name it.
+- Compare, And / Or, Hold, Throttle, Statistics, Timer, Time window, Device event, Dwell, Stationary and Direction:
+  decision 2026-11-08 with the user. Compare replaced the Event's Limit and Above limit; Timer replaced Count's Reset
+  daily at. The node list's groups: Models, Objects, Geometry, Logic, Time, Output.
+
+- A node has a name (unique in the pipeline whatever its case, at most 64 characters, no control characters, "Area 1"
+  with the lowest free number like the areas of Text recognition); rules and dashboards name it.
 - Areas and lines are stored relative to the picture (0 to 1), so a change of resolution keeps them in place.
+- **Crossing direction** (decision 2026-11-08): In is from the left of the line's drawn direction to its right, as seen
+  on the picture; for a line drawn from left to right, walking down the picture is In. The In arrow points to that side.
+  One object never counts the same direction twice in a row (a crossing counts once); a step that ends on the line
+  counts; a step over several segments of the line counts the first.
 - Every node's settings are declared by the node itself (fields like `ActionField`: text, number, choice, model,
   classes, a shape on the video), so the editor draws the form from them and a node kind added later needs no editor
   change. The form follows the validation rule of the host (`ValidatingViewModel`, errors below the field).
+
+### Timers
+
+- A Timer's due times come from the frame's time in the server's local time zone (daylight saving included); no clock
+  of its own. A pulse is taken at the first frame at or after its time, at most one per frame and Timer; times missed
+  while the stream was down are not repeated. The first pulse is the first due time after the pipeline started.
+- Few minutes: at the minutes of the hour that Minutes divides (15: :00, :15, :30, :45); Hour: at :00; Day: at At;
+  Week: on Day at At. A local time that a daylight saving change skips is taken at the first frame after it.
+- In one frame an Event's Report carries the values of that frame before a Count's reset by the same Timer, so "report,
+  then reset" needs one Timer.
+
+### Tracking
+
+`Tracking/ObjectTracker`, own C#, ByteTrack-like, one per Track node:
+
+- A constant-velocity Kalman filter per object on the box centre, width and height; the measured box is handed on, the
+  filter only predicts where to match.
+- Two rounds of IoU matching per class, greedy by the best IoU: detections with a score of at least 50 % against every
+  track (IoU at least 0.2), then the lower ones against the confirmed tracks still unmatched (IoU at least 0.5). Only a
+  detection of at least 50 % starts a track.
+- An object gets its id (1, 2, ... per Track node) once it was seen Confirm after frames in a row, so noise uses up no
+  id; a lost one keeps its id for Keep lost objects, by frame time. A trail of the last 12 bottom centres per object.
+- At most 300 tracks: when they are full, the oldest lost track makes room.
 
 ### Running
 
 - A frame runs through the graph from the camera, each node once per frame, the outputs handed by reference (no copy of
   objects per link). Branches after a model node share its result: two Lines after one Track run one model call.
+  `Nodes/PipelineEvaluator` builds the nodes that can run; frames go through it one at a time, only the decoding runs in
+  parallel.
 - A node works only when something after it needs it: a branch that ends without an Event or Count node and is not shown
-  on the page costs nothing.
+  on the page costs nothing. A preview runs every node (`EvaluatorOptions.AllNodes`).
+- A node with an error, and every node after it, never runs; the other branches do.
+- A failing model call ends the frame (`FrameResult.ModelFailure`). Event nodes run after all the others, so a failed
+  frame sends no events; the branches that ran before keep that frame in their tracks and counts.
 - Results are taken in the order of the frames: an older frame never replaces a newer one (as in Text recognition).
 - A watching pipeline whose models fail 3 times in a row has a problem until a frame works, as a reader does.
 
 ## Events and the rule actions
 
-- Per Event node, folder Vision Center / pipeline name, the event name is the node's name; the camera is its fixed
-  device (`FixedDeviceId`). What it publishes follows its input:
+- Per Event node, folder Vision Center / pipeline name, the camera is its fixed device (`FixedDeviceId`). Its first kind
+  has the node's name; the others "<node>: object entered", "<node>: object left", "<node>: no objects found",
+  "<node>: report". What it publishes follows its input:
   - **Objects**: stateful, on while at least **Minimum objects** (default 1) are there for **At least** (default 1 s),
-    off once fewer stayed for **Off after** (default 2 s). Values: Count, Classes (the classes there, separated by a
-    space). With tracked objects also a stateless **Object entered** and **Object left** per object, values Class,
-    Object (the id), Time inside (s).
-  - **Crossings**: stateless, one per crossing. Values: Direction (In / Out), Class, Object, Score.
-  - **Number**: stateless **Count changed**, at most once a second with the latest value, values Count, In, Out; and
-    stateful **Above limit**, on while the count is at least **Limit**.
-  - In On action mode an Event node on Objects fires **Objects found** (Count, Classes) or **No objects found** once per
-    run, like Text read and No text read.
+    off once fewer stayed for **Off after** (default 2 s). Values: Count, Classes (the classes there, sorted, separated
+    by a space). With tracked objects also a stateless **Object entered** and **Object left** per object, values Class,
+    Object (the id), Time inside (s, one decimal: the Area's time, else from first to last seen). An object has left
+    once it was gone longer than Keep lost objects of the Track node before it.
+  - **Crossings**: stateless, one per crossing. Values: Direction (a choice, In / Out), Class, Object, Score (0 to 100).
+  - **Number**: stateless **Count changed** when the value, In or Out changes, at most once a second with the latest
+    values Count, In, Out (a count starts at 0, so a first 0 sends nothing).
+  - **Condition**: stateful **Condition holds**, on once the Compare node before it said yes for **At least**, off once
+    it said no for **Off after**; values Count (the number compared). It replaces the Event's Limit and Above limit
+    (decision 2026-11-08).
+  - **Send now** (a pulse into it): a stateless **Report** per pulse with the input's current values (Objects: Count and
+    Classes; Crossings: In and Out; Number: Count, with In and Out on crossings; Condition: Count), e.g. the count of the
+    day before a Timer resets it.
+  - **Only while** linked: while it says no the stateful kinds count as "not there" (and go off after Off after) and
+    nothing stateless is sent; Object entered and left still follow the objects, so none is sent twice.
+  - In On action mode an Event node on Objects fires **Objects found** (Count, Classes) or **No objects found** (Count)
+    once per run, like Text read and No text read.
 - Event **Pipeline problem** per pipeline and **Any pipeline problem** (server, users with all devices), as Reader
   problem and Any reader problem of Text recognition.
-- Rule action **Run pipeline** (an On action or a watching pipeline; a watching one answers with its latest frame of at
-  most 1 s ago, as Read text does) and **Reset counter** (a pipeline and one of its Count nodes; "Choose a pipeline." and
-  "Choose a counter." at the rule's save).
+- Rule action **Run pipeline** (an On action or a watching pipeline): a watching one answers with its latest frame of at
+  most 1 s ago or the frame in work, as Read text does, and publishes no extra events; without one it runs a picture of
+  its own without events. A second run of an On action pipeline while one runs ends "Already running". The event log
+  line lists the live lines of its Count and Event nodes ("Gate count: 14; Gate: On").
+- Rule action **Reset counter**: a pipeline and one of its Count nodes; the counter's value is `<pipeline id>/<node id>`
+  with the label "Pipeline: Counter", since a choice list cannot follow another field. "Choose a pipeline." and "Choose
+  a counter." at the rule's save.
 - Counts reach dashboards as event values like any other; Count is the split field (`SplitField`) of nothing: each Event
   node is its own event.
 
 ## Page
 
-Three columns (decision 2026-11-08, "Canvas + side video"): pipelines (fixed 320 px) | the canvas (the rest) | the live
-video above the selected node (fixed, about 420 px). Page header: the description, "Runs on" with Use GPU and the load
-on the right, as Text recognition.
+Three columns (decision 2026-11-08, "Canvas + side video"): pipelines (fixed 320 px) | the canvas | the live video above
+the selected node. Page header: the description, "Runs on" with Use GPU and the load on the right, as Text recognition.
 
 - **Left: the pipelines**: name, camera, mode, state chip ("Watching · 8 fps", orange when slower, red per kind of
-  problem with the server's text as tooltip, the chips of Text recognition), **New** (the camera first), **Delete** (red,
+  problem with the server's text as tooltip, the chips of Text recognition), one live line (the first Count node, else
+  the first Event node; sent only on change, at most twice a second), **New** (the camera first), **Delete** (red,
   confirmation) and a search. The card **Models** below it for users with Manage vision models: Upload model, the models
-  with their ⋯ menu (Rename, Classes, Delete in red). Empty page: "Upload a model, then create a pipeline."
+  with their ⋯ menu (Rename, Class list, Delete in red), then Class lists. Empty page: "Upload a model, then create a
+  pipeline."
+- **Canvas | right column**: the shared splitter (`GridSplitter.paneSplitter`) between them. The right column is 420 px
+  by default and at least that, the canvas at least 620 px (its toolbar fits); in a narrow window the canvas keeps its
+  minimum first (`PageLayout.LimitsOf`). The position stays while the page lives.
 - **Middle: the canvas**, our own Avalonia control (no node editor exists for Avalonia), close to n8n so users who know
   it feel at home:
   - Nodes as cards with the node's icon, its name and one live line (below). The graph runs **top to bottom**
     (decision 2026-11-08, replaces left to right: the canvas is taller than wide): the input at the top centre of a card,
-    the output at its bottom centre, links as curves from an output down to the next input. A dot grid on the theme's
-    background.
-  - Add: **Add node** in the toolbar opens the node list (search, grouped: Models, Objects, Geometry, Output); the **+**
+    the output at its bottom centre, links as curves from an output down to the next input (1 px, selected 2 px, while
+    dragged 1 px dashed). A dot grid on the theme's background. The hand cursor on the +, the eye, nodes and links; a
+    crosshair on an output.
+  - Add: **Add node** in the toolbar opens the node list (search, grouped: Models, Objects, Geometry, Logic, Time, Output); the **+**
     below a node's output opens the same list with only the nodes that fit its kind, and links the new node below it (a
     second child beside the first).
   - Drag from an output to an input links them; while dragging, inputs that do not fit are dimmed and a drop there
@@ -195,8 +318,11 @@ on the right, as Text recognition.
   - A node with an error has a red border and its error directly below it on the canvas (the validation rule of
     `CLAUDE.md`); Save is off while one exists, its tooltip says why.
   - Not saved, the save status and **Save** at the canvas's bottom right, as in Text recognition.
-- **Right, top: the live video** (the host's live video component, picture only) with the overlay of the nodes whose
-  **eye** is on (a toggle on every node card, tooltip "Show on video"; the selected node always shows):
+- **Right, top: the live video** (the host's live video component, picture only, at least 226 px high), a splitter, then
+  the node card below it (at least its heading and two fields). Until the splitter is dragged the video card is as tall
+  as its 16:9 picture wants and follows the column's width; afterwards it keeps its height within the limits; the cards
+  never overflow the column. The video has the overlay of the nodes whose **eye** is on (a toggle on every node card, tooltip "Show on video";
+  the selected node always shows):
   - Detect objects: boxes with class and score. Filter: the kept boxes, the dropped ones dashed. Track: boxes with the id
     and a short trail. Classify: the attribute on the box. Area: the polygon, the objects inside filled lightly. Line:
     the line with the In arrow and "In 12 · Out 7". Count: the number in the corner.
@@ -210,21 +336,31 @@ on the right, as Text recognition.
     time per frame. Line: the last 20 crossings (Time, Direction, Class, Object). Count: the value. Event: whether it is
     on, the last 20 times it fired with its values (a preview's own list: a preview never publishes, "Previews").
   - Nothing selected: the pipeline's own settings (name, mode).
-- **The live line on each node card** (n8n's item counts): Detect "5 objects · 18 ms", Track "3 objects", Area "2
-  inside", Line "In 12 · Out 7", Count "14", Event "On" or "Fired 3 s ago"; the number of objects on each link while the
-  page shows. Sent at most twice a second per pipeline.
+- **The live line on each node card** (n8n's item counts): Camera "AXIS Q1798-LE · 1280x720 @ 8 fps", Detect "5
+  objects · 18 ms", Filter "3 objects", Classify "3 objects · 18 ms" (on a picture "blue 87 % · 18 ms"), Track "3
+  tracked", Area "2 inside", Line "In 12 · Out 7" (one of them for a line of one direction), Count "14", Statistics "Highest 14", Compare "14 > 10 · Yes" ("2 ≤ 4 ≤ 6 · Yes" for Between), And / Or, Device event
+  "Yes" or "No", Hold "Yes" or "Yes in 3 s", Throttle "1 passed · 4 held back", Dwell, Stationary and Direction "2
+  objects", Timer "Next 00:00" ("Next Tue 06:30" weekly), Time window "Yes until 18:00" or "No until 08:00" ("No until
+  Fri 22:00" more than a day ahead), Event "On",
+  "Off" or "Fired 3 s ago" ("Fired now" below a second, then minutes and hours); the number of objects on each link while
+  the page shows. Sent at most twice a second per pipeline.
 - **Previews**: while the page shows a pipeline, the server runs its draft as a preview, as Text recognition does
-  (`startPreview` on every change and every 10 s, a lease of 30 s, at most 8 per server and 2 per user, a saved unchanged
-  watching pipeline shares its stream, the others count against the watching limit). A preview publishes no events and
-  changes no counter of the saved pipeline; its counts start at 0.
+  (`startPreview` on every change and every 10 s, a lease of 30 s, at most 8 per server and 2 per user). A saved
+  unchanged watching pipeline shares its stream and shows its counts; any other draft has a stream of its own, counts
+  against the watching limit and starts its counts at 0. A preview publishes no events and changes no counter of the
+  saved pipeline.
 - **Loading feedback**: "Reading the pipelines" and "Reading the pipeline" overlays as in Text recognition; an upload shows
   its progress and Cancel in the model's row; the model check a ring in the row.
 
 ## Load
 
 - Its own inference workers: on the CPU `max(1, cores / 2)` model calls at once, each on one thread; all pipelines share
-  one session of each model and size. With a card the models run there when they are not clearly slower (the card test
-  of Text recognition, per model at its upload and at the start).
+  one session of each model and size.
+- **Graphics card**: with Use GPU on, each model is tested on the card at its first call (two calls on the card against
+  one warmed call on the CPU); the model runs there unless the card is more than 1.5 times slower. Callers wait for the
+  test, the page shows Starting meanwhile. The card's calls run in one lane. A test longer than 1 minute, a failing call
+  or a call longer than 2 minutes ends the card's use until the next start, with one log line. "GPU available" means
+  the provider was found and has not failed; "on GPU" that a model passed its test.
 - A pipeline has one frame in work, up to 4 while the workers have room, as a reader ("Bounded load" of
   `docs/spec/ocr.md`); a frame without room is dropped, the newest wins.
 - **Watching pipelines**: 2 per worker, at least 4 and at most 50 (a detection model costs more than an area of text);
@@ -234,29 +370,34 @@ on the right, as Text recognition.
   run slower than set", "Overloaded: lower the frames per second or the number of pipelines"; per node the time per frame
   in its live line.
 - The two vision add-ons each keep their own budget; both on one server can fill its cores. The traffic lights show it
-  (open point below).
+  ("Open points").
 
 ## Permissions
 
 - **View vision pipelines**: the page, the pipelines, their live output. The video, Pause and object cut-outs need the
   host's **Live view** too.
 - **Change vision pipelines**: New, Delete, Save, the canvas, drawing areas and lines, Use GPU (with all devices).
-- **Manage vision models**: upload, rename, delete models (Administrators by default, all devices: models are
-  server-wide); audited "Uploaded vision model <name>", "Deleted vision model <name>".
+- **Manage vision models**: upload, change and delete models and class lists (Administrators by default, not Operators;
+  all devices: models are server-wide).
+- Audited: "Saved vision pipeline <name>", "Deleted vision pipeline <name>", "Uploaded vision model <name>", "Refused
+  vision model <name>", "Changed vision model <name>", "Deleted vision model <name>", "Turned Use GPU on for Vision
+  Center" (and off), "Saved class list <name>", "Deleted class list <name>".
 - Running the actions is part of the event rules' own permissions.
 
 ## Parts and contract
 
-- **Shared with Text recognition, never copied** (the reuse rule of `CLAUDE.md`): the frame source (MJPEG through
-  VAPIX), the engine (ONNX Runtime sessions, the card test, Use GPU, the busy meter), previews and their leases and the
-  runtime stats move from `plugins/Oadm.Plugins.Ocr` into `plugins/Shared/Vision/` (linked source, each add-on keeps its
-  own load context). The client's picture overlay (letterboxing, Pause, drawing and moving shapes, `PicturePlace`,
-  `AreaGeometry`) and the Stream settings dialog move into `plugins/Shared/Vision.Client/`; rectangles of Text recognition
-  become one case of the polygon editor. Text recognition's behaviour and tests stay as they are.
-- In the plugin: `Models/` (store, check, decoders per output format), `Graph/` (the pipeline format, `VisionGraph.Check`,
-  the node kinds), `Nodes/` (one class per node kind, behind `IVisionNode`: declared inputs, output, fields, overlay;
-  the contract an SDK may open later, decision 2026-11-08), `Tracking/`, `Geometry/` (inside, crossing), `Pipelines/` (the
-  runtime, previews), `Events/`, `Api/` (the page's payloads).
+- **Shared with Text recognition, never copied** (the reuse rule of `CLAUDE.md`): `plugins/Shared/Vision/` (linked
+  source, internal, each add-on keeps its own load context) holds the frame source (`Frames/CameraFrames`,
+  `MjpegParser`), the engine (`Engine/SessionFactory`, `BusyMeter`, `EngineRules`: the card test, Use GPU), the picture
+  limits (`Pictures/PictureLimits`), and the previews with their leases and the runtime stats.
+  `plugins/Shared/Vision.Client/` holds the client's picture overlay (`PictureOverlay`, `PicturePlace`,
+  `ShapeGeometry`: letterboxing, Pause, drawing and moving shapes; rectangles of Text recognition are one case of the
+  polygon editor) and the Stream settings dialog. Text recognition's behaviour and tests stay as they are.
+- In the plugin: `Models/` (store, check, decoders per output format, class lists), `Inference/` (ONNX Runtime, the
+  pictures), `Graph/` (`VisionGraph.Check`, the texts, the settings), `Nodes/` (one class per node kind behind
+  `IVisionNode`: its kind, its input, its work on a frame; the contract an SDK may open later, decision 2026-11-08),
+  `Tracking/`, `Geometry/` (inside, overlap, crossing, IoU), `Pipelines/` (the store, the runtime, previews, stats),
+  `Events/`, `Api/` (the page's payloads). `Model/` holds the contracts between them (`VisionParts`: tests hand fakes).
 - The pipeline JSON has a `version`; a node kind the plugin does not know (a newer pipeline after a restore on an older
   OADM) keeps the pipeline stored but not run, with its node's error "This node needs a newer Vision Center."
 
@@ -264,6 +405,8 @@ on the right, as Text recognition.
 
 - Add-on ZIP per server platform (`docs/spec/add-ons.md` "Release files") with ONNX Runtime of the same version as Text
   recognition, SkiaSharp and no model. The client part has no native libraries.
+- Both add-ons load their own copy of ONNX Runtime: three copies of `onnxruntime.dll` in one process worked on the CPU
+  (`TwoRuntimesTests`). Windows loads `DirectML.dll` by name and reuses the copy already loaded (both ship 1.15.4).
 
 ## Tests
 
@@ -274,21 +417,30 @@ on the right, as Text recognition.
   downloaded by the user, uploaded as it is): recognised as RF-DETR without a choice, the same pipeline as DETR works.
 - **First real model: DETR** (`facebookresearch/detr`, DETR-R50 on COCO). The user docs give the export: the PyTorch
   Hub model, `torch.onnx.export` with the outputs named `pred_logits` and `pred_boxes`, a fixed input of 800 x 800 (or a
-  free one), opset 17; and the COCO labels file. The upload, the model check and a pipeline Detect objects > Filter
-  (person) > Track > Line > Count > Event must work with that file. It is slow on the CPU (about a second per picture at
-  800 x 800, to be measured): the page's load and the node's time per frame say so, a graphics card or a lower frame rate
-  is the answer.
-- The graph check: loops, merges, wrong kinds, a Line without Track, On action with Track, too many nodes and model nodes,
-  an unknown node kind. The same cases through the editor's view model.
-- Tracker and geometry from recorded detections (box sequences as JSON in `Fixtures/`): ids stay through a short
-  occlusion, a crossing counts once, a back and forth counts In and Out, the bottom centre decides inside.
-- Counts, events (on, off, At least, Off after, Above limit, Count changed at most once a second), Reset counter, the
-  daily reset with a `FakeTimeProvider`.
-- Limits, previews and leases, device groups, the permissions, the model upload with its refusals and the backup of the
-  model list.
+  free one), opset 17; the class names come from "COCO for DETR (91)". The upload, the model check and a pipeline Detect
+  objects > Filter (person) > Track > Line > Count > Event must work with that file. It is slow on the CPU (about a
+  second per picture at 800 x 800, to be measured): the page's load and the node's time per frame say so, a graphics card
+  or a lower frame rate is the answer.
+- The graph check: one test per rule and text; the same cases through the editor's view model.
+- Tracker and geometry from box sequences as JSON in `Fixtures/Tracks/` (two people passing each other, a short
+  occlusion, a back and forth, a crowd of 50): ids stay through a short occlusion, a crossing counts once, a back and
+  forth counts In and Out, the bottom centre decides inside.
+- Counts, events (on, off, At least, Off after, Condition holds, Report, Count changed at most once a second, Objects
+  found), Reset counter, every Compare condition with the bounds of Between, Timers across midnight, a week and a
+  daylight saving change (frame times only), Time windows over midnight and on chosen days, Hold, Throttle, Statistics,
+  And / Or, Device event, Only while, Dwell, Stationary and Direction, the control link rules, a failing model and an errored branch through the evaluator with a
+  fake inference.
+- Limits, previews and leases, device groups, the permissions, the model upload with its refusals, class lists and the
+  backup of the model list.
 - The canvas: adding, linking, refusing a link, undo, the errors below the node; headless screenshots for the look.
 - A real detection model only in tests that download a permissive one at the test build into a cache with its pinned
-  SHA-256 (never shipped, never in git), like the models of Text recognition.
+  SHA-256 (never shipped, never in git), like the models of Text recognition (not built yet).
+
+## Measured
+
+- One frame through 32 nodes with 300 objects (Detect, Track, 7 Area > Line > Count > Event branches, a fake model):
+  about 7 ms on the development PC (debug build, `EvaluatorPerfTests`), without the model call.
+- The graph check of 30 nodes: about 0.1 ms.
 
 ## Later
 
@@ -300,7 +452,13 @@ on the right, as Text recognition.
 
 ## Open points
 
-- ONNX Runtime and DirectML loaded by two add-ons in one server process (two load contexts, the same native library
-  names): to be tested before it is built; if it fails, one shared runtime folder for the vision add-ons.
-- One worker budget for both vision add-ons instead of one each.
-- The default frame rate and resolution, from measurements with a real model on the development cameras.
+- A run of both vision add-ons on a graphics card in one server: DirectML on Windows (the shared `DirectML.dll`) and
+  CUDA on Linux are not tested.
+- The accuracy with DETR and RF-DETR on the development cameras, the default frame rate and resolution from those
+  measurements, the real-model test with a downloaded model.
+- macOS and Linux runs of the add-on.
+- One worker budget for both vision add-ons instead of one each: Text recognition's CPU pool and its card memory budget
+  are not shared.
+- A detection below 50 % never starts a track, it only keeps one: with a Minimum score below 50 % such objects are
+  never tracked.
+- The page has no choice of format, fit, scaling or input size after the upload; the server takes them (`updateModel`).

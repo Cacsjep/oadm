@@ -11,11 +11,11 @@ internal sealed class EvaluatorHarness
 {
     public static readonly DateTimeOffset T0 = TrackFixture.Start;
 
-    public EvaluatorHarness(Pipeline pipeline, PipelineMode? mode = null, bool allNodes = false)
+    public EvaluatorHarness(Pipeline pipeline, PipelineMode? mode = null, bool allNodes = false, TimeZoneInfo? zone = null, IEventStates? events = null)
     {
         Inference = new FakeInference { Clock = Clock };
         Evaluator = PipelineEvaluator.Create(pipeline, PipelineBuilder.Find, Inference, mode ?? pipeline.Mode,
-            new EvaluatorOptions { AllNodes = allNodes, Time = Clock });
+            new EvaluatorOptions { AllNodes = allNodes, Time = Clock, TimeZone = zone ?? TimeZoneInfo.Utc, EventStates = events });
     }
 
     public FakeTimeProvider Clock { get; } = new();
