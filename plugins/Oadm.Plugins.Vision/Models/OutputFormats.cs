@@ -17,8 +17,8 @@ internal static class OutputFormats
     /// <summary>The largest N of <c>[1, N, 6]</c> that is read as YOLO with suppression (end-to-end exports keep 300).</summary>
     private const long MaxSuppressedBoxes = 1000;
 
-    /// <summary>The format of <paramref name="outputs"/>, or null when it matches none.</summary>
-    public static RecognisedFormat? Recognise(IReadOnlyList<OutputInfo> outputs)
+    /// <summary>The format of <paramref name="outputs"/> of a model with an input of <paramref name="width"/> x <paramref name="height"/>, or null when it matches none.</summary>
+    public static RecognisedFormat? Recognise(IReadOnlyList<OutputInfo> outputs, int width = 0, int height = 0)
     {
         ArgumentNullException.ThrowIfNull(outputs);
         if (outputs.Count == 0)
@@ -26,20 +26,44 @@ internal static class OutputFormats
             return null;
         }
 
-        return Detr(outputs) ?? RfDetr(outputs) ?? DetrWithLabels(outputs) ?? Single(outputs);
+        var format = Detr(outputs) ?? RfDetr(outputs) ?? DetrWithLabels(outputs) ?? Single(outputs);
+        return format?.Format == ModelFormat.Yolo && IsYoloxGrid(outputs[0].Shape, width, height) ? format with { Format = ModelFormat.Yolox } : format;
     }
+
+    /// <summary>The strides of YOLOX's three heads.</summary>
+    public static ReadOnlySpan<int> YoloxStrides => [8, 16, 32];
+
+    /// <summary>The grid cells of YOLOX's heads for an input of <paramref name="width"/> x <paramref name="height"/>: one box per cell, no anchors.</summary>
+    public static long YoloxCells(int width, int height)
+    {
+        long cells = 0;
+        foreach (var stride in YoloxStrides)
+        {
+            cells += (long)(height / stride) * (width / stride);
+        }
+
+        return cells;
+    }
+
+    // [1, N, 5 + C] with one row per grid cell of the strides 8, 16, 32 (YOLOv5 has three anchors per cell): YOLOX.
+    private static bool IsYoloxGrid(long[] shape, int width, int height) =>
+        width > 0 && height > 0 && YoloLayoutOf(shape) == YoloLayout.BoxesFirst && shape[1] == YoloxCells(width, height);
 
     /// <summary>How the picture is fitted for <paramref name="format"/>: Letterbox (YOLO), Keep shape and pad (DETR), else Stretch.</summary>
     public static ModelFit DefaultFit(ModelFormat format) => format switch
     {
-        ModelFormat.Yolo or ModelFormat.YoloWithSuppression => ModelFit.Letterbox,
+        ModelFormat.Yolo or ModelFormat.YoloWithSuppression or ModelFormat.Yolox => ModelFit.Letterbox,
         ModelFormat.Detr => ModelFit.KeepShapePad,
         _ => ModelFit.Stretch,
     };
 
-    /// <summary>ImageNet for DETR and RF-DETR (trained that way), else 0 to 1.</summary>
-    public static ModelScaling DefaultScaling(ModelFormat format) =>
-        format is ModelFormat.Detr or ModelFormat.RfDetr ? ModelScaling.ImageNet : ModelScaling.ZeroToOne;
+    /// <summary>ImageNet for DETR and RF-DETR, 0 to 255 BGR for YOLOX (trained that way), else 0 to 1.</summary>
+    public static ModelScaling DefaultScaling(ModelFormat format) => format switch
+    {
+        ModelFormat.Detr or ModelFormat.RfDetr => ModelScaling.ImageNet,
+        ModelFormat.Yolox => ModelScaling.ZeroTo255Bgr,
+        _ => ModelScaling.ZeroToOne,
+    };
 
     public static ModelKind KindOf(ModelFormat format) => format == ModelFormat.Classification ? ModelKind.Classification : ModelKind.Detection;
 

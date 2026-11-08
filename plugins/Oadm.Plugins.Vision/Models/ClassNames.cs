@@ -68,6 +68,21 @@ internal static class ClassNames
         return names;
     }
 
+    /// <summary>Whether every name is only its own id ("0", "1", ...): an export that kept no names.</summary>
+    public static bool OnlyIds(IReadOnlyList<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        for (var i = 0; i < names.Count; i++)
+        {
+            if (names[i] != i.ToString(CultureInfo.InvariantCulture))
+            {
+                return false;
+            }
+        }
+
+        return names.Count > 0;
+    }
+
     /// <summary>"Class 0", "Class 1", ... for <paramref name="count"/> classes.</summary>
     public static IReadOnlyList<string> Defaults(int count) => [.. Enumerable.Range(0, Math.Max(0, count)).Select(ModelTexts.ClassName)];
 
