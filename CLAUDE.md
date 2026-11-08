@@ -221,6 +221,11 @@ must never break.
   text or watching the MJPEG stream at 1 to 15 fps (watching readers by the CPU cores, 4 per site), on a usable graphics
   card, else on the CPU, which always works; the models are never in git (downloaded and checked at build); events Text
   read, No text read and Reader problem for the rules; read only, pictures never stored.
+- **[Vision Center](docs/spec/vision-center.md)** (spec, not built; add-on `oadm.vision`, rail group Vision, free, off by
+  default): pipelines built from nodes on a canvas like n8n (camera, the user's ONNX detection and classification models,
+  filter, track, area, line, count, event), branches but no loops or merges, checked before they run; Watching or On
+  action like Text recognition; the live output and overlay of every node on the page; no model ships, a model is data
+  (standard operators only, no external data), uploads audited; counts in memory only; read only, pictures never stored.
 - **[Recipients](docs/spec/recipients.md)**: shared targets of event rule actions (HTTP, Email, TCP, MQTT, Modbus, OPC
   UA, declared by plugins, at most 200), for MQTT, Modbus and OPC UA one shared connection per recipient
   ([recipient sessions](docs/spec/recipient-sessions.md)); a rule keeps a link, the host merges the recipient's fields
