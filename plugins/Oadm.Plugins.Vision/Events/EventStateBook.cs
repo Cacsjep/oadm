@@ -20,10 +20,13 @@ internal sealed class EventStateBook(Func<IEventSubscriptions?> subscriptions) :
     /// <summary>The refusal of one of Vision Center's own events in a Device event node.</summary>
     public const string OwnEventRefused = "Choose an event of another plugin or a device.";
 
+    /// <summary>A per-device event chosen without its device: the node would follow none.</summary>
+    public const string DeviceMissing = "Choose a device.";
+
     private readonly Lock _sync = new();
     private readonly HashSet<(string Type, Guid? Device)> _on = [];
-    private readonly Dictionary<string, int> _onPerType = new(StringComparer.Ordinal);
     private IDisposable? _subscription;
+    private int _generation;
 
     /// <summary>A subscription runs now (tests).</summary>
     public bool Following
@@ -37,12 +40,15 @@ internal sealed class EventStateBook(Func<IEventSubscriptions?> subscriptions) :
         }
     }
 
-    /// <summary>On now for <paramref name="deviceId"/>; null: the server's event, or the type on for any device.</summary>
+    /// <summary>
+    /// On now for <paramref name="deviceId"/>; null: the server's event only. A per-device event without a device is never on
+    /// (the save and the preview ask for a device): a node never follows every device by itself.
+    /// </summary>
     public bool IsOn(string typeId, Guid? deviceId)
     {
         lock (_sync)
         {
-            return deviceId is null ? _onPerType.GetValueOrDefault(typeId) > 0 : _on.Contains((typeId, deviceId));
+            return _on.Contains((typeId, deviceId));
         }
     }
 
@@ -57,7 +63,9 @@ internal sealed class EventStateBook(Func<IEventSubscriptions?> subscriptions) :
                 return;
             }
 
-            Clear();
+            // A late event of an older subscription never lands after this (its generation is no longer the current one).
+            _generation++;
+            _on.Clear();
             if (!wanted)
             {
                 ending = _subscription;
@@ -65,15 +73,28 @@ internal sealed class EventStateBook(Func<IEventSubscriptions?> subscriptions) :
             }
             else if (subscriptions() is { } source)
             {
-                _subscription = source.Subscribe(Handle);
+                var generation = _generation;
+                _subscription = source.Subscribe(e => Handle(e, generation));
             }
         }
 
         ending?.Dispose();
     }
 
-    /// <summary>One published event (the subscription's loop, one at a time).</summary>
+    /// <summary>One published event of the current subscription (tests).</summary>
     internal void Handle(PublishedEvent published)
+    {
+        int generation;
+        lock (_sync)
+        {
+            generation = _generation;
+        }
+
+        Handle(published, generation);
+    }
+
+    /// <summary>One published event of the subscription of <paramref name="generation"/> (its loop, one at a time).</summary>
+    private void Handle(PublishedEvent published, int generation)
     {
         ArgumentNullException.ThrowIfNull(published);
         if (IsOwn(published.TypeId) || published.Kind == PublishedEventKind.Fired)
@@ -84,16 +105,18 @@ internal sealed class EventStateBook(Func<IEventSubscriptions?> subscriptions) :
         var key = (published.TypeId, published.DeviceId);
         lock (_sync)
         {
+            if (generation != _generation)
+            {
+                return;
+            }
+
             if (published.Kind == PublishedEventKind.On)
             {
-                if (_on.Add(key))
-                {
-                    _onPerType[published.TypeId] = _onPerType.GetValueOrDefault(published.TypeId) + 1;
-                }
+                _on.Add(key);
             }
-            else if (_on.Remove(key) && --_onPerType[published.TypeId] == 0)
+            else
             {
-                _onPerType.Remove(published.TypeId);
+                _on.Remove(key);
             }
         }
     }
@@ -123,10 +146,4 @@ internal sealed class EventStateBook(Func<IEventSubscriptions?> subscriptions) :
     }
 
     public void Dispose() => Follow(false);
-
-    private void Clear()
-    {
-        _on.Clear();
-        _onPerType.Clear();
-    }
 }

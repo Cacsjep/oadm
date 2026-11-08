@@ -11,6 +11,9 @@ public static class GraphTexts
     public const string NewerVersion = "This pipeline needs a newer Vision Center.";
     public const string NoCamera = "Add a Camera node.";
     public static readonly string TooManyNodes = $"A pipeline has at most {VisionLimits.MaxNodes} nodes.";
+
+    /// <summary>More links than a graph of the most nodes can use (data and control links).</summary>
+    public static readonly string TooManyLinks = $"A pipeline has at most {VisionLimits.MaxLinks} links.";
     public const string MissingLinkEnd = "A link leads to a node that does not exist.";
 
     // A node.

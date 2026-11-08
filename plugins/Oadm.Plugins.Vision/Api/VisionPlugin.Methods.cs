@@ -6,6 +6,7 @@ using Oadm.Plugins.Vision.Events;
 using Oadm.Plugins.Vision.Model;
 using Oadm.Plugins.Vision.Pipelines;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Events;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Vision;
@@ -61,25 +62,30 @@ public sealed partial class VisionPlugin
             case VisionMethods.SavePipeline:
             {
                 var incoming = VisionJson.Deserialize<SavePipelineRequest>(payloadJson).Pipeline ?? throw new ArgumentException(PluginJson.EmptyRequest);
-                var eventDevices = EventDevicesOf(incoming);
-                if (eventDevices.Count > 0)
+                var auditKey = AuditKey(method, SaveKey(incoming));
+                KeepAuditName(auditKey, RefusedPrefix + incoming.Name?.Trim());
+                if (PipelineRules.Oversized(incoming) is { } oversized)
                 {
-                    await CallDevices.RequireAsync(caller, eventDevices, ct).ConfigureAwait(false); // a Device event node names only the caller's devices
+                    return VisionJson.Serialize(new SavePipelineReply { GraphErrors = [oversized] });
                 }
+
+                // A Device event node names only devices of the caller and of the pipeline's owner (an edit keeps the owner).
+                var existing = string.IsNullOrEmpty(incoming.Id) ? null : store.FindVisible(caller, incoming.Id);
+                var pipelineOwner = existing is null ? owner : OwnerScope.Of(existing.OwnerScopeKey);
+                await RequireEventDevicesAsync(ctx, caller, pipelineOwner, incoming, ct).ConfigureAwait(false);
 
                 Pipeline saved;
                 Pipeline? before;
                 try
                 {
-                    (saved, before) = await store.SaveAsync(ctx, caller, incoming, runtime.MaxWatching, p => CheckWithEvents(runtime, caller, p), ctx.System.Devices.FindAsync, ct).ConfigureAwait(false);
+                    (saved, before) = await store.SaveAsync(ctx, caller, incoming, runtime.MaxWatching, p => CheckWithEvents(runtime, pipelineOwner, p, requireDevice: true), ctx.System.Devices.FindAsync, ct).ConfigureAwait(false);
                 }
                 catch (PipelineFieldException ex)
                 {
                     return VisionJson.Serialize(new SavePipelineReply { Errors = ex.Errors, GraphErrors = ex.GraphErrors });
                 }
 
-                _auditNames[AuditKey(method, saved.Id)] = saved.Name;
-                _auditNames[AuditKey(method, incoming.Id)] = saved.Name;
+                KeepAuditName(auditKey, saved.Name);
                 EventTypesChanged?.Invoke(this, EventArgs.Empty);
                 await runtime.SyncAsync().ConfigureAwait(false);
                 ReportProblems();
@@ -93,7 +99,7 @@ public sealed partial class VisionPlugin
                 var request = VisionJson.Deserialize<CopyPipelineRequest>(payloadJson);
                 var original = store.FindVisible(caller, request.PipelineId) ?? throw new ArgumentException(PipelineRules.Gone);
                 var reply = await CopyAsync(ctx, caller, store, runtime, original, request.DeviceIds ?? [], ct).ConfigureAwait(false);
-                _auditNames[AuditKey(method, original.Id)] = original.Name + "\u001f" + reply.Created.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                KeepAuditName(AuditKey(method, original.Id), original.Name + "\u001f" + reply.Created.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 return VisionJson.Serialize(reply);
             }
 
@@ -102,7 +108,7 @@ public sealed partial class VisionPlugin
                 var id =VisionJson.Deserialize<PipelineRequest>(payloadJson).PipelineId;
                 if (await store.DeleteAsync(caller, id, ct).ConfigureAwait(false) is { } deleted)
                 {
-                    _auditNames[AuditKey(method, deleted.Id)] = deleted.Name;
+                    KeepAuditName(AuditKey(method, deleted.Id), deleted.Name);
                     await runtime.SyncAsync().ConfigureAwait(false);
                     EventTypesChanged?.Invoke(this, EventArgs.Empty);
                     ReportProblems();
@@ -116,7 +122,9 @@ public sealed partial class VisionPlugin
             case VisionMethods.CheckGraph:
             {
                 var pipeline = VisionJson.Deserialize<CheckGraphRequest>(payloadJson).Pipeline ?? throw new ArgumentException(PluginJson.EmptyRequest);
-                return VisionJson.Serialize(CheckWithEvents(runtime, caller, PipelineRules.Stored(pipeline)));
+                return VisionJson.Serialize(PipelineRules.Oversized(pipeline) is { } oversized
+                    ? new GraphCheck { GraphErrors = [oversized] }
+                    : CheckWithEvents(runtime, owner, PipelineRules.Stored(pipeline), requireDevice: true));
             }
 
             case VisionMethods.StartPreview:
@@ -128,9 +136,23 @@ public sealed partial class VisionPlugin
                     throw new ArgumentException(PipelineRules.Gone);
                 }
 
+                if (PipelineRules.Oversized(draft) is { } oversized)
+                {
+                    throw new ArgumentException(oversized); // never checked, never under the runtime's lock
+                }
+
                 if (draft.DeviceId != Guid.Empty)
                 {
                     await CallDevices.RequireAsync(caller, [draft.DeviceId], ct).ConfigureAwait(false);
+                }
+
+                // The Device event nodes as at a save: only the caller's devices and the events the caller may pick; a user
+                // with a device group names the device of a per-device event (a draft of all devices reads it as off).
+                await RequireEventDevicesAsync(ctx, caller, owner, draft, ct).ConfigureAwait(false);
+                var events = CheckWithEvents(runtime, owner, PipelineRules.Stored(draft), requireDevice: owner != ICallContext.AllDevicesScopeKey, eventsOnly: true);
+                if (events.NodeErrors.Values.FirstOrDefault() is { } refused)
+                {
+                    throw new ArgumentException(refused);
                 }
 
                 if (!MaySeePictures(caller))
@@ -175,7 +197,7 @@ public sealed partial class VisionPlugin
                 RequireAllDevices(caller);
                 var request = VisionJson.Deserialize<BeginUploadRequest>(payloadJson);
                 var uploadId = await models.BeginUploadAsync(request.FileName, request.Size, request.Labels, ct).ConfigureAwait(false);
-                _auditNames[AuditKey(VisionMethods.FinishUpload, uploadId)] = Path.GetFileNameWithoutExtension(request.FileName ?? string.Empty);
+                KeepAuditName(AuditKey(VisionMethods.FinishUpload, uploadId), Path.GetFileNameWithoutExtension(request.FileName ?? string.Empty));
                 return VisionJson.Serialize(new BeginUploadReply { UploadId = uploadId });
             }
 
@@ -193,7 +215,7 @@ public sealed partial class VisionPlugin
                 var uploadId = VisionJson.Deserialize<UploadRequest>(payloadJson).UploadId;
                 var check = await models.FinishUploadAsync(uploadId, ct).ConfigureAwait(false);
                 var key = AuditKey(method, uploadId);
-                _auditNames[key] = check.Model is { } model ? model.Name : RefusedPrefix + _auditNames.GetValueOrDefault(key, string.Empty);
+                KeepAuditName(key, check.Model is { } model ? model.Name : RefusedPrefix + _auditNames.GetValueOrDefault(key, string.Empty));
                 PublishModels();
                 return VisionJson.Serialize(new FinishUploadReply { Model = check.Model, Refusal = check.Refusal });
             }
@@ -208,7 +230,7 @@ public sealed partial class VisionPlugin
                 RequireAllDevices(caller);
                 var changed = VisionJson.Deserialize<UpdateModelRequest>(payloadJson).Model ?? throw new ArgumentException(PluginJson.EmptyRequest);
                 var updated = await models.UpdateAsync(changed, ct).ConfigureAwait(false);
-                _auditNames[AuditKey(method, updated.Id)] = updated.Name;
+                KeepAuditName(AuditKey(method, updated.Id), updated.Name);
                 runtime.Inference.Forget(updated.Id); // its sessions follow the new fit, scaling or size
                 PublishModels();
                 return VisionJson.Serialize(updated);
@@ -220,7 +242,7 @@ public sealed partial class VisionPlugin
                 var id = VisionJson.Deserialize<ModelRequest>(payloadJson).ModelId;
                 if (models.Find(id) is { } model)
                 {
-                    _auditNames[AuditKey(method, id)] = model.Name;
+                    KeepAuditName(AuditKey(method, id), model.Name);
                     await models.DeleteAsync(id, UsedBy(store.All, id), ct).ConfigureAwait(false);
                     runtime.Inference.Forget(id);
                     PublishModels();
@@ -246,8 +268,8 @@ public sealed partial class VisionPlugin
                     return VisionJson.Serialize(new SaveClassListReply { Errors = new Dictionary<string, string> { [ex.Field] = ex.Message } });
                 }
 
-                _auditNames[AuditKey(method, saved.Id)] = saved.Name;
-                _auditNames[AuditKey(method, incoming.Id)] = saved.Name;
+                KeepAuditName(AuditKey(method, saved.Id), saved.Name);
+                KeepAuditName(AuditKey(method, incoming.Id), saved.Name);
                 PublishModels(); // the models on the list took its names
                 return VisionJson.Serialize(new SaveClassListReply { ClassList = saved });
             }
@@ -258,7 +280,7 @@ public sealed partial class VisionPlugin
                 var id = VisionJson.Deserialize<ClassListRequest>(payloadJson).ClassListId;
                 if (models.ClassLists.FirstOrDefault(l => l.Id == id) is { } list)
                 {
-                    _auditNames[AuditKey(method, id)] = list.Name;
+                    KeepAuditName(AuditKey(method, id), list.Name);
                 }
 
                 await models.DeleteClassListAsync(id, ct).ConfigureAwait(false);
@@ -299,13 +321,21 @@ public sealed partial class VisionPlugin
     /// <summary>"Saved vision pipeline Gate 1", "Uploaded vision model Gate people", "Turned Use GPU off": names only, never a file's content.</summary>
     public string? AuditDetail(string method, string? payloadJson)
     {
-        string? Named(string? id) => id is null ? null : _auditNames.GetValueOrDefault(AuditKey(method, id));
+        // Read once, after the call: the entry goes (the names never pile up).
+        string? Named(string? id) => id is not null && _auditNames.TryRemove(AuditKey(method, id), out var name) ? name : null;
         switch (method)
         {
             case VisionMethods.SavePipeline:
             {
                 var pipeline = VisionJson.Deserialize<SavePipelineRequest>(payloadJson).Pipeline;
-                var name = (pipeline is { Id.Length: > 0 } ? Named(pipeline.Id) : null) ?? pipeline?.Name?.Trim();
+                var name = (pipeline is null ? null : Named(SaveKey(pipeline))) ?? pipeline?.Name?.Trim();
+                if (name is not null && name.StartsWith(RefusedPrefix, StringComparison.Ordinal))
+                {
+                    // Refused for its fields or graph: nothing was stored.
+                    name = name[RefusedPrefix.Length..];
+                    return string.IsNullOrEmpty(name) ? "Could not save a vision pipeline" : "Could not save vision pipeline " + name;
+                }
+
                 return string.IsNullOrEmpty(name) ? "Saved a vision pipeline" : "Saved vision pipeline " + name;
             }
 
@@ -351,6 +381,27 @@ public sealed partial class VisionPlugin
     }
 
     private static string AuditKey(string method, string id) => method + "\u001f" + id;
+
+    /// <summary>The audit key of a save: the pipeline's id, or "new:" and its name for a new one.</summary>
+    private static string SaveKey(Pipeline pipeline) =>
+        string.IsNullOrEmpty(pipeline.Id) ? "new:" + (pipeline.Name?.Trim() ?? string.Empty) : pipeline.Id;
+
+    /// <summary>The audit names kept at most (each is read once after its call; calls that never get audited leave none for long).</summary>
+    internal const int MaxAuditNames = 256;
+
+    /// <summary>Keeps the name an audit entry reads after the call; beyond <see cref="MaxAuditNames"/> the old ones go.</summary>
+    private void KeepAuditName(string key, string name)
+    {
+        if (_auditNames.Count >= MaxAuditNames && !_auditNames.ContainsKey(key))
+        {
+            _auditNames.Clear();
+        }
+
+        _auditNames[key] = name;
+    }
+
+    /// <summary>The audit names kept now (tests).</summary>
+    internal int AuditNamesKept => _auditNames.Count;
 
     private static void RequireAllDevices(ICallContext caller)
     {
@@ -533,25 +584,50 @@ public sealed partial class VisionPlugin
             .Select(n => EventStateBook.ChoiceOf(n).Device).OfType<Guid>().Distinct()];
 
     /// <summary>
-    /// The graph check with the rule of the Device event node: never one of Vision Center's own events (no loop), and for a
-    /// user with a device group only an event of their devices.
+    /// The devices of the Device event nodes are the caller's and the pipeline's owner's (<paramref name="ownerScope"/>), as a
+    /// camera is: an administrator's edit never puts a device outside a group into that group's pipeline.
     /// </summary>
-    private GraphCheck CheckWithEvents(PipelineRuntime runtime, ICallContext caller, Pipeline pipeline)
+    private static async Task RequireEventDevicesAsync(ICorePluginContext ctx, ICallContext caller, string ownerScope, Pipeline pipeline, CancellationToken ct)
     {
-        var check = runtime.CheckOf(pipeline);
+        var devices = EventDevicesOf(pipeline);
+        if (devices.Count == 0)
+        {
+            return;
+        }
+
+        await CallDevices.RequireAsync(caller, devices, ct).ConfigureAwait(false);
+        await OwnerScope.RequireDevicesAsync(ctx, caller, ownerScope, devices, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The graph check with the rules of the Device event node: never one of Vision Center's own events (no loop); for a
+    /// pipeline of a device group only an event that group may pick; with <paramref name="requireDevice"/> a per-device event
+    /// names its device. <paramref name="eventsOnly"/>: only these errors (a preview's refusal).
+    /// </summary>
+    private GraphCheck CheckWithEvents(PipelineRuntime runtime, string ownerScope, Pipeline pipeline, bool requireDevice, bool eventsOnly = false)
+    {
+        var check = eventsOnly ? new GraphCheck() : runtime.CheckOf(pipeline);
         var errors = new Dictionary<string, string>(check.NodeErrors, StringComparer.Ordinal);
+        var all = ownerScope == ICallContext.AllDevicesScopeKey;
+        Dictionary<string, SubscribedEventType>? catalog = null;
         HashSet<string>? allowed = null;
         foreach (var node in pipeline.Nodes.Where(n => n.Kind == NodeKinds.DeviceEvent))
         {
-            if (EventStateBook.ChoiceOf(node).Type is not { } type)
+            var (type, device) = EventStateBook.ChoiceOf(node);
+            if (type is null)
             {
                 continue;
             }
 
-            allowed ??= caller.HasAllDevices ? null : [.. ChoicesOf(caller, devices: null).Select(c => c.Id)];
+            catalog ??= (EventSource()?.Types ?? []).GroupBy(t => t.Info.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+            allowed ??= all ? null : [.. ChoicesOf(all, ownerScope, devices: null).Select(c => c.Id)];
             if (EventStateBook.IsOwn(type) || (allowed is not null && !allowed.Contains(type)))
             {
                 errors[node.Id] = EventStateBook.OwnEventRefused;
+            }
+            else if (requireDevice && device is null && catalog.TryGetValue(type, out var known) && known.Info.Scope == EventScope.Device)
+            {
+                errors[node.Id] = EventStateBook.DeviceMissing;
             }
         }
 
@@ -567,28 +643,30 @@ public sealed partial class VisionPlugin
             devices = [.. (await caller.Devices.ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id)];
         }
 
-        return new EventTypeList { Types = ChoicesOf(caller, devices) };
+        return new EventTypeList { Types = ChoicesOf(caller.HasAllDevices, caller.DeviceScopeKey, devices) };
     }
 
+    private IEventSubscriptions? EventSource() => _ctx is { } ctx ? _parts?.EventSubscriptions(ctx) : null;
+
     /// <summary>
-    /// The stateful types of the event rules other than Vision Center's own. A user with a device group gets only events per
-    /// device that nobody else owns and that one of their devices can send (<paramref name="devices"/>; null: not checked).
+    /// The stateful types of the event rules other than Vision Center's own. A device group (<paramref name="scopeKey"/>)
+    /// gets only events per device that nobody else owns and that one of its devices can send (<paramref name="devices"/>;
+    /// null: not checked).
     /// </summary>
-    private List<EventTypeChoice> ChoicesOf(ICallContext caller, HashSet<Guid>? devices)
+    private List<EventTypeChoice> ChoicesOf(bool allDevices, string scopeKey, HashSet<Guid>? devices)
     {
-        var source = _ctx is { } ctx ? _parts?.EventSubscriptions(ctx) : null;
         var choices = new List<EventTypeChoice>();
-        foreach (var type in source?.Types ?? [])
+        foreach (var type in EventSource()?.Types ?? [])
         {
             var info = type.Info;
-            if (info.Kind != Oadm.Sdk.Events.EventKind.Stateful || EventStateBook.IsOwn(info.Id))
+            if (info.Kind != EventKind.Stateful || EventStateBook.IsOwn(info.Id))
             {
                 continue;
             }
 
-            if (!caller.HasAllDevices
-                && (info.Scope != Oadm.Sdk.Events.EventScope.Device
-                    || (info.OwnerScopeKey is { } owner && !string.Equals(owner, caller.DeviceScopeKey, StringComparison.OrdinalIgnoreCase))
+            if (!allDevices
+                && (info.Scope != EventScope.Device
+                    || (info.OwnerScopeKey is { } owner && !string.Equals(owner, scopeKey, StringComparison.OrdinalIgnoreCase))
                     || (devices is not null && info.DeviceIds is { } ids && !ids.Any(devices.Contains))))
             {
                 continue;
@@ -599,7 +677,7 @@ public sealed partial class VisionPlugin
                 Id = info.Id,
                 Name = info.DisplayName,
                 Path = info.Folders,
-                PerDevice = info.Scope == Oadm.Sdk.Events.EventScope.Device,
+                PerDevice = info.Scope == EventScope.Device,
                 Available = type.Available,
             });
         }
@@ -620,6 +698,9 @@ public sealed partial class VisionPlugin
         {
             throw new ArgumentException(PipelineRules.TooManyCopyCameras);
         }
+
+        // The Device event nodes go with every copy: their devices must be the caller's (the copies' owner's).
+        await RequireEventDevicesAsync(ctx, caller, OwnerScope.Of(caller.DeviceScopeKey), original, ct).ConfigureAwait(false);
 
         var refused = new Dictionary<Guid, string>();
         var cameras = new List<Oadm.Sdk.Devices.IDeviceInfo>();
@@ -661,7 +742,7 @@ public sealed partial class VisionPlugin
         }
 
         var copies = cameras.Select((camera, i) => PipelineCopies.CopyOf(original, camera, options[i])).ToList();
-        var (created, notStored) = await store.AddCopiesAsync(ctx, caller, copies, p => CheckWithEvents(runtime, caller, p), ct).ConfigureAwait(false);
+        var (created, notStored) = await store.AddCopiesAsync(ctx, caller, copies, p => CheckWithEvents(runtime, OwnerScope.Of(caller.DeviceScopeKey), p, requireDevice: true), ct).ConfigureAwait(false);
         foreach (var (id, error) in notStored)
         {
             refused[id] = error;

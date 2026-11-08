@@ -11,6 +11,12 @@ public static class VisionLimits
 
     public const int MaxNodes = 32;
 
+    /// <summary>Links at most (data and control links): four per node.</summary>
+    public const int MaxLinks = MaxNodes * 4;
+
+    /// <summary>The most characters of one node's settings (JSON): a polygon of 16 points needs far less.</summary>
+    public const int MaxSettingsLength = 16 * 1024;
+
     /// <summary>Detect objects and Classify nodes on one path from the camera.</summary>
     public const int MaxModelNodesPerPath = 2;
 

@@ -146,7 +146,7 @@ internal sealed partial class PipelineRuntime
                 {
                     // From here on no live result replaces the one held (KeepPreview).
                     var ranFor = preview.SharedWith is null && ReferenceEquals(last.Evaluator, preview.Evaluator) ? preview.DraftPrint : null;
-                    preview.Held = new HeldFrame(last, preview.Draft, _previews) { RanFor = ranFor };
+                    preview.Held = new HeldFrame(last, preview.Draft, _previews, ex => LogBackgroundFailed(_logger, "the run of a paused frame", ex)) { RanFor = ranFor };
                     preview.SharedWith = null;
                 }
             }
@@ -699,12 +699,12 @@ internal sealed partial class PipelineRuntime
         a.DeviceId == b.DeviceId && a.VideoSource == b.VideoSource && a.Resolution == b.Resolution && PipelineRules.StreamFps(a) == PipelineRules.StreamFps(b);
 
     /// <summary>The frame a paused preview keeps: server memory only, one per preview, with the result of its latest run.</summary>
-    private sealed class HeldFrame(FrameOutcome outcome, Pipeline draft, object gate)
+    private sealed class HeldFrame(FrameOutcome outcome, Pipeline draft, object gate, Action<Exception> failed)
     {
         public FrameOutcome Outcome { get; set; } = outcome;
 
         /// <summary>Runs the newest draft on the frame, latest wins (shared with Text recognition).</summary>
-        public LatestWinsWorker Worker { get; } = new(gate);
+        public LatestWinsWorker Worker { get; } = new(gate, failed);
 
         /// <summary>The print of the draft its latest result is of; null: none fits (it runs once more).</summary>
         public string? RanFor { get; set; }

@@ -97,7 +97,7 @@ public interface IInference
 /// </summary>
 public interface IEventStates
 {
-    /// <summary>On now for <paramref name="deviceId"/> (null: the server, or any device of the type).</summary>
+    /// <summary>On now for <paramref name="deviceId"/> (null: the server's event only; a per-device event needs its device).</summary>
     bool IsOn(string typeId, Guid? deviceId);
 }
 
