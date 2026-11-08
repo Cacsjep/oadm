@@ -1,0 +1,96 @@
+---
+title: Troubleshooting
+description: Permissions of Vision Center and what to do about each message.
+---
+
+## Permissions
+
+| Permission | Allows |
+|---|---|
+| **View vision pipelines** | The page, the pipelines and their live output |
+| **Change vision pipelines** | **New**, **Delete**, **Save**, **Copy to cameras**, the canvas, drawing areas and lines, **Use GPU** |
+| **Manage vision models** | Upload, change and delete models and class lists. Administrators, not Operators |
+| **Live view** | The video and Pause |
+
+A user limited to a [device group](../../../admin/device-groups/) sees only the pipelines of their group's cameras.
+**Use GPU** and **Manage vision models** are for users with all devices.
+
+## The pipeline's chip in the list
+
+| Chip | Means |
+|---|---|
+| **Watching · 8 fps** | Runs at its frames per second |
+| **Watching · 15 fps (reads 11.2)**, orange | Runs slower than set. See [Does the server keep up](../speed/#does-the-server-keep-up) |
+| **On action** | Runs when a rule runs [Run pipeline](../events/#action-run-pipeline) |
+| **Not running**, red | Hover over it for the reason, below |
+
+| Reason | Do this |
+|---|---|
+| **At most 8 pipelines can watch at once. Set another pipeline to On action first.** | Set another pipeline to **On action**, or use a server with more cores. [Limits](../speed/#limits) |
+| **At most 4 pipelines can watch at once at the site Building B. Set another pipeline there to On action first.** | The same for the cameras of that site |
+| **Upload the model Gate people again.** | The model file is missing, for example after a restore. Upload the same file in **Models** |
+| **The models fail on the pictures of this pipeline. The server log has the details.** | Check the server log on the **Logs** page. Try the model on the CPU: turn off **Use GPU** |
+| **Starting: testing the graphics card.** | Wait: the pipeline starts by itself |
+| **The pipeline's camera is no longer in its device group.** | Put the camera back in the device group, or delete the pipeline |
+| **This pipeline needs a newer Vision Center.** | The pipeline comes from a newer OADM. Update OADM |
+| The camera cannot be reached, refuses the login or sends no pictures | Check the camera on the Devices page. OADM's account on it must be allowed to see video |
+
+## Model upload
+
+The row of an upload says why a model was not kept.
+
+| Message | Do this |
+|---|---|
+| **This model cannot run here: it is not an ONNX model or the file is damaged.** | Download or export the file again |
+| **This model cannot run here: it needs data in other files. Export it as one file.** | Export again as one file |
+| **This model cannot run here: it uses operators of "…", which OADM does not run.** | Export it again with the standard tools, without custom operators |
+| **This model cannot run here: it does not take one picture of 3 colour channels.** | Export it with one colour picture as the input |
+| **This model cannot run here: it needs inputs other than one picture.** | Export it with only the picture as the input |
+| **This model cannot run here: its picture input is not in floating point numbers.** | Export it again with a floating point input |
+| **This model cannot run here: its outputs match no format Vision Center reads.** | See [Formats OADM reads](../models/#formats-oadm-reads). Export it in one of them |
+| **This model cannot run here: the labels file has 80 names, the model has 91 classes.** | Give the labels file one line per class, or upload without it and choose a [class list](../models/#class-lists) |
+| **This model cannot run here: it does not load (…).** | The text after it comes from ONNX Runtime. Export the model again, with a newer opset |
+| **This model is already stored as RF-DETR medium.** | The same file is there already. Use that model |
+| **A model is at most 500 MB.**, **OADM keeps at most 20 models. Delete one first.**, **The models take at most 4 GB together. Delete one first.** | Delete a model you do not use, or use a smaller one |
+| **Choose an ONNX file (.onnx).** | Choose the `.onnx` file. A labels file goes with it as `.txt` |
+| **The upload ended. Upload the model again.** | The upload stopped for a minute. Upload again |
+
+## Detections
+
+| You see | Do this |
+|---|---|
+| No boxes | Lower the **Minimum score** of Detect objects. Use [Pause](../pipelines/#pause) to tune it on one picture. Check that **Classes** holds what you look for |
+| Wrong class names | Choose the right [class list](../models/#class-lists) in the model's ⋯ menu. **No class list has 90 names. Create one or use own names.** means none fits: create one |
+| Boxes in the wrong place or nonsense classes on a model that worked before | Delete the model and upload it again, so OADM recognises its format anew |
+| People far away count as well | Raise **Minimum size** in a Filter |
+| A person counted twice at a line | Raise **Confirm after** or **Keep lost objects** of the Track node, and check the frames per second: tracking needs about 5 or more |
+| Objects never get an id | Track starts only on detections of 50 % or more. Keep the **Minimum score** at 50 % or more |
+| In and Out swapped | Draw the line the other way round |
+| A count is 0 after a restart | Counts live in memory. Send them to a rule before, such as an [hourly report](../events/#people-per-hour-over-mqtt) |
+
+## The canvas
+
+| Message below a node | Do this |
+|---|---|
+| **Link an input to this node.** | Drag from a node's output to its input |
+| **A line needs a Track node before it.** | Put a Track node between the objects and the Line |
+| **Dwell needs an Area node before it.** | Put an Area node on its path |
+| **Track works only while Watching.** (also Line, Dwell, Stationary, Direction, Timer) | Set the pipeline's **Mode** to **Watching**, or remove the node |
+| **Counting crossings works only while Watching.** | The same for a Count after a Line |
+| **A Timer links only to Reset, Send now or Throttle.** | Link the Timer to a control input |
+| **Link the second input.** | Link a yes or no to **Second** of And / Or |
+| **A path has at most 2 model nodes.** | Remove a Detect objects or Classify node from the path |
+| **Choose a detection model.** | Choose the model in the node's settings. No model yet: [upload one](../models/#upload-a-model) |
+| **The model Gate people has no class bicycle.** | Choose classes the model has |
+| **Links cannot form a loop.**, **This node takes only one input.** | Remove the link. Branches split but never join |
+
+## Messages on the page
+
+| Message | Do this |
+|---|---|
+| **At most 8 pipelines can be shown live at once. Try again when another page closes.** | Close the page on another client |
+| **No live results now: OADM already watches as many cameras as it can.** | Close the page on another client or set a pipeline to **On action** |
+| **This picture is too large to pause. Choose a lower resolution.** | Choose a lower resolution under **Stream** of the Camera node |
+| **A saved pipeline keeps its camera. Create a new pipeline for another camera.** | Click **New**, or use **Copy to cameras** |
+| **Save the pipeline first.** on **Copy to cameras** | Click **Save**, then copy |
+| **Not loaded. Install it again for this OADM version.** on the Plugins page | Click **Download ZIP** and **Install** |
