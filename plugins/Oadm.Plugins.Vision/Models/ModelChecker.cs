@@ -47,6 +47,24 @@ internal static class ModelChecker
     /// <returns>The model's facts, or the refusal ("This model cannot run here: ...").</returns>
     public static (CheckedModel? Model, string? Refusal) Check(string path, string? labels, CancellationToken ct)
     {
+        try
+        {
+            return CheckFile(path, labels, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+#pragma warning disable CA1031 // Whatever a crafted model makes ONNX Runtime or the check throw, the answer is a refusal.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            return (null, ModelTexts.CannotRun(ModelTexts.DoesNotLoad(ex.Message)));
+        }
+    }
+
+    private static (CheckedModel? Model, string? Refusal) CheckFile(string path, string? labels, CancellationToken ct)
+    {
         if (OnnxScan.Refusal(path) is { } scan)
         {
             return (null, ModelTexts.CannotRun(scan));
@@ -378,7 +396,11 @@ internal sealed record PixelMask(string Name, int Height, int Width, TensorEleme
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(meta);
         var d = meta.Dimensions;
+
+        // A fixed size of the mask is bounded like the picture's (never gigabytes of ones); a free one takes the input's.
+        static bool SideFits(int side) => side is -1 or (>= 1 and <= ModelLimits.MaxFixedInputSide);
         return name.Contains("mask", StringComparison.OrdinalIgnoreCase) && d.Length == 3 && d[0] is 1 or -1
+            && SideFits(d[1]) && SideFits(d[2])
             && meta.ElementDataType is TensorElementType.Int64 or TensorElementType.Int32
             ? new PixelMask(name, d[1], d[2], meta.ElementDataType)
             : null;

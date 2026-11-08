@@ -65,16 +65,16 @@ internal static class OnnxScan
                 {
                     case (7, ProtoReader.LengthDelimited):
                         HasGraph = true;
-                        Nested(Graph);
+                        Nested(Graph, end);
                         break;
                     case (8, ProtoReader.LengthDelimited):
-                        Nested(OperatorSet);
+                        Nested(OperatorSet, end);
                         break;
                     case (20, ProtoReader.LengthDelimited):
-                        Nested(TrainingInfo);
+                        Nested(TrainingInfo, end);
                         break;
                     case (25, ProtoReader.LengthDelimited):
-                        Nested(Function);
+                        Nested(Function, end);
                         break;
                     default:
                         reader.Skip(wire, end);
@@ -107,13 +107,13 @@ internal static class OnnxScan
                 switch (field, wire)
                 {
                     case (1, ProtoReader.LengthDelimited):
-                        Nested(Node);
+                        Nested(Node, end);
                         break;
                     case (5, ProtoReader.LengthDelimited):
-                        Nested(Tensor);
+                        Nested(Tensor, end);
                         break;
                     case (15, ProtoReader.LengthDelimited):
-                        Nested(SparseTensor);
+                        Nested(SparseTensor, end);
                         break;
                     default:
                         reader.Skip(wire, end);
@@ -130,7 +130,7 @@ internal static class OnnxScan
                 switch (field, wire)
                 {
                     case (5, ProtoReader.LengthDelimited):
-                        Nested(Attribute);
+                        Nested(Attribute, end);
                         break;
                     case (7, ProtoReader.LengthDelimited):
                         Domain(reader.ReadString(end, MaxDomainBytes));
@@ -150,13 +150,13 @@ internal static class OnnxScan
                 switch (field, wire)
                 {
                     case (5 or 10, ProtoReader.LengthDelimited):
-                        Nested(Tensor);
+                        Nested(Tensor, end);
                         break;
                     case (6 or 11, ProtoReader.LengthDelimited):
-                        Nested(Graph);
+                        Nested(Graph, end);
                         break;
                     case (22 or 23, ProtoReader.LengthDelimited):
-                        Nested(SparseTensor);
+                        Nested(SparseTensor, end);
                         break;
                     default:
                         reader.Skip(wire, end);
@@ -195,7 +195,7 @@ internal static class OnnxScan
             {
                 if (field is 1 or 2 && wire == ProtoReader.LengthDelimited)
                 {
-                    Nested(Tensor);
+                    Nested(Tensor, end);
                 }
                 else
                 {
@@ -204,7 +204,7 @@ internal static class OnnxScan
             }
         }
 
-        // FunctionProto: 7 node, 9 opset_import (its own domain, field 10, only names it; the nodes that call it say theirs).
+        // FunctionProto: 7 node, 9 opset_import, 11 attribute_proto (its own domain, field 10, only names it; the nodes that call it say theirs).
         private void Function(long end)
         {
             while (Problem is null && reader.TryReadTag(end, out var field, out var wire))
@@ -212,10 +212,14 @@ internal static class OnnxScan
                 switch (field, wire)
                 {
                     case (7, ProtoReader.LengthDelimited):
-                        Nested(Node);
+                        Nested(Node, end);
                         break;
                     case (9, ProtoReader.LengthDelimited):
-                        Nested(OperatorSet);
+                        Nested(OperatorSet, end);
+                        break;
+                    case (11, ProtoReader.LengthDelimited):
+                        // attribute_proto: default attributes, which hold tensors and graphs like a node's.
+                        Nested(Attribute, end);
                         break;
                     default:
                         reader.Skip(wire, end);
@@ -231,7 +235,7 @@ internal static class OnnxScan
             {
                 if (field is 1 or 2 && wire == ProtoReader.LengthDelimited)
                 {
-                    Nested(Graph);
+                    Nested(Graph, end);
                 }
                 else
                 {
@@ -249,7 +253,7 @@ internal static class OnnxScan
         }
 
         /// <summary>Reads the length of a nested message and walks it with <paramref name="walk"/>, then continues after it.</summary>
-        private void Nested(Action<long> walk)
+        private void Nested(Action<long> walk, long parent)
         {
             if (++_depth > MaxDepth)
             {
@@ -257,6 +261,12 @@ internal static class OnnxScan
             }
 
             var end = reader.ReadLengthEnd();
+            if (end > parent)
+            {
+                // Protobuf refuses a message that runs past the one around it: so does the scan, never reading on elsewhere.
+                throw new InvalidDataException("A message runs past its parent.");
+            }
+
             walk(end);
             if (Problem is null)
             {
@@ -307,7 +317,13 @@ internal sealed class ProtoReader
             return false;
         }
 
+        // ONNX Runtime's protobuf reads a tag as 32 bits and drops the rest: a longer one would name another field there.
         var tag = ReadVarint(end);
+        if (tag > uint.MaxValue)
+        {
+            throw new InvalidDataException("A tag longer than 32 bits.");
+        }
+
         field = (int)(tag >> 3);
         wire = (int)(tag & 7);
         if (field <= 0)
@@ -329,6 +345,12 @@ internal sealed class ProtoReader
             }
 
             var b = ReadByte();
+            if (shift == 63 && b > 1)
+            {
+                // The tenth byte holds only the 64th bit: protobuf refuses more.
+                throw new InvalidDataException("A number is too long.");
+            }
+
             value |= (ulong)(b & 0x7F) << shift;
             if ((b & 0x80) == 0)
             {

@@ -60,6 +60,8 @@ public static class ModelTexts
 
     public const string UploadTooLong = "The file is larger than its upload said. Upload the model again.";
 
+    public const string UploadNotWritten = "The file could not be written on the server. Upload the model again.";
+
     public const string UploadTooShort = "The file is smaller than its upload said. Upload the model again.";
 
     public static string AlreadyStored(string name) => $"This model is already stored as {name}.";
