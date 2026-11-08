@@ -322,7 +322,8 @@ camera, at most 100 cameras at once ("Copy to at most 100 cameras at once.").
   problem and Any reader problem of Text recognition.
 - Rule action **Run pipeline** (an On action or a watching pipeline): a watching one answers with its latest frame of at
   most 1 s ago or the frame in work, as Read text does, and publishes no extra events; without one it runs a picture of
-  its own without events. A second run of an On action pipeline while one runs ends "Already running". The event log
+  its own without events. A second run of an On action pipeline while one runs ends "Already running"; so does a second picture of its own for a
+  watching pipeline (at most one at a time, decision 2026-11-08 after the review). The event log
   line lists the live lines of its Count and Event nodes ("Gate count: 14; Gate: On").
 - Rule action **Reset counter**: a pipeline and one of its Count nodes; the counter's value is `<pipeline id>/<node id>`
   with the label "Pipeline: Counter", since a choice list cannot follow another field. "Choose a pipeline." and "Choose
@@ -418,6 +419,31 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   in its live line.
 - The two vision add-ons each keep their own budget; both on one server can fill its cores. The traffic lights show it
   ("Open points").
+
+## Hardening (review 2026-11-08)
+
+- **Sizes before checks.** A draft or stored pipeline with more than 32 nodes, more than 128 links
+  (`VisionLimits.MaxLinks`, "A pipeline has at most 128 links.") or one node's settings over 16 KB is refused before any
+  graph check (`PipelineRules.Oversized`); `VisionGraph.Check` stops at once after too many nodes. No unbounded draft
+  is ever checked under the runtime's lock.
+- **Device event nodes.** A per-device event needs its device ("Choose a device." on the node); `IEventStates.IsOn`
+  without a device answers for server events only. Previews run the same Device event checks as a save. The devices
+  of Device event nodes must be in the caller's devices and in the owner group's devices (an administrator cannot put
+  another device into a group's pipeline); copying checks the same. A late event of an old subscription is ignored
+  (a generation number per subscription).
+- **The model scan reads the file as protobuf does.** A tag above 32 bits, a tenth varint byte above 1 and a nested
+  message running past its parent are refused; function default attributes (`attribute_proto`) are walked like a
+  node's attributes. Any exception of the model check is a refusal ("it does not load (...)"); a fixed mask side
+  outside 1 to 4096 is refused before memory is taken.
+- **Uploads.** A failed write or flush ends the upload: "The file could not be written on the server. Upload the model
+  again." An upload being checked keeps its bytes and place counted until stored or refused; the count and size rule
+  is one rule at the start and again in the store's write lock: models with a file, plus uploads in progress, plus
+  uploads being checked. Missing models count at neither step (they are listed and can be deleted). Stored record
+  keys other than 32 lower-case hex digits are left out at load (one log line).
+- **Audit.** A save refused for its fields or graph is audited "Could not save vision pipeline X"; the audit's name
+  cache keeps at most 256 entries, each read once.
+- **Paused previews.** A failing re-run of a held frame is logged and the worker stops; the next change runs again;
+  stopping never rethrows (`LatestWinsWorker`, Text recognition unchanged).
 
 ## Permissions
 
