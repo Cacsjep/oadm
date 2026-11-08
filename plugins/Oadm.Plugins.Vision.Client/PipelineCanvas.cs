@@ -24,6 +24,7 @@ public sealed class PipelineCanvas : Control
     private const double CornerRadius = 8;
 
     private Drag _drag;
+    private CanvasViewModel? _fitted;
     private Point _pressAt;
     private Point _panStart;
     private Point _moveOffset;
@@ -65,6 +66,7 @@ public sealed class PipelineCanvas : Control
             {
                 now.PropertyChanged += OnCanvasChanged;
                 now.ViewportSize = Bounds.Size;
+                FitOnce(now);
             }
 
             InvalidateVisual();
@@ -72,6 +74,17 @@ public sealed class PipelineCanvas : Control
         else if (change.Property == BoundsProperty && Canvas is { } canvas)
         {
             canvas.ViewportSize = Bounds.Size;
+            FitOnce(canvas);
+        }
+    }
+
+    /// <summary>A pipeline shown for the first time: every node in the view, once the canvas has its size.</summary>
+    private void FitOnce(CanvasViewModel canvas)
+    {
+        if (!ReferenceEquals(_fitted, canvas) && Bounds.Width > 0 && Bounds.Height > 0)
+        {
+            _fitted = canvas;
+            canvas.FitView();
         }
     }
 

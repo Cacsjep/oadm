@@ -67,15 +67,15 @@ internal static class PageSamples
         Nodes =
         [
             Node("a", NodeKinds.Camera, "Camera", 40, 150),
-            Node("b", NodeKinds.Detect, "Detect objects", 300, 150, new JsonObject { ["model"] = "m1" }),
-            Node("c", NodeKinds.Filter, "People", 560, 150, new JsonObject { ["classes"] = new JsonArray("person"), ["minScore"] = 60 }),
-            Node("d", NodeKinds.Track, "Track", 820, 150, eye: true),
-            Node("e", NodeKinds.Line, "Gate line", 1080, 40, new JsonObject { ["points"] = Points((0.46, 0.55), (0.55, 0.98)) }, eye: true),
-            Node("f", NodeKinds.Count, "Gate count", 1340, 40, new JsonObject { ["resetAt"] = "06:00" }),
-            Node("g", NodeKinds.Event, "Gate count changed", 1600, 40),
-            Node("h", NodeKinds.Area, "Waiting zone", 1080, 260,
+            Node("b", NodeKinds.Detect, "Detect objects", 310, 150, new JsonObject { ["model"] = "m1" }),
+            Node("c", NodeKinds.Filter, "People", 540, 150, new JsonObject { ["classes"] = new JsonArray("person"), ["minScore"] = 60 }),
+            Node("d", NodeKinds.Track, "Track", 770, 150, eye: true),
+            Node("e", NodeKinds.Line, "Gate line", 1000, 40, new JsonObject { ["points"] = Points((0.46, 0.55), (0.55, 0.98)) }, eye: true),
+            Node("f", NodeKinds.Count, "Gate count", 1230, 40, new JsonObject { ["resetAt"] = "06:00" }),
+            Node("g", NodeKinds.Event, "Gate count changed", 1460, 40),
+            Node("h", NodeKinds.Area, "Waiting zone", 1000, 260,
                 new JsonObject { ["points"] = Points((0.65, 0.62), (0.91, 0.62), (0.96, 0.97), (0.62, 0.97)) }, eye: true),
-            Node("i", NodeKinds.Event, "People waiting", 1340, 260, new JsonObject { ["minObjects"] = 3, ["atLeastSeconds"] = 2 }),
+            Node("i", NodeKinds.Event, "People waiting", 1230, 260, new JsonObject { ["minObjects"] = 3, ["atLeastSeconds"] = 2 }),
         ],
         Links =
         [

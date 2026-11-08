@@ -140,6 +140,28 @@ public static class VisionTexts
         };
     }
 
+    /// <summary>The model line's tooltip: the line, the pipelines that use it, the time of one call, the SHA-256.</summary>
+    public static string ModelDetails(VisionModel model, IReadOnlyList<string> usedBy)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(usedBy);
+        var lines = new List<string> { ModelLine(model, usedBy.Count) };
+        if (usedBy.Count > 0)
+        {
+            lines.Add(string.Join(", ", usedBy));
+        }
+
+        var call = string.Create(CultureInfo.InvariantCulture, $"One call: {Math.Round(model.CpuMs)} ms on the CPU");
+        if (model.GpuMs is { } gpu)
+        {
+            call += string.Create(CultureInfo.InvariantCulture, $", {Math.Round(gpu)} ms on the graphics card");
+        }
+
+        lines.Add(call);
+        lines.Add("SHA-256 " + model.Sha256);
+        return string.Join(Environment.NewLine, lines);
+    }
+
     public static string Size(long bytes) => bytes switch
     {
         >= 1024L * 1024 * 1024 => string.Create(CultureInfo.InvariantCulture, $"{bytes / (1024.0 * 1024 * 1024):0.0} GB"),

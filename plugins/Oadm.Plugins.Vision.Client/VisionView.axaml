@@ -84,7 +84,7 @@
                     <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                     <ui:StatusChip Text="{x:Static vm:ModelRow.MissingText}" IsWarning="True" ToolTip.Tip="{x:Static vm:ModelRow.MissingTip}" IsVisible="{Binding IsMissing}" />
                   </StackPanel>
-                  <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding Line}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Line}" />
+                  <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding Line}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Details}" />
                   <Button x:Name="ModelActions" Grid.Column="1" Grid.RowSpan="2" Classes="toolbar iconOnly" VerticalAlignment="Center"
                           ToolTip.Tip="{x:Static ui:RowActions.Tip}" Click="OnModelActions">
                     <ui:OadmIcon Data="{StaticResource Icon.more}" />
@@ -234,7 +234,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="8">
                   <vm:NodeKindIcon Kind="{Binding Node.Kind}" Width="16" Height="16" VerticalAlignment="Center" />
                   <TextBlock Classes="cardTitle" Text="{Binding Node.Name}" TextTrimming="CharacterEllipsis" MaxWidth="250" VerticalAlignment="Center" />
-                  <TextBlock Classes="secondary" Text="{Binding KindLabel}" VerticalAlignment="Center" />
+                  <TextBlock Classes="secondary" Text="{Binding KindLabel}" VerticalAlignment="Center" IsVisible="{Binding ShowKindLabel}" />
                 </StackPanel>
                 <StackPanel Spacing="8" IsEnabled="{Binding $parent[UserControl].((vm:VisionViewModel)DataContext).MayChange, FallbackValue=False}">
                   <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Name}">
@@ -331,14 +331,14 @@
                 <DataGrid x:Name="ObjectsGrid" ItemsSource="{Binding Objects}" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
                           HeadersVisibility="Column" IsVisible="{Binding IsObjects}" MaxHeight="320">
                   <DataGrid.Columns>
-                    <DataGridTextColumn Header="Object" Width="80" Binding="{Binding ObjectId}" x:DataType="vm:ObjectRow" />
+                    <DataGridTextColumn Header="Object" Width="70" Binding="{Binding ObjectId}" x:DataType="vm:ObjectRow" />
                     <DataGridTextColumn Header="Class" Width="*" Binding="{Binding Class}" x:DataType="vm:ObjectRow" />
-                    <DataGridTextColumn Width="70" Binding="{Binding Score}" CellStyleClasses="number" x:DataType="vm:ObjectRow">
+                    <DataGridTextColumn Width="85" Binding="{Binding Score}" CellStyleClasses="number" x:DataType="vm:ObjectRow">
                       <DataGridTextColumn.Header>
                         <TextBlock Classes="numberHeader" Text="Score" />
                       </DataGridTextColumn.Header>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Width="100" Binding="{Binding TimeInside}" CellStyleClasses="number" x:DataType="vm:ObjectRow">
+                    <DataGridTextColumn Width="115" Binding="{Binding TimeInside}" CellStyleClasses="number" x:DataType="vm:ObjectRow">
                       <DataGridTextColumn.Header>
                         <TextBlock Classes="numberHeader" Text="Time inside" />
                       </DataGridTextColumn.Header>
@@ -350,9 +350,9 @@
                           HeadersVisibility="Column" IsVisible="{Binding IsCrossings}" MaxHeight="320">
                   <DataGrid.Columns>
                     <DataGridTextColumn Header="Time" Width="80" Binding="{Binding Time}" x:DataType="vm:CrossingRow" />
-                    <DataGridTextColumn Header="Direction" Width="85" Binding="{Binding Direction}" x:DataType="vm:CrossingRow" />
+                    <DataGridTextColumn Header="Direction" Width="95" Binding="{Binding Direction}" x:DataType="vm:CrossingRow" />
                     <DataGridTextColumn Header="Class" Width="*" Binding="{Binding Class}" x:DataType="vm:CrossingRow" />
-                    <DataGridTextColumn Header="Object" Width="75" Binding="{Binding ObjectId}" x:DataType="vm:CrossingRow" />
+                    <DataGridTextColumn Header="Object" Width="85" Binding="{Binding ObjectId}" x:DataType="vm:CrossingRow" />
                   </DataGrid.Columns>
                 </DataGrid>
                 <TextBlock Classes="sectionTitle" Text="{x:Static vm:VisionTexts.LastFires}" IsVisible="{Binding IsEvent}" />

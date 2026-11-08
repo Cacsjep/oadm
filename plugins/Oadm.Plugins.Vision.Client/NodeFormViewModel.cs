@@ -66,6 +66,9 @@ public sealed partial class NodeFormViewModel : ValidatingViewModel
     /// <summary>"Detect objects" beside the node's name in the heading.</summary>
     public string KindLabel => Node.KindLabel;
 
+    /// <summary>The kind beside the name only when the name does not already say it.</summary>
+    public bool ShowKindLabel => !string.Equals(Node.Name.Trim(), KindLabel, StringComparison.OrdinalIgnoreCase);
+
     [ObservableProperty]
     public partial string Name { get; set; }
 

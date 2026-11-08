@@ -40,6 +40,10 @@ public sealed partial class ModelRow : ModelsRow
 
     public IReadOnlyList<string> UsedBy { get; private set; } = [];
 
+    /// <summary>The line's tooltip: the whole line, the time of one call on the CPU and on the card, the SHA-256.</summary>
+    [ObservableProperty]
+    public partial string Details { get; private set; } = string.Empty;
+
     public bool IsMissing => Model.Missing;
 
     public static string MissingText => VisionTexts.Missing;
@@ -53,6 +57,7 @@ public sealed partial class ModelRow : ModelsRow
         UsedBy = usedBy ?? [];
         Name = model.Name;
         Line = VisionTexts.ModelLine(model, UsedBy.Count);
+        Details = VisionTexts.ModelDetails(model, UsedBy);
         OnPropertyChanged(nameof(IsMissing));
     }
 }
