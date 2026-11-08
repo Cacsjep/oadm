@@ -477,7 +477,7 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
-    public void The_models_menu_has_Rename_Classes_and_Delete_in_red_last()
+    public void The_models_menu_has_Rename_Settings_Class_list_and_Delete_in_red_last()
     {
         var models = new ModelsViewModel(PageSamples.Context());
         models.Apply(PageSamples.ModelList);
@@ -486,7 +486,7 @@ public sealed class PageViewModelTests
         var actions = models.ActionsOf(row);
         Assert.True(actions[^1].IsDanger);
 
-        Assert.Equal([VisionTexts.Rename, VisionTexts.ClassListTitle, "-", VisionTexts.Delete], actions.Select(a => a.Text));
+        Assert.Equal([VisionTexts.Rename, VisionTexts.ModelSettings, VisionTexts.ClassListTitle, "-", VisionTexts.Delete], actions.Select(a => a.Text));
         var rename = ModelEditViewModel.ForRename(PageSamples.Helmet, name => name == "DETR R50");
         rename.Name = "DETR R50";
         Assert.Equal(VisionTexts.ModelNameTaken, rename.ErrorOf(nameof(ModelEditViewModel.Name)));

@@ -318,6 +318,20 @@ public partial class VisionView : UserControl, IVisionDialogs
         return ok;
     }
 
+    public async Task<bool> EditModelSettingsAsync(ModelSettingsViewModel form)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+        var ok = false;
+        var window = new ModelSettingsWindow { DataContext = form };
+        form.CloseRequested += (_, result) =>
+        {
+            ok = result;
+            window.Close();
+        };
+        await ShowDialogAsync(window).ConfigureAwait(true);
+        return ok;
+    }
+
     public async Task<bool> ChooseEventTypeAsync(EventTypePickerViewModel form)
     {
         ArgumentNullException.ThrowIfNull(form);

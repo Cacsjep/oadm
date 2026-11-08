@@ -249,6 +249,64 @@ public sealed class PageScreenshotTests
     }
 
     [Fact]
+    public async Task Problem_chips_and_the_model_settings_dialog_render()
+    {
+        var suffix = Headless.Appearance;
+        await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = PageSamples.Context();
+            var list = PageSamples.List;
+            ctx.Answers[VisionMethods.ListPipelines] = _ => VisionJson.Serialize(list with
+            {
+                Pipelines =
+                [
+                    list.Pipelines[0] with { Problem = Oadm.Plugins.Vision.Pipelines.PipelineRules.TooManyWatching(24) },
+                    list.Pipelines[1] with { Problem = Oadm.Sdk.Devices.DeviceMessages.TimedOut },
+                    list.Pipelines[2],
+                ],
+            });
+            var (vm, view, window) = await ShowAsync(ctx);
+            using (vm)
+            {
+                Assert.Contains(view.GetVisualDescendants().OfType<StatusChip>(), c => c.IsEffectivelyVisible && c.Text == Oadm.Plugins.Shared.Vision.Client.ProblemChips.LimitReached);
+                Assert.Contains(view.GetVisualDescendants().OfType<StatusChip>(), c => c.IsEffectivelyVisible && c.Text == Oadm.Plugins.Shared.Vision.Client.ProblemChips.NotReachable);
+                Headless.Capture(window, $"vision-problem-chips-{suffix}.png");
+            }
+
+            window.Close();
+
+            // A model's Settings: format, fit, scaling and the input size, a refusal below its field.
+            var form = new ModelSettingsViewModel(PageSamples.Detr) { InputWidth = "650" };
+            form.ShowRefusal(Oadm.Plugins.Vision.Models.ModelTexts.OutputsDoNotFit);
+            form.OkCommand.Execute(null);
+            var dialog = new ModelSettingsWindow { DataContext = form };
+            Oadm.Client.App.ApplyCrispText(dialog);
+            dialog.Show();
+            Headless.Pump();
+            Assert.Contains(dialog.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == Oadm.Plugins.Vision.Models.ModelTexts.InputSizeRule);
+            Assert.Contains(dialog.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == Oadm.Plugins.Vision.Models.ModelTexts.OutputsDoNotFit);
+            Headless.Capture(dialog, $"vision-model-settings-errors-{suffix}.png");
+            dialog.Close();
+
+            var plain = new ModelSettingsWindow { DataContext = new ModelSettingsViewModel(PageSamples.Detr) };
+            Oadm.Client.App.ApplyCrispText(plain);
+            plain.Show();
+            Headless.Pump();
+            Headless.Capture(plain, $"vision-model-settings-{suffix}.png");
+            plain.Close();
+
+            var fixedInput = new ModelSettingsWindow { DataContext = new ModelSettingsViewModel(PageSamples.RfDetr) };
+            Oadm.Client.App.ApplyCrispText(fixedInput);
+            fixedInput.Show();
+            Headless.Pump();
+            Assert.False(fixedInput.FindControl<TextBox>("WidthBox")!.IsEffectivelyVisible);
+            Headless.Capture(fixedInput, $"vision-model-settings-fixed-{suffix}.png");
+            fixedInput.Close();
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task Timers_compare_and_sliders_render()
     {
         var suffix = Headless.Appearance;
