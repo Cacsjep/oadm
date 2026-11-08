@@ -58,7 +58,7 @@ internal readonly record struct FitTransform(double ScaleX, double ScaleY, doubl
 /// <summary>
 /// Turns a picture into a model's input tensor (docs/spec/vision-center.md "Models"): drawn into the input by its fit
 /// (Letterbox grey 114, Keep shape and pad black, Stretch), RGB, channels first, scaled 0 to 1 or by ImageNet's mean and
-/// deviation.
+/// deviation; or BGR 0 to 255 (YOLOX).
 /// </summary>
 internal static class Preprocess
 {
@@ -103,6 +103,12 @@ internal static class Preprocess
     {
         ArgumentNullException.ThrowIfNull(bitmap);
         ArgumentNullException.ThrowIfNull(tensor);
+        if (scaling == ModelScaling.ZeroTo255Bgr)
+        {
+            WriteBgr255(bitmap, tensor);
+            return;
+        }
+
         var norm = scaling == ModelScaling.ImageNet ? ImageNet : ZeroToOne;
         var (width, height) = (bitmap.Width, bitmap.Height);
         var plane = width * height;
@@ -121,6 +127,27 @@ internal static class Preprocess
                 tensor[at + x] = (p & 0xFF) * r0 - rm;
                 tensor[plane + at + x] = ((p >> 8) & 0xFF) * g0 - gm;
                 tensor[2 * plane + at + x] = ((p >> 16) & 0xFF) * b0 - bm;
+            }
+        }
+    }
+
+    /// <summary>The values 0 to 255 of <paramref name="bitmap"/> into <paramref name="tensor"/>, channels first, blue first (YOLOX).</summary>
+    private static void WriteBgr255(SKBitmap bitmap, float[] tensor)
+    {
+        var (width, height) = (bitmap.Width, bitmap.Height);
+        var plane = width * height;
+        var pixels = MemoryMarshal.Cast<byte, uint>(bitmap.GetPixelSpan());
+        var rowPixels = bitmap.RowBytes / 4;
+        for (var y = 0; y < height; y++)
+        {
+            var row = pixels.Slice(y * rowPixels, width);
+            var at = y * width;
+            for (var x = 0; x < width; x++)
+            {
+                var p = row[x];
+                tensor[at + x] = (p >> 16) & 0xFF;
+                tensor[plane + at + x] = (p >> 8) & 0xFF;
+                tensor[2 * plane + at + x] = p & 0xFF;
             }
         }
     }

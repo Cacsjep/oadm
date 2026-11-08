@@ -30,6 +30,9 @@ public enum ModelFormat
 
     /// <summary><c>[1, C]</c> logits or probabilities.</summary>
     Classification = 5,
+
+    /// <summary>YOLOX as Megvii exports it: <c>[1, N, 5 + C]</c> per grid cell of the strides 8, 16 and 32, the boxes still relative to their cell; the plugin decodes and suppresses.</summary>
+    Yolox = 6,
 }
 
 /// <summary>How the picture is fitted to the model's input.</summary>
@@ -53,6 +56,9 @@ public enum ModelScaling
 
     /// <summary>0 to 1, then ImageNet mean (0.485, 0.456, 0.406) and deviation (0.229, 0.224, 0.225).</summary>
     ImageNet = 1,
+
+    /// <summary>0 to 255 in the order blue, green, red (YOLOX, trained on OpenCV's pictures).</summary>
+    ZeroTo255Bgr = 2,
 }
 
 /// <summary>

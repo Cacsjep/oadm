@@ -86,6 +86,19 @@ public sealed class FitTests
     }
 
     [Fact]
+    public void Bgr_0_to_255_puts_blue_first_and_keeps_the_pixel_values()
+    {
+        using var bitmap = new SKBitmap(new SKImageInfo(2, 1, SKColorType.Rgba8888, SKAlphaType.Premul));
+        bitmap.SetPixel(0, 0, new SKColor(200, 100, 50));
+        bitmap.SetPixel(1, 0, new SKColor(0, 0, 255));
+        var tensor = new float[6];
+
+        Preprocess.WriteTensor(bitmap, tensor, ModelScaling.ZeroTo255Bgr);
+
+        Assert.Equal([50f, 255, 100, 0, 200, 0], tensor);
+    }
+
+    [Fact]
     public void Stretch_scales_each_axis_on_its_own()
     {
         var transform = FitTransform.Of(ModelFit.Stretch, 400, 200, Input, Input);

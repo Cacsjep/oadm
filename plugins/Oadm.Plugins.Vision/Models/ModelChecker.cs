@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Diagnostics;
 
 using Microsoft.ML.OnnxRuntime;
@@ -79,9 +80,14 @@ internal static class ModelChecker
                 return (null, ModelTexts.CannotRun(ModelTexts.DoesNotLoad(ex.Message)));
             }
 
-            if (OutputFormats.Recognise(outputs) is not { } format)
+            if (OutputFormats.Recognise(outputs, input.Width, input.Height) is not { } format)
             {
                 return (null, ModelTexts.CannotRun(ModelTexts.UnknownOutputs));
+            }
+
+            if (format.Format == ModelFormat.Yolox && CentresInPixels(session, input))
+            {
+                format = format with { Format = ModelFormat.Yolo };
             }
 
             if (format.Classes > VisionLimits.MaxClasses)
@@ -101,12 +107,20 @@ internal static class ModelChecker
     }
 
     /// <summary>
-    /// The class names: the metadata's when they fit the class count (or the outputs do not tell it), else the labels file's
-    /// (which must hold one name per class), else "Class 0", ...
+    /// The class names: the metadata's when they fit the class count (or the outputs do not tell it) and are more than the ids,
+    /// else the labels file's (which must hold one name per class), else "Class 0", ...
     /// </summary>
     internal static (IReadOnlyList<string>? Names, string? Refusal, NamesSource Source) NamesOf(int? classes, string? metadata, string? labels)
     {
-        if (ClassNames.FromMetadata(metadata) is { } fromModel && (classes is null || fromModel.Count == classes))
+        var fromModel = ClassNames.FromMetadata(metadata);
+        if (fromModel is not null && ClassNames.OnlyIds(fromModel))
+        {
+            // Names that are only the ids ("0", "1", ...: onnx-community's YOLOv10) name nothing; they still give the count.
+            classes ??= fromModel.Count;
+            fromModel = null;
+        }
+
+        if (fromModel is not null && (classes is null || fromModel.Count == classes))
         {
             return (fromModel, null, NamesSource.Model);
         }
@@ -141,7 +155,7 @@ internal static class ModelChecker
             return ModelTexts.NoPictureInput;
         }
 
-        if (picture.ElementDataType != TensorElementType.Float)
+        if (!HalfPrecision.IsFloat(picture.ElementDataType))
         {
             return ModelTexts.NotFloatInput;
         }
@@ -153,6 +167,30 @@ internal static class ModelChecker
 
         var (h, w) = (picture.Dimensions[2], picture.Dimensions[3]);
         return ModelTexts.InputSizeNotSupported(w, h);
+    }
+
+    /// <summary>
+    /// Whether a YOLOX output already holds its box centres in input pixels (exported with the decoding inside): then it is read
+    /// as YOLO. Undecoded, the centres are offsets within their cell, never half the input wide; decoded, the cells of the
+    /// right half give centres beyond it, also for a black picture.
+    /// </summary>
+    private static bool CentresInPixels(InferenceSession session, PictureInput input)
+    {
+        var values = new float[3 * input.Width * input.Height];
+        using var inputs = new ModelInputs(session, input, values, input.Width, input.Height);
+        using var options = new RunOptions();
+        using var results = session.Run(options, inputs.Names, inputs.Values, [session.OutputNames[0]]);
+        float[]? converted = null;
+        var data = HalfPrecision.Floats(results[0], ref converted);
+        var shape = results[0].GetTensorTypeAndShape().Shape;
+        var columns = (int)shape[2];
+        var max = 0f;
+        for (var i = 0; i + columns <= data.Length; i += columns)
+        {
+            max = Math.Max(max, data[i]);
+        }
+
+        return max > input.Width / 2f;
     }
 
     /// <summary>One call with a black picture; the outputs' names and shapes and the call's time.</summary>
@@ -168,7 +206,7 @@ internal static class ModelChecker
         for (var i = 0; i < results.Count; i++)
         {
             var info = results[i].GetTensorTypeAndShape();
-            outputs.Add(new OutputInfo(session.OutputNames[i], info.Shape, info.ElementDataType == TensorElementType.Float));
+            outputs.Add(new OutputInfo(session.OutputNames[i], info.Shape, HalfPrecision.IsFloat(info.ElementDataType)));
         }
 
         return outputs;
@@ -176,17 +214,18 @@ internal static class ModelChecker
 }
 
 /// <summary>
-/// The picture input of a session: one <c>[1, 3, H, W]</c> tensor of floats (the batch and the size may be free), and the
-/// optional size input of RT-DETR-like exports (<c>orig_target_sizes [1, 2]</c>, integers), which gets the input's size so their
-/// boxes come in input pixels.
+/// The picture input of a session: one <c>[1, 3, H, W]</c> tensor of floats, 32 or 16 bits (the batch and the size may be
+/// free), and the optional size input of RT-DETR-like exports (<c>orig_target_sizes [1, 2]</c>, integers), which gets the
+/// input's size so their boxes come in input pixels.
 /// </summary>
-internal sealed record PictureInput(string Name, int Width, int Height, bool Fixed, string? SizeName, TensorElementType SizeType)
+internal sealed record PictureInput(string Name, int Width, int Height, bool Fixed, string? SizeName, TensorElementType SizeType, TensorElementType PictureType = TensorElementType.Float)
 {
     /// <summary>The picture input of <paramref name="session"/>, or null when its inputs are no single picture.</summary>
     public static PictureInput? Of(InferenceSession session)
     {
         ArgumentNullException.ThrowIfNull(session);
         string? picture = null;
+        var pictureType = TensorElementType.Float;
         int[] dims = [];
         string? size = null;
         var sizeType = TensorElementType.Int64;
@@ -200,12 +239,13 @@ internal sealed record PictureInput(string Name, int Width, int Height, bool Fix
             var d = meta.Dimensions;
             if (d.Length == 4 && picture is null)
             {
-                if (meta.ElementDataType != TensorElementType.Float || d[0] is not (1 or -1) || d[1] is not (3 or -1))
+                if (!HalfPrecision.IsFloat(meta.ElementDataType) || d[0] is not (1 or -1) || d[1] is not (3 or -1))
                 {
                     return null;
                 }
 
                 picture = name;
+                pictureType = meta.ElementDataType;
                 dims = d;
             }
             else if (d.Length == 2 && d[0] is 1 or -1 && d[1] is 2 && size is null
@@ -239,7 +279,8 @@ internal sealed record PictureInput(string Name, int Width, int Height, bool Fix
             h > 0 ? h : VisionLimits.DefaultInputSize,
             fixedSize,
             size,
-            sizeType);
+            sizeType,
+            pictureType);
     }
 }
 
@@ -247,13 +288,16 @@ internal sealed record PictureInput(string Name, int Width, int Height, bool Fix
 internal sealed class ModelInputs : IDisposable
 {
     private readonly List<OrtValue> _values = new(2);
+    private Float16[]? _half;
 
     public ModelInputs(InferenceSession session, PictureInput input, float[] values, int width, int height)
     {
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(input);
         Names = input.SizeName is null ? [input.Name] : [input.Name, input.SizeName];
-        _values.Add(OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, values.AsMemory(0, 3 * width * height), [1, 3, height, width]));
+        _values.Add(input.PictureType == TensorElementType.Float16
+            ? HalfInput(values.AsSpan(0, 3 * width * height), width, height)
+            : OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, values.AsMemory(0, 3 * width * height), [1, 3, height, width]));
         if (input.SizeName is not null)
         {
             // RT-DETR and D-FINE scale their boxes to this size: the input's own, so they come in input pixels.
@@ -276,5 +320,19 @@ internal sealed class ModelInputs : IDisposable
         {
             value.Dispose();
         }
+
+        if (_half is not null)
+        {
+            ArrayPool<Float16>.Shared.Return(_half);
+            _half = null;
+        }
+    }
+
+    /// <summary>The picture as 16-bit floats in a rented buffer (a model exported in half precision).</summary>
+    private OrtValue HalfInput(ReadOnlySpan<float> values, int width, int height)
+    {
+        _half = ArrayPool<Float16>.Shared.Rent(values.Length);
+        HalfPrecision.Write(values, _half);
+        return OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, _half.AsMemory(0, values.Length), [1, 3, height, width]);
     }
 }

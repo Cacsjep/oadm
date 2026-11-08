@@ -182,6 +182,52 @@ public sealed class ModelCheckTests : IDisposable
     }
 
     [Fact]
+    public void A_half_precision_model_is_taken_like_one_of_floats()
+    {
+        // YOLOv5's v7.0 release and Unity's exports: input and outputs in 16-bit floats.
+        var (model, refusal) = Check(OnnxModel.Picture(type: OnnxModel.Float16).OutputHalf("output0", [1, 4 + 3, 50], Zeros(7 * 50)));
+        Assert.Null(refusal);
+        Assert.Equal((ModelFormat.Yolo, 3, 640, true), (model!.Format, model.ClassNames.Count, model.InputWidth, model.FixedInput));
+    }
+
+    [Fact]
+    public void Yolox_is_recognised_by_one_row_per_grid_cell_and_reads_bgr_0_to_255()
+    {
+        // 96 x 96: 12 x 12 + 6 x 6 + 3 x 3 = 189 cells of the strides 8, 16, 32 (YOLOv5 has three anchors per cell).
+        var (model, refusal) = Check(OnnxModel.Picture(96, 96).Output("output", [1, 189, 5 + 80], Zeros(189 * 85)));
+        Assert.Null(refusal);
+        Assert.Equal((ModelFormat.Yolox, 80), (model!.Format, model.ClassNames.Count));
+        Assert.Equal(ModelFit.Letterbox, OutputFormats.DefaultFit(model.Format));
+        Assert.Equal(ModelScaling.ZeroTo255Bgr, OutputFormats.DefaultScaling(model.Format));
+    }
+
+    [Fact]
+    public void Yolox_exported_with_its_decoding_inside_is_read_as_yolo()
+    {
+        // Centres in input pixels: the cells of the right half beyond half the input.
+        var values = new float[84 * 7];
+        for (var i = 0; i < 84; i++)
+        {
+            values[i * 7] = i % 8 * 8 + 4;
+        }
+
+        var (model, _) = Check(OnnxModel.Picture(64, 64).Output("output", [1, 84, 7], values));
+        Assert.Equal(ModelFormat.Yolo, model!.Format);
+    }
+
+    [Fact]
+    public void Metadata_names_that_are_only_the_ids_name_nothing()
+    {
+        // onnx-community's YOLOv10: {0: '0', 1: '1', ...}; the count still holds, so 80 classes take the COCO list.
+        var ids = "{" + string.Join(", ", Enumerable.Range(0, 80).Select(i => $"{i}: '{i}'")) + "}";
+        var (model, _) = Check(OnnxModel.Picture().Output("output0", [1, 300, 6], Zeros(1800)).Metadata("names", ids));
+        Assert.Equal((ModelFormat.YoloWithSuppression, NamesSource.None), (model!.Format, model.NamesFrom));
+        Assert.Equal(ClassNames.Defaults(80), model.ClassNames);
+        Assert.Equal(ClassLists.Coco80, ClassLists.ForClassCount(model.ClassNames.Count));
+        Assert.Equal(["a", "b"], ModelChecker.NamesOf(null, "{0: '0', 1: '1'}", "a\nb").Names);
+    }
+
+    [Fact]
     public void Outputs_of_no_known_format_are_refused()
     {
         Assert.Equal(ModelTexts.CannotRun(ModelTexts.UnknownOutputs), Check(OnnxModel.Picture().Output("x", [1, 2, 3, 4], Zeros(24))).Refusal);

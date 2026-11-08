@@ -54,7 +54,13 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
   - Detection **YOLO**: `[1, 4 + C, N]` (YOLOv8 and later) or `[1, N, 5 + C]` with objectness (YOLOv5); the plugin runs
     the non-maximum suppression (IoU 0.45, per class). A `[1, a, b]` output with `a < b` is v8, else v5.
   - Detection **YOLO with suppression**: `[1, N, 6]` with N up to 1,000 (x1, y1, x2, y2, score, class; models exported
-    end to end).
+    end to end: YOLOv10, YOLO26).
+  - Detection **YOLOX** (Megvii, Apache-2.0, as its releases export it; 2026-11-08): `[1, N, 5 + C]` with one row per
+    grid cell of the strides 8, 16 and 32 of the input (N = the cells, YOLOv5 has three anchors per cell), row by row:
+    x and y offsets in the cell, log width and height in strides, objectness and class scores after their sigmoid. The
+    plugin decodes the cells, scores objectness x class and runs the suppression like YOLO. Letterbox, the pixel values 0
+    to 255 in the order blue, green, red (trained on OpenCV's pictures). An export with its decoding inside (the centres
+    of the blank call beyond half the input) is read as YOLO.
   - Detection **DETR**: the original DETR of Facebook Research (`facebookresearch/detr`, Apache-2.0; the first model the
     maintainer tests, decision 2026-11-08) exported to ONNX: `pred_logits` `[1, Q, C + 1]` (the last class is "no
     object") and `pred_boxes` `[1, Q, 4]` (centre x, centre y, width, height, 0 to 1 of the input). Softmax per query,
@@ -76,13 +82,16 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
     0 to 1; Stretch by default.
   - Classification: `[1, C]`, logits or probabilities (softmax when the values are not already probabilities), fitted by
     its model's Fit (Stretch by default).
-  - **Fit**: Letterbox (YOLO), Stretch (RF-DETR, DETR with labels, classification) or Keep shape and pad (DETR),
+  - **Fit**: Letterbox (YOLO, YOLOX), Stretch (RF-DETR, DETR with labels, classification) or Keep shape and pad (DETR),
     preselected by the format, a choice per model, since the wrong fit loses accuracy without an error. A format whose
     outputs do not fit the model is refused: "The model's outputs do not fit its format. Choose another format."
-- **Input**: one picture tensor `[1, 3, H, W]` in floating point. A fixed size (8 to 4,096 per side) is read from the
+- **Input**: one picture tensor `[1, 3, H, W]` in floating point, 32 or 16 bits (an export with `--half`, its outputs
+  in 16 bits too, converted; 2026-11-08). A fixed size (8 to 4,096 per side) is read from the
   model, a free one takes the user's size (default 640 x 640, a multiple of 32 from 32 to 2,048). RGB. Scaling: 0 to 1
-  (default) or ImageNet mean and deviation, a choice per model.
-- **Class names**: from the model's metadata (`names`, as Ultralytics exports write it) when its count fits the classes,
+  (default), ImageNet mean and deviation, or 0 to 255 BGR (YOLOX), a choice per model.
+- **Class names**: from the model's metadata (`names`, as Ultralytics exports write it) when its count fits the classes
+  and the names are more than the ids (`{0: '0', 1: '1', ...}` of onnx-community's YOLOv10 names nothing; its count
+  still gives the classes, so 80 take "COCO for YOLO (80)"),
   else a labels file uploaded with it (one name per line, as many as classes; another count is refused), else a built-in
   class list by the class count ("Class lists"), else "Class 0", "Class 1", ... Formats whose outputs do not give the
   class count (YOLO with suppression, DETR with labels) take the names of the metadata or the labels file, else "Class
@@ -466,6 +475,11 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   both photos against COCO's boxes (every person and car at an overlap of 50 % or more, scores of 50 % or more, no "N/A",
   no person where COCO has none), and Camera > Detect objects > Filter (person) > Count through the real evaluator
   (Count 2 on the photo with two skaters: COCO's annotation has two people and the photo shows no one else).
+  The YOLO family the same way (2026-11-08, minimum score 25 % as Ultralytics' default; sources in the plugin README):
+  YOLOv8n, YOLO11n (free input), YOLO11n in 16-bit floats, YOLO11n without names, YOLOv5n (v7.0 release, 16-bit),
+  YOLOv10n (onnx-community), YOLO26n, YOLOX nano and tiny. The format, input size, fit, scaling and the 80 names or
+  "COCO for YOLO (80)" are checked; a nano model may miss only the COCO objects it was measured to miss ("Measured"),
+  every other person and car at an overlap of 50 % or more, no person where COCO has none.
 
 ## Measured
 
@@ -474,6 +488,23 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
 - The graph check of 30 nodes: about 0.1 ms.
 - RF-DETR medium (576 x 576) on the CPU, one thread per call as a worker runs it: about 860 ms per picture on the
   development PC (24 cores, 12 workers; real-model tests, 2026-11-08); the model check's CPU time about 880 ms.
+- The YOLO family on the same PC and CPU thread (real-model tests, 2026-11-08; two COCO photos, 640 x 480 and 640 x
+  427, minimum score 25 %). Missed: the objects below the score or under 50 % overlap.
+
+  | Model | Format | Classes | ms per picture | Result |
+  |---|---|---|---|---|
+  | YOLOv8n | YOLO, 640 | 80 from the metadata | 104 | all but the car behind the fence |
+  | YOLO11n (free input) | YOLO, 640 | 80 from the metadata | 107 | all but the car behind the fence (20 %) and the person behind (overlap 0.47, without the arm COCO's box holds) |
+  | YOLO11n, 16-bit | YOLO, 640 | 80 from the metadata | 104 | the same boxes as in 32 bits |
+  | YOLO11n, no names | YOLO, 640 | 80, "COCO for YOLO (80)" | 90 | as YOLO11n |
+  | YOLOv5n, 16-bit | YOLO (v5), 640 | 80 from the metadata | 89 | both people; both parked cars, the car behind the fence and the person behind missed |
+  | YOLOv10n | YOLO with suppression, 640 | 80, "COCO for YOLO (80)" | 89 | all but the right parked car (overlap 0.42) and the person behind |
+  | YOLO26n | YOLO with suppression, 640 | 80 from the metadata | 79 | all but the right parked car (11 %) and the person behind |
+  | YOLOX nano | YOLOX, 416 | 80, "COCO for YOLO (80)" | 27 | all but the right parked car (overlap 0.44) and the car behind the fence |
+  | YOLOX tiny | YOLOX, 416 | 80, "COCO for YOLO (80)" | 74 | all but the car behind the fence |
+
+  The boxes of every format land where COCO has them (the people within a few pixels); the misses are the nano
+  models' accuracy, not the reading: RF-DETR medium finds all of them.
 
 ## Later
 
@@ -495,3 +526,12 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
 - A detection below 50 % never starts a track, it only keeps one: with a Minimum score below 50 % such objects are
   never tracked.
 - The page has no choice of format, fit, scaling or input size after the upload; the server takes them (`updateModel`).
+- YOLO26n as onnx-community exports it for Transformers.js (`logits [1, 300, 80]` first, `pred_boxes [1, 300, 4]`
+  second, a sigmoid per class, centre and size 0 to 1, stretched, 0 to 1) is read as DETR with 79 classes: by names and
+  shapes it cannot be told from a DETR exported by Hugging Face (`logits` with "no object" last). Ultralytics' own
+  `yolo26n.onnx` works. A format for it, or the class count from a labels file deciding, is open (2026-11-08).
+- YOLO exports that end before the decoding (three raw head outputs, e.g. Kalray's `yolov8n.optimized.onnx`) are refused
+  as outputs of no known format; exports with the channels last (`[1, 640, 640, 3]`, AMD's quantized YOLOv5s) as having
+  no picture input.
+- YOLOv5n of the v7.0 release (16-bit) finds fewer objects than the other nano models at 25 %; whether the 16 bits or
+  the model cost it is not measured (no 32-bit YOLOv5n release to compare).
