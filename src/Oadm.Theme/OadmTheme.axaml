@@ -1211,6 +1211,10 @@
   <Style Selector="TextBox:error /template/ Border#PART_BorderElement, TextBox:error:pointerover /template/ Border#PART_BorderElement, TextBox:error:focus /template/ Border#PART_BorderElement">
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBrush}" />
   </Style>
+  <!-- ui:NumberSlider: its number input gets the red border while the field's error shows below the whole row -->
+  <Style Selector="ui|NumberSlider.error TextBox /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
   <Style Selector="ComboBox:error /template/ Border#Background, ComboBox:error:pointerover /template/ Border#Background">
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBrush}" />
   </Style>

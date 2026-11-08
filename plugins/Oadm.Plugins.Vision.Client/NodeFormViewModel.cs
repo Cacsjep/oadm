@@ -59,6 +59,8 @@ public sealed partial class NodeFormViewModel : ValidatingViewModel
         {
             field.ValidityChanged += (_, _) => ValidityChanged?.Invoke(this, EventArgs.Empty);
         }
+
+        UpdateShown();
     }
 
     /// <summary>An error of the form came or went: Save follows.</summary>
@@ -82,7 +84,7 @@ public sealed partial class NodeFormViewModel : ValidatingViewModel
     public bool HasFields => Fields.Count > 0;
 
     /// <summary>The form's first error (the name's, then each field's in order).</summary>
-    public string? FirstError => Validation.FirstError ?? Fields.Select(f => f.FirstError).FirstOrDefault(e => e is not null);
+    public string? FirstError => Validation.FirstError ?? Fields.Where(f => f.IsShown).Select(f => f.FirstError).FirstOrDefault(e => e is not null);
 
     /// <summary>Save was tried: every error shows.</summary>
     public void ShowAllErrors()
@@ -100,6 +102,23 @@ public sealed partial class NodeFormViewModel : ValidatingViewModel
         foreach (var field in Fields)
         {
             field.Reload();
+        }
+
+        UpdateShown();
+    }
+
+    /// <summary>
+    /// A field with <see cref="NodeFieldInfo.VisibleWhenKey"/> shows only while that field holds one of its values (Timer: Minutes
+    /// for every few minutes, At for every day or week; Compare: And for between).
+    /// </summary>
+    private void UpdateShown()
+    {
+        foreach (var field in Fields)
+        {
+            field.IsShown = field.Field.VisibleWhenKey is not { } key
+                || (VisionGraph.FieldOf(Node.Info, key) is { } other
+                    && NodeValues.Text(NodeValues.Get(Node.Settings, other)) is { } value
+                    && field.Field.VisibleWhenValues.Contains(value));
         }
     }
 
@@ -122,7 +141,11 @@ public sealed partial class NodeFormViewModel : ValidatingViewModel
             : null;
     }
 
-    private void Write(string key, JsonNode? value) => _canvas.SetSetting(Node, key, value);
+    private void Write(string key, JsonNode? value)
+    {
+        _canvas.SetSetting(Node, key, value);
+        UpdateShown();
+    }
 }
 
 /// <summary>One field of a node's form; its error below its input (the theme shows the bound property's error).</summary>
@@ -156,6 +179,10 @@ public abstract partial class FieldViewModel : ValidatingViewModel
     protected bool Loading { get; set; }
 
     public string? FirstError => Validation.FirstError;
+
+    /// <summary>The field shows: always, or while another field holds one of its values (VisibleWhen).</summary>
+    [ObservableProperty]
+    public partial bool IsShown { get; set; } = true;
 
     /// <summary>An error of the field came or went.</summary>
     public event EventHandler? ValidityChanged;
@@ -235,11 +262,32 @@ public sealed partial class NumberFieldViewModel : FieldViewModel
     [ObservableProperty]
     public partial string Text { get; set; } = string.Empty;
 
+    /// <summary>A slider with the number beside it (the field's <see cref="NodeFieldInfo.Slider"/> with a range).</summary>
+    public bool IsSlider => Field.Slider && Field.Min is not null && Field.Max is not null;
+
+    public bool IsPlain => !IsSlider;
+
+    public double Minimum => Field.Min ?? 0;
+
+    public double Maximum => Field.Max ?? 100;
+
+    /// <summary>The shown error of the number (the slider row shows it below itself).</summary>
+    public string? TextError => ErrorOf(nameof(Text));
+
+    public bool HasTextError => TextError is not null;
+
     public override void Reload()
     {
         Loading = true;
         Text = NodeValues.Number(Stored) is { } value ? NodeValues.Format(value) : string.Empty;
         Loading = false;
+    }
+
+    protected override void OnValidationChanged()
+    {
+        base.OnValidationChanged();
+        OnPropertyChanged(nameof(TextError));
+        OnPropertyChanged(nameof(HasTextError));
     }
 
     private string? Problem()

@@ -44,14 +44,20 @@ internal static class PageSamples
 
     public static ClassList Coco91 => new()
     {
-        Id = "coco-91", Name = "COCO (91 ids)", BuiltIn = true,
+        Id = "coco-91", Name = "COCO for DETR (91)", BuiltIn = true,
         Names = [.. Enumerable.Range(0, 91).Select(i => i < Coco.Length ? Coco[i] : i % 12 == 0 ? VisionLimits.NoClassName : $"class {i}")],
     };
 
     public static ClassList Coco80 => new()
     {
-        Id = "coco-80", Name = "COCO (80 classes)", BuiltIn = true,
+        Id = "coco-80", Name = "COCO for YOLO (80)", BuiltIn = true,
         Names = [.. Enumerable.Range(0, 80).Select(i => i < Coco.Length ? Coco[i] : $"class {i}")],
+    };
+
+    public static ClassList Coco90 => new()
+    {
+        Id = "coco-90", Name = "COCO for RF-DETR (90)", BuiltIn = true,
+        Names = [.. Enumerable.Range(0, 90).Select(i => i < Coco.Length ? Coco[i] : $"class {i}")],
     };
 
     /// <summary>The user's own list of six names: it fits the sample detection models.</summary>
@@ -59,7 +65,7 @@ internal static class PageSamples
 
     public static ClassListList ClassLists => new()
     {
-        Lists = [Coco91, Coco80, GateClasses],
+        Lists = [Coco91, Coco90, Coco80, GateClasses],
         UsedBy = new Dictionary<string, IReadOnlyList<string>> { ["gate6"] = ["RF-DETR medium"] },
     };
 
@@ -122,6 +128,66 @@ internal static class PageSamples
         Links = [new("a", "b"), new("b", "c"), new("c", "d"), new("d", "e")],
     };
 
+    /// <summary>
+    /// "Lobby count": Camera > Detect objects > Lobby > People in lobby (Count) > Lobby full (Compare: at least 10) > Lobby full
+    /// event; the Timer Midnight (every day at 00:00) into the Count's Reset, the Timer Every hour into the Hourly report's Send now.
+    /// </summary>
+    public static Pipeline LobbyCount => new()
+    {
+        Id = "p3",
+        Name = "Lobby count",
+        DeviceId = Dock.Id,
+        Mode = PipelineMode.Watching,
+        Fps = 4,
+        Nodes =
+        [
+            Node("a", NodeKinds.Camera, "Camera", 400, 40),
+            Node("b", NodeKinds.Detect, "Detect objects", 400, 170, new JsonObject { ["model"] = "m1", ["classes"] = new JsonArray("person") }),
+            Node("c", NodeKinds.Area, "Lobby", 400, 300, new JsonObject { ["points"] = Points((0.1, 0.5), (0.9, 0.5), (0.95, 0.98), (0.05, 0.98)) }, eye: true),
+            Node("d", NodeKinds.Count, "People in lobby", 400, 430),
+            Node("e", NodeKinds.Compare, "Lobby full", 280, 560, new JsonObject { ["operator"] = "atLeast", ["value"] = 10 }),
+            Node("f", NodeKinds.Event, "Lobby full event", 280, 690),
+            Node("g", NodeKinds.Event, "Hourly report", 760, 560),
+            Node("t1", NodeKinds.Timer, "Midnight", 140, 300, new JsonObject { ["every"] = "day", ["at"] = "00:00" }),
+            Node("t2", NodeKinds.Timer, "Every hour", 640, 430, new JsonObject { ["every"] = "hour" }),
+        ],
+        Links =
+        [
+            new("a", "b"), new("b", "c"), new("c", "d"), new("d", "e"), new("e", "f"), new("d", "g"),
+            new("t1", "d") { ToPort = NodeKinds.ResetPort },
+            new("t2", "g") { ToPort = NodeKinds.SendPort },
+        ],
+    };
+
+    /// <summary>Lobby count's live outputs: 9 people, the condition not met, the timers' next pulses.</summary>
+    public static PreviewEvent LobbyPreview(string previewId) => new()
+    {
+        PreviewId = previewId,
+        At = Time,
+        Nodes =
+        [
+            new() { NodeId = "a", Kind = PortKind.Picture, Live = "4 pictures per second" },
+            new() { NodeId = "b", Kind = PortKind.Objects, Live = "9 objects · 21 ms" },
+            new() { NodeId = "c", Kind = PortKind.Objects, Live = "9 inside" },
+            new() { NodeId = "d", Kind = PortKind.Number, Value = 9, Live = "9 now" },
+            new() { NodeId = "e", Kind = PortKind.Condition, Live = "9 ≥ 10 · No" },
+            new() { NodeId = "f", On = false, Live = "Off" },
+            new() { NodeId = "g", Live = "Fired 12 min ago" },
+            new() { NodeId = "t1", Kind = PortKind.Pulse, Live = "Next 00:00" },
+            new() { NodeId = "t2", Kind = PortKind.Pulse, Live = "Next 15:00" },
+        ],
+    };
+
+    /// <summary>
+    /// The graph check of the samples while the graph stage does not know control links yet: the real check on the pipeline
+    /// without its Timers and the links into control inputs.
+    /// </summary>
+    public static GraphCheck CheckData(Pipeline pipeline) => Check(pipeline with
+    {
+        Nodes = [.. pipeline.Nodes.Where(n => n.Kind != NodeKinds.Timer)],
+        Links = [.. pipeline.Links.Where(l => l.ToPort is null)],
+    });
+
     public static PipelineList List => new()
     {
         Pipelines =
@@ -182,9 +248,12 @@ internal static class PageSamples
         ctx.Answers[VisionMethods.ListPipelines] = _ => VisionJson.Serialize(List);
         ctx.Answers[VisionMethods.ListModels] = _ => VisionJson.Serialize(ModelList);
         ctx.Answers[VisionMethods.ListClassLists] = _ => VisionJson.Serialize(ClassLists);
-        ctx.Answers[VisionMethods.GetPipeline] = json => VisionJson.Deserialize<PipelineRequest>(json).PipelineId == "p2"
-            ? VisionJson.Serialize(DockTrucks)
-            : VisionJson.Serialize(GatePeople);
+        ctx.Answers[VisionMethods.GetPipeline] = json => VisionJson.Deserialize<PipelineRequest>(json).PipelineId switch
+        {
+            "p2" => VisionJson.Serialize(DockTrucks),
+            "p3" => VisionJson.Serialize(LobbyCount),
+            _ => VisionJson.Serialize(GatePeople),
+        };
         ctx.Answers[VisionMethods.GetEngine] = _ => VisionJson.Serialize(new EngineInfo { RunsOn = "CPU (24 cores) · NVIDIA GeForce RTX 5070 Ti", GpuAvailable = true });
         ctx.Answers[VisionMethods.GetStats] = _ => VisionJson.Serialize(new VisionStats { State = LoadState.Ok, StateText = "All pipelines keep up", Load = 38 });
         ctx.Answers[VisionMethods.GetCameraOptions] = _ => VisionJson.Serialize(new CameraOptions { VideoSources = [1, 2], Resolutions = [new(1920, 1080), new(1280, 720)] });

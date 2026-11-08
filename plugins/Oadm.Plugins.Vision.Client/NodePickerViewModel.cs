@@ -63,7 +63,7 @@ public sealed partial class NodePickerViewModel : ObservableObject
     public void Open(NodeViewModel? from, PortKind? output, double left, double top)
     {
         From = from;
-        _kinds = [.. NodeKinds.All.Where(k => k.Group is not null && (from is null || (output is { } o && k.Takes(o))))];
+        _kinds = [.. NodeKinds.All.Where(k => k.Group is not null && (from is null || (output is { } o && Fits(k, o))))];
         Left = left;
         Top = top;
         SearchText = string.Empty;
@@ -76,6 +76,9 @@ public sealed partial class NodePickerViewModel : ObservableObject
         IsOpen = false;
         From = null;
     }
+
+    /// <summary>A Timer's pulse fits only the kinds with a control input; anything else their data input.</summary>
+    private static bool Fits(NodeKindInfo kind, PortKind output) => output == PortKind.Pulse ? kind.ControlInputs.Count > 0 : kind.Takes(output);
 
     /// <summary>The kinds the list shows now, in order (tests).</summary>
     public IReadOnlyList<NodeKindInfo> ShownKinds => [.. Entries.OfType<PickerKind>().Select(e => e.Kind)];

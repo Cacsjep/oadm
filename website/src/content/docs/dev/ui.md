@@ -242,7 +242,7 @@ compile time, so use `DynamicResource` in XAML (`Icon="{DynamicResource Icon.ref
 task's menu icon, a toolbar button) takes the key without `Icon.` (`IconKey="refresh"`). The keys:
 
 `activity`, `add`, `app`, `audit`, `bell`, `braces`, `cancel`, `check`, `chevronDown`, `chevronLeft`, `chevronRight`,
-`chevronUp`, `circle`, `clipboardCheck`, `clock`, `close`, `cloud`, `cloudCheck`, `columns`, `command`, `copy`,
+`chevronUp`, `circle`, `clipboardCheck`, `clock`, `close`, `cloud`, `cloudCheck`, `columns`, `command`, `compare`, `copy`,
 `crossing`, `deleteAll`, `details`, `devices`, `download`, `edit`, `eraser`, `export`, `externalLink`, `eye`, `eyeOff`,
 `file`, `filter`, `firmware`, `flame`, `flow`, `focus`, `focusArea`, `folder`, `gauge`, `globe`, `grid`, `gridAdd`,
 `groupBy`, `hardDrive`, `hardDriveDownload`, `hash`, `help`, `home`, `identify`, `info`, `key`, `layers`, `lightbulb`,

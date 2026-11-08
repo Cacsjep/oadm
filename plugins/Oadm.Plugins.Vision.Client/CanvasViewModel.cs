@@ -108,8 +108,12 @@ public sealed partial class CanvasViewModel : ObservableObject
 
     public NodeViewModel? Find(string? id) => id is not null && _byId.TryGetValue(id, out var node) ? node : null;
 
-    /// <summary>The link into <paramref name="node"/> (its only input), or null.</summary>
-    public LinkViewModel? InputOf(NodeViewModel node) => Links.FirstOrDefault(l => ReferenceEquals(l.To, node));
+    /// <summary>The link into <paramref name="node"/>'s data input (its only one), or null.</summary>
+    public LinkViewModel? InputOf(NodeViewModel node) => Links.FirstOrDefault(l => ReferenceEquals(l.To, node) && l.ToPort is null);
+
+    /// <summary>The link into <paramref name="node"/>'s control input <paramref name="port"/>, or null.</summary>
+    public LinkViewModel? ControlLinkOf(NodeViewModel node, string port) =>
+        Links.FirstOrDefault(l => ReferenceEquals(l.To, node) && l.ToPort == port);
 
     public IEnumerable<LinkViewModel> OutputsOf(NodeViewModel node) => Links.Where(l => ReferenceEquals(l.From, node));
 
@@ -216,9 +220,9 @@ public sealed partial class CanvasViewModel : ObservableObject
 
         var draws = kind.Id is NodeKinds.Area or NodeKinds.Line;
         var node = AddViewModel(new PipelineNode { Id = NewId(), Kind = kind.Id, Name = FreeName(kind.Label), X = Math.Round(x), Y = Math.Round(y), ShowOnVideo = draws });
-        if (from is not null && CanLink(from, node))
+        if (from is not null && TryPort(from, node, out var port))
         {
-            Links.Add(new LinkViewModel(from, node));
+            Links.Add(new LinkViewModel(from, node, port));
         }
 
         AfterChange();
@@ -270,17 +274,38 @@ public sealed partial class CanvasViewModel : ObservableObject
     /// Whether a link from <paramref name="from"/>'s output fits <paramref name="to"/>'s input: another node that takes what the
     /// output carries now and is not before <paramref name="from"/> (no loop). A node with an input gets the new one instead.
     /// </summary>
-    public bool CanLink(NodeViewModel from, NodeViewModel to)
+    public bool CanLink(NodeViewModel from, NodeViewModel to) => TryPort(from, to, out _);
+
+    /// <summary>
+    /// Whether a link from <paramref name="from"/> fits <paramref name="to"/> and into which input: a Timer's pulse only into a
+    /// control input (<paramref name="port"/> its id), anything else only into the data input (<paramref name="port"/> null).
+    /// </summary>
+    public bool TryPort(NodeViewModel from, NodeViewModel to, out string? port)
     {
         ArgumentNullException.ThrowIfNull(from);
         ArgumentNullException.ThrowIfNull(to);
-        return !ReferenceEquals(from, to)
-            && to.Info is { Accepts.Count: > 0 } info
-            && from.HasOutputPort
-            && from.OutputKind is { } kind
+        port = null;
+        if (ReferenceEquals(from, to) || !from.HasOutputPort || from.OutputKind is not { } kind)
+        {
+            return false;
+        }
+
+        if (kind == PortKind.Pulse)
+        {
+            if (to.ControlInputs.Count == 0)
+            {
+                return false;
+            }
+
+            port = to.ControlInputs[0].Port;
+            var p = port;
+            return !Links.Any(l => ReferenceEquals(l.From, from) && ReferenceEquals(l.To, to) && l.ToPort == p);
+        }
+
+        return to.Info is { Accepts.Count: > 0 } info
             && info.Takes(kind)
             && !IsBefore(to, from)
-            && !Links.Any(l => ReferenceEquals(l.From, from) && ReferenceEquals(l.To, to));
+            && !Links.Any(l => ReferenceEquals(l.From, from) && ReferenceEquals(l.To, to) && l.ToPort is null);
     }
 
     /// <summary>Whether <paramref name="node"/> comes before <paramref name="of"/> on its path from the camera (or is it).</summary>
@@ -349,18 +374,18 @@ public sealed partial class CanvasViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(from);
         ArgumentNullException.ThrowIfNull(to);
-        if (!CanEdit || !CanLink(from, to))
+        if (!CanEdit || !TryPort(from, to, out var port))
         {
             return false;
         }
 
         Record();
-        if (InputOf(to) is { } old)
+        if ((port is null ? InputOf(to) : ControlLinkOf(to, port)) is { } old)
         {
             Links.Remove(old);
         }
 
-        Links.Add(new LinkViewModel(from, to));
+        Links.Add(new LinkViewModel(from, to, port));
         AfterChange();
         return true;
     }
@@ -590,7 +615,7 @@ public sealed partial class CanvasViewModel : ObservableObject
         {
             done.Add(node);
             node.Y = CanvasGeometry.Margin + (depth * CanvasGeometry.RowStep);
-            var children = OutputsOf(node).Select(l => l.To).Where(c => !done.Contains(c)).ToList();
+            var children = OutputsOf(node).Where(l => !l.IsControl).Select(l => l.To).Where(c => !done.Contains(c)).ToList();
             if (children.Count == 0)
             {
                 node.X = CanvasGeometry.Margin + (column++ * CanvasGeometry.ColumnStep);
@@ -607,12 +632,21 @@ public sealed partial class CanvasViewModel : ObservableObject
             Lay(camera, 0);
         }
 
-        foreach (var node in Nodes.Where(n => !done.Contains(n)).ToList())
+        foreach (var node in Nodes.Where(n => !done.Contains(n) && n.Kind != NodeKinds.Timer).ToList())
         {
             if (InputOf(node) is null)
             {
                 Lay(node, 0);
             }
+        }
+
+        // Timers left of the graph and a row above the node they pulse: their link comes into its left edge from there.
+        var left = Nodes.Where(done.Contains).Select(n => n.X).DefaultIfEmpty(CanvasGeometry.Margin).Min() - CanvasGeometry.ColumnStep;
+        foreach (var timer in Nodes.Where(n => !done.Contains(n) && n.Kind == NodeKinds.Timer).ToList())
+        {
+            done.Add(timer);
+            timer.X = left;
+            timer.Y = Math.Max(CanvasGeometry.Margin, (OutputsOf(timer).FirstOrDefault()?.To.Y ?? CanvasGeometry.Margin) - CanvasGeometry.RowStep);
         }
 
         foreach (var node in Nodes.Where(n => !done.Contains(n)))
@@ -702,8 +736,7 @@ public sealed partial class CanvasViewModel : ObservableObject
         Nodes.LastOrDefault(n => n.CanShowOnVideo && CanvasGeometry.EyeRect(n.X, n.Y).Contains(world));
 
     public LinkViewModel? LinkAt(Point world) => Links.LastOrDefault(l =>
-        CanvasGeometry.DistanceToCurve(world, CanvasGeometry.OutputPort(l.From.X, l.From.Y), CanvasGeometry.InputPort(l.To.X, l.To.Y))
-            <= CanvasGeometry.LinkReach / Zoom);
+        CanvasGeometry.DistanceToCurve(world, l.Start, l.End, l.IsControl) <= CanvasGeometry.LinkReach / Zoom);
 
     /// <summary>
     /// The pointer over the canvas: the hand over everything a click acts on (the +, the eye, a node, a link), the crosshair
@@ -765,9 +798,9 @@ public sealed partial class CanvasViewModel : ObservableObject
 
         foreach (var link in links)
         {
-            if (Find(link.From) is { } from && Find(link.To) is { } to && !Links.Any(l => ReferenceEquals(l.To, to)))
+            if (Find(link.From) is { } from && Find(link.To) is { } to && !Links.Any(l => ReferenceEquals(l.To, to) && l.ToPort == link.ToPort))
             {
-                Links.Add(new LinkViewModel(from, to));
+                Links.Add(new LinkViewModel(from, to, link.ToPort));
             }
         }
 
@@ -794,10 +827,10 @@ public sealed partial class CanvasViewModel : ObservableObject
         }
 
         var done = new HashSet<NodeViewModel>();
-        var queue = new Queue<NodeViewModel>(Nodes.Where(n => n.IsCamera));
-        foreach (var camera in queue)
+        var queue = new Queue<NodeViewModel>(Nodes.Where(n => n.Info is { Accepts.Count: 0 })); // the Camera and Timers
+        foreach (var start in queue)
         {
-            camera.OutputKind = camera.Info?.Output(null);
+            start.OutputKind = start.Info?.Output(null);
         }
 
         while (queue.Count > 0)
@@ -808,7 +841,7 @@ public sealed partial class CanvasViewModel : ObservableObject
                 continue;
             }
 
-            foreach (var link in OutputsOf(node))
+            foreach (var link in OutputsOf(node).Where(l => !l.IsControl))
             {
                 var next = link.To;
                 next.InputKind = node.OutputKind;

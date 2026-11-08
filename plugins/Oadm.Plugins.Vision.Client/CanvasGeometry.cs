@@ -16,6 +16,9 @@ public static class CanvasGeometry
 
     public const double PortRadius = 7;
 
+    /// <summary>A control input's dot: smaller than the data dots.</summary>
+    public const double ControlPortRadius = 4.5;
+
     /// <summary>A press this near a port takes it.</summary>
     public const double PortReach = 11;
 
@@ -58,19 +61,30 @@ public static class CanvasGeometry
     public static Rect PlusRect(double x, double y, bool belowError = false, bool besideLinks = false) =>
         new(x + ((NodeWidth - PlusSize) / 2) + (besideLinks ? PlusSize + 16 : 0), y + NodeHeight + PlusGap + (belowError ? ErrorRoom : 0), PlusSize, PlusSize);
 
+    /// <summary>A control input (Count's Reset, Event's Send now): a dot on the card's left edge, in its vertical middle.</summary>
+    public static Point ControlPort(double x, double y, int index = 0, int count = 1) =>
+        new(x, y + (NodeHeight * (index + 1) / (count + 1)));
+
     public static Rect EyeRect(double x, double y) => new(x + NodeWidth - EyeSize - 6, y + 5, EyeSize, EyeSize);
 
     /// <summary>The control points of a link's curve from <paramref name="from"/> (an output) down to <paramref name="to"/> (an input).</summary>
-    public static (Point C1, Point C2) Curve(Point from, Point to)
+    public static (Point C1, Point C2) Curve(Point from, Point to, bool intoSide = false)
     {
         var dy = Math.Max(40, Math.Abs(to.Y - from.Y) / 2);
+        if (intoSide)
+        {
+            // Into a control input: down from the output, then from the left into the card's edge.
+            var dx = Math.Max(40, Math.Abs(to.X - from.X) / 2);
+            return (new Point(from.X, from.Y + dy), new Point(to.X - dx, to.Y));
+        }
+
         return (new Point(from.X, from.Y + dy), new Point(to.X, to.Y - dy));
     }
 
     /// <summary>A point on the curve at <paramref name="t"/> (0 to 1).</summary>
-    public static Point OnCurve(Point from, Point to, double t)
+    public static Point OnCurve(Point from, Point to, double t, bool intoSide = false)
     {
-        var (c1, c2) = Curve(from, to);
+        var (c1, c2) = Curve(from, to, intoSide);
         var u = 1 - t;
         return new Point(
             (u * u * u * from.X) + (3 * u * u * t * c1.X) + (3 * u * t * t * c2.X) + (t * t * t * to.X),
@@ -78,14 +92,14 @@ public static class CanvasGeometry
     }
 
     /// <summary>The distance of <paramref name="point"/> to the curve (sampled), in canvas units.</summary>
-    public static double DistanceToCurve(Point point, Point from, Point to)
+    public static double DistanceToCurve(Point point, Point from, Point to, bool intoSide = false)
     {
         var best = double.MaxValue;
         var previous = from;
         const int Steps = 24;
         for (var i = 1; i <= Steps; i++)
         {
-            var next = OnCurve(from, to, (double)i / Steps);
+            var next = OnCurve(from, to, (double)i / Steps, intoSide);
             best = Math.Min(best, Oadm.Plugins.Shared.Vision.Client.ShapeGeometry.DistanceToSegment(point, previous, next));
             previous = next;
         }

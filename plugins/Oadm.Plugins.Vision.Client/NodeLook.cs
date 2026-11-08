@@ -26,6 +26,8 @@ public static class NodeLook
         NodeKinds.Line => "crossing",
         NodeKinds.Count => "hash",
         NodeKinds.Event => "zap",
+        NodeKinds.Compare => "compare",
+        NodeKinds.Timer => "clock",
         _ => "plugin",
     };
 
@@ -41,6 +43,8 @@ public static class NodeLook
         NodeKinds.Line => "Oadm.Tag.PinkBrush",
         NodeKinds.Count => "Oadm.Tag.OrangeBrush",
         NodeKinds.Event => "Oadm.Tag.RedBrush",
+        NodeKinds.Compare => "Oadm.AccentBrush",
+        NodeKinds.Timer => "Oadm.TextSecondaryBrush",
         _ => "Oadm.Tag.NeutralBrush",
     };
 
