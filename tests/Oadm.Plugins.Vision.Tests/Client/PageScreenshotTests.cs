@@ -368,10 +368,9 @@ public sealed class PageScreenshotTests
             var (vm, view, window) = await ShowAsync(ctx);
             using (vm)
             {
-                Assert.True(view.FindControl<ToolbarButton>("CopyButton")!.IsEffectivelyEnabled);
-
                 // The shared picker of several devices: every camera but the pipeline's own.
-                var picker = new DevicePickerWindow(new DevicePickerViewModel(vm.CopyTargets)) { Heading = VisionTexts.ChooseCameras };
+                var row = vm.Pipelines.Single(p => p.Id == "p1");
+                var picker = new DevicePickerWindow(new DevicePickerViewModel(vm.CopyTargetsOf(row))) { Heading = VisionTexts.ChooseCameras };
                 Oadm.Client.App.ApplyCrispText(picker);
                 picker.Show();
                 Headless.Pump();
@@ -379,10 +378,15 @@ public sealed class PageScreenshotTests
                 picker.Close();
 
                 vm.PickCameras = _ => Task.FromResult<IReadOnlyList<Guid>?>([.. PageSamples.MoreCameras.Select(c => c.Id)]);
-                await vm.CopyCommand.ExecuteAsync(null);
+                await vm.CopyCommand.ExecuteAsync(row);
                 Headless.Pump();
                 Assert.Equal(8, vm.Pipelines.Count);
                 Assert.Empty(ctx.Messages);
+
+                // The ⋯ menu of a copy's row open: Copy to cameras, then Delete in red.
+                var button = view.GetVisualDescendants().OfType<Button>().First(b => b.Name == "PipelineActions" && b.DataContext is PipelineListRow { Id: "p11" });
+                RowActions.Show(button, vm.ActionsOf((PipelineListRow)button.DataContext!));
+                Headless.Pump();
                 Headless.Capture(window, $"vision-copies-{suffix}.png");
             }
 

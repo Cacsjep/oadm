@@ -7,6 +7,7 @@ using Oadm.Plugins.Vision.Api;
 using Oadm.Plugins.Vision.Model;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 
@@ -33,6 +34,10 @@ public sealed partial class PipelineListRow : ObservableObject
 
     [ObservableProperty]
     public partial string Last { get; private set; } = string.Empty;
+
+    /// <summary>This pipeline is being copied: a ring in place of its ⋯ button.</summary>
+    [ObservableProperty]
+    public partial bool IsCopying { get; set; }
 
     public string ChipText => Row.Problem is not null ? VisionTexts.NotRunning
         : Row.Mode == PipelineMode.OnAction ? VisionTexts.OnAction
@@ -150,31 +155,50 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
     /// <summary>Opens the camera picker (set by the view); the argument is the camera chosen so far.</summary>
     public Func<Guid?, Task<Guid?>>? PickCamera { get; set; }
 
-    /// <summary>Opens the picker of several cameras (set by the view) over <see cref="CopyTargets"/>; null when cancelled.</summary>
+    /// <summary>Opens the picker of several cameras (set by the view) over the cameras a copy can go to; null when cancelled.</summary>
     public Func<IReadOnlyList<IDeviceInfo>, Task<IReadOnlyList<Guid>?>>? PickCameras { get; set; }
 
-    /// <summary>The cameras a copy of the shown pipeline can go to: every camera but its own.</summary>
-    public IReadOnlyList<IDeviceInfo> CopyTargets => Editor is { } editor ? [.. Cameras.Where(d => d.Id != editor.DeviceId)] : [];
+    /// <summary>The cameras a copy of <paramref name="row"/>'s pipeline can go to: every camera but its own.</summary>
+    public IReadOnlyList<IDeviceInfo> CopyTargetsOf(PipelineListRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return [.. Cameras.Where(d => d.Id != row.DeviceId)];
+    }
 
-    /// <summary>A copy is on its way: the ring in the button's place.</summary>
+    /// <summary>A copy is on its way: the ring in the row of the pipeline.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CopyCommand))]
     public partial bool IsCopying { get; private set; }
 
-    /// <summary>Why Copy to cameras is off; its tooltip when it can copy.</summary>
-    public string CopyTip => Editor is null || Editor.IsNew || Editor.IsDirty ? VisionTexts.SaveFirst : VisionTexts.CopyToCameras;
+    /// <summary>The shown pipeline with unsaved edits is this row's: its copy waits for Save.</summary>
+    private bool HasUnsaved(PipelineListRow row) => Editor is { IsNew: false, IsDirty: true } editor && editor.Id == row.Id;
 
-    private bool CanCopy() => MayChange && !IsCopying && Editor is { IsNew: false, IsDirty: false };
+    private bool CanCopy(PipelineListRow? row) => MayChange && !IsCopying && row is not null && !HasUnsaved(row);
+
+    /// <summary>
+    /// The ⋯ menu of a pipeline row (ui:RowActions): Copy to cameras (off with its reason while the shown pipeline has unsaved
+    /// edits), then a separator and Delete in red (the same confirmation as the header's Delete).
+    /// </summary>
+    public IReadOnlyList<IssuedCertificateAction> ActionsOf(PipelineListRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return
+        [
+            new(HasUnsaved(row) ? VisionTexts.CopyToCamerasSaveFirst : VisionTexts.CopyToCameras, CopyCommand, row),
+            IssuedCertificateAction.Separator,
+            new(VisionTexts.Delete, DeleteRowCommand, row, IsDanger: true),
+        ];
+    }
 
     /// <summary>
     /// Copy to cameras: the cameras (not the pipeline's own, at most <see cref="VisionTexts.MaxCopies"/>), then one call; the
     /// copies join the list, the first one shows; the refused cameras in one message, a line each. Nothing when all worked.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanCopy))]
-    private async Task CopyAsync()
+    private async Task CopyAsync(PipelineListRow? row)
     {
-        if (Editor is not { IsNew: false } editor || PickCameras is not { } pick
-            || await pick(CopyTargets).ConfigureAwait(true) is not { Count: > 0 } cameras)
+        if (row is null || PickCameras is not { } pick
+            || await pick(CopyTargetsOf(row)).ConfigureAwait(true) is not { Count: > 0 } cameras)
         {
             return;
         }
@@ -186,11 +210,12 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
         }
 
         IsCopying = true;
+        row.IsCopying = true;
         CopyPipelineReply reply;
         try
         {
             var json = await _ctx.InvokeAsync(VisionMethods.CopyPipeline,
-                VisionJson.Serialize(new CopyPipelineRequest { PipelineId = editor.Id, DeviceIds = cameras }), CancellationToken.None).ConfigureAwait(true);
+                VisionJson.Serialize(new CopyPipelineRequest { PipelineId = row.Id, DeviceIds = cameras }), CancellationToken.None).ConfigureAwait(true);
             reply = VisionJson.Deserialize<CopyPipelineReply>(json);
         }
 #pragma warning disable CA1031 // The server's reason in the host's message; nothing was copied.
@@ -198,11 +223,13 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
 #pragma warning restore CA1031
         {
             IsCopying = false;
+            row.IsCopying = false;
             await _ctx.ShowMessageAsync(VisionTexts.CopyToCameras, ServerErrors.Message(ex)).ConfigureAwait(true);
             return;
         }
 
         IsCopying = false;
+        row.IsCopying = false;
         foreach (var copy in reply.Created)
         {
             if (!_rows.ContainsKey(copy.Id))
@@ -213,7 +240,7 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
         }
 
         ApplyFilter();
-        if (reply.Created.Count > 0 && _rows.TryGetValue(reply.Created[0].Id, out var first))
+        if (reply.Created.Count > 0 && _rows.TryGetValue(reply.Created[0].Id, out var first) && await ConfirmDiscardAsync().ConfigureAwait(true))
         {
             await OpenAsync(first, _active?.Token ?? CancellationToken.None).ConfigureAwait(true);
         }
@@ -225,25 +252,53 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>Delete of a row's menu: the shown pipeline as the header's Delete; another one after the same question.</summary>
+    [RelayCommand]
+    private async Task DeleteRowAsync(PipelineListRow? row)
+    {
+        if (row is null || !MayChange)
+        {
+            return;
+        }
+
+        if (Editor is { IsNew: false } editor && editor.Id == row.Id)
+        {
+            await DeleteCommand.ExecuteAsync(null).ConfigureAwait(true);
+            return;
+        }
+
+        if (!await _ctx.ConfirmAsync(VisionTexts.DeletePipeline, VisionTexts.DeletePipelineQuestion(row.Name.Trim()), VisionTexts.Delete).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        var error = await GuardedRun.RunAsync(async () =>
+        {
+            await _ctx.InvokeAsync(VisionMethods.DeletePipeline, VisionJson.Serialize(new PipelineRequest { PipelineId = row.Id }), CancellationToken.None)
+                .ConfigureAwait(true);
+            _rows.Remove(row.Id);
+            _order.Remove(row.Id);
+            ApplyFilter();
+        }).ConfigureAwait(true);
+        if (error is not null)
+        {
+            await _ctx.ShowMessageAsync(VisionTexts.DeletePipeline, error).ConfigureAwait(true);
+        }
+    }
+
     partial void OnEditorChanged(PipelineEditorViewModel? oldValue, PipelineEditorViewModel? newValue)
     {
         oldValue?.PropertyChanged -= OnEditorPropertyChanged;
         newValue?.PropertyChanged += OnEditorPropertyChanged;
-        OnCopyStateChanged();
+        CopyCommand.NotifyCanExecuteChanged();
     }
 
     private void OnEditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(PipelineEditorViewModel.IsDirty) or nameof(PipelineEditorViewModel.IsNew))
         {
-            OnCopyStateChanged();
+            CopyCommand.NotifyCanExecuteChanged();
         }
-    }
-
-    private void OnCopyStateChanged()
-    {
-        OnPropertyChanged(nameof(CopyTip));
-        CopyCommand.NotifyCanExecuteChanged();
     }
 
     public IVisionDialogs? Dialogs
