@@ -356,4 +356,38 @@ public sealed class PageScreenshotTests
             return true;
         }, CancellationToken.None);
     }
+
+    [Fact]
+    public async Task Copy_to_cameras_renders_the_picker_and_the_copies()
+    {
+        var suffix = Headless.Appearance;
+        await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = CopyPipelineTests.Context();
+            ctx.Video!.Still = PageSamples.GatePicture();
+            var (vm, view, window) = await ShowAsync(ctx);
+            using (vm)
+            {
+                Assert.True(view.FindControl<ToolbarButton>("CopyButton")!.IsEffectivelyEnabled);
+
+                // The shared picker of several devices: every camera but the pipeline's own.
+                var picker = new DevicePickerWindow(new DevicePickerViewModel(vm.CopyTargets)) { Heading = VisionTexts.ChooseCameras };
+                Oadm.Client.App.ApplyCrispText(picker);
+                picker.Show();
+                Headless.Pump();
+                Headless.Capture(picker, $"vision-copy-picker-{suffix}.png");
+                picker.Close();
+
+                vm.PickCameras = _ => Task.FromResult<IReadOnlyList<Guid>?>([.. PageSamples.MoreCameras.Select(c => c.Id)]);
+                await vm.CopyCommand.ExecuteAsync(null);
+                Headless.Pump();
+                Assert.Equal(8, vm.Pipelines.Count);
+                Assert.Empty(ctx.Messages);
+                Headless.Capture(window, $"vision-copies-{suffix}.png");
+            }
+
+            window.Close();
+            return true;
+        }, CancellationToken.None);
+    }
 }
