@@ -562,12 +562,11 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   are not shared.
 - A detection below 50 % never starts a track, it only keeps one: with a Minimum score below 50 % such objects are
   never tracked.
-- The page has no choice of format, fit, scaling or input size after the upload; the server takes them (`updateModel`).
 - YOLO26n as onnx-community exports it for Transformers.js is read as RT-DETR since the blank call tells a "no object"
   class apart (2026-11-08, "Output formats"). A sigmoid model with one or two classes can still look like DETR to that
-  rule; `updateModel` takes the format.
+  rule; the model's Settings choose the format.
 - Classifiers without metadata that want 0 to 1 (an Ultralytics classifier whose metadata was stripped, as mobilint's
-  YOLO11n-cls) get ImageNet scaling and answer nonsense until `updateModel` sets 0 to 1: the page has no scaling choice.
+  YOLO11n-cls) get ImageNet scaling and answer nonsense until the model's Settings set 0 to 1.
 - Hugging Face and ONNX Model Zoo classifiers carry no class names: the user uploads a labels file (the 1,000 ImageNet
   names from the export's `config.json` `id2label`); a built-in ImageNet list is not decided. Google's MobileNet of
   Hugging Face (1,001 classes with a background class, mean and deviation 0.5) is not covered by the scalings.

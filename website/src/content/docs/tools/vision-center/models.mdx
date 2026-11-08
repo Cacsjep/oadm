@@ -107,7 +107,7 @@ ResNet-50, in its order).
 |---|---|---|---|
 | ResNet-50 | Apache-2.0 | [model.onnx](https://huggingface.co/Xenova/resnet-50/resolve/a16f29143f08c4e5c5a4a89f6f185d8edac4b6af/onnx/model.onnx) (102 MB) | Tested: 224 x 224, 0.08 s, names cars right |
 | MobileNetV2 | Apache-2.0 | [mobilenetv2-12.onnx](https://github.com/onnx/models/raw/c5cae0f1942c8d7727372c7b1f6b485aa39e4421/validated/vision/classification/mobilenet/model/mobilenetv2-12.onnx) (14 MB) | Tested: 224 x 224, 0.01 s, less sure than ResNet-50 |
-| YOLO11n-cls | AGPL-3.0 | [yolo11n-cls.onnx](https://huggingface.co/mobilint/YOLO11n-cls/resolve/ea1f8e6d3e3f4441bbc09052ab532d36e694186d/yolo11n-cls.onnx) | Works only once an administrator sets its scaling to 0 to 1, which the page does not offer yet. A file exported with `yolo export model=yolo11n-cls.pt format=onnx` keeps the right scaling |
+| YOLO11n-cls | AGPL-3.0 | [yolo11n-cls.onnx](https://huggingface.co/mobilint/YOLO11n-cls/resolve/ea1f8e6d3e3f4441bbc09052ab532d36e694186d/yolo11n-cls.onnx) | Tested: 224 x 224, 0.01 s, once **Settings** of the model set **Scaling** to **0 to 1** (the file says nothing about it). A file exported with `yolo export model=yolo11n-cls.pt format=onnx` keeps the right scaling |
 | Your own classifier | Yours | | Export with one picture in and one score per class out. Should work |
 
 ## Upload a model

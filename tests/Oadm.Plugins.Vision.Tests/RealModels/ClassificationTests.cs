@@ -48,8 +48,7 @@ public sealed class ClassificationTests(RealModelFixture fixture, ITestOutputHel
     public Task MobileNetV2_names_both_cars() => ClassifiesAsync(RealModelFiles.MobileNetV2, fixedInput: true, ModelScaling.ImageNet);
 
     // Ultralytics' classifiers take 0 to 1 (with ImageNet scaling YOLO11n-cls answers "hourglass" at 100 % for anything).
-    // This file has no metadata, so it gets ImageNet like any classifier: the server's updateModel sets 0 to 1 (the page
-    // has no scaling choice yet).
+    // This file has no metadata, so it gets ImageNet like any classifier: the model's Settings set 0 to 1 (updateModel).
     [RealModelFact(RealModelFiles.Yolo11Cls, RealModelFiles.ResNet50Config, RealModelFiles.TwoCars)]
     public Task Yolo11_cls_names_both_cars_once_set_to_0_to_1() =>
         ClassifiesAsync(RealModelFiles.Yolo11Cls, fixedInput: true, ModelScaling.ImageNet, setTo: ModelScaling.ZeroToOne);
