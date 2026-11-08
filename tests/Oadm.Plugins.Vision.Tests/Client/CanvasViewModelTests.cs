@@ -430,3 +430,33 @@ public sealed class PageLayoutTests
         Assert.NotEqual(Avalonia.Input.StandardCursorType.Cross, canvas.CursorAt(CanvasGeometry.OutputPort(track.X, track.Y)));
     }
 }
+
+/// <summary>The resizer between the video card and the node card of the right column.</summary>
+public sealed class RightColumnLayoutTests
+{
+    [Fact]
+    public void The_video_starts_at_its_16_by_9_height_and_a_drag_keeps_both_minimums()
+    {
+        var rows = PageLayout.RowsOf(1000, 420, 16, 32);
+        Assert.Equal(PageLayout.VideoMinHeight + 32, rows.VideoMin);
+        Assert.Equal(PageLayout.NodeMinHeight, rows.NodeMin);
+        Assert.Equal(1000 - 16 - PageLayout.NodeMinHeight, rows.VideoMax);
+        Assert.Equal(rows.VideoMin, rows.VideoFirst); // a narrow column: the least picture
+        Assert.Equal(Math.Round((600 - 32) * 9 / 16.0) + 32, PageLayout.RowsOf(1000, 600, 16, 32).VideoFirst);
+
+        // A wide column: the first height follows the width, never beyond what leaves the node card its minimum.
+        var wide = PageLayout.RowsOf(800, 1400, 16, 32);
+        Assert.Equal(wide.VideoMax, wide.VideoFirst);
+    }
+
+    [Fact]
+    public void A_short_column_keeps_the_video_first_then_the_node_card()
+    {
+        var shortColumn = PageLayout.RowsOf(PageLayout.VideoMinHeight + 32 + 16 + 100, 420, 16, 32);
+        Assert.Equal(PageLayout.VideoMinHeight + 32, shortColumn.VideoMin);
+        Assert.Equal(100, shortColumn.NodeMin);
+        var tiny = PageLayout.RowsOf(200, 420, 16, 32);
+        Assert.Equal(184, tiny.VideoMin); // the cards never overflow the column
+        Assert.Equal(0, tiny.NodeMin);
+    }
+}

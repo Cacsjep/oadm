@@ -5,6 +5,9 @@
     loaded by OadmColors (OadmColors.cs), brushes and styles are in OadmTheme.axaml.
   -->
   <Color x:Key="Oadm.WindowBackgroundColor">#F3F3F3</Color>
+  <!-- Node canvas of Vision Center: a grey canvas, the node cards white on it -->
+  <Color x:Key="Oadm.CanvasBackgroundColor">#E6E6E9</Color>
+  <Color x:Key="Oadm.CanvasNodeColor">#FFFFFF</Color>
   <Color x:Key="Oadm.CardBackgroundColor">#FFFFFF</Color>
   <Color x:Key="Oadm.SurfaceRaisedColor">#E8E8E8</Color>
   <Color x:Key="Oadm.SurfaceHoverColor">#EDEDED</Color>

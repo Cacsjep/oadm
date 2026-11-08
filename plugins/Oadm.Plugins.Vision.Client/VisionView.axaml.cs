@@ -17,6 +17,9 @@ namespace Oadm.Plugins.Vision.Client;
 /// <summary>The widths the canvas and the right column may take in a page of a given width (the resizer's stops).</summary>
 public readonly record struct ColumnLimits(double CanvasMin, double RightMin, double RightMax);
 
+/// <summary>The heights the video card and the node card may take in the right column, and the video card's first height.</summary>
+public readonly record struct RowLimits(double VideoMin, double VideoMax, double NodeMin, double VideoFirst);
+
 /// <summary>
 /// The page's widths (docs/spec/vision-center.md "Page"): the fixed pipelines column, then the canvas card and the right column
 /// with the shared splitter as their gap. Pure: the view applies it, the tests check it.
@@ -32,14 +35,33 @@ public static class PageLayout
     /// <summary>The canvas card's least width: its toolbar fits (Add node, Undo, Redo, Fit view, Tidy up, Delete).</summary>
     public const double CanvasMinWidth = 620;
 
-    /// <summary>The video's height in the right column at its least width (16:9 of the picture's place).</summary>
+    /// <summary>The video's height in the right column at its least width (16:9 of the picture's place), and its least.</summary>
     public const double VideoMinHeight = 226;
+
+    /// <summary>The node card's least height: its heading and two fields (measured with the headless page).</summary>
+    public const double NodeMinHeight = 210;
 
     /// <summary>
     /// The limits of the canvas card and the right column in a page of <paramref name="width"/> (the splitter of
     /// <paramref name="splitter"/> between them), in this order when they do not all fit: the canvas keeps its minimum, then the
     /// right column its own; a drag never takes the canvas below its minimum.
     /// </summary>
+    /// <summary>
+    /// The heights of the video card and the node card in a right column of <paramref name="height"/> (the splitter of
+    /// <paramref name="splitter"/> between them; <paramref name="videoPadding"/> the video card's padding), in this order when
+    /// they do not all fit: the cards never overflow the column, the video keeps its least picture, the node card its least
+    /// height. At first the video card is as tall as a 16:9 picture of <paramref name="width"/> wants, within the limits.
+    /// </summary>
+    public static RowLimits RowsOf(double height, double width, double splitter, double videoPadding)
+    {
+        var cards = Math.Max(0, height - splitter);
+        var videoMin = Math.Min(cards, VideoMinHeight + videoPadding);
+        var nodeMin = Math.Min(NodeMinHeight, cards - videoMin);
+        var videoMax = cards - nodeMin;
+        var first = Math.Clamp(Math.Round(Math.Max(0, width - videoPadding) * 9 / 16) + videoPadding, videoMin, videoMax);
+        return new RowLimits(videoMin, videoMax, nodeMin, first);
+    }
+
     public static ColumnLimits LimitsOf(double width, double splitter)
     {
         var room = Math.Max(0, width - PipelinesWidth - splitter);
@@ -58,7 +80,8 @@ public partial class VisionView : UserControl, IVisionDialogs
     {
         InitializeComponent();
         Panes.SizeChanged += (_, _) => FitColumns();
-        RightColumn.SizeChanged += (_, _) => FitVideo();
+        RightColumn.SizeChanged += (_, _) => FitRows();
+        VideoSplitter.DragStarted += (_, _) => HoldRows();
         Picture.ShapeDrawn += (_, points) => _editor?.ShapeDrawn(points);
         Picture.ShapeChanged += (_, change) => _editor?.SetShape(change.Shape.Node, change.Points);
         Picture.ShapeSelected += (_, shape) => _editor?.Canvas.SelectedNode = shape.Node;
@@ -83,14 +106,48 @@ public partial class VisionView : UserControl, IVisionDialogs
         columns[4].MaxWidth = limits.RightMax;
     }
 
-    /// <summary>The video follows the right column's width: the picture's 16:9 place, at least its first height.</summary>
-    private void FitVideo()
+    /// <summary>The splitter between the video and the node card was dragged: the video row keeps its own height from now on.</summary>
+    private bool _rowsMoved;
+
+    /// <summary>
+    /// The limits of the two cards of the right column. Until the splitter is dragged the video card is as tall as its 16:9
+    /// picture wants (it follows the column's width); afterwards the row keeps its height within the limits.
+    /// </summary>
+    private void FitRows()
     {
-        var width = VideoPanel.Bounds.Width;
-        if (width > 0)
+        if (RightColumn.Bounds.Height <= 0)
         {
-            VideoPanel.Height = Math.Max(PageLayout.VideoMinHeight, Math.Round(width * 9 / 16));
+            return;
         }
+
+        var padding = VideoCard.Padding.Top + VideoCard.Padding.Bottom;
+        var limits = PageLayout.RowsOf(RightColumn.Bounds.Height, RightColumn.Bounds.Width, VideoSplitter.Bounds.Height, padding);
+        var rows = RightColumn.RowDefinitions;
+        rows[0].MinHeight = limits.VideoMin;
+        rows[0].MaxHeight = limits.VideoMax;
+        rows[2].MinHeight = limits.NodeMin;
+        if (!_rowsMoved)
+        {
+            rows[0].Height = new GridLength(limits.VideoFirst);
+        }
+    }
+
+    private void HoldRows()
+    {
+        var row = RightColumn.RowDefinitions[0];
+        _rowsMoved = true;
+        row.Height = new GridLength(row.ActualHeight);
+    }
+
+    /// <summary>The video card's height now (tests).</summary>
+    internal double VideoHeight => RightColumn.RowDefinitions[0].ActualHeight;
+
+    /// <summary>Gives the video card <paramref name="height"/> within its limits, as a drag of the splitter does (tests).</summary>
+    internal void SetVideoHeight(double height)
+    {
+        var row = RightColumn.RowDefinitions[0];
+        _rowsMoved = true;
+        row.Height = new GridLength(Math.Clamp(height, row.MinHeight, row.MaxHeight));
     }
 
     /// <summary>The right column's width now (tests).</summary>

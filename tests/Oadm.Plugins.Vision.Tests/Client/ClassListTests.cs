@@ -189,4 +189,15 @@ public sealed class ClassListTests
         model.Selected = model.Models.Single(m => m.Id == "m2");
         Assert.Equal("Class list: Own names", model.ClassListText);
     }
+
+    [Fact]
+    public void Without_a_fitting_list_the_dialog_says_why_and_offers_own_names()
+    {
+        var form = ModelEditViewModel.ForClassList(PageSamples.Helmet, PageSamples.ClassLists.Lists);
+        Assert.Equal([VisionTexts.OwnNames], form.Choices.Select(c => c.Name));
+        Assert.True(form.IsOwn);
+        Assert.Equal("No class list has 2 names. Create one or use own names.", form.NoFittingList);
+        Assert.True(form.OkCommand.CanExecute(null));
+        Assert.Null(ModelEditViewModel.ForClassList(PageSamples.RfDetr, PageSamples.ClassLists.Lists).NoFittingList);
+    }
 }
