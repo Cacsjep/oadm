@@ -25,6 +25,9 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
     /// <summary>The records' collection.</summary>
     public const string Collection = "models";
 
+    /// <summary>The records' collection of the user's class lists (a backup keeps them).</summary>
+    public const string ListCollection = "classLists";
+
     /// <summary>The folder of the files in the plugin's data folder.</summary>
     public const string FolderName = "models";
 
@@ -40,6 +43,7 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
     private readonly Lock _sync = new();
     private readonly Dictionary<string, Upload> _uploads = new(StringComparer.Ordinal);
     private List<VisionModel> _models = [];
+    private List<ClassList> _lists = [];
     private bool _disposed;
 
     /// <param name="records">The plugin's records.</param>
@@ -75,6 +79,36 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
             }
         }
     }
+
+    /// <summary>The built-in class lists, then the user's by name.</summary>
+    public IReadOnlyList<ClassList> ClassLists
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return [.. Models.ClassLists.BuiltIn, .. _lists];
+            }
+        }
+    }
+
+    /// <summary>The class list of <paramref name="id"/> (built-in or the user's), or null.</summary>
+    public ClassList? FindClassList(string? id)
+    {
+        if (Models.ClassLists.BuiltInOf(id) is { } builtIn)
+        {
+            return builtIn;
+        }
+
+        lock (_sync)
+        {
+            return _lists.Find(l => l.Id == id);
+        }
+    }
+
+    /// <summary>The names of the models that use the class list <paramref name="id"/>, by name.</summary>
+    public IReadOnlyList<string> ModelsUsing(string? id) =>
+        [.. All.Where(m => m.ClassListId is not null && m.ClassListId == id).Select(m => m.Name).Order(StringComparer.CurrentCultureIgnoreCase)];
 
     /// <summary>Uploads in progress (tests: the idle timeout).</summary>
     internal int Uploads
@@ -137,12 +171,179 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
             }
         }
 
+        var lists = new List<ClassList>();
+        foreach (var (key, json) in await _records.ListAsync(ListCollection, ct).ConfigureAwait(false))
+        {
+            try
+            {
+                lists.Add(VisionJson.Deserialize<ClassList>(json) with { Id = key, BuiltIn = false });
+            }
+            catch (Exception ex) when (ex is JsonException or ArgumentException)
+            {
+                LogUnreadable(_logger, key, ex);
+            }
+        }
+
+        lock (_sync)
+        {
+            _lists = SortedLists(lists);
+        }
+
+        // A model on a list takes the list's names as they are now (a built-in list corrected by a newer OADM, a restored list).
+        for (var i = 0; i < models.Count; i++)
+        {
+            if (FindClassList(models[i].ClassListId) is { } list && (models[i].ClassNames.Count == 0 || models[i].ClassNames.Count == list.Names.Count))
+            {
+                models[i] = models[i] with { ClassNames = list.Names };
+            }
+        }
+
         lock (_sync)
         {
             _models = Sorted(models);
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Creates (empty id) or changes a user's class list; the models that use it take its names. Built-in lists cannot be
+    /// changed; a list in use keeps the class count of its models.
+    /// </summary>
+    /// <exception cref="ClassListFieldException">A field is not allowed (the field and its text).</exception>
+    /// <exception cref="ArgumentException">A built-in or unknown list, or too many lists.</exception>
+    public async Task<ClassList> SaveClassListAsync(ClassList incoming, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(incoming);
+        if (Models.ClassLists.BuiltInOf(incoming.Id) is not null)
+        {
+            throw new ArgumentException(ModelTexts.ClassListBuiltInChanged);
+        }
+
+        await _write.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var isNew = string.IsNullOrEmpty(incoming.Id);
+            if (!isNew && FindClassList(incoming.Id) is null)
+            {
+                throw new ArgumentException(ModelTexts.ClassListGone);
+            }
+
+            var name = (incoming.Name ?? string.Empty).Trim();
+            if (name.Length == 0)
+            {
+                throw new ClassListFieldException(ClassListFieldException.NameField, ModelTexts.NameMissing);
+            }
+
+            if (name.Length > VisionLimits.MaxNameLength)
+            {
+                throw new ClassListFieldException(ClassListFieldException.NameField, ModelTexts.NameTooLong);
+            }
+
+            if (ClassLists.FirstOrDefault(l => l.Id != incoming.Id && string.Equals(l.Name, name, StringComparison.OrdinalIgnoreCase)) is { } other)
+            {
+                throw new ClassListFieldException(ClassListFieldException.NameField, ModelTexts.ClassListNameTaken(other.Name));
+            }
+
+            var incomingNames = incoming.Names ?? [];
+            if (incomingNames.Count == 0)
+            {
+                throw new ClassListFieldException(ClassListFieldException.NamesField, ModelTexts.ClassListNamesMissing);
+            }
+
+            if (incomingNames.Count > VisionLimits.MaxClasses)
+            {
+                throw new ClassListFieldException(ClassListFieldException.NamesField, ModelTexts.ClassListTooManyNames);
+            }
+
+            if (incomingNames.Any(n => (n ?? string.Empty).AsSpan().IndexOfAny('\r', '\n') >= 0))
+            {
+                throw new ClassListFieldException(ClassListFieldException.NamesField, ModelTexts.ClassNameLineBreak);
+            }
+
+            if (incomingNames.Any(n => (n ?? string.Empty).Trim().Length > VisionLimits.MaxNameLength))
+            {
+                throw new ClassListFieldException(ClassListFieldException.NamesField, ModelTexts.ClassNameTooLong);
+            }
+
+            IReadOnlyList<string> names = [.. incomingNames.Select((n, i) => ClassNames.Clean(n, i))];
+            var users = isNew ? [] : All.Where(m => m.ClassListId == incoming.Id).ToList();
+            if (users.FirstOrDefault(m => m.ClassNames.Count > 0 && m.ClassNames.Count != names.Count) is { } user)
+            {
+                throw new ClassListFieldException(ClassListFieldException.NamesField, ModelTexts.ClassListCountInUse(user.ClassNames.Count));
+            }
+
+            lock (_sync)
+            {
+                if (isNew && _lists.Count >= ModelLimits.MaxClassLists)
+                {
+                    throw new ArgumentException(ModelTexts.TooManyClassLists);
+                }
+            }
+
+            var saved = new ClassList { Id = isNew ? Guid.NewGuid().ToString("N") : incoming.Id, Name = name, Names = names };
+            await _records.SetManyAsync(ListCollection, [new(saved.Id, VisionJson.Serialize(saved with { Id = string.Empty }))], ct).ConfigureAwait(false);
+            var followed = users.Select(m => m with { ClassNames = names }).ToList();
+            if (followed.Count > 0)
+            {
+                await _records.SetManyAsync(Collection, [.. followed.Select(m => new KeyValuePair<string, string?>(m.Id, VisionJson.Serialize(m with { Id = string.Empty, Missing = false })))], ct).ConfigureAwait(false);
+            }
+
+            lock (_sync)
+            {
+                _lists = SortedLists([.. _lists.Where(l => l.Id != saved.Id), saved]);
+                foreach (var model in followed)
+                {
+                    var index = _models.FindIndex(m => m.Id == model.Id);
+                    if (index >= 0)
+                    {
+                        _models[index] = model with { Missing = _models[index].Missing };
+                    }
+                }
+            }
+
+            if (followed.Count > 0)
+            {
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+
+            return saved;
+        }
+        finally
+        {
+            _write.Release();
+        }
+    }
+
+    /// <summary>Deletes a user's class list.</summary>
+    /// <exception cref="InvalidOperationException">A built-in list, or models use it ("Used by 2 models: ...").</exception>
+    /// <exception cref="ArgumentException">There is no such list.</exception>
+    public async Task DeleteClassListAsync(string id, CancellationToken ct)
+    {
+        if (Models.ClassLists.BuiltInOf(id) is not null)
+        {
+            throw new InvalidOperationException(ModelTexts.ClassListBuiltIn);
+        }
+
+        await _write.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var list = FindClassList(id) ?? throw new ArgumentException(ModelTexts.ClassListGone);
+            if (ModelsUsing(list.Id) is { Count: > 0 } users)
+            {
+                throw new InvalidOperationException(ModelTexts.UsedByModels(users));
+            }
+
+            await _records.SetManyAsync(ListCollection, [new(list.Id, null)], ct).ConfigureAwait(false);
+            lock (_sync)
+            {
+                _lists.RemoveAll(l => l.Id == list.Id);
+            }
+        }
+        finally
+        {
+            _write.Release();
+        }
     }
 
     /// <inheritdoc />
@@ -334,14 +535,33 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
                 throw new ArgumentException(ModelTexts.InputSizeRule);
             }
 
-            if (changed.ClassNames.Count > VisionLimits.MaxClasses)
+            // A class list gives the names (its count must be the model's); without one the model's own names, edited as they come.
+            var listId = string.IsNullOrEmpty(changed.ClassListId) ? null : changed.ClassListId;
+            IReadOnlyList<string> names;
+            if (listId is not null)
             {
-                throw new ArgumentException(ModelTexts.TooManyLabels);
-            }
+                var list = FindClassList(listId) ?? throw new ArgumentException(ModelTexts.ClassListGone);
+                var classes = stored.ClassNames.Count;
+                if (classes > 0 && list.Names.Count != classes)
+                {
+                    throw new ArgumentException(ModelTexts.ClassListDoesNotFit(list.Names.Count, classes));
+                }
 
-            if (changed.ClassNames.Any(n => (n ?? string.Empty).Trim().Length > VisionLimits.MaxNameLength))
+                names = list.Names;
+            }
+            else
             {
-                throw new ArgumentException(ModelTexts.ClassNameTooLong);
+                if (changed.ClassNames.Count > VisionLimits.MaxClasses)
+                {
+                    throw new ArgumentException(ModelTexts.TooManyLabels);
+                }
+
+                if (changed.ClassNames.Any(n => (n ?? string.Empty).Trim().Length > VisionLimits.MaxNameLength))
+                {
+                    throw new ArgumentException(ModelTexts.ClassNameTooLong);
+                }
+
+                names = [.. changed.ClassNames.Select((n, i) => ClassNames.Clean(n, i))];
             }
 
             var saved = stored with
@@ -352,7 +572,8 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
                 Scaling = changed.Scaling,
                 InputWidth = changed.InputWidth,
                 InputHeight = changed.InputHeight,
-                ClassNames = [.. changed.ClassNames.Select((n, i) => ClassNames.Clean(n, i))],
+                ClassListId = listId,
+                ClassNames = names,
             };
             await SaveAsync(saved, ct).ConfigureAwait(false);
             return saved;
@@ -481,7 +702,10 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
                     InputWidth = facts.InputWidth,
                     InputHeight = facts.InputHeight,
                     FixedInput = facts.FixedInput,
-                    ClassNames = facts.ClassNames,
+
+                    // Names of the model or of its labels file are its own; else a built-in list by the class count.
+                    ClassListId = facts.NamesFrom == NamesSource.None ? Models.ClassLists.ForClassCount(facts.ClassNames.Count)?.Id : null,
+                    ClassNames = facts.NamesFrom == NamesSource.None && Models.ClassLists.ForClassCount(facts.ClassNames.Count) is { } builtIn ? builtIn.Names : facts.ClassNames,
                     SizeBytes = upload.Size,
                     Sha256 = sha,
                     CpuMs = facts.CpuMs,
@@ -641,6 +865,9 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
     }
 
     private string FilePath(string id) => Path.Combine(_folder, id + ".onnx");
+
+    private static List<ClassList> SortedLists(IEnumerable<ClassList> lists) =>
+        [.. lists.OrderBy(l => l.Name, StringComparer.OrdinalIgnoreCase).ThenBy(l => l.Id, StringComparer.Ordinal)];
 
     private static List<VisionModel> Sorted(IEnumerable<VisionModel> models) =>
         [.. models.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase).ThenBy(m => m.Id, StringComparer.Ordinal)];

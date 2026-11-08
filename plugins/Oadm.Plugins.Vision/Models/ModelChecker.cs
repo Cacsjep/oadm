@@ -14,7 +14,21 @@ internal sealed record CheckedModel(
     int InputHeight,
     bool FixedInput,
     IReadOnlyList<string> ClassNames,
-    double CpuMs);
+    double CpuMs,
+    NamesSource NamesFrom = NamesSource.None);
+
+/// <summary>Where the class names of a checked model came from.</summary>
+internal enum NamesSource
+{
+    /// <summary>Neither the model nor a labels file named them: "Class 0", ... (or a built-in list by the class count).</summary>
+    None,
+
+    /// <summary>The model's metadata.</summary>
+    Model,
+
+    /// <summary>The labels file uploaded with it.</summary>
+    Labels,
+}
 
 /// <summary>
 /// The model check of an upload (docs/spec/vision-center.md "Models", rule 4): first <see cref="OnnxScan"/> on the file's bytes
@@ -76,13 +90,13 @@ internal static class ModelChecker
             }
 
             var metadata = session.ModelMetadata.CustomMetadataMap.TryGetValue(ClassNames.MetadataKey, out var names) ? names : null;
-            var (classNames, refusal) = NamesOf(format.Classes, metadata, labels);
+            var (classNames, refusal, source) = NamesOf(format.Classes, metadata, labels);
             if (refusal is not null)
             {
                 return (null, ModelTexts.CannotRun(refusal));
             }
 
-            return (new CheckedModel(format.Format, input.Width, input.Height, input.Fixed, classNames!, Math.Round(ms, 1)), null);
+            return (new CheckedModel(format.Format, input.Width, input.Height, input.Fixed, classNames!, Math.Round(ms, 1), source), null);
         }
     }
 
@@ -90,27 +104,27 @@ internal static class ModelChecker
     /// The class names: the metadata's when they fit the class count (or the outputs do not tell it), else the labels file's
     /// (which must hold one name per class), else "Class 0", ...
     /// </summary>
-    internal static (IReadOnlyList<string>? Names, string? Refusal) NamesOf(int? classes, string? metadata, string? labels)
+    internal static (IReadOnlyList<string>? Names, string? Refusal, NamesSource Source) NamesOf(int? classes, string? metadata, string? labels)
     {
         if (ClassNames.FromMetadata(metadata) is { } fromModel && (classes is null || fromModel.Count == classes))
         {
-            return (fromModel, null);
+            return (fromModel, null, NamesSource.Model);
         }
 
         var fromLabels = ClassNames.FromLabels(labels);
         if (fromLabels is null)
         {
-            return (null, ModelTexts.TooManyLabels);
+            return (null, ModelTexts.TooManyLabels, NamesSource.None);
         }
 
         if (fromLabels.Count > 0)
         {
             return classes is { } count && fromLabels.Count != count
-                ? (null, ModelTexts.LabelsDoNotMatch(fromLabels.Count, count))
-                : (fromLabels, null);
+                ? (null, ModelTexts.LabelsDoNotMatch(fromLabels.Count, count), NamesSource.None)
+                : (fromLabels, null, NamesSource.Labels);
         }
 
-        return (ClassNames.Defaults(classes ?? 0), null);
+        return (ClassNames.Defaults(classes ?? 0), null, NamesSource.None);
     }
 
     private static string InputProblem(InferenceSession session)

@@ -90,6 +90,38 @@ public static class ModelTexts
         return string.Create(CultureInfo.InvariantCulture, $"Used by {pipelines.Count} {(pipelines.Count == 1 ? "pipeline" : "pipelines")}: {string.Join(", ", pipelines)}.");
     }
 
+    // Class lists.
+    public static string ClassListNameTaken(string name) => $"A class list named {name} already exists.";
+
+    public const string ClassListNamesMissing = "Enter at least one name.";
+
+    public static readonly string ClassListTooManyNames = string.Create(CultureInfo.InvariantCulture, $"A class list has at most {VisionLimits.MaxClasses:N0} names.");
+
+    public const string ClassNameLineBreak = "A name holds no line break.";
+
+    public static readonly string TooManyClassLists = string.Create(CultureInfo.InvariantCulture, $"OADM keeps at most {ModelLimits.MaxClassLists} class lists. Delete one first.");
+
+    public const string ClassListBuiltIn = "A built-in class list cannot be deleted.";
+
+    public const string ClassListBuiltInChanged = "A built-in class list cannot be changed.";
+
+    public const string ClassListGone = "The class list no longer exists.";
+
+    /// <summary>A list chosen for a model of another class count: "This class list has 80 names, the model has 91 classes."</summary>
+    public static string ClassListDoesNotFit(int names, int classes) =>
+        string.Create(CultureInfo.InvariantCulture, $"This class list has {names:N0} {(names == 1 ? "name" : "names")}, the model has {classes:N0} {(classes == 1 ? "class" : "classes")}.");
+
+    /// <summary>A list's names count changed while models of another class count use it: "Used by models with 91 classes. Keep 91 names."</summary>
+    public static string ClassListCountInUse(int classes) =>
+        string.Create(CultureInfo.InvariantCulture, $"Used by models with {classes:N0} {(classes == 1 ? "class" : "classes")}. Keep {classes:N0} {(classes == 1 ? "name" : "names")}.");
+
+    /// <summary>Delete of a list models use: "Used by 2 models: Gate people, Lane cars."</summary>
+    public static string UsedByModels(IReadOnlyList<string> models)
+    {
+        ArgumentNullException.ThrowIfNull(models);
+        return string.Create(CultureInfo.InvariantCulture, $"Used by {models.Count} {(models.Count == 1 ? "model" : "models")}: {string.Join(", ", models)}.");
+    }
+
     /// <summary>A pipeline whose model is Missing: "Upload the model Gate people again."</summary>
     public static string UploadAgain(string name) => $"Upload the model {name} again.";
 
@@ -115,4 +147,7 @@ public static class ModelLimits
 
     /// <summary>The smallest fixed input side.</summary>
     public const int MinFixedInputSide = 8;
+
+    /// <summary>The user's class lists (the built-in ones not counted).</summary>
+    public const int MaxClassLists = 50;
 }
