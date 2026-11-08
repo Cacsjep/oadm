@@ -52,13 +52,16 @@
             <ListBox x:Name="PipelineList" Classes="deviceTree" ItemsSource="{Binding Pipelines}" SelectedItem="{Binding SelectedPipeline}" SelectionMode="Single">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:PipelineListRow">
-                  <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="2">
-                    <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                    <ui:StatusChip Grid.Column="1" Text="{Binding ChipText}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" ToolTip.Tip="{Binding Problem}" />
-                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="secondary" Text="{Binding Camera}" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Last}" TextTrimming="CharacterEllipsis"
+                  <!-- The name keeps its room: a long chip moves to the next line. -->
+                  <StackPanel Spacing="2">
+                    <WrapPanel ItemSpacing="8" LineSpacing="2">
+                      <TextBlock x:Name="PipelineName" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                      <ui:StatusChip Text="{Binding ChipText}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" ToolTip.Tip="{Binding Problem}" />
+                    </WrapPanel>
+                    <TextBlock Classes="secondary" Text="{Binding Camera}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding Last}" TextTrimming="CharacterEllipsis"
                                IsVisible="{Binding Last, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                  </Grid>
+                  </StackPanel>
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
@@ -331,7 +334,7 @@
                 <DataGrid x:Name="ObjectsGrid" ItemsSource="{Binding Objects}" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
                           HeadersVisibility="Column" IsVisible="{Binding IsObjects}" MaxHeight="320">
                   <DataGrid.Columns>
-                    <DataGridTextColumn Header="Object" Width="70" Binding="{Binding ObjectId}" x:DataType="vm:ObjectRow" />
+                    <DataGridTextColumn Header="Object" Width="85" Binding="{Binding ObjectId}" x:DataType="vm:ObjectRow" />
                     <DataGridTextColumn Header="Class" Width="*" Binding="{Binding Class}" x:DataType="vm:ObjectRow" />
                     <DataGridTextColumn Width="85" Binding="{Binding Score}" CellStyleClasses="number" x:DataType="vm:ObjectRow">
                       <DataGridTextColumn.Header>
