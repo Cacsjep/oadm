@@ -198,6 +198,25 @@ public sealed partial class ModelLibrary : IModelLibrary, IDisposable
             }
         }
 
+        // Models stored before RF-DETR's list existed: 90 classes, no list and only the generated "Class N" names get it
+        // (never over names the user or the model gave).
+        var migrated = new List<VisionModel>();
+        for (var i = 0; i < models.Count; i++)
+        {
+            var model = models[i];
+            if (model.ClassListId is null && model.ClassNames.Count == Models.ClassLists.Coco90.Names.Count
+                && model.ClassNames.Select((n, id) => n == ModelTexts.ClassName(id)).All(generated => generated))
+            {
+                models[i] = model with { ClassListId = Models.ClassLists.Coco90Id, ClassNames = Models.ClassLists.Coco90.Names };
+                migrated.Add(models[i]);
+            }
+        }
+
+        if (migrated.Count > 0)
+        {
+            await _records.SetManyAsync(Collection, [.. migrated.Select(m => new KeyValuePair<string, string?>(m.Id, VisionJson.Serialize(m with { Id = string.Empty, Missing = false })))], ct).ConfigureAwait(false);
+        }
+
         lock (_sync)
         {
             _models = Sorted(models);

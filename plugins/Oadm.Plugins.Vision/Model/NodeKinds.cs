@@ -16,6 +16,12 @@ public enum PortKind
 
     /// <summary>A live value.</summary>
     Number = 4,
+
+    /// <summary>Yes or no: whether a Compare node's condition holds.</summary>
+    Condition = 5,
+
+    /// <summary>A Timer node's pulse: goes only into a control input (Count's Reset, Event's Send now).</summary>
+    Pulse = 6,
 }
 
 /// <summary>The type of a node setting; the page draws its field from it, the server checks it.</summary>
@@ -83,6 +89,14 @@ public sealed record NodeFieldInfo
 
     /// <summary>One short hint below the field; null: none.</summary>
     public string? Hint { get; init; }
+
+    /// <summary>For a <see cref="NodeFieldType.Number"/> with <see cref="Min"/> and <see cref="Max"/>: a slider with the number beside it.</summary>
+    public bool Slider { get; init; }
+
+    /// <summary>Shown only while the field <see cref="VisibleWhenKey"/> holds one of <see cref="VisibleWhenValues"/>; null: always.</summary>
+    public string? VisibleWhenKey { get; init; }
+
+    public IReadOnlyList<string> VisibleWhenValues { get; init; } = [];
 }
 
 /// <summary>A node kind: what it takes and gives, its settings, where the node list shows it.</summary>
@@ -120,6 +134,12 @@ public sealed record NodeKindInfo
 
     /// <summary>Whether it takes <paramref name="input"/>.</summary>
     public bool Takes(PortKind input) => Accepts.Contains(input);
+
+    /// <summary>
+    /// Extra inputs beside the data input (decision 2026-11-08): each takes only a Timer's <see cref="PortKind.Pulse"/>, at most one
+    /// link each. Count: "reset"; Event: "send".
+    /// </summary>
+    public IReadOnlyList<ControlInput> ControlInputs { get; init; } = [];
 }
 
 /// <summary>
@@ -136,6 +156,8 @@ public static class NodeKinds
     public const string Area = "area";
     public const string Line = "line";
     public const string Count = "count";
+    public const string Compare = "compare";
+    public const string Timer = "timer";
     public const string Event = "event";
 
     // Settings keys.
@@ -155,6 +177,15 @@ public static class NodeKinds
     public const string AtLeastKey = "atLeastSeconds";
     public const string OffAfterKey = "offAfterSeconds";
     public const string LimitKey = "limit";
+    public const string OperatorKey = "operator";
+    public const string ValueKey = "value";
+    public const string Value2Key = "value2";
+    public const string EveryKey = "every";
+    public const string MinutesKey = "minutes";
+    public const string AtKey = "at";
+    public const string DayKey = "day";
+    public const string ResetPort = "reset";
+    public const string SendPort = "send";
 
     public const string AnchorBottom = "bottom";
     public const string AnchorCentre = "centre";
@@ -162,6 +193,16 @@ public static class NodeKinds
     public const string DirectionsBoth = "both";
     public const string DirectionsIn = "in";
     public const string DirectionsOut = "out";
+    public const string OpGreater = "greater";
+    public const string OpAtLeast = "atLeast";
+    public const string OpEqual = "equal";
+    public const string OpAtMost = "atMost";
+    public const string OpLess = "less";
+    public const string OpBetween = "between";
+    public const string EveryMinutes = "minutes";
+    public const string EveryHour = "hour";
+    public const string EveryDay = "day";
+    public const string EveryWeek = "week";
 
     private static readonly PortKind[] ObjectKinds = [PortKind.Objects, PortKind.TrackedObjects];
 
@@ -170,7 +211,7 @@ public static class NodeKinds
 
     private static NodeFieldInfo MinScore(string def) => new()
     {
-        Key = MinScoreKey, Label = "Minimum score", Type = NodeFieldType.Number, Default = def, Min = 1, Max = 99, Unit = "%",
+        Key = MinScoreKey, Label = "Minimum score", Type = NodeFieldType.Number, Default = def, Min = 1, Max = 99, Unit = "%", Slider = true,
     };
 
     private static NodeFieldInfo Classes(string label = "Classes") => new()
@@ -218,8 +259,8 @@ public static class NodeKinds
         [
             Classes(),
             MinScore("50"),
-            new() { Key = MinSizeKey, Label = "Minimum size", Type = NodeFieldType.Number, Optional = true, Min = 0, Max = 100, Unit = "%", Hint = "Share of the picture's height." },
-            new() { Key = MaxSizeKey, Label = "Maximum size", Type = NodeFieldType.Number, Optional = true, Min = 0, Max = 100, Unit = "%" },
+            new() { Key = MinSizeKey, Label = "Minimum size", Type = NodeFieldType.Number, Optional = true, Min = 0, Max = 100, Unit = "%", Slider = true, Hint = "Share of the picture's height." },
+            new() { Key = MaxSizeKey, Label = "Maximum size", Type = NodeFieldType.Number, Optional = true, Min = 0, Max = 100, Unit = "%", Slider = true },
             new() { Key = LabelKey, Label = "Class of Classify", Type = NodeFieldType.Text, Optional = true },
         ],
     };
@@ -230,8 +271,8 @@ public static class NodeKinds
         Accepts = ObjectKinds, Output = _ => PortKind.TrackedObjects, NeedsStream = true,
         Fields =
         [
-            new() { Key = ConfirmKey, Label = "Confirm after", Type = NodeFieldType.Number, Default = "3", Min = 1, Max = 30, Unit = "frames" },
-            new() { Key = KeepLostKey, Label = "Keep lost objects", Type = NodeFieldType.Number, Default = "1", Min = 0, Max = 30, Unit = "s" },
+            new() { Key = ConfirmKey, Label = "Confirm after", Type = NodeFieldType.Number, Default = "3", Min = 1, Max = 30, Unit = "frames", Slider = true },
+            new() { Key = KeepLostKey, Label = "Keep lost objects", Type = NodeFieldType.Number, Default = "1", Min = 0, Max = 30, Unit = "s", Slider = true },
         ],
     };
 
@@ -268,30 +309,68 @@ public static class NodeKinds
     public static readonly NodeKindInfo CountKind = new()
     {
         Id = Count, Label = "Count", Group = "Output", Description = "A live number",
+        ControlInputs = [new(ResetPort, "Reset")],
         Accepts = [.. ObjectKinds, PortKind.Crossings], Output = _ => PortKind.Number,
         Fields =
         [
-            new() { Key = ResetAtKey, Label = "Reset daily at", Type = NodeFieldType.TimeOfDay, Optional = true, OnlyForInput = [PortKind.Crossings] },
+            new() { Key = ResetAtKey, Label = "Reset daily at", Type = NodeFieldType.TimeOfDay, Optional = true, OnlyForInput = [PortKind.Crossings] }, // goes with the Timer node (graph stage)
+        ],
+    };
+
+    public static readonly NodeKindInfo TimerKind = new()
+    {
+        Id = Timer, Label = "Timer", Group = "Time", Description = "A pulse on a schedule, server time",
+        Accepts = [], Output = _ => PortKind.Pulse, Draws = false, NeedsStream = true,
+        Fields =
+        [
+            new()
+            {
+                Key = EveryKey, Label = "Every", Type = NodeFieldType.Choice, Default = "\"day\"",
+                Choices = [new(EveryMinutes, "Few minutes"), new(EveryHour, "Hour"), new(EveryDay, "Day"), new(EveryWeek, "Week")],
+            },
+            new() { Key = MinutesKey, Label = "Minutes", Type = NodeFieldType.Number, Default = "15", Min = 1, Max = 59, Unit = "min", Slider = true, VisibleWhenKey = EveryKey, VisibleWhenValues = [EveryMinutes] },
+            new() { Key = AtKey, Label = "At", Type = NodeFieldType.TimeOfDay, Default = "\"00:00\"", VisibleWhenKey = EveryKey, VisibleWhenValues = [EveryDay, EveryWeek] },
+            new() { Key = DayKey, Label = "Day", Type = NodeFieldType.Choice, Default = "\"mon\"", Choices = [new("mon", "Monday"), new("tue", "Tuesday"), new("wed", "Wednesday"), new("thu", "Thursday"), new("fri", "Friday"), new("sat", "Saturday"), new("sun", "Sunday")], VisibleWhenKey = EveryKey, VisibleWhenValues = [EveryWeek] },
+        ],
+    };
+
+    public static readonly NodeKindInfo CompareKind = new()
+    {
+        Id = Compare, Label = "Compare", Group = "Logic", Description = "Yes while a number meets a condition",
+        Accepts = [PortKind.Number], Output = _ => PortKind.Condition, Draws = false,
+        Fields =
+        [
+            new()
+            {
+                Key = OperatorKey, Label = "Condition", Type = NodeFieldType.Choice, Default = "\"greater\"",
+                Choices = [new(OpGreater, "Greater than"), new(OpAtLeast, "At least"), new(OpEqual, "Equal to"), new(OpAtMost, "At most"), new(OpLess, "Less than"), new(OpBetween, "Between")],
+            },
+            new() { Key = ValueKey, Label = "Value", Type = NodeFieldType.Number, Default = "10", Min = -1_000_000, Max = 1_000_000 },
+            new() { Key = Value2Key, Label = "And", Type = NodeFieldType.Number, Default = "20", Min = -1_000_000, Max = 1_000_000, VisibleWhenKey = OperatorKey, VisibleWhenValues = [OpBetween] },
         ],
     };
 
     public static readonly NodeKindInfo EventKind = new()
     {
         Id = Event, Label = "Event", Group = "Output", Description = "An event for the event rules",
-        Accepts = [.. ObjectKinds, PortKind.Crossings, PortKind.Number], Output = _ => null, Draws = false,
+        ControlInputs = [new(SendPort, "Send now")],
+        Accepts = [.. ObjectKinds, PortKind.Crossings, PortKind.Number, PortKind.Condition], Output = _ => null, Draws = false,
         Fields =
         [
             new() { Key = MinObjectsKey, Label = "Minimum objects", Type = NodeFieldType.Number, Default = "1", Min = 1, Max = 300, OnlyForInput = ObjectKinds },
-            new() { Key = AtLeastKey, Label = "At least", Type = NodeFieldType.Number, Default = "1", Min = 0, Max = 3600, Unit = "s", OnlyForInput = ObjectKinds },
-            new() { Key = OffAfterKey, Label = "Off after", Type = NodeFieldType.Number, Default = "2", Min = 0, Max = 3600, Unit = "s", OnlyForInput = ObjectKinds },
+            new() { Key = AtLeastKey, Label = "At least", Type = NodeFieldType.Number, Default = "1", Min = 0, Max = 3600, Unit = "s", OnlyForInput = [.. ObjectKinds, PortKind.Condition] },
+            new() { Key = OffAfterKey, Label = "Off after", Type = NodeFieldType.Number, Default = "2", Min = 0, Max = 3600, Unit = "s", OnlyForInput = [.. ObjectKinds, PortKind.Condition] },
             new() { Key = LimitKey, Label = "Limit", Type = NodeFieldType.Number, Optional = true, Min = 0, Max = 1_000_000, OnlyForInput = [PortKind.Number] },
         ],
     };
 
     /// <summary>Every kind, in the order of the node list.</summary>
     public static readonly IReadOnlyList<NodeKindInfo> All =
-        [CameraKind, DetectKind, ClassifyKind, FilterKind, TrackKind, AreaKind, LineKind, CountKind, EventKind];
+        [CameraKind, DetectKind, ClassifyKind, FilterKind, TrackKind, AreaKind, LineKind, CountKind, CompareKind, TimerKind, EventKind];
 
     /// <summary>The kind of <paramref name="id"/>; null for a kind this version does not know.</summary>
     public static NodeKindInfo? Find(string? id) => All.FirstOrDefault(k => string.Equals(k.Id, id, StringComparison.Ordinal));
 }
+
+/// <summary>A control input of a node: its port id and its label on the canvas.</summary>
+public sealed record ControlInput(string Port, string Label);

@@ -7,10 +7,10 @@ namespace Oadm.Plugins.Vision.Model;
 /// </summary>
 public sealed record ClassList
 {
-    /// <summary>"coco-91" and "coco-80" for the built-in ones, else 32 hex digits.</summary>
+    /// <summary>"coco-91", "coco-90" and "coco-80" for the built-in ones, else 32 hex digits.</summary>
     public string Id { get; init; } = string.Empty;
 
-    /// <summary>1 to 64 characters, unique ("COCO (91 ids)").</summary>
+    /// <summary>1 to 64 characters, unique ("COCO for DETR (91)").</summary>
     public string Name { get; init; } = string.Empty;
 
     /// <summary>One name per class id, at most <see cref="VisionLimits.MaxClasses"/>.</summary>

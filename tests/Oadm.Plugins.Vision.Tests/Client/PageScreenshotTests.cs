@@ -75,6 +75,24 @@ public sealed class PageScreenshotTests
                 // A model node selected: its form drawn from its fields, its objects of the frame.
                 editor.Canvas.SelectedNode = editor.Canvas.Find("b");
                 Headless.Pump();
+
+                // The splitter between the video and the node card dragged down: the video taller, the node card at its least
+                // still shows its heading and two fields.
+                var first = view.VideoHeight;
+                view.SetVideoHeight(10000);
+                window.UpdateLayout();
+                Headless.Pump();
+                Assert.True(view.VideoHeight > first);
+                var nodeCard = view.FindControl<Border>("NodeCard")!;
+                Assert.True(nodeCard.Bounds.Height >= PageLayout.NodeMinHeight - 1, $"the node card is {nodeCard.Bounds.Height} high");
+                var fields = view.FindControl<ItemsControl>("Fields")!;
+                var modelField = fields.GetVisualDescendants().OfType<FormField>().First();
+                var bottom = Avalonia.VisualExtensions.TranslatePoint(modelField, new Avalonia.Point(0, modelField.Bounds.Height), nodeCard)!.Value.Y;
+                Assert.True(bottom <= nodeCard.Bounds.Height, $"the second field ends at {bottom} in a card of {nodeCard.Bounds.Height}");
+                Headless.Capture(window, $"vision-page-video-taller-{suffix}.png");
+                view.SetVideoHeight(first);
+                window.UpdateLayout();
+                Headless.Pump();
                 Assert.True(view.FindControl<DataGrid>("ObjectsGrid")!.IsEffectivelyVisible);
                 Assert.Equal(5, editor.Output.Objects.Count);
                 Headless.Capture(window, $"vision-page-detect-{suffix}.png");
@@ -203,6 +221,16 @@ public sealed class PageScreenshotTests
             Assert.Contains(dialog.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == VisionTexts.WrongClassCount);
             Headless.Capture(dialog, $"vision-class-list-own-{suffix}.png");
             dialog.Close();
+
+            // No list has as many names as the model has classes: one line below the select says why.
+            var none = ModelEditViewModel.ForClassList(PageSamples.Helmet, PageSamples.ClassLists.Lists);
+            var noneWindow = new ModelEditWindow { DataContext = none };
+            Oadm.Client.App.ApplyCrispText(noneWindow);
+            noneWindow.Show();
+            Headless.Pump();
+            Assert.Contains(noneWindow.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == none.NoFittingList);
+            Headless.Capture(noneWindow, $"vision-class-list-none-{suffix}.png");
+            noneWindow.Close();
 
             // New class list: Name and the names, one per line.
             var edit = new ClassListEditViewModel(PageSamples.GateClasses, _ => false);

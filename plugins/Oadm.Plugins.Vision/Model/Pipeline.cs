@@ -102,4 +102,8 @@ public sealed record PipelineNode
 /// <summary>A link from a node's output to another node's input.</summary>
 /// <param name="From">The node whose output it is.</param>
 /// <param name="To">The node whose only input it is.</param>
-public sealed record PipelineLink(string From, string To);
+public sealed record PipelineLink(string From, string To)
+{
+    /// <summary>The input it goes into: null for the node's data input, else one of its <see cref="NodeKindInfo.ControlInputs"/> ("reset", "send").</summary>
+    public string? ToPort { get; init; }
+}

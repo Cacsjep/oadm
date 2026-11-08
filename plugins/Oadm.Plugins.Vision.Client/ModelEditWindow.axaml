@@ -18,7 +18,7 @@
         <ui:FormField Classes="wide" LabelAbove="True" Label="Name" IsVisible="{Binding IsRename}">
           <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="{x:Static vm:ModelEditViewModel.MaxNameLength}" />
         </ui:FormField>
-        <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.ClassListTitle}" IsVisible="{Binding IsClassList}">
+        <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.ClassListTitle}" IsVisible="{Binding IsClassList}" Hint="{Binding NoFittingList}">
           <ComboBox x:Name="ListBox" HorizontalAlignment="Stretch" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}">
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="vm:ClassListChoice">
