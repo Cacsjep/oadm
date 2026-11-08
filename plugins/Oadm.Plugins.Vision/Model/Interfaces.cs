@@ -129,4 +129,16 @@ public interface IModelLibrary
 
     /// <summary>Reads the stored list and marks models whose file is gone as Missing; once per start, before any other call.</summary>
     Task LoadAsync(CancellationToken ct) => Task.CompletedTask;
+
+    /// <summary>The built-in class lists, then the user's (docs/spec/vision-center.md "Class lists").</summary>
+    IReadOnlyList<ClassList> ClassLists => Models.ClassLists.BuiltIn;
+
+    /// <summary>The names of the models that use the class list <paramref name="id"/>.</summary>
+    IReadOnlyList<string> ModelsUsing(string? id) => [.. All.Where(m => m.ClassListId is not null && m.ClassListId == id).Select(m => m.Name)];
+
+    /// <summary>Creates (empty id) or changes a user's class list; its models take the new names. Field errors: <see cref="Models.ClassListFieldException"/>.</summary>
+    Task<ClassList> SaveClassListAsync(ClassList incoming, CancellationToken ct) => throw new NotSupportedException();
+
+    /// <summary>Deletes a user's class list; refused for a built-in one and while a model uses it.</summary>
+    Task DeleteClassListAsync(string id, CancellationToken ct) => throw new NotSupportedException();
 }

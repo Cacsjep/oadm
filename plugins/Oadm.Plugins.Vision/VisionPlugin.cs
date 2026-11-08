@@ -283,10 +283,12 @@ public sealed partial class VisionPlugin : ICorePlugin, IDynamicEventSource, IAc
         : null;
 
     public bool IsAudited(string method) => method is VisionMethods.SavePipeline or VisionMethods.DeletePipeline or VisionMethods.SetUseGpu
-        or VisionMethods.FinishUpload or VisionMethods.UpdateModel or VisionMethods.DeleteModel;
+        or VisionMethods.FinishUpload or VisionMethods.UpdateModel or VisionMethods.DeleteModel
+        or VisionMethods.SaveClassList or VisionMethods.DeleteClassList;
 
     private static bool IsModelMethod(string method) => method is VisionMethods.BeginUpload or VisionMethods.UploadChunk or VisionMethods.FinishUpload
-        or VisionMethods.CancelUpload or VisionMethods.UpdateModel or VisionMethods.DeleteModel;
+        or VisionMethods.CancelUpload or VisionMethods.UpdateModel or VisionMethods.DeleteModel
+        or VisionMethods.SaveClassList or VisionMethods.DeleteClassList;
 
     /// <summary>In-process calls without a user (the host itself, tests): as a user with all devices.</summary>
     public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>

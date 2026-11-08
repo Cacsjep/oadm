@@ -213,6 +213,43 @@ public sealed partial class VisionPlugin
                 return "{}";
             }
 
+            case VisionMethods.ListClassLists:
+                return VisionJson.Serialize(ClassListsOf(models));
+
+            case VisionMethods.SaveClassList:
+            {
+                RequireAllDevices(caller);
+                var incoming = VisionJson.Deserialize<SaveClassListRequest>(payloadJson).ClassList ?? throw new ArgumentException(PluginJson.EmptyRequest);
+                ClassList saved;
+                try
+                {
+                    saved = await models.SaveClassListAsync(incoming, ct).ConfigureAwait(false);
+                }
+                catch (Models.ClassListFieldException ex)
+                {
+                    return VisionJson.Serialize(new SaveClassListReply { Errors = new Dictionary<string, string> { [ex.Field] = ex.Message } });
+                }
+
+                _auditNames[AuditKey(method, saved.Id)] = saved.Name;
+                _auditNames[AuditKey(method, incoming.Id)] = saved.Name;
+                PublishModels(); // the models on the list took its names
+                return VisionJson.Serialize(new SaveClassListReply { ClassList = saved });
+            }
+
+            case VisionMethods.DeleteClassList:
+            {
+                RequireAllDevices(caller);
+                var id = VisionJson.Deserialize<ClassListRequest>(payloadJson).ClassListId;
+                if (models.ClassLists.FirstOrDefault(l => l.Id == id) is { } list)
+                {
+                    _auditNames[AuditKey(method, id)] = list.Name;
+                }
+
+                await models.DeleteClassListAsync(id, ct).ConfigureAwait(false);
+                PublishModels();
+                return "{}";
+            }
+
             case VisionMethods.GetEngine:
                 return VisionJson.Serialize(EngineOf(runtime));
 
@@ -269,6 +306,15 @@ public sealed partial class VisionPlugin
                 return Named(VisionJson.Deserialize<UpdateModelRequest>(payloadJson).Model?.Id) is { } changed ? "Changed vision model " + changed : "Changed a vision model";
             case VisionMethods.DeleteModel:
                 return Named(VisionJson.Deserialize<ModelRequest>(payloadJson).ModelId) is { } model ? "Deleted vision model " + model : "Deleted a vision model";
+            case VisionMethods.SaveClassList:
+            {
+                var list = VisionJson.Deserialize<SaveClassListRequest>(payloadJson).ClassList;
+                var name = (list is { Id.Length: > 0 } ? Named(list.Id) : null) ?? list?.Name?.Trim();
+                return string.IsNullOrEmpty(name) ? "Saved a class list" : "Saved class list " + name;
+            }
+
+            case VisionMethods.DeleteClassList:
+                return Named(VisionJson.Deserialize<ClassListRequest>(payloadJson).ClassListId) is { } deletedList ? "Deleted class list " + deletedList : "Deleted a class list";
             default:
                 return null;
         }
@@ -306,6 +352,22 @@ public sealed partial class VisionPlugin
         }
 
         return new ModelList { Models = [.. all.OrderBy(m => m.Name, StringComparer.CurrentCultureIgnoreCase)], UsedBy = usedBy };
+    }
+
+    /// <summary>The class lists with the models that use each (models are server-wide: every user sees their names).</summary>
+    private static ClassListList ClassListsOf(IModelLibrary models)
+    {
+        var lists = models.ClassLists;
+        var usedBy = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        foreach (var list in lists)
+        {
+            if (models.ModelsUsing(list.Id) is { Count: > 0 } names)
+            {
+                usedBy[list.Id] = names;
+            }
+        }
+
+        return new ClassListList { Lists = lists, UsedBy = usedBy };
     }
 
     private EngineInfo EngineOf(PipelineRuntime runtime)
