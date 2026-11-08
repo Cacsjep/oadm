@@ -812,6 +812,10 @@ often, from worse pictures, and never a wrong value reported as sure.
     fixed place, 4 areas and 20 readers 0.1 GB (no session on the card); full HD Search 1.25 GB; QHD and 4K Search after
     it 2.7 GB (the full HD and the 1024 x 1024 sessions, 3.29 GB estimated, none freed); the accuracy set 1.3 GB. No
     driver reset in any run.
+- **Beside Vision Center** (2026-11-08, RTX 5070 Ti, DirectML): both add-ons on the card in one server process, each
+  with the `onnxruntime.dll` and `DirectML.dll` of its own folder, in any start order; the camera box of the accuracy set
+  (4 fixed areas) 58 ms per picture alone, 67 ms while Vision Center detects, every reading as on the CPU
+  (docs/spec/vision-center.md "Measured", `BothAddOnsOnTheCardTests`).
 - The limits do not depend on the graphics card ("Limits"): the CPU decodes every picture and works when the card fails;
   the traffic light shows what a server carries.
 - Speed goals: one Search reader over a full HD picture at 10 frames per second or more on the GPU, at least 1 on the

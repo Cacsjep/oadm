@@ -60,7 +60,7 @@ Events to the page: `pipelines`, `preview` (only to its user, at most twice a se
 
 ## Tests
 
-`tests/Oadm.Plugins.Vision.Tests` (run with `--filter "FullyQualifiedName~Vision&Category!=Perf&Category!=RealModel"`; no GPU, no network):
+`tests/Oadm.Plugins.Vision.Tests` (run with `--filter "FullyQualifiedName~Vision&Category!=Perf&Category!=RealModel&Category!=Gpu"`; no GPU, no network):
 
 - `Models/`: generated ONNX models per format (`OnnxWriter`), the check and its refusals, the library, class lists.
 - `Inference/`: decoding and fits on generated models; `TwoRuntimesTests` loads ONNX Runtime in several load contexts.
@@ -82,6 +82,16 @@ Events to the page: `pipelines`, `preview` (only to its user, at most twice a se
   `-p:OadmRealModels=true` into the model cache of Text recognition (`$(OADM_MODEL_CACHE)`, else
   `%LOCALAPPDATA%\Oadm\model-cache` or `~/.cache/oadm/models`), one folder per SHA-256; a failed download or another
   hash leaves the file out and the tests skip. Never shipped, never in git. A test checks this table against the targets.
+- `Gpu/` (category `Gpu`, `manage test gpu`, never in the unit run, `manage test all` or CI; one test process at a time,
+  nothing else on the card): skips with the reason without a DirectML or CUDA card (`GpuCard`, no ONNX Runtime at
+  discovery) or the real models. `VisionOnTheCardTests`: the real `OnnxInference` with Use GPU on (YOLO11n of opset 19
+  in 32 and 16 bits, YOLO26n, RF-DETR medium, ResNet-50): card test passed, `RunsOn` names the card, the CPU's
+  detections, card and CPU times written out, Use GPU off and on again; Ultralytics' YOLO11n of opset 22 runs where its
+  card test says (DirectML has no opset 22 Conv). `BothAddOnsOnTheCardTests` starts the test assembly as a fresh process
+  (`GpuChild`, the assembly's entry point) that loads Text recognition and Vision Center through `PluginLoader` from
+  `gpu-plugins/` (copied by `-p:OadmGpuPlugins=true`; `OADM_GPU_PLUGINS` for other folders, such as published add-ons)
+  and runs both on the card at once in each order; the same way a fresh process with Use GPU off must not load
+  `DirectML.dll`.
 
 | File | Source | Licence and attribution | SHA-256 |
 |---|---|---|---|

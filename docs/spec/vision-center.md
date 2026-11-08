@@ -527,6 +527,20 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   file of the 1,000 ImageNet names (the `id2label` of the ResNet-50 export's `config.json`: none of the files names its
   classes) classify the two cars of COCO val2017 97679 (COCO's boxes as the regions): a car class of ImageNet at 20 % or
   more.
+- **On the graphics card** (`tests/Oadm.Plugins.Vision.Tests/Gpu/`, category `Gpu`, `manage test gpu`; never in
+  `manage test unit`, `manage test all` or CI, one test process at a time, nothing else on the card): skipped with the
+  reason without a DirectML or CUDA card (found without ONNX Runtime) or without the real models. The real
+  `OnnxInference` with Use GPU on and the real provider: YOLO11n (opset 19, 32 and 16 bits), YOLO26n, RF-DETR medium and
+  ResNet-50 pass their card test, `OnGpu` and `RunsOn` name the card, the detections on both COCO photos are the CPU's
+  (same classes, overlap 0.9 or more, scores within 5 points), Use GPU off sends the next call to a CPU worker and on
+  again to the card; Ultralytics' YOLO11n of opset 22 runs where its card test says. A fresh process (the test assembly
+  started as a program, `GpuChild`) with Use GPU off checks and runs a model and never loads `DirectML.dll`.
+  **Both add-ons at once**: a fresh process loads Text recognition and Vision Center through `PluginLoader.LoadPackage`
+  from two plugin folders (`-p:OadmGpuPlugins=true` copies both build outputs, with Text recognition's models, into
+  `gpu-plugins/`; `OADM_GPU_PLUGINS` points at other folders, such as published add-ons), starts both with Use GPU on
+  (Text recognition first, Vision Center first, both at once) and lets them read the camera box of the accuracy set and
+  detect on the COCO photo (YOLO11n and RF-DETR medium) together for 20 s: both stay on the card, every result is the one
+  of the same add-on's CPU run, no call fails, each add-on's `onnxruntime.dll` and `DirectML.dll` come from its own folder.
 
 ## Measured
 
@@ -567,6 +581,32 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   | MobileNetV2, ONNX Model Zoo | Classification, 224, ImageNet | 1,000 from the labels file | 10 | minivan 28 % and 71 % |
   | YOLO11n-cls (no metadata) | Classification, 224, ImageNet; set to 0 to 1 | 1,000 from the labels file | 8 | minivan 66 % and 69 % at 0 to 1; with ImageNet "spotlight" 100 % |
 
+- On the graphics card (2026-11-08, development PC, RTX 5070 Ti 16 GB, driver 616.92, DirectML 1.15.4 of the add-on,
+  `Gpu` tests, debug build; ms per picture with decode, fit and decoding, median of 9 warm runs; the card test's blank
+  call in brackets): results identical to the CPU (overlap 1.0, scores within 0.0001) except the 16-bit YOLO11n
+  (overlap 0.97 or more, scores within 0.012).
+
+  | Model | Card | One CPU thread |
+  |---|---|---|
+  | YOLO11n, opset 19 (Kalray's export) | 9 to 10 (3.2) | 89 |
+  | YOLO11n, 16-bit | 23 (17 to 20) | 102 |
+  | YOLO26n | 6 to 8 (2.3) | 80 |
+  | RF-DETR medium | 15 (8.3); 33 to 40 in runs where the card had not clocked up | 855 |
+  | ResNet-50, one region | 4 to 5 (2.6) | 74 |
+  | YOLO11n of Ultralytics, opset 22, free input | (150 to 165) | 106 to 113 |
+
+  The 16-bit model spends about 14 ms converting its input and output on the CPU, on the card as on the CPU.
+  Ultralytics' v8.4.0 YOLO11n is opset 22: ONNX Runtime 1.24's DirectML has no Conv and MaxPool of opset 22, so 88 Conv
+  and 3 MaxPool nodes run on the CPU between the card's (`Node placements` of the verbose log) and a fixed input size
+  does not help; the same model at opset 19 or 20 (YOLOv8n of the same release, opset 20: 2.5 ms per blank call) runs on the card. Its card test
+  sits at the rule's edge (1.5 times one CPU call): it ran on the card in some runs and stayed on the CPU in others.
+- **Both add-ons at once** on that card (2026-11-08, one process, each add-on from its own folder, in all three orders,
+  also from published win-x64 folders): both on the card, Text recognition with text finder, reader and angle model
+  there. Text recognition's camera box (full HD, 4 fixed areas) 58 ms per picture alone and 67 ms beside Vision Center;
+  Vision Center 10 ms (YOLO11n) alone and beside it, RF-DETR medium 17 ms; in 20 s about 300 readings and 1,470
+  detections, every one as on the CPU. The card's memory 1.75 GB before (the desktop), 2.73 GB with both started and
+  at the peak, 1.75 GB after both stopped. The process holds two `onnxruntime.dll` and two `DirectML.dll`, each from
+  its add-on's folder; no driver reset.
   Before 2026-11-08 the Hugging Face DETR was refused (its `pixel_mask` input), RT-DETR and D-FINE read as DETR with 79
   classes (softmax, the last class taken for "no object"), and ResNet-50 ran at 640 x 640 with 0 to 1 (MobileNetV2 then
   says "mosquito net" for a car).
@@ -581,8 +621,15 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
 
 ## Open points
 
-- A run of both vision add-ons on a graphics card in one server: DirectML on Windows (the shared `DirectML.dll`) and
-  CUDA on Linux are not tested.
+- Both vision add-ons on a graphics card in one server: done for DirectML on Windows (2026-11-08, "Measured": each
+  add-on's own `DirectML.dll`, no shared one needed). Open: CUDA on Linux x64 (no card at hand), other cards than the
+  RTX 5070 Ti, and the card's memory: Text recognition's session budget counts only its own sessions, Vision Center's
+  are outside it.
+- The card rule compares one call on the card with one on a CPU thread, while the card runs one call at a time and the
+  CPU has its workers: a model 1.4 times slower on the card (Ultralytics' YOLO11n of opset 22 with DirectML) goes to the
+  card and carries far fewer pictures per second than the workers would, and a model near 1.5 times flips between runs.
+  Whether the rule should weigh the workers is not decided.
+- Models of opset 22 run largely on the CPU with DirectML (ONNX Runtime 1.24); the user docs ask for opset 20 or lower.
 - The accuracy with DETR and RF-DETR on the development cameras, the default frame rate and resolution from those
   measurements.
 - macOS and Linux runs of the add-on.
