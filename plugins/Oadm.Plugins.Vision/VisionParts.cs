@@ -24,7 +24,20 @@ public sealed record VisionParts
     /// <summary>Builds a checked pipeline's evaluator (<see cref="Nodes.PipelineEvaluator.Create"/>); tests may hand a fake.</summary>
     public Func<Pipeline, Func<string?, VisionModel?>, IInference, PipelineMode, IPipelineEvaluator> Evaluator { get; init; } = Nodes.PipelineEvaluator.Create;
 
+    /// <summary>
+    /// Builds the evaluator of a page's preview: like <see cref="Evaluator"/>, with every node's output for the page (also of
+    /// branches nothing after needs): <see cref="Nodes.PipelineEvaluator.Create(Pipeline, Func{string?, VisionModel?}, IInference, PipelineMode, Nodes.EvaluatorOptions)"/>
+    /// with <see cref="Nodes.EvaluatorOptions.AllNodes"/>. Null: <see cref="Evaluator"/>.
+    /// </summary>
+    public Func<Pipeline, Func<string?, VisionModel?>, IInference, PipelineMode, IPipelineEvaluator>? PreviewEvaluator { get; init; } =
+        static (pipeline, findModel, inference, mode) => Nodes.PipelineEvaluator.Create(pipeline, findModel, inference, mode, PreviewOptions);
+
+    private static readonly Nodes.EvaluatorOptions PreviewOptions = new() { AllNodes = true };
+
     public TimeProvider Time { get; init; } = TimeProvider.System;
+
+    /// <summary>The processor count the watching limits follow (<see cref="VisionLimits.MaxWatchingFor"/>).</summary>
+    public int ProcessorCount { get; init; } = Environment.ProcessorCount;
 
     /// <summary>The real parts: Models/ModelLibrary, Inference/OnnxInference, the shared frame source (plugins/Shared/Vision).</summary>
     public static VisionParts Real(TimeProvider? time = null) =>
