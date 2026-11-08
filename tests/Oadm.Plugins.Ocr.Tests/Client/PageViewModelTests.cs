@@ -731,7 +731,7 @@ public sealed class PageViewModelTests
         // Cancel: nothing changes, the reader stays saved.
         dialogs.Stream = form =>
         {
-            Assert.Equal(editor.VideoSources, form.VideoSources);
+            Assert.Equal(editor.VideoSources.Select(v => (v.Number, v.Name)), form.VideoSources.Select(v => (v.Number, v.Name)));
             Assert.Equal(editor.Resolutions, form.Resolutions);
             Assert.Equal([1, 2, 4, 8, 12, 15], form.FpsChoices);
             Assert.True(form.ShowFps);

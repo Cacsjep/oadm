@@ -34,6 +34,15 @@
     <InternalsVisibleTo Include="Oadm.Plugins.Ocr.Tests" />
   </ItemGroup>
 
+  <!-- The picture overlay and the Stream settings dialog shared with Vision Center (docs/spec/vision-center.md "Parts and
+       contract"): linked source, compiled into this plugin's own assembly; the picture size is this plugin's Resolution. -->
+  <ItemGroup>
+    <Compile Include="..\Shared\Vision.Client\**\*.cs" Link="Shared\Vision.Client\%(RecursiveDir)%(Filename)%(Extension)" />
+    <AvaloniaXaml Include="..\Shared\Vision.Client\**\*.axaml" Link="Shared\Vision.Client\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Using Include="Oadm.Plugins.Shared.Vision.Client" />
+    <Using Include="Oadm.Plugins.Ocr.Model.Resolution" Alias="PictureResolution" />
+  </ItemGroup>
+
   <!-- Development deployment next to the server part in artifacts/plugins/oadm.ocr/. -->
   <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
     <ItemGroup>

@@ -112,7 +112,7 @@ public sealed class PageDocsScreenshotTests
 
             // The Stream settings dialog without a refusal.
             var form = new StreamSettingsViewModel(
-                Samples.CameraOptions.VideoSources, Samples.CameraOptions.VideoSources[0], Samples.CameraOptions.Resolutions, new Resolution(1920, 1080),
+                Samples.StreamSources, Samples.StreamSources[0], Samples.CameraOptions.Resolutions, new Resolution(1920, 1080),
                 [1, 2, 4, 8, 12, 15], 2, showFps: true, isLoading: false, new Dictionary<string, string?>());
             var stream = new StreamSettingsWindow { DataContext = form };
             Oadm.Client.App.ApplyCrispText(stream);

@@ -324,7 +324,7 @@ public sealed class PagePauseTests
             var editor = await ReadingAsync(denied);
             Assert.False(editor.MayPause);
             Assert.False(editor.TogglePauseCommand.CanExecute(null));
-            Assert.False(view.FindControl<Button>("PauseButton")!.IsEffectivelyVisible);
+            Assert.False(view.FindControl<PicturePauseBar>("PauseBar")!.Button.IsEffectivelyVisible);
             editor.StopPreview();
             window.Close();
 
@@ -358,7 +358,7 @@ public sealed class PagePauseTests
             var editor = await ReadingAsync(vm);
             Headless.Pump();
             var picture = view.PictureControl;
-            var button = view.FindControl<Button>("PauseButton")!;
+            var button = view.FindControl<PicturePauseBar>("PauseBar")!.Button;
 
             // An area over the whole bottom left corner of the picture, selected, the keys on the picture.
             var under = editor.AddArea(new RelativeBox(0, 0.6, 0.4, 0.4))!;
@@ -512,7 +512,7 @@ public sealed class PagePauseTests
             Headless.Pump();
             var editor = await ReadingAsync(vm);
             Headless.Pump();
-            var chip = view.FindControl<StatusChip>("PausedChip")!;
+            var chip = view.FindControl<PicturePauseBar>("PauseBar")!.Chip;
             Assert.True(view.FindControl<ContentControl>("VideoHost")!.IsEffectivelyVisible);
             Assert.False(chip.IsEffectivelyVisible);
             Headless.Capture(window, $"ocr-pause-live-{suffix}.png");
@@ -530,7 +530,7 @@ public sealed class PagePauseTests
             editor.Areas[2].FormatText = "@@";
             await Eventually.TrueAsync(() => editor.IsRereading, "the ring");
             Headless.Pump();
-            Assert.True(view.FindControl<ProgressRing>("PauseRing")!.IsEffectivelyVisible);
+            Assert.True(view.FindControl<PicturePauseBar>("PauseBar")!.Ring.IsEffectivelyVisible);
             Headless.Capture(window, $"ocr-pause-rereading-{suffix}.png");
             server.Rereading = false;
             var edited = Samples.GateReading();
@@ -603,7 +603,7 @@ public sealed class PagePauseTests
                 Headless.Pump();
                 var picture = view.PictureControl;
                 var at = picture.TranslatePoint(new Point(picture.PictureRect.X, picture.PictureRect.Y), window)!.Value;
-                var button = view.FindControl<Button>("PauseButton")!;
+                var button = view.FindControl<PicturePauseBar>("PauseBar")!.Button;
                 var buttonAt = button.TranslatePoint(default, window)!.Value;
                 Headless.Capture(window, $"ocr-pause-align-{name}-{suffix}.png");
                 if (Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR") is { Length: > 0 } dir)

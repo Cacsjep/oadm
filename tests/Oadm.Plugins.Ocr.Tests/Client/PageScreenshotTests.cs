@@ -189,7 +189,7 @@ public sealed class PageScreenshotTests
 
             // The Stream settings dialog of a watching reader (frames per second shown), the resolution refused by the server.
             var form = new StreamSettingsViewModel(
-                Samples.CameraOptions.VideoSources, Samples.CameraOptions.VideoSources[0], Samples.CameraOptions.Resolutions, new Resolution(1920, 1080),
+                Samples.StreamSources, Samples.StreamSources[0], Samples.CameraOptions.Resolutions, new Resolution(1920, 1080),
                 [1, 2, 4, 8, 12, 15], 4, showFps: true, isLoading: false,
                 new Dictionary<string, string?> { [nameof(StreamSettingsViewModel.SelectedResolution)] = ReaderRules.ResolutionMissing });
             var stream = new StreamSettingsWindow { DataContext = form };

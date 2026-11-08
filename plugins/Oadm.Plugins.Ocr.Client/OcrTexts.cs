@@ -81,7 +81,7 @@ public static class OcrTexts
     public const string Resume = "Resume";
 
     /// <summary>The chip next to it while the page shows a held frame.</summary>
-    public const string Paused = "Paused";
+    public const string Paused = PicturePauseBar.PausedText;
 
     /// <summary>The chip's tooltip: pausing is about this page only.</summary>
     public const string PausedTip = "Saved readers keep reading.";

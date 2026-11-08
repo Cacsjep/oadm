@@ -1,9 +1,8 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="using:Oadm.Sdk.Client.Controls"
-        xmlns:vm="using:Oadm.Plugins.Ocr.Client"
-        xmlns:api="using:Oadm.Plugins.Ocr.Api"
-        x:Class="Oadm.Plugins.Ocr.Client.StreamSettingsWindow"
+        xmlns:vm="using:Oadm.Plugins.Shared.Vision.Client"
+        x:Class="Oadm.Plugins.Shared.Vision.Client.StreamSettingsWindow"
         x:DataType="vm:StreamSettingsViewModel"
         Title="{x:Static vm:StreamSettingsViewModel.Title}"
         Width="400" SizeToContent="Height"
@@ -11,7 +10,8 @@
         ShowInTaskbar="False"
         CanResize="False"
         WindowDecorations="BorderOnly">
-  <!-- Single operation (docs/spec/ocr.md "Page"): no card; the server's refusal of a field below it. -->
+  <!-- Single operation (docs/spec/ocr.md "Page"): no card; the server's refusal of a field below it. Shared by Text recognition
+       and Vision Center (linked source, plugins/Shared/Vision.Client). -->
   <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:StreamSettingsViewModel.Title}" />
     <Border Grid.Row="1" Classes="dialogBody">
@@ -20,7 +20,7 @@
           <ComboBox x:Name="SourceBox" HorizontalAlignment="Stretch" ItemsSource="{Binding VideoSources}" SelectedItem="{Binding SelectedSource}"
                     IsEnabled="{Binding !IsLoading}">
             <ComboBox.ItemTemplate>
-              <DataTemplate x:DataType="api:CameraSource">
+              <DataTemplate x:DataType="vm:StreamSource">
                 <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
               </DataTemplate>
             </ComboBox.ItemTemplate>
