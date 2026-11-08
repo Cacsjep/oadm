@@ -203,9 +203,11 @@ recognition).
 
 - Compare, And / Or, Hold, Throttle, Statistics, Timer, Time window, Device event, Dwell, Stationary and Direction:
   decision 2026-11-08 with the user. Compare replaced the Event's Limit and Above limit; Timer replaced Count's Reset
-  daily at. The node list's groups: Models, Objects, Geometry, Logic, Time, Output.
+  daily at. The node list's groups (`NodeKindInfo.Group`): Models (Detect objects, Classify), Objects (Filter, Track,
+  Dwell, Stationary, Direction), Geometry (Area, Line), Logic (Compare, And / Or, Hold, Throttle, Device event), Time
+  (Timer, Time window), Output (Count, Statistics, Event).
 
-- A node has a name (unique in the pipeline whatever its case, at most 64 characters, no control characters, "Area 1"
+- A node has a name (unique in the pipeline whatever its case, at most 64 characters, no control characters ("Use letters, digits and punctuation only.", the rules' phrase), "Area 1"
   with the lowest free number like the areas of Text recognition); rules and dashboards name it.
 - Areas and lines are stored relative to the picture (0 to 1), so a change of resolution keeps them in place.
 - **Crossing direction** (decision 2026-11-08): In is from the left of the line's drawn direction to its right, as seen
