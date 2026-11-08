@@ -4,7 +4,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Plugins.Vision.Api;
+using Oadm.Plugins.Shared.Vision;
 using Oadm.Plugins.Vision.Model;
+using Oadm.Plugins.Vision.Pipelines;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
 using Oadm.Sdk.Client.Controls;
@@ -39,10 +41,21 @@ public sealed partial class PipelineListRow : ObservableObject
     [ObservableProperty]
     public partial bool IsCopying { get; set; }
 
-    public string ChipText => Row.Problem is not null ? VisionTexts.NotRunning
+    public string ChipText => Row.Problem is { } problem ? ProblemChips.Of(problem, Problems)
         : Row.Mode == PipelineMode.OnAction ? VisionTexts.OnAction
         : Row.Slow ? VisionTexts.WatchingReads(Row.Fps, Row.Reads ?? 0)
         : VisionTexts.WatchingAt(Row.Fps);
+
+    /// <summary>Vision Center's own problem texts for the shared chips (plugins/Shared/Vision.Client).</summary>
+    private static readonly ProblemTexts Problems = new()
+    {
+        IsWatchingLimit = PipelineRules.IsWatchingLimit,
+        StreamErrors = [CameraFrameTexts.NoPicture, CameraFrameTexts.NoPictures, CameraFrameTexts.ResolutionNotOffered, CameraFrameTexts.SourceNotOffered],
+        Starting = PipelineRules.Starting,
+        Off = PipelineRules.Off,
+        NotInstalled = [PipelineRules.NotRunning],
+        Unknown = VisionTexts.NotRunning,
+    };
 
     /// <summary>The chip's tooltip: the server's whole text of the problem.</summary>
     public string? Problem => Row.Problem;

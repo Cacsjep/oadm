@@ -176,7 +176,7 @@ internal static class PageSamples
         At = Time,
         Nodes =
         [
-            new() { NodeId = "a", Kind = PortKind.Picture, Live = "4 pictures per second" },
+            new() { NodeId = "a", Kind = PortKind.Picture, Live = "1280x720" },
             new() { NodeId = "b", Kind = PortKind.Objects, Live = "9 objects · 21 ms" },
             new() { NodeId = "c", Kind = PortKind.Objects, Live = "9 inside" },
             new() { NodeId = "d", Kind = PortKind.Number, Value = 9, Live = "9 now" },
@@ -247,7 +247,7 @@ internal static class PageSamples
             Resolution = new Resolution(1280, 720),
             Nodes =
             [
-                new() { NodeId = "a", Kind = PortKind.Picture, Live = "8 pictures per second" },
+                new() { NodeId = "a", Kind = PortKind.Picture, Live = "1280x720" },
                 new() { NodeId = "b", Kind = PortKind.Objects, Live = "7 objects · 19 ms" },
                 new() { NodeId = "c", Kind = PortKind.TrackedObjects, Live = "7 tracked" },
                 new() { NodeId = "d", Kind = PortKind.Crossings, In = 41, Out = 33, Live = "In 41 · Out 33" },
@@ -321,7 +321,7 @@ internal static class PageSamples
             Resolution = new Resolution(1280, 720),
             Nodes =
             [
-                new() { NodeId = "a", Kind = PortKind.Picture, Live = "8 pictures per second" },
+                new() { NodeId = "a", Kind = PortKind.Picture, Live = "1280x720" },
                 new() { NodeId = "b", Kind = PortKind.Objects, Objects = [.. people, Car], Milliseconds = 18, Live = "5 objects · 18 ms" },
                 new() { NodeId = "c", Kind = PortKind.Objects, Objects = people, Dropped = [Car], Live = "4 kept · 1 left out" },
                 new() { NodeId = "d", Kind = PortKind.TrackedObjects, Objects = tracked, Live = "3 tracked" },
