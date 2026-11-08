@@ -225,7 +225,8 @@ must never break.
   read, No text read and Reader problem for the rules; read only, pictures never stored.
 - **[Vision Center](docs/spec/vision-center.md)** (built, GPU and real-model runs open; add-on `oadm.vision`, rail group
   Vision, free, off by default): pipelines built from nodes on a top-to-bottom canvas like n8n (camera, the user's ONNX
-  detection and classification models, filter, track, area, line, count, compare, timer, event), branches but no loops or merges,
+  detection and classification models, filter, track, area, line, dwell, stationary, direction, count, statistics, compare, and / or, hold, throttle,
+  timer, time window, device event, event; control inputs Reset, Send now, Only while, Second), branches but no loops or merges,
   checked before they run (`VisionGraph.Check`, one error per node, the same check in the editor); Watching or On action
   like Text recognition; class lists chosen on the model, never on a node; no model ships, a model is data (standard
   operators only, no external data), uploads audited; counts in memory only; read only, pictures never stored.

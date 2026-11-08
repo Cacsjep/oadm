@@ -139,34 +139,38 @@ recognition).
     tracking needs at least about 5), the same stream rules as a reader (`VapixRequestOptions.LiveStream`, reopened after a
     drop, the problems in the list).
   - **On action**: runs on one picture when a rule runs the action **Run pipeline**. Nodes that need a stream (Track,
-    Line, Timer, and Count on crossings) are refused in this mode, on their node: "Track works only while Watching."
+    Line, Dwell, Stationary, Direction, Timer, and Count on crossings) are refused in this mode, on their node: "Track works only while Watching."
 - **Resolution**: default 1280x720 or the camera's largest below it (the model sees its own input size; a larger picture
   only helps small objects). The save checks 160 to 7,680 pixels per side and video source 1 to 16, not the camera's
   own list.
 - A saved pipeline restarts only when its graph, node settings, stream, owner or the models it uses change; a new name,
   node places or an eye never restart it.
 - **Graph**: branches, no loops, no merges (decision 2026-11-08). The sources: exactly one Camera node, the start, and
-  any number of Timer nodes. Every other node has exactly one data input and any number of links from its output.
-  **Control inputs** (decision 2026-11-08) sit beside the data input: Count's **Reset** and Event's **Send now**
-  (`NodeKindInfo.ControlInputs`, the link's `ToPort`); each takes at most one link, only from a Timer, and a Timer's
-  pulse goes nowhere else. At most 32 nodes, at most 2 model nodes (Detect, Classify)
+  any number of Timer, Time window and Device event nodes. Every other node has exactly one data input and any number of
+  links from its output. **Control inputs** (decision 2026-11-08) sit beside the data input (`NodeKindInfo.ControlInputs`,
+  the link's `ToPort`), each of one kind (`ControlInput.Accepts`) and with at most one link: Reset of Count and
+  Statistics and Send now of Event take a pulse; Only while of Count and Event and Second of And / Or take a condition;
+  Second is required (`ControlInput.Required`), the others optional. A pulse goes only into a control input or a
+  Throttle. Loops count data and control links. At most 32 nodes, at most 2 model nodes (Detect, Classify)
   per path from the camera. The server checks the graph at every save (`VisionGraph.Check`) and the editor checks it while
   the user edits, with the same rules and texts (`Graph/GraphTexts`).
 - **The check**: one error per node, the first that applies in this order: its id (letters and digits, at most 32,
-  unique; links name nodes by id, so nothing else can be judged without it), an unknown kind, the Camera (one, no input),
-  its data input (none, a loop, more than one), the kind of its input, its control links (a known port, from a Timer, one
-  each), a Line without a Track before it, Watching only, the
-  model nodes on its path, its model (chosen, of the field's kind, not Missing), its classes (in its model or in the one
+  unique; links name nodes by id, so nothing else can be judged without it), an unknown kind, the Camera (one, no input)
+  or another source (no input, Watching only for a Timer), its data input (none, a loop, more than one), the kind of its
+  input (a pulse: "A Timer links only to Reset, Send now or Throttle."), a Line without a Track before it, a Dwell
+  without an Area on its path, Watching only, the model nodes on its path, its control links (a declared port, of the
+  port's kind, one each, a required one linked), its model (chosen, of the field's kind, not Missing), its classes (in its model or in the one
   of the Detect node before it; the class of Classify in the Classify node before it), every field's type and range,
   its name. Errors of the whole graph: no Camera, more than 32 nodes, a link to a node that does not exist, a pipeline
   format newer than this version. Input kinds pass on past a node with a field error, so the nodes after it still show
   their own errors. Fast enough for every edit (about 0.1 ms for 30 nodes).
 - **Typed links**: every output has one kind; an input takes only the kinds its node lists. Kinds: **Picture**,
   **Objects** (boxes with class, score, attributes; **tracked** once a Track node passed them: each object keeps an id),
-  **Crossings** (an object crossed a line, with its direction), **Number** (a live value), **Condition** (yes or no, from
-  Compare), **Pulse** (a Timer's tick, only into a control input).
-- Number fields with a known small range (scores, sizes, Confirm after, Keep lost objects, Minutes) show a slider with
-  the number beside it (decision 2026-11-08).
+  **Crossings** (an object crossed a line, with its direction), **Number** (a live value), **Condition** (yes or no),
+  **Pulse** (a Timer's tick, into a control input or a Throttle).
+- Number fields with a known small range (scores, sizes, Confirm after, Keep lost objects, Minutes, Movement allowed,
+  Tolerance, Minimum movement) show a slider with the number beside it (decision 2026-11-08). A field may show only for
+  a value of another (`VisibleWhenKey`: And of Compare only for Between); a hidden field is not checked.
 
 ### Nodes
 
@@ -179,10 +183,23 @@ recognition).
 | **Track** | Objects | Objects (tracked) | Gives each object an id that stays while it moves ("Tracking"). Confirm after (default 3 frames), Keep lost objects (default 1 s) |
 | **Area** | Objects | Objects | A polygon of 3 to 16 points drawn on the video; passes the objects inside. Inside by (default) the box's bottom centre (feet, wheels), its centre or any overlap. With tracked objects also the time each one has been inside; a lost object keeps its time while the Track node keeps it |
 | **Line** | Objects (tracked) | Crossings | A line of 2 to 8 points drawn on the video, with the direction In shown as an arrow; counts a crossing when a tracked object's bottom centre passes it. Counts In and Out, In only or Out only |
-| **Count** | Objects or Crossings | Number | Objects: how many are there now. Crossings: In and Out since the last reset; its value is In, or Out for a line that counts Out only. Reset by a Timer into its **Reset**, by the rule action **Reset counter** (both also reset its Line), and on a server restart |
-| **Compare** | Number | Condition | Yes while the number is greater than, at least, equal to, at most or less than **Value**, or between **Value** and **And** (both included) (decision 2026-11-08) |
-| **Timer** | none | Pulse | A pulse every few minutes (**Minutes**, 1 to 59), every hour, every day **At**, or every week on **Day** **At**, in the server's local time; works only while Watching (decision 2026-11-08) |
-| **Event** | Objects, Crossings, Number or Condition | none | Publishes a rule event ("Events"); its name is the event's name |
+| **Dwell** | Objects (tracked) | Objects (tracked) | The objects inside the Area before it longer than **Longer than** (default 30 s); works only while Watching |
+| **Stationary** | Objects (tracked) | Objects (tracked) | The objects whose bottom centre stayed within **Movement allowed** (default 3 % of the picture) of where it settled for **Still for** (default 60 s); a larger move settles it again where it is; works only while Watching |
+| **Direction** | Objects (tracked) | Objects (tracked) | The objects whose bottom centre moved over the last second within **Tolerance** (default 45°) of the arrow drawn on the video (2 points) and at least **Minimum movement** (default 5 % of the picture's height); angles in picture pixels; works only while Watching |
+| **Count** | Objects or Crossings | Number | Objects: how many are there now. Crossings: In and Out since the last reset; its value is In, or Out for a line that counts Out only. Reset by a pulse into its **Reset** (after this frame's value, so a Report of the same pulse still sees it), by the rule action **Reset counter** (both also reset its Line), and on a server restart. With **Only while** linked it counts only while that says yes and keeps its value meanwhile |
+| **Statistics** | Number | Number | The highest, lowest, average or sum of the number over the frames since a pulse into its **Reset** or the start |
+| **Compare** | Number | Condition | Yes while the number is greater than, at least, equal to, at most or less than **Value**, or between **Value** and **And** (both included) |
+| **And / Or** | Condition, Second (Condition) | Condition | Both or either yes |
+| **Hold** | Condition | Condition | Yes once its input said yes for **Yes after** (default 5 s), no once it said no for **No after** (default 5 s) |
+| **Throttle** | Crossings or Pulse | the same | Passes at most one per **At most one per** (default 60 s); the others are dropped |
+| **Device event** | none | Condition | Yes while the chosen event of the event rules (`event`: type and device) is on (`IEventStates`) |
+| **Timer** | none | Pulse | A pulse every few minutes (**Minutes**, 1 to 59), every hour, every day **At**, or every week on **Day** **At**, in the server's local time; works only while Watching |
+| **Time window** | none | Condition | Yes from **From** until **To** on the chosen **Days** (none: every day), the server's local time at the frame; a window over midnight belongs to the day it starts, From equal to To is the whole day |
+| **Event** | Objects, Crossings, Number or Condition; Send now, Only while | none | Publishes a rule event ("Events"); its name is the event's name |
+
+- Compare, And / Or, Hold, Throttle, Statistics, Timer, Time window, Device event, Dwell, Stationary and Direction:
+  decision 2026-11-08 with the user. Compare replaced the Event's Limit and Above limit; Timer replaced Count's Reset
+  daily at. The node list's groups: Models, Objects, Geometry, Logic, Time, Output.
 
 - A node has a name (unique in the pipeline whatever its case, at most 64 characters, no control characters, "Area 1"
   with the lowest free number like the areas of Text recognition); rules and dashboards name it.
@@ -248,8 +265,11 @@ recognition).
   - **Condition**: stateful **Condition holds**, on once the Compare node before it said yes for **At least**, off once
     it said no for **Off after**; values Count (the number compared). It replaces the Event's Limit and Above limit
     (decision 2026-11-08).
-  - **Send now** (a Timer into it): a stateless **Report** per pulse with the input's current values (Count, and In and
-    Out, or Classes, as its input has them), e.g. the count of the day before a Timer resets it.
+  - **Send now** (a pulse into it): a stateless **Report** per pulse with the input's current values (Objects: Count and
+    Classes; Crossings: In and Out; Number: Count, with In and Out on crossings; Condition: Count), e.g. the count of the
+    day before a Timer resets it.
+  - **Only while** linked: while it says no the stateful kinds count as "not there" (and go off after Off after) and
+    nothing stateless is sent; Object entered and left still follow the objects, so none is sent twice.
   - In On action mode an Event node on Objects fires **Objects found** (Count, Classes) or **No objects found** (Count)
     once per run, like Text read and No text read.
 - Event **Pipeline problem** per pipeline and **Any pipeline problem** (server, users with all devices), as Reader
@@ -318,7 +338,10 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   - Nothing selected: the pipeline's own settings (name, mode).
 - **The live line on each node card** (n8n's item counts): Camera "AXIS Q1798-LE · 1280x720 @ 8 fps", Detect "5
   objects · 18 ms", Filter "3 objects", Classify "3 objects · 18 ms" (on a picture "blue 87 % · 18 ms"), Track "3
-  tracked", Area "2 inside", Line "In 12 · Out 7" (one of them for a line of one direction), Count "14", Compare "14 > 10 · Yes", Timer "Next 00:00", Event "On",
+  tracked", Area "2 inside", Line "In 12 · Out 7" (one of them for a line of one direction), Count "14", Statistics "Highest 14", Compare "14 > 10 · Yes" ("2 ≤ 4 ≤ 6 · Yes" for Between), And / Or, Device event
+  "Yes" or "No", Hold "Yes" or "Yes in 3 s", Throttle "1 passed · 4 held back", Dwell, Stationary and Direction "2
+  objects", Timer "Next 00:00" ("Next Tue 06:30" weekly), Time window "Yes until 18:00" or "No until 08:00" ("No until
+  Fri 22:00" more than a day ahead), Event "On",
   "Off" or "Fired 3 s ago" ("Fired now" below a second, then minutes and hours); the number of objects on each link while
   the page shows. Sent at most twice a second per pipeline.
 - **Previews**: while the page shows a pipeline, the server runs its draft as a preview, as Text recognition does
@@ -404,7 +427,8 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   forth counts In and Out, the bottom centre decides inside.
 - Counts, events (on, off, At least, Off after, Condition holds, Report, Count changed at most once a second, Objects
   found), Reset counter, every Compare condition with the bounds of Between, Timers across midnight, a week and a
-  daylight saving change (frame times only), the control link rules, a failing model and an errored branch through the evaluator with a
+  daylight saving change (frame times only), Time windows over midnight and on chosen days, Hold, Throttle, Statistics,
+  And / Or, Device event, Only while, Dwell, Stationary and Direction, the control link rules, a failing model and an errored branch through the evaluator with a
   fake inference.
 - Limits, previews and leases, device groups, the permissions, the model upload with its refusals, class lists and the
   backup of the model list.
