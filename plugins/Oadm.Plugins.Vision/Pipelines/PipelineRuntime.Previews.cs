@@ -67,6 +67,7 @@ internal sealed partial class PipelineRuntime
             var preview = _previews.Open(kept, previewId, (id, order) => new Preview(id, owner, user, order));
 
             UpdateDraft(preview, stored);
+            FollowEvents(_pipelines());
             if (preview.Held is { } held && !held.Fits(stored))
             {
                 await ReleaseHeldAsync(preview).ConfigureAwait(false); // another source or size: that frame is not its picture

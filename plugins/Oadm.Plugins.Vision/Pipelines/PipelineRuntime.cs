@@ -64,6 +64,7 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
     private readonly ConcurrentDictionary<Task, byte> _singles = new();
     private readonly ConditionalWeakTable<Pipeline, string> _prints = new();
     private readonly StatsWindow _stats;
+    private readonly Events.EventStateBook _eventStates;
     private readonly CancellationTokenSource _stopping = new();
     private readonly ITimer _recheck;
     private readonly ITimer _live;
@@ -88,6 +89,7 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
         _stats = new StatsWindow(_time);
         _statsLeases = new StatsLeases(_time);
         _previews = new PreviewRegistry<Preview>(_time, VisionLimits.MaxPreviews, VisionLimits.MaxPreviewsPerUser, VisionLimits.PreviewLease);
+        _eventStates = new Events.EventStateBook(() => parts.EventSubscriptions(ctx));
         MaxWatching = VisionLimits.MaxWatchingFor(parts.ProcessorCount);
         using (ExecutionContext.SuppressFlow())
         {
@@ -430,6 +432,7 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
             await _statsTimer.DisposeAsync().ConfigureAwait(false);
             await StopLoopsAsync(_ => true).ConfigureAwait(false);
             await EndPreviewsAsync(_ => true).ConfigureAwait(false);
+            _eventStates.Dispose();
             foreach (var runner in _runners.Values)
             {
                 await runner.Serial.IdleAsync().ConfigureAwait(false);
@@ -609,6 +612,8 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
 
             _events.Keep(types);
 
+            FollowEvents(pipelines);
+
             // The previews follow: one may now share a pipeline's stream, or need its own again; the saved pipelines come first.
             await ReconcilePreviewsAsync().ConfigureAwait(false);
         }
@@ -616,6 +621,21 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
         {
             _sync.Release();
         }
+    }
+
+    /// <summary>The states of the event rules' events the Device event nodes read.</summary>
+    internal IEventStates EventStates => _eventStates;
+
+    /// <summary>The Device event nodes read the event rules' states: followed only while a pipeline or a preview has one.</summary>
+    private void FollowEvents(IReadOnlyList<Pipeline> pipelines)
+    {
+        List<Pipeline> drafts;
+        lock (_previews)
+        {
+            drafts = [.. _previews.Values.Select(p => p.Draft)];
+        }
+
+        _eventStates.Follow(pipelines.Any(Events.EventStateBook.Uses) || drafts.Any(Events.EventStateBook.Uses));
     }
 
     /// <summary>The runner of an On action pipeline: its evaluator, kept while the pipeline stays the same (its counts go on).</summary>
@@ -647,6 +667,11 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
     {
         try
         {
+            if (_parts.EvaluatorWithStates is { } withStates)
+            {
+                return withStates(pipeline, _models.Find, _inference, pipeline.Mode, EventStates, preview);
+            }
+
             var factory = preview ? _parts.PreviewEvaluator ?? _parts.Evaluator : _parts.Evaluator;
             return factory(pipeline, _models.Find, _inference, pipeline.Mode);
         }

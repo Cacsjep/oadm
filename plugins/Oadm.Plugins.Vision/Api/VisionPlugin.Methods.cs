@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 
 using Oadm.Plugins.Shared;
 using Oadm.Plugins.Vision.Api;
+using Oadm.Plugins.Vision.Events;
 using Oadm.Plugins.Vision.Model;
 using Oadm.Plugins.Vision.Pipelines;
 using Oadm.Sdk.Devices;
@@ -60,11 +61,17 @@ public sealed partial class VisionPlugin
             case VisionMethods.SavePipeline:
             {
                 var incoming = VisionJson.Deserialize<SavePipelineRequest>(payloadJson).Pipeline ?? throw new ArgumentException(PluginJson.EmptyRequest);
+                var eventDevices = EventDevicesOf(incoming);
+                if (eventDevices.Count > 0)
+                {
+                    await CallDevices.RequireAsync(caller, eventDevices, ct).ConfigureAwait(false); // a Device event node names only the caller's devices
+                }
+
                 Pipeline saved;
                 Pipeline? before;
                 try
                 {
-                    (saved, before) = await store.SaveAsync(ctx, caller, incoming, runtime.MaxWatching, runtime.CheckOf, ctx.System.Devices.FindAsync, ct).ConfigureAwait(false);
+                    (saved, before) = await store.SaveAsync(ctx, caller, incoming, runtime.MaxWatching, p => CheckWithEvents(runtime, caller, p), ctx.System.Devices.FindAsync, ct).ConfigureAwait(false);
                 }
                 catch (PipelineFieldException ex)
                 {
@@ -100,7 +107,7 @@ public sealed partial class VisionPlugin
             case VisionMethods.CheckGraph:
             {
                 var pipeline = VisionJson.Deserialize<CheckGraphRequest>(payloadJson).Pipeline ?? throw new ArgumentException(PluginJson.EmptyRequest);
-                return VisionJson.Serialize(runtime.CheckOf(PipelineRules.Stored(pipeline)));
+                return VisionJson.Serialize(CheckWithEvents(runtime, caller, PipelineRules.Stored(pipeline)));
             }
 
             case VisionMethods.StartPreview:
@@ -266,6 +273,9 @@ public sealed partial class VisionPlugin
 
             case VisionMethods.GetCameraOptions:
                 return VisionJson.Serialize(await CameraOptionsAsync(caller, VisionJson.Deserialize<CameraOptionsRequest>(payloadJson).DeviceId, ct).ConfigureAwait(false));
+
+            case VisionMethods.ListEventTypes:
+                return VisionJson.Serialize(await EventTypesAsync(caller, ct).ConfigureAwait(false));
 
             case VisionMethods.GetStats:
                 return VisionJson.Serialize(runtime.GetStats(owner));
@@ -495,5 +505,85 @@ public sealed partial class VisionPlugin
                 VisionJson.Serialize(ListOf(mine, runtime, id => scopes is not null && scopes.Contains(group, id))),
                 PluginEventAudience.DeviceScope(group));
         }
+    }
+
+    /// <summary>The devices the Device event nodes of <paramref name="pipeline"/> name.</summary>
+    private static List<Guid> EventDevicesOf(Pipeline pipeline) =>
+        [.. (pipeline.Nodes ?? []).Where(n => n?.Kind == NodeKinds.DeviceEvent && n.Settings is not null)
+            .Select(n => EventStateBook.ChoiceOf(n).Device).OfType<Guid>().Distinct()];
+
+    /// <summary>
+    /// The graph check with the rule of the Device event node: never one of Vision Center's own events (no loop), and for a
+    /// user with a device group only an event of their devices.
+    /// </summary>
+    private GraphCheck CheckWithEvents(PipelineRuntime runtime, ICallContext caller, Pipeline pipeline)
+    {
+        var check = runtime.CheckOf(pipeline);
+        var errors = new Dictionary<string, string>(check.NodeErrors, StringComparer.Ordinal);
+        HashSet<string>? allowed = null;
+        foreach (var node in pipeline.Nodes.Where(n => n.Kind == NodeKinds.DeviceEvent))
+        {
+            if (EventStateBook.ChoiceOf(node).Type is not { } type)
+            {
+                continue;
+            }
+
+            allowed ??= caller.HasAllDevices ? null : [.. ChoicesOf(caller, devices: null).Select(c => c.Id)];
+            if (EventStateBook.IsOwn(type) || (allowed is not null && !allowed.Contains(type)))
+            {
+                errors[node.Id] = EventStateBook.OwnEventRefused;
+            }
+        }
+
+        return errors.Count == check.NodeErrors.Count ? check : check with { NodeErrors = errors };
+    }
+
+    /// <summary>The on and off events a Device event node of <paramref name="caller"/> may follow.</summary>
+    private async Task<EventTypeList> EventTypesAsync(ICallContext caller, CancellationToken ct)
+    {
+        HashSet<Guid>? devices = null;
+        if (!caller.HasAllDevices)
+        {
+            devices = [.. (await caller.Devices.ListAsync(ct).ConfigureAwait(false)).Select(d => d.Id)];
+        }
+
+        return new EventTypeList { Types = ChoicesOf(caller, devices) };
+    }
+
+    /// <summary>
+    /// The stateful types of the event rules other than Vision Center's own. A user with a device group gets only events per
+    /// device that nobody else owns and that one of their devices can send (<paramref name="devices"/>; null: not checked).
+    /// </summary>
+    private List<EventTypeChoice> ChoicesOf(ICallContext caller, HashSet<Guid>? devices)
+    {
+        var source = _ctx is { } ctx ? _parts?.EventSubscriptions(ctx) : null;
+        var choices = new List<EventTypeChoice>();
+        foreach (var type in source?.Types ?? [])
+        {
+            var info = type.Info;
+            if (info.Kind != Oadm.Sdk.Events.EventKind.Stateful || EventStateBook.IsOwn(info.Id))
+            {
+                continue;
+            }
+
+            if (!caller.HasAllDevices
+                && (info.Scope != Oadm.Sdk.Events.EventScope.Device
+                    || (info.OwnerScopeKey is { } owner && !string.Equals(owner, caller.DeviceScopeKey, StringComparison.OrdinalIgnoreCase))
+                    || (devices is not null && info.DeviceIds is { } ids && !ids.Any(devices.Contains))))
+            {
+                continue;
+            }
+
+            choices.Add(new EventTypeChoice
+            {
+                Id = info.Id,
+                Name = info.DisplayName,
+                Path = info.Folders,
+                PerDevice = info.Scope == Oadm.Sdk.Events.EventScope.Device,
+                Available = type.Available,
+            });
+        }
+
+        return choices;
     }
 }
