@@ -152,7 +152,7 @@ parse_args() {
     build)   TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client|plugins|docs|docs-offline) ;; *) usage_error build "unknown target '$TARGET' for build" ;; esac ;;
     run)     [ -n "$TARGET" ] || usage_error run "missing target for run (server, client, dev, node or node-app)"
              case "$TARGET" in server|client|dev|node|node-app) ;; *) usage_error run "unknown target '$TARGET' for run" ;; esac ;;
-    test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|hardware|models|recipients|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
+    test)    TARGET="${TARGET:-unit}"; case "$TARGET" in unit|perf|hardware|models|gpu|recipients|all) ;; *) usage_error test "unknown target '$TARGET' for test" ;; esac ;;
     publish) TARGET="${TARGET:-all}"; case "$TARGET" in all|server|client) ;; *) usage_error publish "unknown target '$TARGET' for publish" ;; esac ;;
     package) [ -n "$TARGET" ] || usage_error package "missing target for package (windows, linux, macos, site-node, addons or nuget)"
              case "$TARGET" in windows|linux|macos|site-node|addons|nuget) ;; *) usage_error package "unknown target '$TARGET' for package" ;; esac ;;
@@ -453,17 +453,20 @@ cmd_test() {
     return "$status"
   fi
   case "$TARGET" in
-    unit) filter="Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=RealModel" ;;
+    unit) filter="Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=RealModel&Category!=Gpu" ;;
     perf) filter="Category=Perf" ;;
     # The real models and photos (Vision Center): the build downloads them once into the model cache.
     models) filter="Category=RealModel"; EXTRA=("-p:OadmRealModels=true" ${EXTRA[@]+"${EXTRA[@]}"}) ;;
+    # The vision add-ons on the graphics card (DirectML or CUDA): the real models, and both add-ons' plugin folders for the
+    # run of both at once. Only on purpose: never in unit, all or CI; one test process at a time.
+    gpu) filter="Category=Gpu"; EXTRA=("-p:OadmRealModels=true" "-p:OadmGpuPlugins=true" ${EXTRA[@]+"${EXTRA[@]}"}) ;;
     hardware)
       if [ ! -f "$REPO_ROOT/dev-cameras.yaml" ] && [ -z "${OADM_DEV_CAMERAS:-}" ]; then
         echo "error: dev-cameras.yaml not found and OADM_DEV_CAMERAS not set, copy dev-cameras.example.yaml first" >&2
         exit 1
       fi
       filter="Category=Hardware" ;;
-    all) filter="Category!=HardwareWrite" ;;
+    all) filter="Category!=HardwareWrite&Category!=Gpu" ;;
   esac
   if [ -n "$OPT_FILTER" ]; then filter="($filter)&($OPT_FILTER)"; fi
   "$DOTNET" test "$SOLUTION" -c "$CONFIGURATION" --filter "$filter" ${EXTRA[@]+"${EXTRA[@]}"}

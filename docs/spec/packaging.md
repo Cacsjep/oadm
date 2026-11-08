@@ -183,7 +183,7 @@ One release workflow, `.github/workflows/release.yml`, only on release tags `v*.
 when the jobs it needs passed:
 
 - `tests` (Windows, Linux, macOS, 30 min): `dotnet test` with the unit filter
-  `Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=RealModel`, one run without a retry, `--blame-hang-timeout 5m
+  `Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=RealModel&Category!=Gpu`, one run without a retry, `--blame-hang-timeout 5m
   --blame-crash`: a crashed test host leaves a dump and its test sequence, uploaded as the artifact `test-results-<os>`
   when the step fails.
 - `installers` (needs docs, beside the tests, 60 min; `release` needs both): MSI, the .deb packages for amd64 and arm64 (on `ubuntu-24.04-arm`), .pkg,
