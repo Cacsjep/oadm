@@ -10,9 +10,9 @@ namespace Oadm.Plugins.Vision.Graph;
 /// fields, unique names, the limits. The server's save, the runtime and the page's editor use this one check.
 /// </summary>
 /// <remarks>
-/// One error per node, the first that applies in this order: an unknown kind; the camera; its input (none, a loop, more
-/// than one); the kind of its input; a Line without Track; Watching only; the model nodes on its path; its model; its
-/// classes; its fields; its name; its id. Deterministic and cheap enough for the editor to run on every edit.
+/// One error per node, the first that applies in this order: its id (links name it, so nothing else can be judged
+/// without it); an unknown kind; the camera; its input (none, a loop, more than one); the kind of its input; a Line
+/// without Track; Watching only; the model nodes on its path; its model; its classes; its fields; its name. Deterministic and cheap enough for the editor to run on every edit.
 /// </remarks>
 public static class VisionGraph
 {
@@ -178,8 +178,9 @@ public static class VisionGraph
             var node = nodes[i];
             var nameError = NameError(node.Name, names);
             var idError = IdError(node.Id, ids);
-            var error = NodeError(pipeline, nodes, i, kinds, camera, inputCount, parent, inLoop, input, reached, modelsOnPath, detectBefore, classifyBefore, models, findModel)
-                ?? nameError ?? idError;
+            var error = idError
+                ?? NodeError(pipeline, nodes, i, kinds, camera, inputCount, parent, inLoop, input, reached, modelsOnPath, detectBefore, classifyBefore, models, findModel)
+                ?? nameError;
             if (error is not null)
             {
                 errors.TryAdd(node.Id ?? string.Empty, error);
