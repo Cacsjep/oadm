@@ -150,6 +150,102 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
     /// <summary>Opens the camera picker (set by the view); the argument is the camera chosen so far.</summary>
     public Func<Guid?, Task<Guid?>>? PickCamera { get; set; }
 
+    /// <summary>Opens the picker of several cameras (set by the view) over <see cref="CopyTargets"/>; null when cancelled.</summary>
+    public Func<IReadOnlyList<IDeviceInfo>, Task<IReadOnlyList<Guid>?>>? PickCameras { get; set; }
+
+    /// <summary>The cameras a copy of the shown pipeline can go to: every camera but its own.</summary>
+    public IReadOnlyList<IDeviceInfo> CopyTargets => Editor is { } editor ? [.. Cameras.Where(d => d.Id != editor.DeviceId)] : [];
+
+    /// <summary>A copy is on its way: the ring in the button's place.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CopyCommand))]
+    public partial bool IsCopying { get; private set; }
+
+    /// <summary>Why Copy to cameras is off; its tooltip when it can copy.</summary>
+    public string CopyTip => Editor is null || Editor.IsNew || Editor.IsDirty ? VisionTexts.SaveFirst : VisionTexts.CopyToCameras;
+
+    private bool CanCopy() => MayChange && !IsCopying && Editor is { IsNew: false, IsDirty: false };
+
+    /// <summary>
+    /// Copy to cameras: the cameras (not the pipeline's own, at most <see cref="VisionTexts.MaxCopies"/>), then one call; the
+    /// copies join the list, the first one shows; the refused cameras in one message, a line each. Nothing when all worked.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanCopy))]
+    private async Task CopyAsync()
+    {
+        if (Editor is not { IsNew: false } editor || PickCameras is not { } pick
+            || await pick(CopyTargets).ConfigureAwait(true) is not { Count: > 0 } cameras)
+        {
+            return;
+        }
+
+        if (cameras.Count > VisionTexts.MaxCopies)
+        {
+            await _ctx.ShowMessageAsync(VisionTexts.CopyToCameras, VisionTexts.TooManyCameras).ConfigureAwait(true);
+            return;
+        }
+
+        IsCopying = true;
+        CopyPipelineReply reply;
+        try
+        {
+            var json = await _ctx.InvokeAsync(VisionMethods.CopyPipeline,
+                VisionJson.Serialize(new CopyPipelineRequest { PipelineId = editor.Id, DeviceIds = cameras }), CancellationToken.None).ConfigureAwait(true);
+            reply = VisionJson.Deserialize<CopyPipelineReply>(json);
+        }
+#pragma warning disable CA1031 // The server's reason in the host's message; nothing was copied.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            IsCopying = false;
+            await _ctx.ShowMessageAsync(VisionTexts.CopyToCameras, ServerErrors.Message(ex)).ConfigureAwait(true);
+            return;
+        }
+
+        IsCopying = false;
+        foreach (var copy in reply.Created)
+        {
+            if (!_rows.ContainsKey(copy.Id))
+            {
+                _rows[copy.Id] = new PipelineListRow(new Api.PipelineRow { Id = copy.Id, Name = copy.Name, DeviceId = copy.DeviceId, Mode = copy.Mode, Fps = copy.Fps }, CameraText(copy.DeviceId));
+                _order.Add(copy.Id);
+            }
+        }
+
+        ApplyFilter();
+        if (reply.Created.Count > 0 && _rows.TryGetValue(reply.Created[0].Id, out var first))
+        {
+            await OpenAsync(first, _active?.Token ?? CancellationToken.None).ConfigureAwait(true);
+        }
+
+        if (reply.Refused.Count > 0)
+        {
+            await _ctx.ShowMessageAsync(VisionTexts.CopyToCameras,
+                VisionTexts.CopyRefusals(reply.Refused.Select(r => $"{CameraText(r.Key)}: {r.Value}"))).ConfigureAwait(true);
+        }
+    }
+
+    partial void OnEditorChanged(PipelineEditorViewModel? oldValue, PipelineEditorViewModel? newValue)
+    {
+        oldValue?.PropertyChanged -= OnEditorPropertyChanged;
+        newValue?.PropertyChanged += OnEditorPropertyChanged;
+        OnCopyStateChanged();
+    }
+
+    private void OnEditorPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(PipelineEditorViewModel.IsDirty) or nameof(PipelineEditorViewModel.IsNew))
+        {
+            OnCopyStateChanged();
+        }
+    }
+
+    private void OnCopyStateChanged()
+    {
+        OnPropertyChanged(nameof(CopyTip));
+        CopyCommand.NotifyCanExecuteChanged();
+    }
+
     public IVisionDialogs? Dialogs
     {
         get => _dialogs;
@@ -164,7 +260,7 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
     public ModelsViewModel Models { get; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(NewCommand), nameof(DeleteCommand))]
+    [NotifyCanExecuteChangedFor(nameof(NewCommand), nameof(DeleteCommand), nameof(CopyCommand))]
     public partial bool MayChange { get; private set; }
 
     public RangeObservableCollection<PipelineListRow> Pipelines { get; } = [];

@@ -186,6 +186,7 @@ public partial class VisionView : UserControl, IVisionDialogs
         {
             vm.PropertyChanged += OnViewModelPropertyChanged;
             vm.PickCamera = PickCameraAsync;
+            vm.PickCameras = PickCamerasAsync;
             vm.Dialogs = this;
         }
 
@@ -283,6 +284,12 @@ public partial class VisionView : UserControl, IVisionDialogs
             e.Handled = true;
         }
     }
+
+    /// <summary>Copy to cameras: the shared picker of several devices over the cameras a copy can go to.</summary>
+    private async Task<IReadOnlyList<Guid>?> PickCamerasAsync(IReadOnlyList<Oadm.Sdk.Devices.IDeviceInfo> cameras) =>
+        TopLevel.GetTopLevel(this) is Window owner
+            ? await DevicePickerWindow.ShowAsync(owner, cameras, heading: VisionTexts.ChooseCameras).ConfigureAwait(true)
+            : null;
 
     private async Task<Guid?> PickCameraAsync(Guid? selected) =>
         TopLevel.GetTopLevel(this) is Window owner && _viewModel is { } vm
