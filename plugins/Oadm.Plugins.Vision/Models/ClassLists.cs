@@ -3,12 +3,15 @@ using Oadm.Plugins.Vision.Model;
 namespace Oadm.Plugins.Vision.Models;
 
 /// <summary>
-/// The built-in class lists (docs/spec/vision-center.md "Class lists"): COCO 2017 by its category ids (91 ids, 0 and the 10
-/// unused ids "N/A"; the ids DETR and RF-DETR give) and COCO's 80 classes in a row (the ids YOLO gives). In code, never stored.
+/// The built-in class lists (docs/spec/vision-center.md "Class lists"), named by the models they fit: COCO 2017 by its
+/// category ids (91 ids, 0 and the 10 unused ids "N/A": DETR), the same without id 90 (RF-DETR's 90 slots are the category
+/// ids 0 to 89: roboflow/rf-detr <c>class_id_to_name</c>) and COCO's 80 classes in a row (YOLO). In code, never stored.
 /// </summary>
 public static class ClassLists
 {
     public const string Coco91Id = "coco-91";
+
+    public const string Coco90Id = "coco-90";
 
     public const string Coco80Id = "coco-80";
 
@@ -27,26 +30,30 @@ public static class ClassLists
         "toothbrush",
     ];
 
-    public static ClassList Coco91 { get; } = new() { Id = Coco91Id, Name = "COCO (91 ids)", Names = Coco91Names, BuiltIn = true };
+    public static ClassList Coco91 { get; } = new() { Id = Coco91Id, Name = "COCO for DETR (91)", Names = Coco91Names, BuiltIn = true };
+
+    /// <summary>RF-DETR's slots: the category ids 0 to 89 (toothbrush, id 90, has none).</summary>
+    public static ClassList Coco90 { get; } = new() { Id = Coco90Id, Name = "COCO for RF-DETR (90)", Names = Coco91Names[..90], BuiltIn = true };
 
     /// <summary>The same classes without the gaps, in the order of their ids.</summary>
     public static ClassList Coco80 { get; } = new()
     {
         Id = Coco80Id,
-        Name = "COCO (80 classes)",
+        Name = "COCO for YOLO (80)",
         Names = [.. Coco91Names.Where(n => n != VisionLimits.NoClassName)],
         BuiltIn = true,
     };
 
-    public static IReadOnlyList<ClassList> BuiltIn { get; } = [Coco91, Coco80];
+    public static IReadOnlyList<ClassList> BuiltIn { get; } = [Coco91, Coco90, Coco80];
 
     /// <summary>The built-in list of <paramref name="id"/>, or null.</summary>
     public static ClassList? BuiltInOf(string? id) => BuiltIn.FirstOrDefault(l => l.Id == id);
 
-    /// <summary>The built-in list a model of <paramref name="classes"/> classes gets when it names none itself: 91 COCO ids, 80 COCO classes, else none.</summary>
+    /// <summary>The built-in list a model of <paramref name="classes"/> classes gets when it names none itself: 91 (DETR), 90 (RF-DETR), 80 (YOLO), else none.</summary>
     public static ClassList? ForClassCount(int classes) => classes switch
     {
         91 => Coco91,
+        90 => Coco90,
         80 => Coco80,
         _ => null,
     };
