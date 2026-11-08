@@ -478,13 +478,9 @@ public sealed class PageViewModelTests
         var row = models.Rows.OfType<ModelRow>().First(r => r.Model.Id == "m2");
         Assert.EndsWith("2 pipelines", row.Line);
         var actions = models.ActionsOf(row);
-        Assert.Equal([VisionTexts.Rename, VisionTexts.Classes, "-", VisionTexts.Delete], actions.Select(a => a.Text));
         Assert.True(actions[^1].IsDanger);
 
-        var classes = ModelEditViewModel.ForClasses(PageSamples.Helmet);
-        Assert.Equal(["helmet", "no helmet"], classes.ClassNames);
-        classes.ClassesText = "helmet";
-        Assert.Equal(VisionTexts.WrongClassCount, classes.ErrorOf(nameof(ModelEditViewModel.ClassesText)));
+        Assert.Equal([VisionTexts.Rename, VisionTexts.ClassListTitle, "-", VisionTexts.Delete], actions.Select(a => a.Text));
         var rename = ModelEditViewModel.ForRename(PageSamples.Helmet, name => name == "DETR R50");
         rename.Name = "DETR R50";
         Assert.Equal(VisionTexts.ModelNameTaken, rename.ErrorOf(nameof(ModelEditViewModel.Name)));

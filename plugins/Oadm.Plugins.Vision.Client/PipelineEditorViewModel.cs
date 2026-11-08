@@ -25,6 +25,9 @@ public interface IVisionDialogs
     /// <summary>Rename or the class names of a model: true when the user chose its main button.</summary>
     Task<bool> EditModelAsync(ModelEditViewModel form);
 
+    /// <summary>New, Edit or View of a class list: true when the user chose its main button.</summary>
+    Task<bool> EditClassListAsync(ClassListEditViewModel form);
+
     /// <summary>The model file and an optional labels file; null when cancelled.</summary>
     Task<IReadOnlyList<IModelFile>?> PickModelFilesAsync();
 }
@@ -55,6 +58,7 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
     private readonly Func<byte[], Task<Bitmap?>> _decode;
     private readonly Func<Pipeline, GraphCheck> _check;
     private readonly ILiveVideo? _video;
+    private readonly Func<VisionModel, string>? _classListName;
     private string _savedJson;
     private bool _loading;
     private bool _disposed;
@@ -73,8 +77,10 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
         Func<string, string, bool> pipelineNameTaken,
         Func<IReadOnlyList<VisionModel>> models,
         Func<byte[], Task<Bitmap?>> decode,
-        Func<Pipeline, GraphCheck>? check = null)
+        Func<Pipeline, GraphCheck>? check = null,
+        Func<VisionModel, string>? classListName = null)
     {
+        _classListName = classListName;
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         ArgumentNullException.ThrowIfNull(pipeline);
         ArgumentNullException.ThrowIfNull(engine);
@@ -333,6 +339,9 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
 
         return [];
     }
+
+    string? INodeFormHost.ClassListOf(string? modelId) =>
+        _classListName is { } name && _models().FirstOrDefault(m => m.Id == modelId) is { } model ? VisionTexts.ClassListOf(name(model)) : null;
 
     public void StartDrawing(NodeViewModel node)
     {

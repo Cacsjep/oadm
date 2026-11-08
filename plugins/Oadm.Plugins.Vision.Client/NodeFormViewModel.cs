@@ -20,6 +20,9 @@ public interface INodeFormHost
     /// <summary>The stored models of <paramref name="kind"/> (not Missing ones too: they show, the check says to upload them).</summary>
     IReadOnlyList<ModelOption> ModelsOf(ModelKind kind);
 
+    /// <summary>"Class list: COCO (91 ids)" of a stored model; null when there is no such model.</summary>
+    string? ClassListOf(string? modelId) => null;
+
     /// <summary>The class names of the node's own model, or of the model before it; empty without one.</summary>
     IReadOnlyList<string> ClassesFor(NodeViewModel node);
 
@@ -302,15 +305,23 @@ public sealed partial class ModelFieldViewModel : FieldViewModel
         : base(field, node, write)
     {
         ArgumentNullException.ThrowIfNull(host);
+        _host = host;
         Models = host.ModelsOf(field.ModelKind ?? ModelKind.Detection);
         Reload();
         Validation.Rule(nameof(Selected), () => Selected is null && !Field.Optional ? GraphTexts.ChooseModel : null);
         Validation.Validate();
     }
 
+    private readonly INodeFormHost _host;
+
     public IReadOnlyList<ModelOption> Models { get; }
 
     public static string ChoosePlaceholder => VisionTexts.ChooseModel;
+
+    /// <summary>The chosen model's class list, read only below the field ("Class list: COCO (91 ids)").</summary>
+    public string? ClassListText => _host.ClassListOf(Selected?.Id);
+
+    public bool HasClassList => ClassListText is not null;
 
     [ObservableProperty]
     public partial ModelOption? Selected { get; set; }
@@ -323,7 +334,12 @@ public sealed partial class ModelFieldViewModel : FieldViewModel
         Loading = false;
     }
 
-    partial void OnSelectedChanged(ModelOption? value) => Write(value is null ? null : JsonValue.Create(value.Id));
+    partial void OnSelectedChanged(ModelOption? value)
+    {
+        OnPropertyChanged(nameof(ClassListText));
+        OnPropertyChanged(nameof(HasClassList));
+        Write(value is null ? null : JsonValue.Create(value.Id));
+    }
 }
 
 /// <summary>The classes of the model before the node, ticked in a select with check boxes; none ticked: every class.</summary>

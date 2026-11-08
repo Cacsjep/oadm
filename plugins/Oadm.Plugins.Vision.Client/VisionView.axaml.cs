@@ -14,6 +14,41 @@ namespace Oadm.Plugins.Vision.Client;
 /// models, the node list's choice goes to the canvas, the camera picker, the Stream settings and model dialogs, the file
 /// picker of Upload model; the view model watches while the view is in the visual tree.
 /// </summary>
+/// <summary>The widths the canvas and the right column may take in a page of a given width (the resizer's stops).</summary>
+public readonly record struct ColumnLimits(double CanvasMin, double RightMin, double RightMax);
+
+/// <summary>
+/// The page's widths (docs/spec/vision-center.md "Page"): the fixed pipelines column, then the canvas card and the right column
+/// with the shared splitter as their gap. Pure: the view applies it, the tests check it.
+/// </summary>
+public static class PageLayout
+{
+    /// <summary>The pipelines column's fixed width and the gap after it.</summary>
+    public const double PipelinesWidth = 320 + 16;
+
+    /// <summary>The right column's width at first and its least: the live video above the selected node's form.</summary>
+    public const double RightMinWidth = 420;
+
+    /// <summary>The canvas card's least width: its toolbar fits (Add node, Undo, Redo, Fit view, Tidy up, Delete).</summary>
+    public const double CanvasMinWidth = 620;
+
+    /// <summary>The video's height in the right column at its least width (16:9 of the picture's place).</summary>
+    public const double VideoMinHeight = 226;
+
+    /// <summary>
+    /// The limits of the canvas card and the right column in a page of <paramref name="width"/> (the splitter of
+    /// <paramref name="splitter"/> between them), in this order when they do not all fit: the canvas keeps its minimum, then the
+    /// right column its own; a drag never takes the canvas below its minimum.
+    /// </summary>
+    public static ColumnLimits LimitsOf(double width, double splitter)
+    {
+        var room = Math.Max(0, width - PipelinesWidth - splitter);
+        var canvasMin = Math.Min(CanvasMinWidth, room);
+        var rightMin = Math.Min(RightMinWidth, room - canvasMin);
+        return new ColumnLimits(canvasMin, rightMin, Math.Max(rightMin, room - canvasMin));
+    }
+}
+
 public partial class VisionView : UserControl, IVisionDialogs
 {
     private VisionViewModel? _viewModel;
@@ -22,6 +57,8 @@ public partial class VisionView : UserControl, IVisionDialogs
     public VisionView()
     {
         InitializeComponent();
+        Panes.SizeChanged += (_, _) => FitColumns();
+        RightColumn.SizeChanged += (_, _) => FitVideo();
         Picture.ShapeDrawn += (_, points) => _editor?.ShapeDrawn(points);
         Picture.ShapeChanged += (_, change) => _editor?.SetShape(change.Shape.Node, change.Points);
         Picture.ShapeSelected += (_, shape) => _editor?.Canvas.SelectedNode = shape.Node;
@@ -29,6 +66,41 @@ public partial class VisionView : UserControl, IVisionDialogs
         Picture.DrawingCancelled += (_, _) => _editor?.StopDrawing();
         NodeList.AddHandler(TappedEvent, OnNodeChosen, RoutingStrategies.Bubble, handledEventsToo: true);
         NodeSearch.AddHandler(KeyDownEvent, OnNodeSearchKey, RoutingStrategies.Tunnel);
+    }
+
+    /// <summary>Applies the limits; the right column keeps the width the splitter gave it (as long as this view lives).</summary>
+    private void FitColumns()
+    {
+        if (Panes.Bounds.Width <= 0)
+        {
+            return;
+        }
+
+        var limits = PageLayout.LimitsOf(Panes.Bounds.Width, RightSplitter.Bounds.Width);
+        var columns = Panes.ColumnDefinitions;
+        columns[2].MinWidth = limits.CanvasMin;
+        columns[4].MinWidth = limits.RightMin;
+        columns[4].MaxWidth = limits.RightMax;
+    }
+
+    /// <summary>The video follows the right column's width: the picture's 16:9 place, at least its first height.</summary>
+    private void FitVideo()
+    {
+        var width = VideoPanel.Bounds.Width;
+        if (width > 0)
+        {
+            VideoPanel.Height = Math.Max(PageLayout.VideoMinHeight, Math.Round(width * 9 / 16));
+        }
+    }
+
+    /// <summary>The right column's width now (tests).</summary>
+    internal double RightWidth => Panes.ColumnDefinitions[4].ActualWidth;
+
+    /// <summary>Gives the right column <paramref name="width"/> within its limits, as a drag of the splitter does (tests).</summary>
+    internal void SetRightWidth(double width)
+    {
+        var column = Panes.ColumnDefinitions[4];
+        column.Width = new GridLength(Math.Clamp(width, column.MinWidth, column.MaxWidth));
     }
 
     /// <summary>The overlay over the live video (tests draw on it).</summary>
@@ -172,6 +244,28 @@ public partial class VisionView : UserControl, IVisionDialogs
         };
         await ShowDialogAsync(window).ConfigureAwait(true);
         return ok;
+    }
+
+    public async Task<bool> EditClassListAsync(ClassListEditViewModel form)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+        var ok = false;
+        var window = new ClassListWindow { DataContext = form };
+        form.CloseRequested += (_, result) =>
+        {
+            ok = result;
+            window.Close();
+        };
+        await ShowDialogAsync(window).ConfigureAwait(true);
+        return ok;
+    }
+
+    private void OnClassListActions(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Button { DataContext: ClassListRow row } button && _viewModel is { } vm)
+        {
+            RowActions.Show(button, vm.Models.ActionsOf(row));
+        }
     }
 
     public async Task<bool> EditModelAsync(ModelEditViewModel form)

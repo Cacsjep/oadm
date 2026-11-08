@@ -27,7 +27,7 @@ public abstract class ModelsRow : ObservableObject;
 /// <summary>A stored model: name, its line (kind, input, classes, size, pipelines) and the ⋯ menu.</summary>
 public sealed partial class ModelRow : ModelsRow
 {
-    public ModelRow(VisionModel model, IReadOnlyList<string> usedBy) => Apply(model, usedBy);
+    public ModelRow(VisionModel model, IReadOnlyList<string> usedBy, string? listName = null) => Apply(model, usedBy, listName);
 
     [ObservableProperty]
     public partial VisionModel Model { get; private set; } = new();
@@ -50,13 +50,13 @@ public sealed partial class ModelRow : ModelsRow
 
     public static string MissingTip => VisionTexts.MissingTip;
 
-    public void Apply(VisionModel model, IReadOnlyList<string> usedBy)
+    public void Apply(VisionModel model, IReadOnlyList<string> usedBy, string? listName = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         Model = model;
         UsedBy = usedBy ?? [];
         Name = model.Name;
-        Line = VisionTexts.ModelLine(model, UsedBy.Count);
+        Line = VisionTexts.ModelLine(model, UsedBy.Count, listName);
         Details = VisionTexts.ModelDetails(model, UsedBy);
         OnPropertyChanged(nameof(IsMissing));
     }
@@ -128,7 +128,8 @@ public sealed partial class UploadRow(string fileName) : ModelsRow, IDisposable
 /// <summary>
 /// The Models card (docs/spec/vision-center.md "Models"), for users with Manage vision models: Upload model sends the file in
 /// chunks of the server's size with its progress and Cancel in the row, then the model check (a ring in the row); a refusal stays
-/// in the row in the server's words. The ⋯ menu of a model: Rename, Classes, Delete in red (refused while pipelines use it).
+/// in the row in the server's words. The ⋯ menu of a model: Rename, Class list, Delete in red (refused while pipelines use it).
+/// Below the models the class lists ("Class lists"): the built-in ones to view, the user's to edit and delete.
 /// </summary>
 public sealed partial class ModelsViewModel : ObservableObject
 {
@@ -155,6 +156,21 @@ public sealed partial class ModelsViewModel : ObservableObject
 
     public RangeObservableCollection<ModelsRow> Rows { get; } = [];
 
+    /// <summary>The class lists: the built-in ones first, then the user's by name.</summary>
+    public RangeObservableCollection<ClassListRow> ClassLists { get; } = [];
+
+    /// <summary>The stored class lists (the forms name a model's list).</summary>
+    public IReadOnlyList<ClassList> Lists { get; private set; } = [];
+
+    private IReadOnlyDictionary<string, IReadOnlyList<string>> _modelsUsedBy = new Dictionary<string, IReadOnlyList<string>>();
+
+    /// <summary>"COCO (91 ids)" for a model's list, "Own names" without one (or a list no longer there).</summary>
+    public string ClassListNameOf(VisionModel model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        return model.ClassListId is { } id && Lists.FirstOrDefault(l => l.Id == id) is { } list ? list.Name : VisionTexts.OwnNames;
+    }
+
     /// <summary>The stored models (every user: the forms offer them).</summary>
     public IReadOnlyList<VisionModel> Models { get; private set; } = [];
 
@@ -165,8 +181,45 @@ public sealed partial class ModelsViewModel : ObservableObject
 
     public async Task LoadAsync(CancellationToken ct)
     {
+        await LoadClassListsAsync(ct).ConfigureAwait(true);
         var json = await _ctx.InvokeAsync(VisionMethods.ListModels, "{}", ct).ConfigureAwait(true);
         Apply(VisionJson.Deserialize<ModelList>(json));
+    }
+
+    /// <summary>The class lists (listClassLists); an older server without them: none.</summary>
+    public async Task LoadClassListsAsync(CancellationToken ct)
+    {
+        try
+        {
+            var json = await _ctx.InvokeAsync(VisionMethods.ListClassLists, "{}", ct).ConfigureAwait(true);
+            ApplyClassLists(VisionJson.Deserialize<ClassListList>(json));
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+#pragma warning disable CA1031 // Without the lists the models keep their own names.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
+    }
+
+    /// <summary>The class lists: rows replaced once, the model lines name their list again.</summary>
+    public void ApplyClassLists(ClassListList list)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+        Lists = list.Lists;
+        ClassLists.ReplaceAll(list.Lists
+            .OrderByDescending(l => l.BuiltIn)
+            .ThenBy(l => l.BuiltIn ? string.Empty : l.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Select(l => new ClassListRow(l, list.UsedBy.GetValueOrDefault(l.Id) ?? [])));
+        foreach (var row in _rows.Values)
+        {
+            row.Apply(row.Model, row.UsedBy, ClassListNameOf(row.Model));
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>The list (listModels, the models event): rows updated in place by id, uploads stay at the end.</summary>
@@ -174,6 +227,7 @@ public sealed partial class ModelsViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(list);
         Models = list.Models;
+        _modelsUsedBy = list.UsedBy;
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var rows = new List<ModelsRow>();
         foreach (var model in list.Models.OrderBy(m => m.Name, StringComparer.CurrentCultureIgnoreCase))
@@ -182,11 +236,11 @@ public sealed partial class ModelsViewModel : ObservableObject
             var used = list.UsedBy.GetValueOrDefault(model.Id) ?? [];
             if (_rows.TryGetValue(model.Id, out var row))
             {
-                row.Apply(model, used);
+                row.Apply(model, used, ClassListNameOf(model));
             }
             else
             {
-                row = new ModelRow(model, used);
+                row = new ModelRow(model, used, ClassListNameOf(model));
                 _rows[model.Id] = row;
             }
 
@@ -291,7 +345,7 @@ public sealed partial class ModelsViewModel : ObservableObject
             Apply(new ModelList
             {
                 Models = [.. Models.Where(m => m.Id != finish.Model.Id), finish.Model],
-                UsedBy = _rows.Values.ToDictionary(r => r.Model.Id, r => r.UsedBy, StringComparer.Ordinal),
+                UsedBy = _modelsUsedBy,
             });
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -343,7 +397,7 @@ public sealed partial class ModelsViewModel : ObservableObject
     public IReadOnlyList<IssuedCertificateAction> ActionsOf(ModelRow row) =>
     [
         new(VisionTexts.Rename, RenameCommand, row),
-        new(VisionTexts.Classes, ClassesCommand, row),
+        new(VisionTexts.ClassListTitle, ClassListCommand, row),
         IssuedCertificateAction.Separator,
         new(VisionTexts.Delete, DeleteCommand, row, IsDanger: true),
     ];
@@ -363,18 +417,150 @@ public sealed partial class ModelsViewModel : ObservableObject
         }
     }
 
+    /// <summary>Class list: a list that fits the model's class count, or its own names.</summary>
     [RelayCommand]
-    private async Task ClassesAsync(ModelRow? row)
+    private async Task ClassListAsync(ModelRow? row)
     {
         if (row is null || Dialogs is not { } dialogs)
         {
             return;
         }
 
-        var form = ModelEditViewModel.ForClasses(row.Model);
+        var form = ModelEditViewModel.ForClassList(row.Model, Lists);
         if (await dialogs.EditModelAsync(form).ConfigureAwait(true))
         {
-            await UpdateAsync(VisionTexts.ModelClasses, row.Model with { ClassNames = form.ClassNames }).ConfigureAwait(true);
+            await UpdateAsync(VisionTexts.ClassListTitle, row.Model with { ClassListId = form.ClassListId, ClassNames = form.ClassNames }).ConfigureAwait(true);
+        }
+    }
+
+    // ---- Class lists ----
+
+    /// <summary>The entries of a class list's ⋯ menu: View for a built-in one; Edit, then Delete in red, for the user's.</summary>
+    public IReadOnlyList<IssuedCertificateAction> ActionsOf(ClassListRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return row.List.BuiltIn
+            ? [new(VisionTexts.View, ViewClassListCommand, row)]
+            : [new(VisionTexts.Edit, EditClassListCommand, row), IssuedCertificateAction.Separator, new(VisionTexts.Delete, DeleteClassListCommand, row, IsDanger: true)];
+    }
+
+    private bool ListNameTaken(string id, string name) =>
+        Lists.Any(l => l.Id != id && string.Equals(l.Name.Trim(), name, StringComparison.OrdinalIgnoreCase));
+
+    [RelayCommand(CanExecute = nameof(CanUpload))]
+    private async Task NewClassListAsync()
+    {
+        if (Dialogs is { } dialogs)
+        {
+            await EditListAsync(dialogs, new ClassListEditViewModel(null, name => ListNameTaken(string.Empty, name))).ConfigureAwait(true);
+        }
+    }
+
+    [RelayCommand]
+    private async Task EditClassListAsync(ClassListRow? row)
+    {
+        if (row is not null && Dialogs is { } dialogs)
+        {
+            ClearRefusals();
+            await EditListAsync(dialogs, new ClassListEditViewModel(row.List, name => ListNameTaken(row.List.Id, name))).ConfigureAwait(true);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ViewClassListAsync(ClassListRow? row)
+    {
+        if (row is not null && Dialogs is { } dialogs)
+        {
+            await dialogs.EditClassListAsync(new ClassListEditViewModel(row.List, _ => false, isReadOnly: true)).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// The dialog until the server stores the list: a refusal of a field shows below it and the dialog opens again with what
+    /// the user entered; another refusal in the host's message.
+    /// </summary>
+    private async Task EditListAsync(IVisionDialogs dialogs, ClassListEditViewModel form)
+    {
+        while (await dialogs.EditClassListAsync(form).ConfigureAwait(true))
+        {
+            SaveClassListReply reply;
+            try
+            {
+                var json = await _ctx.InvokeAsync(VisionMethods.SaveClassList, VisionJson.Serialize(new SaveClassListRequest { ClassList = form.ToList() }), CancellationToken.None)
+                    .ConfigureAwait(true);
+                reply = VisionJson.Deserialize<SaveClassListReply>(json);
+            }
+#pragma warning disable CA1031 // The server's reason in the host's message.
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                await _ctx.ShowMessageAsync(form.Title, ServerErrors.Message(ex)).ConfigureAwait(true);
+                return;
+            }
+
+            if (reply.Errors.Count == 0 && reply.ClassList is { } saved)
+            {
+                var lists = Lists.Where(l => l.Id != saved.Id).Append(saved).ToList();
+                var usedBy = ClassLists.ToDictionary(r => r.List.Id, r => r.UsedBy, StringComparer.Ordinal);
+                ApplyClassLists(new ClassListList { Lists = lists, UsedBy = usedBy });
+                await LoadModelsQuietlyAsync().ConfigureAwait(true); // the models that use it follow
+                return;
+            }
+
+            if (form.ShowServerErrors(reply.Errors) is { } other)
+            {
+                await _ctx.ShowMessageAsync(form.Title, other).ConfigureAwait(true);
+                return;
+            }
+        }
+    }
+
+    /// <summary>Delete (red): asks first; a refusal (a model uses it) stays in the row.</summary>
+    [RelayCommand]
+    private async Task DeleteClassListAsync(ClassListRow? row)
+    {
+        if (row is null)
+        {
+            return;
+        }
+
+        ClearRefusals();
+        if (!await _ctx.ConfirmAsync(VisionTexts.DeleteClassList, VisionTexts.DeleteModelQuestion(row.Name), VisionTexts.Delete).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        var error = await GuardedRun.RunAsync(async () =>
+        {
+            await _ctx.InvokeAsync(VisionMethods.DeleteClassList, VisionJson.Serialize(new ClassListRequest { ClassListId = row.List.Id }), CancellationToken.None)
+                .ConfigureAwait(true);
+            ApplyClassLists(new ClassListList
+            {
+                Lists = [.. Lists.Where(l => l.Id != row.List.Id)],
+                UsedBy = ClassLists.Where(r => r != row).ToDictionary(r => r.List.Id, r => r.UsedBy, StringComparer.Ordinal),
+            });
+        }).ConfigureAwait(true);
+        row.Refusal = error;
+    }
+
+    private void ClearRefusals()
+    {
+        foreach (var row in ClassLists)
+        {
+            row.Refusal = null;
+        }
+    }
+
+    private async Task LoadModelsQuietlyAsync()
+    {
+        try
+        {
+            Apply(VisionJson.Deserialize<ModelList>(await _ctx.InvokeAsync(VisionMethods.ListModels, "{}", CancellationToken.None).ConfigureAwait(true)));
+        }
+#pragma warning disable CA1031 // The models event brings them later.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
         }
     }
 
@@ -388,7 +574,7 @@ public sealed partial class ModelsViewModel : ObservableObject
             Apply(new ModelList
             {
                 Models = [.. Models.Select(m => m.Id == model.Id ? model : m)],
-                UsedBy = _rows.Values.ToDictionary(r => r.Model.Id, r => r.UsedBy, StringComparer.Ordinal),
+                UsedBy = _modelsUsedBy,
             });
         }).ConfigureAwait(true);
         if (error is not null)
@@ -413,7 +599,7 @@ public sealed partial class ModelsViewModel : ObservableObject
             Apply(new ModelList
             {
                 Models = [.. Models.Where(m => m.Id != row.Model.Id)],
-                UsedBy = _rows.Values.Where(r => r != row).ToDictionary(r => r.Model.Id, r => r.UsedBy, StringComparer.Ordinal),
+                UsedBy = _modelsUsedBy,
             });
         }).ConfigureAwait(true);
         if (error is not null)
@@ -421,103 +607,4 @@ public sealed partial class ModelsViewModel : ObservableObject
             await _ctx.ShowMessageAsync(VisionTexts.DeleteModel, error).ConfigureAwait(true);
         }
     }
-}
-
-/// <summary>
-/// The dialog of a model's Rename (one Name field: required, unique, at most 64 characters) or Classes (one name per line, as
-/// many lines as the model has classes); the error below the field, the main button off while there is one.
-/// </summary>
-public sealed partial class ModelEditViewModel : ValidatingViewModel
-{
-    private readonly Func<string, bool> _taken;
-    private readonly int _classCount;
-
-    private ModelEditViewModel(bool isRename, string name, string classes, int classCount, Func<string, bool> taken)
-    {
-        IsRename = isRename;
-        _taken = taken;
-        _classCount = classCount;
-        Name = name;
-        ClassesText = classes;
-        if (isRename)
-        {
-            Validation.Rule(nameof(Name), () => Name.Trim().Length == 0 ? GraphTexts.EnterName
-                : Name.Trim().Length > VisionLimits.MaxNameLength ? GraphTexts.NameTooLong
-                : _taken(Name.Trim()) ? VisionTexts.ModelNameTaken
-                : null);
-        }
-        else
-        {
-            Validation.Rule(nameof(ClassesText), () => ClassNames.Count != _classCount || ClassNames.Any(n => n.Length == 0) ? VisionTexts.WrongClassCount : null);
-        }
-
-        Validation.Validate();
-    }
-
-    public static ModelEditViewModel ForRename(VisionModel model, Func<string, bool> taken)
-    {
-        ArgumentNullException.ThrowIfNull(model);
-        return new(true, model.Name, string.Empty, 0, taken ?? throw new ArgumentNullException(nameof(taken)));
-    }
-
-    public static ModelEditViewModel ForClasses(VisionModel model)
-    {
-        ArgumentNullException.ThrowIfNull(model);
-        return new(false, model.Name, string.Join(Environment.NewLine, model.ClassNames), model.ClassNames.Count, _ => false);
-    }
-
-    /// <summary>OK (true) or Cancel (false): the view closes the window.</summary>
-    public event EventHandler<bool>? CloseRequested;
-
-    public bool IsRename { get; }
-
-    public bool IsClasses => !IsRename;
-
-    public string Title => IsRename ? VisionTexts.RenameModel : VisionTexts.ModelClasses;
-
-    public string ConfirmText => IsRename ? VisionTexts.Rename : VisionTexts.Save;
-
-    public static int MaxNameLength => VisionLimits.MaxNameLength;
-
-    public static string ClassesHint => VisionTexts.ClassesHint;
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(OkCommand))]
-    public partial string Name { get; set; }
-
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(OkCommand))]
-    public partial string ClassesText { get; set; }
-
-    /// <summary>The class names as the lines say, trimmed (a trailing empty line left out).</summary>
-    public IReadOnlyList<string> ClassNames
-    {
-        get
-        {
-            var lines = ClassesText.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n').Select(l => l.Trim()).ToList();
-            while (lines.Count > 0 && lines[^1].Length == 0)
-            {
-                lines.RemoveAt(lines.Count - 1);
-            }
-
-            return lines;
-        }
-    }
-
-    private bool CanOk() => IsFormValid;
-
-    [RelayCommand(CanExecute = nameof(CanOk))]
-    private void Ok()
-    {
-        Validation.ShowAll();
-        if (IsFormValid)
-        {
-            CloseRequested?.Invoke(this, true);
-        }
-    }
-
-    [RelayCommand]
-    private void Cancel() => CloseRequested?.Invoke(this, false);
-
-    protected override void OnValidationChanged() => OkCommand.NotifyCanExecuteChanged();
 }

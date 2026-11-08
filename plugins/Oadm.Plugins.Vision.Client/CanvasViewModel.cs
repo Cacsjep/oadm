@@ -705,6 +705,18 @@ public sealed partial class CanvasViewModel : ObservableObject
         CanvasGeometry.DistanceToCurve(world, CanvasGeometry.OutputPort(l.From.X, l.From.Y), CanvasGeometry.InputPort(l.To.X, l.To.Y))
             <= CanvasGeometry.LinkReach / Zoom);
 
+    /// <summary>
+    /// The pointer over the canvas: the hand over everything a click acts on (the +, the eye, a node, a link), the crosshair
+    /// over an output dot (a drag from it links), none over the empty canvas (a drag pans).
+    /// </summary>
+    public Avalonia.Input.StandardCursorType? CursorAt(Point world)
+    {
+        return PlusAt(world) is not null || EyeAt(world) is not null ? Avalonia.Input.StandardCursorType.Hand
+            : CanEdit && OutputPortAt(world) is not null ? Avalonia.Input.StandardCursorType.Cross
+            : NodeAt(world) is not null || LinkAt(world) is not null ? Avalonia.Input.StandardCursorType.Hand
+            : null;
+    }
+
     // ---- The live outputs ----
 
     /// <summary>
