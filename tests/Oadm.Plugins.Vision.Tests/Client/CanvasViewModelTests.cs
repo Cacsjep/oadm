@@ -385,3 +385,48 @@ public sealed class OverlayLabelTests
         Assert.NotNull(VideoOverlay.PlaceLabel(Box("person", null), box, Picture, Measure, []));
     }
 }
+
+/// <summary>The resizer between the canvas and the right column, and the pointer over the canvas.</summary>
+public sealed class PageLayoutTests
+{
+    [Fact]
+    public void The_right_column_starts_at_its_minimum_and_a_drag_never_takes_the_canvas_below_its_own()
+    {
+        var wide = PageLayout.LimitsOf(1920, 16);
+        Assert.Equal(PageLayout.CanvasMinWidth, wide.CanvasMin);
+        Assert.Equal(PageLayout.RightMinWidth, wide.RightMin);
+        Assert.Equal(1920 - PageLayout.PipelinesWidth - 16 - PageLayout.CanvasMinWidth, wide.RightMax);
+    }
+
+    [Fact]
+    public void A_small_window_keeps_the_canvas_minimum_first_then_the_right_column()
+    {
+        // Room for the canvas and part of the right column: the canvas keeps its minimum, the right column the rest.
+        var narrow = PageLayout.LimitsOf(PageLayout.PipelinesWidth + 16 + PageLayout.CanvasMinWidth + 200, 16);
+        Assert.Equal(PageLayout.CanvasMinWidth, narrow.CanvasMin);
+        Assert.Equal(200, narrow.RightMin);
+        Assert.Equal(200, narrow.RightMax);
+
+        // Not even room for the canvas: it takes all, the right column nothing; never below zero.
+        var tiny = PageLayout.LimitsOf(600, 16);
+        Assert.Equal(600 - PageLayout.PipelinesWidth - 16, tiny.CanvasMin);
+        Assert.Equal(0, tiny.RightMin);
+        Assert.Equal(0, PageLayout.LimitsOf(100, 16).CanvasMin);
+    }
+
+    [Fact]
+    public void Everything_a_click_acts_on_shows_the_hand_and_an_output_dot_the_crosshair()
+    {
+        var pipeline = PageSamples.GatePeople;
+        var canvas = new CanvasViewModel(pipeline.Nodes, pipeline.Links);
+        var track = canvas.Find("d")!;
+        canvas.SelectedNode = track;
+        Assert.Equal(Avalonia.Input.StandardCursorType.Hand, canvas.CursorAt(canvas.PlusOf(track).Center));
+        Assert.Equal(Avalonia.Input.StandardCursorType.Hand, canvas.CursorAt(CanvasGeometry.EyeRect(track.X, track.Y).Center));
+        Assert.Equal(Avalonia.Input.StandardCursorType.Hand, canvas.CursorAt(new Point(track.X + 40, track.Y + 40)));
+        Assert.Equal(Avalonia.Input.StandardCursorType.Cross, canvas.CursorAt(CanvasGeometry.OutputPort(track.X, track.Y)));
+        Assert.Null(canvas.CursorAt(new Point(-500, -500)));
+        canvas.CanEdit = false;
+        Assert.NotEqual(Avalonia.Input.StandardCursorType.Cross, canvas.CursorAt(CanvasGeometry.OutputPort(track.X, track.Y)));
+    }
+}

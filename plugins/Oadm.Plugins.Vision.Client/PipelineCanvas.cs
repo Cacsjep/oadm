@@ -196,10 +196,14 @@ public sealed class PipelineCanvas : Control
             ToolTip.SetTip(this, tip);
         }
 
-        Cursor = canvas.CanEdit && canvas.OutputPortAt(world) is not null ? new Cursor(StandardCursorType.Cross)
-            : canvas.NodeAt(world) is not null || canvas.LinkAt(world) is not null ? new Cursor(StandardCursorType.Hand)
-            : null;
+        Cursor = canvas.CursorAt(world) switch
+        {
+            StandardCursorType.Cross => new Cursor(StandardCursorType.Cross),
+            StandardCursorType.Hand => new Cursor(StandardCursorType.Hand),
+            _ => null,
+        };
     }
+
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
@@ -319,7 +323,7 @@ public sealed class PipelineCanvas : Control
             if (canvas.LinkDragFrom is { } from)
             {
                 var start = CanvasGeometry.OutputPort(from.X, from.Y);
-                context.DrawGeometry(null, new Pen(theme.Brush("Oadm.AccentBrush"), 2, new DashStyle([3, 2], 0)), Curve(start, canvas.LinkDragTo));
+                context.DrawGeometry(null, new Pen(theme.Brush("Oadm.AccentBrush"), 1, new DashStyle([3, 2], 0)), Curve(start, canvas.LinkDragTo));
             }
 
             foreach (var node in canvas.Nodes)
@@ -373,7 +377,7 @@ public sealed class PipelineCanvas : Control
     {
         var from = CanvasGeometry.OutputPort(link.From.X, link.From.Y);
         var to = CanvasGeometry.InputPort(link.To.X, link.To.Y);
-        var pen = link.IsSelected ? new Pen(theme.Brush("Oadm.AccentBrush"), 3) : new Pen(brush, 2);
+        var pen = link.IsSelected ? new Pen(theme.Brush("Oadm.AccentBrush"), 2) : new Pen(brush, 1);
         context.DrawGeometry(null, pen, Curve(from, to));
     }
 
@@ -444,14 +448,14 @@ public sealed class PipelineCanvas : Control
         {
             var at = CanvasGeometry.InputPort(node.X, node.Y);
             var lit = node.Fit == LinkFit.Fits;
-            context.DrawEllipse(lit ? accent : fill, new Pen(lit ? accent : linkBrush, 2), at, CanvasGeometry.PortRadius - 1, CanvasGeometry.PortRadius - 1);
+            context.DrawEllipse(lit ? accent : fill, new Pen(lit ? accent : linkBrush, 1), at, CanvasGeometry.PortRadius - 1, CanvasGeometry.PortRadius - 1);
         }
 
         if (node.HasOutputPort)
         {
             var at = CanvasGeometry.OutputPort(node.X, node.Y);
             var lit = ReferenceEquals(canvas.LinkDragFrom, node);
-            context.DrawEllipse(lit ? accent : fill, new Pen(lit ? accent : linkBrush, 2), at, CanvasGeometry.PortRadius - 1, CanvasGeometry.PortRadius - 1);
+            context.DrawEllipse(lit ? accent : fill, new Pen(lit ? accent : linkBrush, 1), at, CanvasGeometry.PortRadius - 1, CanvasGeometry.PortRadius - 1);
             if (canvas.ShowsPlus(node))
             {
                 var plus = canvas.PlusOf(node);

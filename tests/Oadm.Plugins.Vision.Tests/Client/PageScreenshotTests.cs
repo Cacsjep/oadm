@@ -30,7 +30,7 @@ public sealed class PageScreenshotTests
     public async Task Page_renders_the_example_pipeline_with_its_live_outputs()
     {
         var suffix = Headless.Appearance;
-        await Headless.Session.Dispatch(async () =>
+        await await Headless.Session.Dispatch(async () =>
         {
             var ctx = PageSamples.Context();
             ctx.Video!.Still = PageSamples.GatePicture();
@@ -51,6 +51,26 @@ public sealed class PageScreenshotTests
                 Assert.Contains(editor.Shapes, s => s.Node.Id == "e" && s.IsSelected);
                 Assert.False(view.FindControl<Button>("SaveButton")!.IsEffectivelyEnabled); // saved, nothing to save
                 Headless.Capture(window, $"vision-page-{suffix}.png");
+
+                // The splitter dragged left: the right column wider, the video with it; never the canvas below its minimum.
+                Assert.Equal(PageLayout.RightMinWidth, view.RightWidth, 0);
+                view.SetRightWidth(760);
+                window.UpdateLayout();
+                Headless.Pump();
+                Assert.Equal(760, view.RightWidth, 0);
+                Headless.Capture(window, $"vision-page-wide-right-{suffix}.png");
+                view.SetRightWidth(5000);
+                window.UpdateLayout();
+                Headless.Pump();
+                var canvasCard = view.FindControl<Border>("CanvasCard")!;
+                Assert.True(canvasCard.Bounds.Width >= PageLayout.CanvasMinWidth - 1, $"the canvas card is {canvasCard.Bounds.Width} wide");
+                var toolbar = view.FindControl<ToolbarOverflowPanel>("CanvasToolbar")!;
+                Assert.True(toolbar.OverflowItems.Count == 0, $"the toolbar fits at the canvas minimum: {toolbar.OverflowItems.Count} left out, card {canvasCard.Bounds.Width}, toolbar {toolbar.Bounds.Width}");
+                Assert.True(view.FindControl<ToolbarButton>("TidyUpButton")!.IsEffectivelyVisible);
+                Assert.True(view.FindControl<ToolbarButton>("DeleteNodeButton")!.IsEffectivelyVisible);
+                Headless.Capture(window, $"vision-page-canvas-min-{suffix}.png");
+                view.SetRightWidth(PageLayout.RightMinWidth);
+                Headless.Pump();
 
                 // A model node selected: its form drawn from its fields, its objects of the frame.
                 editor.Canvas.SelectedNode = editor.Canvas.Find("b");
@@ -75,7 +95,7 @@ public sealed class PageScreenshotTests
     public async Task Page_renders_errors_below_the_nodes_and_the_node_list()
     {
         var suffix = Headless.Appearance;
-        await Headless.Session.Dispatch(async () =>
+        await await Headless.Session.Dispatch(async () =>
         {
             var ctx = PageSamples.Context();
             var (vm, view, window) = await ShowAsync(ctx);
@@ -109,7 +129,7 @@ public sealed class PageScreenshotTests
     public async Task Page_renders_an_upload_in_the_models_card_and_the_empty_page()
     {
         var suffix = Headless.Appearance;
-        await Headless.Session.Dispatch(async () =>
+        await await Headless.Session.Dispatch(async () =>
         {
             var ctx = PageSamples.Context();
             var gate = new TaskCompletionSource<string?>();

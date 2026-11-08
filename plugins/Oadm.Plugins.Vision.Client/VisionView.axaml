@@ -33,7 +33,8 @@
 
   <!-- Three columns (docs/spec/vision-center.md "Page"): the pipelines and the models | the canvas | the live video above the
        selected node. Shared controls and theme classes only; the canvas and the overlay are drawn in code from the theme. -->
-  <Grid x:Name="Panes" ColumnDefinitions="320,*,420" ColumnSpacing="16">
+  <!-- The shared splitter is the gap between the canvas and the right column: dragging it left widens the right column. -->
+  <Grid x:Name="Panes" ColumnDefinitions="320,16,*,Auto,420">
 
     <!-- Left: the pipelines, the models below them. -->
     <Grid Grid.Column="0" RowDefinitions="*,Auto" RowSpacing="16">
@@ -122,7 +123,7 @@
     </Grid>
 
     <!-- Middle: the canvas of the shown pipeline, or one card that says what to do first. -->
-    <Panel Grid.Column="1">
+    <Panel Grid.Column="2">
       <Border Classes="card" IsVisible="{Binding !HasEditor}">
         <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:VisionViewModel.EmptyText}"
                    IsVisible="{Binding ShowEmpty}" />
@@ -133,14 +134,14 @@
         <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
           <!-- The toolbar: Add node, Undo, Redo, Fit view, Tidy up; Delete of the selection in red at the end. -->
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" DataContext="{Binding Canvas}" x:DataType="vm:CanvasViewModel">
-            <ui:ToolbarOverflowPanel Spacing="4">
+            <ui:ToolbarOverflowPanel x:Name="CanvasToolbar" Spacing="4">
               <ui:ToolbarButton x:Name="AddNodeButton" IconKey="add" Text="{x:Static vm:VisionTexts.AddNode}" Command="{Binding AddNodeCommand}" IsVisible="{Binding CanEdit}" />
               <ui:ToolbarSeparator IsVisible="{Binding CanEdit}" />
               <ui:ToolbarButton IconKey="undo" Text="{x:Static vm:VisionTexts.Undo}" Command="{Binding UndoCommand}" ToolTip.Tip="{x:Static vm:VisionTexts.UndoTip}" IsVisible="{Binding CanEdit}" />
               <ui:ToolbarButton IconKey="redo" Text="{x:Static vm:VisionTexts.Redo}" Command="{Binding RedoCommand}" ToolTip.Tip="{x:Static vm:VisionTexts.RedoTip}" IsVisible="{Binding CanEdit}" />
               <ui:ToolbarSeparator IsVisible="{Binding CanEdit}" />
               <ui:ToolbarButton IconKey="maximize" Text="{x:Static vm:VisionTexts.FitView}" Command="{Binding FitViewCommand}" />
-              <ui:ToolbarButton IconKey="workflow" Text="{x:Static vm:VisionTexts.TidyUp}" Command="{Binding TidyUpCommand}" IsVisible="{Binding CanEdit}" />
+              <ui:ToolbarButton x:Name="TidyUpButton" IconKey="workflow" Text="{x:Static vm:VisionTexts.TidyUp}" Command="{Binding TidyUpCommand}" IsVisible="{Binding CanEdit}" />
             </ui:ToolbarOverflowPanel>
             <ui:ToolbarButton Grid.Column="1" x:Name="DeleteNodeButton" Classes="danger atEnd" IconKey="remove" Text="{x:Static vm:VisionTexts.Delete}"
                               Command="{Binding DeleteSelectedCommand}" ToolTip.Tip="{x:Static vm:VisionTexts.DeleteTip}" IsVisible="{Binding CanEdit}" />
@@ -193,10 +194,12 @@
     </Panel>
 
     <!-- Right: the live video with the overlay, below it the selected node (its form and live output) or the pipeline's settings. -->
-    <Grid Grid.Column="2" RowDefinitions="Auto,*" RowSpacing="16" DataContext="{Binding Editor}" x:DataType="vm:PipelineEditorViewModel"
+    <GridSplitter x:Name="RightSplitter" Grid.Column="3" Classes="paneSplitter vertical" />
+
+    <Grid x:Name="RightColumn" Grid.Column="4" RowDefinitions="Auto,*" RowSpacing="16" DataContext="{Binding Editor}" x:DataType="vm:PipelineEditorViewModel"
           IsVisible="{Binding $parent[UserControl].((vm:VisionViewModel)DataContext).HasEditor, FallbackValue=False}">
       <Border x:Name="VideoCard" Classes="card">
-        <Panel x:Name="VideoPanel" Height="226">
+        <Panel x:Name="VideoPanel" Height="{x:Static vm:PageLayout.VideoMinHeight}">
           <Border Classes="liveViewSurface" />
           <ContentControl x:Name="VideoHost" Content="{Binding VideoView}" IsVisible="{Binding ShowLiveVideo}" />
           <vm:VisionPicture x:Name="Picture" PictureSize="{Binding PictureSize}" Items="{Binding OverlayItems}" Shapes="{Binding Shapes}"
