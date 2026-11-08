@@ -253,6 +253,23 @@ recognition).
 - Results are taken in the order of the frames: an older frame never replaces a newer one (as in Text recognition).
 - A watching pipeline whose models fail 3 times in a row has a problem until a frame works, as a reader does.
 
+### Copy to cameras
+
+Decision 2026-11-08: a saved pipeline is copied to other cameras in one call (`copyPipeline`), one independent pipeline per
+camera, at most 100 cameras at once ("Copy to at most 100 cameras at once.").
+
+- A copy has a new id and the original's nodes, links, mode and frame rate; areas, lines and arrows keep their place in
+  the picture (they are relative). Its name is "<original name> (<camera host name or address>)", made unique with " 2",
+  " 3"; its owner is the caller's device scope.
+- Video source and resolution stay when the camera offers them (its options read once per camera, a few at a time),
+  else source 1 and 1280x720 or the camera's largest below it.
+- Refused per camera, the others are made: the pipeline's own camera ("This is the pipeline's own camera."), a camera
+  outside the caller's devices (as an unknown one), a copy whose save checks fail (the first error), the copies beyond the
+  pipeline limit ("OADM keeps at most 50 pipelines."). The watching limits work as for any pipeline: a copy beyond them is
+  stored and shows the limit as its problem.
+- All copies are stored in one batch, then one sync, one change of the event types and one list event. Needs Change vision
+  pipelines; audited ("Copied vision pipeline Gate 1 people to 5 cameras").
+
 ## Events and the rule actions
 
 - Per Event node, folder Vision Center / pipeline name, the camera is its fixed device (`FixedDeviceId`). Its first kind

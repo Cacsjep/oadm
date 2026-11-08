@@ -88,9 +88,18 @@ public sealed partial class VisionPlugin
                 return VisionJson.Serialize(new SavePipelineReply { Pipeline = saved with { OwnerScopeKey = null } });
             }
 
+            case VisionMethods.CopyPipeline:
+            {
+                var request = VisionJson.Deserialize<CopyPipelineRequest>(payloadJson);
+                var original = store.FindVisible(caller, request.PipelineId) ?? throw new ArgumentException(PipelineRules.Gone);
+                var reply = await CopyAsync(ctx, caller, store, runtime, original, request.DeviceIds ?? [], ct).ConfigureAwait(false);
+                _auditNames[AuditKey(method, original.Id)] = original.Name + "\u001f" + reply.Created.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                return VisionJson.Serialize(reply);
+            }
+
             case VisionMethods.DeletePipeline:
             {
-                var id = VisionJson.Deserialize<PipelineRequest>(payloadJson).PipelineId;
+                var id =VisionJson.Deserialize<PipelineRequest>(payloadJson).PipelineId;
                 if (await store.DeleteAsync(caller, id, ct).ConfigureAwait(false) is { } deleted)
                 {
                     _auditNames[AuditKey(method, deleted.Id)] = deleted.Name;
@@ -302,6 +311,17 @@ public sealed partial class VisionPlugin
 
             case VisionMethods.DeletePipeline:
                 return Named(VisionJson.Deserialize<PipelineRequest>(payloadJson).PipelineId) is { } deleted ? "Deleted vision pipeline " + deleted : "Deleted a vision pipeline";
+            case VisionMethods.CopyPipeline:
+            {
+                var parts = Named(VisionJson.Deserialize<CopyPipelineRequest>(payloadJson).PipelineId)?.Split('\u001f');
+                if (parts is not [var name, var count])
+                {
+                    return "Copied a vision pipeline";
+                }
+
+                return count == "1" ? $"Copied vision pipeline {name} to 1 camera" : $"Copied vision pipeline {name} to {count} cameras";
+            }
+
             case VisionMethods.SetUseGpu:
                 return VisionJson.Deserialize<UseGpuRequest>(payloadJson).UseGpu ? "Turned Use GPU on for Vision Center" : "Turned Use GPU off for Vision Center";
             case VisionMethods.FinishUpload:
@@ -585,5 +605,83 @@ public sealed partial class VisionPlugin
         }
 
         return choices;
+    }
+
+    /// <summary>
+    /// The copies of <paramref name="original"/> on <paramref name="deviceIds"/> (docs/spec/vision-center.md "Copy to cameras"):
+    /// refused per camera (its own camera, a camera the caller does not see, a failed check, the pipeline limit); each
+    /// camera's options read once, a few at a time; all copies stored in one batch, then one sync and one change of the
+    /// event types and the list.
+    /// </summary>
+    private async Task<CopyPipelineReply> CopyAsync(ICorePluginContext ctx, ICallContext caller, PipelineStore store, PipelineRuntime runtime, Pipeline original, IReadOnlyList<Guid> deviceIds, CancellationToken ct)
+    {
+        var ids = deviceIds.Distinct().ToList();
+        if (ids.Count > PipelineRules.MaxCopyCameras)
+        {
+            throw new ArgumentException(PipelineRules.TooManyCopyCameras);
+        }
+
+        var refused = new Dictionary<Guid, string>();
+        var cameras = new List<Oadm.Sdk.Devices.IDeviceInfo>();
+        foreach (var id in ids)
+        {
+            if (id == original.DeviceId)
+            {
+                refused[id] = PipelineRules.OwnCamera;
+            }
+            else if (await caller.Devices.FindAsync(id, ct).ConfigureAwait(false) is { } camera)
+            {
+                cameras.Add(camera);
+            }
+            else
+            {
+                refused[id] = PipelineRules.CameraNotAvailable; // another group's camera answers like an unknown one
+            }
+        }
+
+        var options = new CameraOptions?[cameras.Count];
+        using (var gate = new SemaphoreSlim(PipelineCopies.OptionsAtOnce))
+        {
+            await Task.WhenAll(cameras.Select(async (camera, i) =>
+            {
+                await gate.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    options[i] = await CameraOptionsAsync(caller, camera.Id, ct).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    options[i] = null; // the camera's defaults
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            })).ConfigureAwait(false);
+        }
+
+        var copies = cameras.Select((camera, i) => PipelineCopies.CopyOf(original, camera, options[i])).ToList();
+        var (created, notStored) = await store.AddCopiesAsync(ctx, caller, copies, p => CheckWithEvents(runtime, caller, p), ct).ConfigureAwait(false);
+        foreach (var (id, error) in notStored)
+        {
+            refused[id] = error;
+        }
+
+        if (created.Count > 0)
+        {
+            EventTypesChanged?.Invoke(this, EventArgs.Empty);
+            await runtime.SyncAsync().ConfigureAwait(false);
+            ReportProblems();
+            PublishPipelines(created[0].OwnerScopeKey);
+            PublishModels();
+        }
+
+        // In the order of the cameras asked for.
+        var order = ids.Select((id, i) => (id, i)).ToDictionary(p => p.id, p => p.i);
+        return new CopyPipelineReply
+        {
+            Created = [.. created.OrderBy(p => order[p.DeviceId]).Select(p => p with { OwnerScopeKey = null })],
+            Refused = refused,
+        };
     }
 }
