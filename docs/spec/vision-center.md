@@ -170,14 +170,18 @@ on the right, as Text recognition.
   with their ⋯ menu (Rename, Classes, Delete in red). Empty page: "Upload a model, then create a pipeline."
 - **Middle: the canvas**, our own Avalonia control (no node editor exists for Avalonia), close to n8n so users who know
   it feel at home:
-  - Nodes as cards with the node's icon, its name and one live line (below). Links as curves from an output on the right
-    of a node to an input on its left. A dot grid on the theme's background.
+  - Nodes as cards with the node's icon, its name and one live line (below). The graph runs **top to bottom**
+    (decision 2026-11-08, replaces left to right: the canvas is taller than wide): the input at the top centre of a card,
+    the output at its bottom centre, links as curves from an output down to the next input. A dot grid on the theme's
+    background.
   - Add: **Add node** in the toolbar opens the node list (search, grouped: Models, Objects, Geometry, Output); the **+**
-    on a node's output opens the same list with only the nodes that fit its kind, and links the new node.
+    below a node's output opens the same list with only the nodes that fit its kind, and links the new node below it (a
+    second child beside the first).
   - Drag from an output to an input links them; while dragging, inputs that do not fit are dimmed and a drop there
     does nothing. A link is selected by a click and deleted with Delete.
   - Move nodes by dragging, pan by dragging the empty canvas, zoom with the wheel (25 % to 200 %), **Fit view** and
-    **Tidy up** (lays the graph out from left to right) in the toolbar. Places are stored with the pipeline.
+    **Tidy up** (lays the graph out by depth from top to bottom, branches side by side, a parent centred above its
+    children) in the toolbar. Places are stored with the pipeline.
   - Select a node with a click; Delete removes it with its links; Ctrl+Z and Ctrl+Y undo and redo inside the draft until
     it is saved; Ctrl+C and Ctrl+V copy nodes within the pipeline.
   - A node with an error has a red border and its error directly below it on the canvas (the validation rule of
