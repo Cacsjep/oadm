@@ -21,6 +21,8 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <!-- The picture overlay and dialogs shared with Vision Center (plugins/Shared/Vision.Client). -->
+    <Using Include="Oadm.Plugins.Shared.Vision.Client" />
     <!-- The code the vision add-ons share (plugins/Shared/Vision). -->
     <Using Include="Oadm.Plugins.Shared.Vision" />
   </ItemGroup>

@@ -1,0 +1,373 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Vision.Client"
+             xmlns:api="using:Oadm.Plugins.Vision.Api"
+             xmlns:model="using:Oadm.Plugins.Vision.Model"
+             xmlns:shared="using:Oadm.Plugins.Shared.Vision.Client"
+             x:Class="Oadm.Plugins.Vision.Client.VisionView"
+             x:DataType="vm:VisionViewModel"
+             ui:PageHeader.Subtitle="{x:Static api:VisionInfo.Description}">
+  <!-- The load and what runs the models (docs/spec/vision-center.md "Load"), at the right end of the page header, as Text recognition. -->
+  <ui:PageHeader.Trailing>
+    <StackPanel Margin="0,13,0,-18" Orientation="Horizontal" Spacing="24">
+      <StackPanel x:Name="StatsPanel" DataContext="{Binding Stats}" x:DataType="vm:VisionStatsViewModel" Orientation="Horizontal" Spacing="16"
+                  VerticalAlignment="Center" IsVisible="{Binding HasStats}">
+        <ui:StatusChip VerticalAlignment="Center" MaxWidth="300" Text="{Binding StateText}" ToolTip.Tip="{Binding StateText}" IsOk="{Binding IsOk}"
+                       IsWarning="{Binding IsBusy}" IsError="{Binding IsOverloaded}" />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Classes="secondary" Text="Load" VerticalAlignment="Center" />
+          <ProgressBar Width="120" MinWidth="0" Minimum="0" Maximum="100" Value="{Binding Load}" IsIndeterminate="{Binding IsStarting}" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding LoadText}" VerticalAlignment="Center" />
+        </StackPanel>
+      </StackPanel>
+      <StackPanel x:Name="EnginePanel" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center"
+                  IsVisible="{Binding RunsOnText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+        <TextBlock Classes="secondary" Text="{Binding RunsOnShortText}" ToolTip.Tip="{Binding RunsOnText}" MaxWidth="340" TextTrimming="CharacterEllipsis"
+                   VerticalAlignment="Center" />
+        <CheckBox Content="Use GPU" IsChecked="{Binding UseGpu}" IsEnabled="{Binding CanSetGpu}" VerticalAlignment="Center" />
+        <ui:ProgressRing Width="16" Height="16" IsVisible="{Binding ShowGpuRing}" VerticalAlignment="Center" />
+      </StackPanel>
+    </StackPanel>
+  </ui:PageHeader.Trailing>
+
+  <!-- Three columns (docs/spec/vision-center.md "Page"): the pipelines and the models | the canvas | the live video above the
+       selected node. Shared controls and theme classes only; the canvas and the overlay are drawn in code from the theme. -->
+  <Grid x:Name="Panes" ColumnDefinitions="320,*,420" ColumnSpacing="16">
+
+    <!-- Left: the pipelines, the models below them. -->
+    <Grid Grid.Column="0" RowDefinitions="*,Auto" RowSpacing="16">
+      <Border Grid.Row="0" Classes="card">
+        <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+            <TextBlock Classes="cardTitle" Text="{x:Static vm:VisionTexts.Pipelines}" VerticalAlignment="Center" Margin="0,0,2,0" />
+            <ui:ToolbarOverflowPanel Grid.Column="1" Spacing="4" IsVisible="{Binding MayChange}">
+              <ui:ToolbarButton x:Name="NewButton" IconKey="add" Text="New" Command="{Binding NewCommand}" ToolTip.Tip="{x:Static vm:VisionTexts.NewTip}" />
+              <ui:ToolbarSeparator />
+              <ui:ToolbarButton x:Name="DeleteButton" Classes="danger" IconKey="remove" Text="{x:Static vm:VisionTexts.Delete}" Command="{Binding DeleteCommand}" />
+            </ui:ToolbarOverflowPanel>
+          </Grid>
+          <ui:SearchBox Grid.Row="1" Classes="stretch" Text="{Binding SearchText}" Placeholder="{x:Static vm:VisionTexts.SearchPipelines}" />
+          <Panel Grid.Row="2">
+            <ListBox x:Name="PipelineList" Classes="deviceTree" ItemsSource="{Binding Pipelines}" SelectedItem="{Binding SelectedPipeline}" SelectionMode="Single">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:PipelineListRow">
+                  <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="2">
+                    <TextBlock Grid.Column="0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <ui:StatusChip Grid.Column="1" Text="{Binding ChipText}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}" ToolTip.Tip="{Binding Problem}" />
+                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="secondary" Text="{Binding Camera}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Text="{Binding Last}" TextTrimming="CharacterEllipsis"
+                               IsVisible="{Binding Last, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock Classes="secondary" Text="{x:Static vm:VisionViewModel.NoMatchText}" TextWrapping="Wrap" IsVisible="{Binding ShowNoMatch}" />
+            <TextBlock Classes="error" VerticalAlignment="Bottom" Text="{Binding ErrorText}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+            <ui:LoadingOverlay Text="{x:Static vm:VisionTexts.ReadingPipelines}" IsVisible="{Binding IsLoading}" />
+          </Panel>
+        </Grid>
+      </Border>
+
+      <!-- Models (Manage vision models): Upload model, the models with their ⋯ menu, an upload's progress and Cancel in its row. -->
+      <Border x:Name="ModelsCard" Grid.Row="1" Classes="card" DataContext="{Binding Models}" x:DataType="vm:ModelsViewModel" IsVisible="{Binding MayManage}">
+        <StackPanel Spacing="6">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+            <TextBlock Classes="cardTitle" Text="{x:Static vm:VisionTexts.Models}" VerticalAlignment="Center" />
+            <ui:ToolbarButton Grid.Column="1" x:Name="UploadButton" Classes="atEnd" IconKey="upload" Text="{x:Static vm:VisionTexts.UploadModel}" Command="{Binding UploadCommand}" />
+          </Grid>
+          <ListBox x:Name="ModelList" Classes="readOnlyList" ItemsSource="{Binding Rows}" MaxHeight="300" IsVisible="{Binding HasRows}">
+            <ListBox.DataTemplates>
+              <DataTemplate x:DataType="vm:ModelRow">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="6" Margin="0,2">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <ui:StatusChip Text="{x:Static vm:ModelRow.MissingText}" IsWarning="True" ToolTip.Tip="{x:Static vm:ModelRow.MissingTip}" IsVisible="{Binding IsMissing}" />
+                  </StackPanel>
+                  <TextBlock Grid.Row="1" Classes="secondary" Text="{Binding Line}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Details}" />
+                  <Button x:Name="ModelActions" Grid.Column="1" Grid.RowSpan="2" Classes="toolbar iconOnly" VerticalAlignment="Center"
+                          ToolTip.Tip="{x:Static ui:RowActions.Tip}" Click="OnModelActions">
+                    <ui:OadmIcon Data="{StaticResource Icon.more}" />
+                  </Button>
+                </Grid>
+              </DataTemplate>
+              <DataTemplate x:DataType="vm:UploadRow">
+                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="6" RowSpacing="2" Margin="0,2">
+                  <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsWorking}">
+                    <ui:ProgressRing Width="14" Height="14" IsVisible="{Binding IsChecking}" VerticalAlignment="Center" />
+                    <TextBlock Classes="secondary" Text="{Binding StateText}" VerticalAlignment="Center" />
+                  </StackPanel>
+                  <ProgressBar Grid.Row="2" MinWidth="0" Minimum="0" Maximum="100" Value="{Binding Percent}" IsVisible="{Binding IsSending}" />
+                  <TextBlock Grid.Row="1" Grid.RowSpan="2" Classes="fieldMessage error" Text="{Binding Refusal}" TextWrapping="Wrap" IsVisible="{Binding HasRefusal}" />
+                  <Panel Grid.Column="1" Grid.RowSpan="3" VerticalAlignment="Center">
+                    <Button x:Name="CancelUpload" Classes="toolbar iconOnly" Command="{Binding CancelCommand}" ToolTip.Tip="{x:Static vm:VisionTexts.Cancel}"
+                            IsVisible="{Binding IsSending}">
+                      <ui:OadmIcon Data="{StaticResource Icon.close}" />
+                    </Button>
+                    <Button x:Name="DismissUpload" Classes="toolbar iconOnly" Command="{Binding DismissCommand}" ToolTip.Tip="{x:Static vm:VisionTexts.Dismiss}"
+                            IsVisible="{Binding HasRefusal}">
+                      <ui:OadmIcon Data="{StaticResource Icon.close}" />
+                    </Button>
+                  </Panel>
+                </Grid>
+              </DataTemplate>
+            </ListBox.DataTemplates>
+          </ListBox>
+        </StackPanel>
+      </Border>
+    </Grid>
+
+    <!-- Middle: the canvas of the shown pipeline, or one card that says what to do first. -->
+    <Panel Grid.Column="1">
+      <Border Classes="card" IsVisible="{Binding !HasEditor}">
+        <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:VisionViewModel.EmptyText}"
+                   IsVisible="{Binding ShowEmpty}" />
+      </Border>
+
+      <Border x:Name="CanvasCard" Classes="card" DataContext="{Binding Editor}" x:DataType="vm:PipelineEditorViewModel"
+              IsVisible="{Binding $parent[UserControl].((vm:VisionViewModel)DataContext).HasEditor, FallbackValue=False}">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+          <!-- The toolbar: Add node, Undo, Redo, Fit view, Tidy up; Delete of the selection in red at the end. -->
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" DataContext="{Binding Canvas}" x:DataType="vm:CanvasViewModel">
+            <ui:ToolbarOverflowPanel Spacing="4">
+              <ui:ToolbarButton x:Name="AddNodeButton" IconKey="add" Text="{x:Static vm:VisionTexts.AddNode}" Command="{Binding AddNodeCommand}" IsVisible="{Binding CanEdit}" />
+              <ui:ToolbarSeparator IsVisible="{Binding CanEdit}" />
+              <ui:ToolbarButton IconKey="undo" Text="{x:Static vm:VisionTexts.Undo}" Command="{Binding UndoCommand}" ToolTip.Tip="{x:Static vm:VisionTexts.UndoTip}" IsVisible="{Binding CanEdit}" />
+              <ui:ToolbarButton IconKey="redo" Text="{x:Static vm:VisionTexts.Redo}" Command="{Binding RedoCommand}" ToolTip.Tip="{x:Static vm:VisionTexts.RedoTip}" IsVisible="{Binding CanEdit}" />
+              <ui:ToolbarSeparator IsVisible="{Binding CanEdit}" />
+              <ui:ToolbarButton IconKey="maximize" Text="{x:Static vm:VisionTexts.FitView}" Command="{Binding FitViewCommand}" />
+              <ui:ToolbarButton IconKey="workflow" Text="{x:Static vm:VisionTexts.TidyUp}" Command="{Binding TidyUpCommand}" IsVisible="{Binding CanEdit}" />
+            </ui:ToolbarOverflowPanel>
+            <ui:ToolbarButton Grid.Column="1" x:Name="DeleteNodeButton" Classes="danger atEnd" IconKey="remove" Text="{x:Static vm:VisionTexts.Delete}"
+                              Command="{Binding DeleteSelectedCommand}" ToolTip.Tip="{x:Static vm:VisionTexts.DeleteTip}" IsVisible="{Binding CanEdit}" />
+          </Grid>
+
+          <!-- The canvas with the node list over it (Add node, a node's +) and the zoom at the bottom left. -->
+          <Border Grid.Row="1" Classes="liveViewSurface" ClipToBounds="True">
+            <Panel>
+              <vm:PipelineCanvas x:Name="Canvas" Canvas="{Binding Canvas}" />
+              <TextBlock Classes="secondary" Text="{Binding Canvas.ZoomText}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10,0,0,8" IsHitTestVisible="False" />
+              <Canvas DataContext="{Binding Canvas.Picker}" x:DataType="vm:NodePickerViewModel">
+                <Border x:Name="NodePicker" Classes="treePopup" Width="260" Canvas.Left="{Binding Left}" Canvas.Top="{Binding Top}" IsVisible="{Binding IsOpen}">
+                  <DockPanel>
+                    <ui:SearchBox x:Name="NodeSearch" DockPanel.Dock="Top" Classes="stretch" Text="{Binding SearchText}" Placeholder="{x:Static vm:NodePickerViewModel.Placeholder}" />
+                    <TextBlock DockPanel.Dock="Top" Classes="secondary" Text="{x:Static vm:NodePickerViewModel.EmptyText}" IsVisible="{Binding IsEmpty}" />
+                    <ListBox x:Name="NodeList" Classes="eventTree" ItemsSource="{Binding Entries}" SelectionMode="Single" Margin="0,0,0,8">
+                      <ListBox.DataTemplates>
+                        <DataTemplate x:DataType="vm:PickerGroup">
+                          <TextBlock Classes="treeGroup" Text="{Binding Name}" IsHitTestVisible="False" />
+                        </DataTemplate>
+                        <DataTemplate x:DataType="vm:PickerKind">
+                          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" Background="Transparent">
+                            <vm:NodeKindIcon Grid.RowSpan="2" Kind="{Binding Kind.Id}" Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0" />
+                            <TextBlock Grid.Column="1" Text="{Binding Label}" />
+                            <TextBlock Grid.Column="1" Grid.Row="1" Classes="secondary" Text="{Binding Description}" TextTrimming="CharacterEllipsis" />
+                          </Grid>
+                        </DataTemplate>
+                      </ListBox.DataTemplates>
+                    </ListBox>
+                  </DockPanel>
+                </Border>
+              </Canvas>
+            </Panel>
+          </Border>
+
+          <!-- An error of the whole graph left, the save status directly left of Save. -->
+          <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+            <TextBlock Classes="fieldMessage error" Text="{Binding Canvas.GraphError}" IsVisible="{Binding Canvas.HasGraphError}" TextWrapping="Wrap" VerticalAlignment="Center" />
+            <ui:StatusChip Grid.Column="1" VerticalAlignment="Center" Text="{Binding SaveStatus}" IsOk="{Binding IsSaveStatusOk}"
+                           IsWarning="{Binding !IsSaveStatusOk}" IsVisible="{Binding HasSaveStatus}" />
+            <Button x:Name="SaveButton" Grid.Column="2" Classes="primary" Content="{x:Static vm:VisionTexts.Save}" Command="{Binding SaveCommand}"
+                    ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" IsVisible="{Binding MayChange}" />
+          </Grid>
+        </Grid>
+      </Border>
+
+      <Border Classes="card" IsVisible="{Binding IsOpening}">
+        <ui:LoadingOverlay Text="{x:Static vm:VisionTexts.ReadingPipeline}" />
+      </Border>
+    </Panel>
+
+    <!-- Right: the live video with the overlay, below it the selected node (its form and live output) or the pipeline's settings. -->
+    <Grid Grid.Column="2" RowDefinitions="Auto,*" RowSpacing="16" DataContext="{Binding Editor}" x:DataType="vm:PipelineEditorViewModel"
+          IsVisible="{Binding $parent[UserControl].((vm:VisionViewModel)DataContext).HasEditor, FallbackValue=False}">
+      <Border x:Name="VideoCard" Classes="card">
+        <Panel x:Name="VideoPanel" Height="226">
+          <Border Classes="liveViewSurface" />
+          <ContentControl x:Name="VideoHost" Content="{Binding VideoView}" IsVisible="{Binding ShowLiveVideo}" />
+          <vm:VisionPicture x:Name="Picture" PictureSize="{Binding PictureSize}" Items="{Binding OverlayItems}" Shapes="{Binding Shapes}"
+                            DrawKind="{Binding DrawKind}" CanEdit="{Binding MayChange}" HeldPicture="{Binding HeldPicture}" />
+          <shared:PicturePlace PictureSize="{Binding PictureSize}" IsVisible="{Binding MayPause}">
+            <shared:PicturePauseBar x:Name="PauseBar" Command="{Binding TogglePauseCommand}" Tip="{Binding PauseTip}" IsPaused="{Binding IsPaused}"
+                                    ShowState="{Binding ShowPauseState}" IsWorking="{Binding IsPausing}" PausedTip="{x:Static vm:PipelineEditorViewModel.PausedTip}" />
+          </shared:PicturePlace>
+          <Border Classes="videoOverlay" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding HasPreviewProblem}">
+            <TextBlock Classes="videoReason" Text="{Binding PreviewProblem}" TextWrapping="Wrap" MaxWidth="320" />
+          </Border>
+        </Panel>
+      </Border>
+
+      <Border Grid.Row="1" Classes="card">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+          <Panel>
+            <!-- Nothing selected: the pipeline's own settings. -->
+            <StackPanel x:Name="PipelineForm" Spacing="10" IsVisible="{Binding ShowPipelineForm}">
+              <TextBlock Classes="cardTitle" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+              <StackPanel Spacing="8" IsEnabled="{Binding MayChange}">
+                <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Name}">
+                  <TextBox x:Name="PipelineName" Text="{Binding Name}" MaxLength="{x:Static vm:PipelineEditorViewModel.MaxNameLength}" />
+                </ui:FormField>
+                <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Mode}">
+                  <ComboBox x:Name="ModeBox" HorizontalAlignment="Stretch" ItemsSource="{x:Static vm:PipelineEditorViewModel.ModeChoices}" SelectedItem="{Binding ModeChoice}" />
+                </ui:FormField>
+              </StackPanel>
+              <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Camera}">
+                <TextBlock Text="{Binding CameraText}" TextTrimming="CharacterEllipsis" />
+              </ui:FormField>
+              <TextBlock Classes="secondary" Text="{Binding SelectionNote}" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <!-- A node selected: its form, drawn from its fields, then its live output. -->
+            <StackPanel x:Name="NodePanel" Spacing="12" IsVisible="{Binding HasForm}">
+              <StackPanel Spacing="10" DataContext="{Binding Form}" x:DataType="vm:NodeFormViewModel">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <vm:NodeKindIcon Kind="{Binding Node.Kind}" Width="16" Height="16" VerticalAlignment="Center" />
+                  <TextBlock Classes="cardTitle" Text="{Binding Node.Name}" TextTrimming="CharacterEllipsis" MaxWidth="250" VerticalAlignment="Center" />
+                  <TextBlock Classes="secondary" Text="{Binding KindLabel}" VerticalAlignment="Center" IsVisible="{Binding ShowKindLabel}" />
+                </StackPanel>
+                <StackPanel Spacing="8" IsEnabled="{Binding $parent[UserControl].((vm:VisionViewModel)DataContext).MayChange, FallbackValue=False}">
+                  <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Name}">
+                    <TextBox x:Name="NodeName" Text="{Binding Name}" MaxLength="{x:Static vm:NodeFormViewModel.MaxNameLength}" />
+                  </ui:FormField>
+                  <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Stream}"
+                                IsVisible="{Binding Node.IsCamera}">
+                    <Button x:Name="StreamButton" Classes="secondary" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Command="{Binding $parent[UserControl].((vm:VisionViewModel)DataContext).Editor.EditStreamCommand, FallbackValue={x:Null}}">
+                      <ui:IconLabel Icon="{DynamicResource Icon.video}" Text="{Binding $parent[UserControl].((vm:VisionViewModel)DataContext).Editor.StreamSummary, FallbackValue=''}" />
+                    </Button>
+                  </ui:FormField>
+                  <ItemsControl x:Name="Fields" ItemsSource="{Binding Fields}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Spacing="8" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.DataTemplates>
+                      <DataTemplate x:DataType="vm:NumberFieldViewModel">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" />
+                            <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding Unit}" VerticalAlignment="Center" IsVisible="{Binding HasUnit}" />
+                          </Grid>
+                        </ui:FormField>
+                      </DataTemplate>
+                      <DataTemplate x:DataType="vm:ChoiceFieldViewModel">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Choices}" SelectedItem="{Binding Selected}">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate x:DataType="model:NodeChoice">
+                                <TextBlock Text="{Binding Label}" />
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                        </ui:FormField>
+                      </DataTemplate>
+                      <DataTemplate x:DataType="vm:ModelFieldViewModel">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Models}" SelectedItem="{Binding Selected}"
+                                    PlaceholderText="{x:Static vm:ModelFieldViewModel.ChoosePlaceholder}">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate x:DataType="vm:ModelOption">
+                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                        </ui:FormField>
+                      </DataTemplate>
+                      <DataTemplate x:DataType="vm:ClassesFieldViewModel">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                          <ComboBox Classes="multiSelect" HorizontalAlignment="Stretch" ItemsSource="{Binding Choices.Entries}" PlaceholderText="{Binding Summary}" />
+                        </ui:FormField>
+                      </DataTemplate>
+                      <DataTemplate x:DataType="vm:ShapeFieldViewModel">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}">
+                          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBlock Classes="secondary" Text="{Binding ShapeText}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Classes="secondary" Content="{x:Static vm:VisionTexts.Draw}" Command="{Binding DrawCommand}" />
+                          </Grid>
+                        </ui:FormField>
+                      </DataTemplate>
+                      <DataTemplate x:DataType="vm:TimeFieldViewModel">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                          <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" />
+                        </ui:FormField>
+                      </DataTemplate>
+                      <DataTemplate x:DataType="vm:BoolFieldViewModel">
+                        <CheckBox Content="{Binding Label}" IsChecked="{Binding Value}" />
+                      </DataTemplate>
+                      <DataTemplate x:DataType="vm:TextFieldViewModel">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                          <TextBox Text="{Binding Value}" PlaceholderText="{Binding Placeholder}" />
+                        </ui:FormField>
+                      </DataTemplate>
+                    </ItemsControl.DataTemplates>
+                  </ItemsControl>
+                </StackPanel>
+              </StackPanel>
+
+              <!-- The live output of the selected node. -->
+              <StackPanel x:Name="OutputPanel" Spacing="8" DataContext="{Binding Output}" x:DataType="vm:NodeOutputViewModel">
+                <TextBlock Classes="sectionTitle" Text="{x:Static vm:VisionTexts.LiveOutput}" />
+                <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsEvent}">
+                  <ui:StatusChip Text="{Binding StateText}" IsOk="{Binding IsOn}" IsVisible="{Binding HasState}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding IsCrossings}">
+                  <ui:StatCard Title="In" Value="{Binding In}" MinWidth="120" />
+                  <ui:StatCard Title="Out" Value="{Binding Out}" MinWidth="120" />
+                </StackPanel>
+                <ui:StatCard Title="{x:Static vm:VisionTexts.Count}" Value="{Binding Value}" Detail="{Binding Summary}" IsVisible="{Binding IsNumber}" HorizontalAlignment="Left" MinWidth="160" />
+                <TextBlock Classes="secondary" Text="{Binding Summary}" TextWrapping="Wrap" IsVisible="{Binding !IsNumber}" />
+                <DataGrid x:Name="ObjectsGrid" ItemsSource="{Binding Objects}" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
+                          HeadersVisibility="Column" IsVisible="{Binding IsObjects}" MaxHeight="320">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="Object" Width="70" Binding="{Binding ObjectId}" x:DataType="vm:ObjectRow" />
+                    <DataGridTextColumn Header="Class" Width="*" Binding="{Binding Class}" x:DataType="vm:ObjectRow" />
+                    <DataGridTextColumn Width="85" Binding="{Binding Score}" CellStyleClasses="number" x:DataType="vm:ObjectRow">
+                      <DataGridTextColumn.Header>
+                        <TextBlock Classes="numberHeader" Text="Score" />
+                      </DataGridTextColumn.Header>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Width="115" Binding="{Binding TimeInside}" CellStyleClasses="number" x:DataType="vm:ObjectRow">
+                      <DataGridTextColumn.Header>
+                        <TextBlock Classes="numberHeader" Text="Time inside" />
+                      </DataGridTextColumn.Header>
+                    </DataGridTextColumn>
+                  </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Classes="sectionTitle" Text="{x:Static vm:VisionTexts.LastCrossings}" IsVisible="{Binding IsCrossings}" />
+                <DataGrid x:Name="CrossingsGrid" ItemsSource="{Binding Crossings}" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
+                          HeadersVisibility="Column" IsVisible="{Binding IsCrossings}" MaxHeight="320">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="Time" Width="80" Binding="{Binding Time}" x:DataType="vm:CrossingRow" />
+                    <DataGridTextColumn Header="Direction" Width="95" Binding="{Binding Direction}" x:DataType="vm:CrossingRow" />
+                    <DataGridTextColumn Header="Class" Width="*" Binding="{Binding Class}" x:DataType="vm:CrossingRow" />
+                    <DataGridTextColumn Header="Object" Width="85" Binding="{Binding ObjectId}" x:DataType="vm:CrossingRow" />
+                  </DataGrid.Columns>
+                </DataGrid>
+                <TextBlock Classes="sectionTitle" Text="{x:Static vm:VisionTexts.LastFires}" IsVisible="{Binding IsEvent}" />
+                <DataGrid x:Name="FiresGrid" ItemsSource="{Binding Fires}" IsReadOnly="True" CanUserSortColumns="False" CanUserReorderColumns="False"
+                          HeadersVisibility="Column" IsVisible="{Binding IsEvent}" MaxHeight="320">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="Time" Width="80" Binding="{Binding Time}" x:DataType="vm:FireRow" />
+                    <DataGridTextColumn Header="Values" Width="*" Binding="{Binding Text}" x:DataType="vm:FireRow" />
+                  </DataGrid.Columns>
+                </DataGrid>
+              </StackPanel>
+            </StackPanel>
+          </Panel>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

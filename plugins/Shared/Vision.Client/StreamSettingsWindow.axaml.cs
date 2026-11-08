@@ -1,8 +1,8 @@
 using Avalonia.Controls;
 
-namespace Oadm.Plugins.Ocr.Client;
+namespace Oadm.Plugins.Shared.Vision.Client;
 
-/// <summary>The Stream settings dialog of a reader (<see cref="StreamSettingsViewModel"/>). Layout only.</summary>
+/// <summary>The Stream settings dialog (<see cref="StreamSettingsViewModel"/>). Layout only.</summary>
 public partial class StreamSettingsWindow : Window
 {
     public StreamSettingsWindow()

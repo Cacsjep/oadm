@@ -1,0 +1,30 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Vision.Client"
+        x:Class="Oadm.Plugins.Vision.Client.ModelEditWindow"
+        x:DataType="vm:ModelEditViewModel"
+        Title="{Binding Title}"
+        Width="400" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Single operation: no card; the error below the field, the main button off while there is one. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <ui:FormField Classes="wide" LabelAbove="True" Label="Name" IsVisible="{Binding IsRename}">
+          <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="{x:Static vm:ModelEditViewModel.MaxNameLength}" />
+        </ui:FormField>
+        <ui:FormField Classes="wide" LabelAbove="True" Label="Classes" Hint="{x:Static vm:ModelEditViewModel.ClassesHint}" IsVisible="{Binding IsClasses}">
+          <TextBox x:Name="ClassesBox" Text="{Binding ClassesText}" AcceptsReturn="True" TextWrapping="NoWrap" Height="240" />
+        </ui:FormField>
+      </StackPanel>
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="{Binding ConfirmText}" Command="{Binding OkCommand}" ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

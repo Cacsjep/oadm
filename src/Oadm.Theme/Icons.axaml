@@ -89,6 +89,16 @@
   <StreamGeometry x:Key="Icon.squareActivity">M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2H5a2 2 0 0 1 -2 -2V5a2 2 0 0 1 2 -2z M17 12h-2l-2 5l-2 -10l-2 5H7</StreamGeometry>
   <StreamGeometry x:Key="Icon.toggle">M2 12a7 7 0 0 1 7 -7h6a7 7 0 0 1 0 14H9a7 7 0 0 1 -7 -7z M15 9a3 3 0 1 0 0 6a3 3 0 1 0 0 -6z</StreamGeometry>
   <StreamGeometry x:Key="Icon.workflow">M5 3h4a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-4a2 2 0 0 1 -2 -2v-4a2 2 0 0 1 2 -2z M7 11v4a2 2 0 0 0 2 2h4 M15 13h4a2 2 0 0 1 2 2v4a2 2 0 0 1 -2 2h-4a2 2 0 0 1 -2 -2v-4a2 2 0 0 1 2 -2z</StreamGeometry>
+  <!-- Vision Center (docs/spec/vision-center.md): the rail entry, the node kinds, Redo of the canvas -->
+  <StreamGeometry x:Key="Icon.flow">M2.5 12a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0z M16.5 6a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0z M16.5 18a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0z M7.5 12h3l4 -6h2 M10.5 12l4 6h2</StreamGeometry>
+  <StreamGeometry x:Key="Icon.scan">M3 7V5a2 2 0 0 1 2 -2h2 M17 3h2a2 2 0 0 1 2 2v2 M21 17v2a2 2 0 0 1 -2 2h-2 M7 21H5a2 2 0 0 1 -2 -2v-2 M9 8h6a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-6a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.layers">M12 3l9 4 -9 4 -9 -4z M3 12l9 4 9 -4 M3 17l9 4 9 -4</StreamGeometry>
+  <StreamGeometry x:Key="Icon.filter">M3 5h18l-7 8v6l-4 2v-8z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.route">M16 6a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0 -5 0z M4 20c4 0 4 -6 8 -6s4 -6 4 -6 M4 20h0.01</StreamGeometry>
+  <StreamGeometry x:Key="Icon.polygon">M5 5l14 2 -2 12 -12 -3z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.crossing">M5 19L19 5 M8 8l-3 3 3 3 M16 10l3 3 -3 3</StreamGeometry>
+  <StreamGeometry x:Key="Icon.hash">M4 9h16 M4 15h16 M10 3L8 21 M16 3l-2 18</StreamGeometry>
+  <StreamGeometry x:Key="Icon.redo">M15 14l5 -5 -5 -5 M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13</StreamGeometry>
   <StreamGeometry x:Key="Icon.undo">M9 14L4 9l5 -5 M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1 -5.5 5.5H11</StreamGeometry>
   <StreamGeometry x:Key="Icon.zap">M13 2L3 14h9l-1 8l10 -12h-9l1 -8z</StreamGeometry>
   <StreamGeometry x:Key="Icon.flame">M8.5 14.5a2.5 2.5 0 0 0 2.5 -2.5c0 -1.38 -0.5 -2 -1 -3c-1.07 -2.14 -0.22 -4.05 2 -6c0.5 2.5 2 4.9 4 6.5c2 1.6 3 3.5 3 5.5a7 7 0 1 1 -14 0c0 -1.15 0.43 -2.29 1 -3a2.5 2.5 0 0 0 2.5 2.5z</StreamGeometry>
