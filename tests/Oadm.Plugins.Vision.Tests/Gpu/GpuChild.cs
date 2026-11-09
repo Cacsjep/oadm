@@ -237,6 +237,11 @@ internal static partial class BothAddOnsChild
         vision.Dispose();
         memory["end"] = GpuSupport.CardMemoryMb();
         GpuChild.Result(result);
+
+        // The loader holds the packages' collectible load contexts, as the server's singleton does: a release build keeps
+        // no local of an async method past its last use, and a context nothing holds starts unloading from its finalizer
+        // (ONNX Runtime, loaded lazily into it, then failed: 2026-11-09).
+        GC.KeepAlive(loader);
         return 0;
     }
 

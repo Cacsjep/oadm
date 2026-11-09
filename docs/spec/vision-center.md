@@ -652,6 +652,12 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   | ResNet-50, one region | 4 to 5 (2.6) | 74 |
   | YOLO11n of Ultralytics, opset 22, free input | (150 to 165) | 106 to 113 |
 
+  After the faster input (2026-11-09, release build): YOLO11n opset 19 6 to 8 ms, YOLO11n 16-bit 10 ms, YOLO26n 4.2
+  to 4.4 ms, RF-DETR medium 13.5 ms per picture on the card; beside Text recognition YOLO11n 6.3 ms and RF-DETR 13.8 ms,
+  Text recognition's camera box 62 to 64 ms; card memory 1,829 MB before, 2,804 MB with both, 1,829 MB after.
+  The Gpu tests' child process keeps its plugin loader to the end as the server's singleton does: a release build keeps
+  no local of an async method past its last use, and a collectible load context nothing holds starts unloading from its
+  finalizer.
   The 16-bit model spends about 14 ms converting its input and output on the CPU, on the card as on the CPU.
   Ultralytics' v8.4.0 YOLO11n is opset 22: ONNX Runtime 1.24's DirectML has no Conv and MaxPool of opset 22, so 88 Conv
   and 3 MaxPool nodes run on the CPU between the card's (`Node placements` of the verbose log) and a fixed input size
