@@ -148,6 +148,14 @@ public sealed class OnnxInference : IInference, IDisposable
     /// <summary>Tests: runs before each card call of a run (one that throws stands for a failing card).</summary>
     internal Action? BeforeCardCall { get; set; }
 
+    /// <summary>Tests: runs in each card test before its calls (one that blocks stands for a hanging card).</summary>
+    internal Action? BeforeCardTest { get; set; }
+
+    private int _cardWaiting;
+
+    /// <summary>Tests: the card calls waiting for the card now.</summary>
+    internal int CardWaiting => Volatile.Read(ref _cardWaiting);
+
     private bool CardInUse => _useGpu && _card is { Failed: false };
 
     /// <summary>The card's time of one call of <paramref name="modelId"/> in ms once it was tested there; null before or on the CPU.</summary>
@@ -164,6 +172,9 @@ public sealed class OnnxInference : IInference, IDisposable
 
     /// <inheritdoc />
     public IVisionFrame Decode(ReadOnlyMemory<byte> jpeg, PictureNeed? need) => VisionFrame.Decode(jpeg, need);
+
+    /// <summary>Read from the picture's header only: an 8K frame is never decoded just to be held.</summary>
+    public bool Fits(ReadOnlyMemory<byte> jpeg) => PictureLimits.Fits(jpeg);
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<Detection>> DetectAsync(VisionModel model, IVisionFrame frame, double minScore, CancellationToken ct)
@@ -411,7 +422,23 @@ public sealed class OnnxInference : IInference, IDisposable
     /// <summary>The call on the card; not run (the CPU next) when the card fails or hangs, which ends its use.</summary>
     private async Task<(CardOutcome Outcome, T? Value)> TryCardCallAsync<T>(CardState card, VisionModel model, string path, float[] tensor, FitTransform fit, Func<IModelOutputs, FitTransform, T> read, CancellationToken ct)
     {
-        await _lane.WaitAsync(ct).ConfigureAwait(false);
+        // A card that fails while this call waits ends the wait: a hung card test may hold the lane for good.
+        var lane = _lane.WaitAsync(ct);
+        Interlocked.Increment(ref _cardWaiting);
+        try
+        {
+            if (await Task.WhenAny(lane, card.WhenFailed).ConfigureAwait(false) != lane)
+            {
+                _ = lane.ContinueWith(static (t, l) => ((SemaphoreSlim)l!).Release(), _lane, CancellationToken.None, TaskContinuationOptions.OnlyOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                return (CardOutcome.NotRun, default);
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _cardWaiting);
+        }
+
+        await lane.ConfigureAwait(false);
         Held? held = null;
         var hung = false;
         try
@@ -519,6 +546,7 @@ public sealed class OnnxInference : IInference, IDisposable
                 await _lane.WaitAsync(limit.Token).ConfigureAwait(false);
                 try
                 {
+                    BeforeCardTest?.Invoke();
                     var held = Take(new SessionKey(model.Id, model.InputWidth, model.InputHeight, card.Target), path);
                     try
                     {
@@ -727,16 +755,25 @@ public sealed class OnnxInference : IInference, IDisposable
     /// <summary>The graphics card in use: its provider, its name once a model ran there, and whether it failed.</summary>
     private sealed class CardState(ExecutionTarget target)
     {
+        private readonly TaskCompletionSource _failedSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _failed;
 
         public ExecutionTarget Target { get; } = target;
+
+        /// <summary>Ends when the card failed.</summary>
+        public Task WhenFailed => _failedSource.Task;
 
         public string? Name { get; set; }
 
         public bool Failed => Volatile.Read(ref _failed) != 0;
 
         /// <summary>The first failure ends the card's use; true for the caller that tells the log.</summary>
-        public bool MarkFailed() => Interlocked.Exchange(ref _failed, 1) == 0;
+        public bool MarkFailed()
+        {
+            var first = Interlocked.Exchange(ref _failed, 1) == 0;
+            _failedSource.TrySetResult();
+            return first;
+        }
     }
 
     /// <summary>A shared session with the calls that hold it now.</summary>

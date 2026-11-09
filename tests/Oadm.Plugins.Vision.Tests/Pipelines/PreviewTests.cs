@@ -94,6 +94,19 @@ public sealed class PreviewTests
     }
 
     [Fact]
+    public async Task AModelThatGoesWhileThePreviewIsOpenShowsInItsCheck()
+    {
+        await using var vision = await VisionHarness.StartAsync();
+        var id = NewId();
+        await vision.PreviewAsync(vision.NewPipeline(), id);
+        Assert.Empty(vision.Runtime.PreviewStateOf(id)!.Check!.NodeErrors);
+
+        // The same draft, its model gone: the sync sees the change through the models in the print.
+        await vision.Models.DeleteAsync("m1", [], CancellationToken.None);
+        await Eventually.TrueAsync(() => vision.Runtime.PreviewStateOf(id)!.Check!.NodeErrors.Values.Contains("Choose a model."), "the check names the missing model");
+    }
+
+    [Fact]
     public async Task ThePreviewEndsThirtySecondsAfterThePagesLastCall()
     {
         await using var vision = await VisionHarness.StartAsync();

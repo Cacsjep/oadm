@@ -43,16 +43,9 @@ internal sealed class SerialWork
 
     private static async Task<T> AfterAsync<T>(Task before, Func<Task<T>> work)
     {
-        try
-        {
-            await before.ConfigureAwait(false);
-        }
-#pragma warning disable CA1031 // The one before failed for its own caller; this one runs anyway.
-        catch (Exception)
-#pragma warning restore CA1031
-        {
-        }
-
+        // The one before failed for its own caller; this one runs anyway. Never on the caller's thread: the work would run
+        // under the lock of RunAsync and hold up whoever hands over the next piece (the frame loop).
+        await before.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing | ConfigureAwaitOptions.ForceYielding);
         return await work().ConfigureAwait(false);
     }
 }

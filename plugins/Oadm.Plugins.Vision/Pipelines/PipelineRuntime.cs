@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading.Channels;
 
 using Microsoft.Extensions.Logging;
@@ -66,6 +67,9 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
     /// <summary>The watching pipelines that take a picture of their own for Run pipeline now (one at a time each).</summary>
     private readonly ConcurrentDictionary<string, byte> _ownPictures = new(StringComparer.Ordinal);
     private readonly ConditionalWeakTable<Pipeline, string> _prints = new();
+
+    // A stored model is a new record after every change: its print is made once (Print runs for every delivered frame).
+    private readonly ConditionalWeakTable<VisionModel, string> _modelPrints = new();
     private readonly StatsWindow _stats;
     private readonly Events.EventStateBook _eventStates;
     private readonly CancellationTokenSource _stopping = new();
@@ -291,7 +295,7 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
             SetProblem(_actionProblems, pipeline.Id, null);
             return result;
         }
-        catch (OperationCanceledException) when (!_stopped && !Starting && pipeline.Mode == PipelineMode.OnAction)
+        catch (OperationCanceledException) when (!_stopped && !Starting && pipeline.Mode == PipelineMode.OnAction && !callerCt.IsCancellationRequested)
         {
             SetProblem(_actionProblems, pipeline.Id, DeviceMessages.TimedOut);
             throw;
@@ -723,7 +727,18 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
             Nodes = [.. p.Nodes.Select(n => n with { Name = string.Empty, X = 0, Y = 0, ShowOnVideo = false })],
         }));
         var models = PipelineRules.ModelsOf(pipeline);
-        return models.Count == 0 ? own : own + "\u001f" + VisionJson.Serialize(models.Select(_models.Find).ToList());
+        if (models.Count == 0)
+        {
+            return own;
+        }
+
+        var print = new StringBuilder(own);
+        foreach (var id in models)
+        {
+            print.Append('\u001f').Append(_models.Find(id) is { } model ? _modelPrints.GetValue(model, static m => VisionJson.Serialize(m)) : "-");
+        }
+
+        return print.ToString();
     }
 
     /// <summary>The stored pipeline of <paramref name="pipelineId"/>; null after a delete.</summary>
@@ -783,17 +798,27 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
     }
 
     /// <summary>A saved watching pipeline: its stream through its evaluator, the results published (<see cref="DeliverSaved"/>).</summary>
-    private Task WatchAsync(Watch watch, CancellationToken ct) => StreamAsync(
-        watch.Pipeline,
-        PipelineRules.StreamFps(watch.Pipeline),
-        (jpeg, token) =>
+    private async Task WatchAsync(Watch watch, CancellationToken ct)
+    {
+        await StreamAsync(
+            watch.Pipeline,
+            PipelineRules.StreamFps(watch.Pipeline),
+            (jpeg, token) =>
+            {
+                Interlocked.Increment(ref watch.InWork);
+                return Process(watch.Serial, watch.Evaluator, jpeg, token);
+            },
+            outcome => DeliverSaved(watch, outcome), // ends the frame's InWork once its result is the pipeline's Last
+            problem => SetProblem(_streamProblems, watch.Pipeline.Id, problem),
+            ct).ConfigureAwait(false);
+
+        if (!ct.IsCancellationRequested)
         {
-            Interlocked.Increment(ref watch.InWork);
-            return Process(watch.Serial, watch.Evaluator, jpeg, token);
-        },
-        outcome => DeliverSaved(watch, outcome), // ends the frame's InWork once its result is the pipeline's Last
-        problem => SetProblem(_streamProblems, watch.Pipeline.Id, problem),
-        ct);
+            // The stream ended by itself (a frame source that failed for good, logged): the loop goes, and the next check of
+            // the pipelines (at most a minute later) starts it again instead of leaving it running without frames.
+            _ = QuietlyAsync(() => StopLoopsAsync(w => w == watch), "the end of the stream of " + watch.Pipeline.Name);
+        }
+    }
 
     private void DeliverSaved(Watch watch, FrameOutcome outcome)
     {

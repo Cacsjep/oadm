@@ -451,7 +451,8 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
 - **Graphics card**: with Use GPU on, each model is tested on the card at its first call (two calls on the card against
   one warmed call on the CPU); the model runs there unless the card is more than 1.5 times slower. Callers wait for the
   test, the page shows Starting meanwhile. The card's calls run in one lane. A test longer than 1 minute, a failing call
-  or a call longer than 2 minutes ends the card's use until the next start, with one log line. "GPU available" means
+  or a call longer than 2 minutes ends the card's use until the next start, with one log line; the calls waiting for the
+  lane then go to the CPU (a hung test may hold the lane for good). "GPU available" means
   the provider was found and has not failed; "on GPU" that a model passed its test.
 - A pipeline has one frame in work, up to 4 while the workers have room, as a reader ("Bounded load" of
   `docs/spec/ocr.md`); a frame without room is dropped, the newest wins.
@@ -485,7 +486,12 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   uploads being checked. Missing models count at neither step (they are listed and can be deleted). Stored record
   keys other than 32 lower-case hex digits are left out at load (one log line).
 - **Audit.** A save refused for its fields or graph is audited "Could not save vision pipeline X"; the audit's name
-  cache keeps at most 256 entries, each read once.
+  cache keeps at most 256 entries, each read once; beyond them the oldest goes, never the names of calls still running.
+- **A stream that ends by itself** (a frame source that failed for good, logged) ends its loop; the next check of the
+  pipelines (`RecheckInterval`, 1 minute) starts it again. A run of Run pipeline its caller cancels is no problem of the
+  pipeline (only a run that timed out on its own is "timed out").
+- A paused preview checks the held frame's size from the picture's header (`IInference.Fits`, `PictureLimits`), never by
+  decoding it.
 - **Paused previews.** A failing re-run of a held frame is logged and the worker stops; the next change runs again;
   stopping never rethrows (`LatestWinsWorker`, Text recognition unchanged).
 

@@ -107,6 +107,22 @@ public interface IInference
     /// </summary>
     IVisionFrame Decode(ReadOnlyMemory<byte> jpeg, PictureNeed? need) => Decode(jpeg);
 
+    /// <summary>The picture would decode: a picture within the limits (the held frame of a paused preview).</summary>
+    bool Fits(ReadOnlyMemory<byte> jpeg)
+    {
+        try
+        {
+            using var frame = Decode(jpeg);
+            return true;
+        }
+#pragma warning disable CA1031 // A picture the decoder refuses does not fit.
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return false;
+        }
+    }
+
     /// <summary>The objects of <paramref name="model"/> in the whole frame, at most <see cref="VisionLimits.MaxObjects"/>, highest score first; scores below <paramref name="minScore"/> (0 to 1) are left out.</summary>
     Task<IReadOnlyList<Detection>> DetectAsync(VisionModel model, IVisionFrame frame, double minScore, CancellationToken ct);
 

@@ -461,6 +461,13 @@ internal sealed class FakeFrames : IFrameSource
         report(problem);
     }
 
+    /// <summary>The camera's stream fails for good (the frame source gave up).</summary>
+    public void Fail(Guid deviceId, Exception ex)
+    {
+        Assert.True(_streams.TryGetValue(deviceId, out var stream), "No stream of the camera is open.");
+        stream.Writer.TryComplete(ex);
+    }
+
     public void Send(Guid deviceId, string text)
     {
         Assert.True(_streams.TryGetValue(deviceId, out var stream), "No stream of the camera is open.");

@@ -137,6 +137,37 @@ public sealed class WatchingTests
     }
 
     [Fact]
+    public async Task APipelinesPrintFollowsItsModelsAndStaysTheSameWithoutAChange()
+    {
+        await using var vision = await VisionHarness.StartAsync();
+        var saved = await vision.SaveAsync(vision.NewPipeline());
+        var print = vision.Runtime.Print(saved);
+        Assert.Equal(print, vision.Runtime.Print(saved)); // made again from the kept parts for every delivered frame
+
+        // A changed model is a new record: the print changes, and the loop restarts with it.
+        await vision.Models.UpdateAsync(vision.Models.Find("m1")! with { ClassNames = ["person", "car"] }, CancellationToken.None);
+        Assert.NotEqual(print, vision.Runtime.Print(saved));
+
+        // A model that is gone prints differently from any model.
+        await vision.Models.DeleteAsync("m1", [], CancellationToken.None);
+        Assert.NotEqual(print, vision.Runtime.Print(saved));
+    }
+
+    [Fact]
+    public async Task AStreamThatEndsByItselfStartsAgainWithTheNextCheck()
+    {
+        await using var vision = await VisionHarness.StartAsync();
+        var saved = await vision.SaveAsync(vision.NewPipeline());
+        await vision.StreamingAsync();
+
+        vision.Frames.Fail(vision.Inside.Id, new InvalidOperationException("the source gave up"));
+        await Eventually.TrueAsync(() => !vision.Runtime.Watching.Contains(saved.Id), "the ended loop is gone");
+
+        vision.Time.Advance(PipelineRuntime.RecheckInterval);
+        await Eventually.TrueAsync(() => vision.Runtime.Watching.Contains(saved.Id) && vision.Frames.Opened == 2, "the check started it again");
+    }
+
+    [Fact]
     public async Task APipelineWhoseCheckFailsNeverRuns()
     {
         await using var vision = await VisionHarness.StartAsync();

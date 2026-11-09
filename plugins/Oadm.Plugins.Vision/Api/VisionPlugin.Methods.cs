@@ -29,7 +29,8 @@ public sealed partial class VisionPlugin
     internal const int MaxCachedCameras = 200;
 
     /// <summary>What the audit entries of the calls name (read after the call ended, never a file's content).</summary>
-    private readonly ConcurrentDictionary<string, string> _auditNames = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (string Name, long Order)> _auditNames = new(StringComparer.Ordinal);
+    private long _auditOrder;
 
     public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
@@ -215,7 +216,7 @@ public sealed partial class VisionPlugin
                 var uploadId = VisionJson.Deserialize<UploadRequest>(payloadJson).UploadId;
                 var check = await models.FinishUploadAsync(uploadId, ct).ConfigureAwait(false);
                 var key = AuditKey(method, uploadId);
-                KeepAuditName(key, check.Model is { } model ? model.Name : RefusedPrefix + _auditNames.GetValueOrDefault(key, string.Empty));
+                KeepAuditName(key, check.Model is { } model ? model.Name : RefusedPrefix + (_auditNames.TryGetValue(key, out var begun) ? begun.Name : string.Empty));
                 PublishModels();
                 return VisionJson.Serialize(new FinishUploadReply { Model = check.Model, Refusal = check.Refusal });
             }
@@ -322,7 +323,7 @@ public sealed partial class VisionPlugin
     public string? AuditDetail(string method, string? payloadJson)
     {
         // Read once, after the call: the entry goes (the names never pile up).
-        string? Named(string? id) => id is not null && _auditNames.TryRemove(AuditKey(method, id), out var name) ? name : null;
+        string? Named(string? id) => id is not null && _auditNames.TryRemove(AuditKey(method, id), out var kept) ? kept.Name : null;
         switch (method)
         {
             case VisionMethods.SavePipeline:
@@ -389,16 +390,22 @@ public sealed partial class VisionPlugin
     /// <summary>The audit names kept at most (each is read once after its call; calls that never get audited leave none for long).</summary>
     internal const int MaxAuditNames = 256;
 
-    /// <summary>Keeps the name an audit entry reads after the call; beyond <see cref="MaxAuditNames"/> the old ones go.</summary>
+    /// <summary>
+    /// Keeps the name an audit entry reads after the call; beyond <see cref="MaxAuditNames"/> the oldest goes (the names of the
+    /// calls still running stay: they are the newest).
+    /// </summary>
     private void KeepAuditName(string key, string name)
     {
-        if (_auditNames.Count >= MaxAuditNames && !_auditNames.ContainsKey(key))
+        _auditNames[key] = (name, Interlocked.Increment(ref _auditOrder));
+        while (_auditNames.Count > MaxAuditNames)
         {
-            _auditNames.Clear();
+            var oldest = _auditNames.MinBy(p => p.Value.Order);
+            _auditNames.TryRemove(oldest);
         }
-
-        _auditNames[key] = name;
     }
+
+    /// <summary>An audit name is kept for the call of <paramref name="method"/> on <paramref name="id"/> now (tests).</summary>
+    internal bool KeepsAuditName(string method, string id) => _auditNames.ContainsKey(AuditKey(method, id));
 
     /// <summary>The audit names kept now (tests).</summary>
     internal int AuditNamesKept => _auditNames.Count;

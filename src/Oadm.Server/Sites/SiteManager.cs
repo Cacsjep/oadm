@@ -653,6 +653,8 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 entry.ConnectedSince = null;
                 entry.Version = control.Hello?.Version ?? entry.Version;
                 entry.Requested.Clear(); // a new connection asks again for the ports the node has not allowed
+                entry.Status = null; // its allowed ports come again with its first status: no dial before it
+                entry.ConnectPorts = [];
                 if (fresh)
                 {
                     entry.State = SiteState.Online;

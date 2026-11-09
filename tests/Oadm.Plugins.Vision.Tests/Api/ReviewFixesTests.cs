@@ -150,6 +150,25 @@ public sealed class ReviewFixesTests
         Assert.NotNull(await vision.Plugin.RunOnceAsync(saved, CancellationToken.None)); // free again
     }
 
+    // An On action run its caller gave up on (a client gone, the rule's call ended) is no problem of the pipeline.
+    [Fact]
+    public async Task ARunItsCallerCancelsLeavesNoProblem()
+    {
+        await using var vision = await VisionHarness.StartAsync();
+        var saved = await vision.SaveAsync(vision.NewPipeline(mode: PipelineMode.OnAction));
+        using var gate = new SemaphoreSlim(0);
+        vision.Frames.SingleGate = gate;
+        using var caller = new CancellationTokenSource();
+
+        var run = vision.Plugin.RunOnceAsync(saved, caller.Token);
+        await Eventually.TrueAsync(() => vision.Frames.Singles == 1, "the run takes its picture");
+        await caller.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+        Assert.Null(vision.Runtime.ProblemOf(saved.Id));
+        gate.Release(5);
+    }
+
     // (11) A refused save is audited as not saved, and the audit's names never pile up.
     [Fact]
     public async Task ARefusedSaveIsNotAuditedAsSavedAndTheNamesStayBounded()
@@ -169,7 +188,10 @@ public sealed class ReviewFixesTests
             await vision.TrySaveAsync(vision.NewPipeline("P" + i) with { Fps = 7 });
         }
 
-        Assert.True(vision.Plugin.AuditNamesKept <= VisionPlugin.MaxAuditNames);
+        // Only the oldest go: the newest names (those of the calls still running) stay.
+        Assert.Equal(VisionPlugin.MaxAuditNames, vision.Plugin.AuditNamesKept);
+        Assert.False(vision.Plugin.KeepsAuditName(VisionMethods.SavePipeline, "new:P0"));
+        Assert.True(vision.Plugin.KeepsAuditName(VisionMethods.SavePipeline, "new:P" + (VisionPlugin.MaxAuditNames + 49)));
     }
 
     // (12) A throwing step never leaves the worker stuck, and its stop never throws.

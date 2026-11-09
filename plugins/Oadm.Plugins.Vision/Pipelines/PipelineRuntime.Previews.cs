@@ -202,20 +202,7 @@ internal sealed partial class PipelineRuntime
         return EventOf(preview);
     }
 
-    private bool Fits(ReadOnlyMemory<byte> jpeg)
-    {
-        try
-        {
-            using var frame = _inference.Decode(jpeg);
-            return true;
-        }
-#pragma warning disable CA1031 // A picture the decoder refuses is too large to hold.
-        catch (Exception)
-#pragma warning restore CA1031
-        {
-            return false;
-        }
-    }
+    private bool Fits(ReadOnlyMemory<byte> jpeg) => _inference.Fits(jpeg);
 
     /// <summary>A new draft: a changed graph gets a new evaluator (its counts start at 0) and its lists start empty.</summary>
     private void UpdateDraft(Preview preview, Pipeline draft)
@@ -555,7 +542,7 @@ internal sealed partial class PipelineRuntime
 
         foreach (var preview in previews)
         {
-            UpdateDraft(preview, preview.Draft with { }); // a model may have changed under it
+            UpdateDraft(preview, preview.Draft); // a model may have changed under it (the print holds the models, made anew)
             await ReconcileAsync(preview).ConfigureAwait(false);
         }
     }

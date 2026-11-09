@@ -282,6 +282,23 @@ public sealed class InferenceTests : IDisposable
         Near(new RelativeBox(0.1, 0.1, 0.1, 0.2), found.Box);
     }
 
+    [Theory]
+    [InlineData(2, 1)] // fewer scores than boxes
+    [InlineData(1, 2)] // fewer labels than boxes
+    public async Task Detr_with_labels_whose_outputs_are_shorter_than_its_boxes_does_not_fit(int labels, int scores)
+    {
+        var onnx = OnnxModel.Picture().Input("orig_target_sizes", OnnxModel.Int64, OnnxModel.Dim(1), OnnxModel.Dim(2))
+            .Output("labels", [1, labels], new long[labels])
+            .Output("boxes", [1, 2, 4], [64f, 64, 128, 192, 0, 0, 10, 10])
+            .Output("scores", [1, scores], new float[scores]);
+        var model = Model(onnx, ModelFormat.DetrWithLabels, ["a", "b", "c"]);
+        var inference = Inference();
+        using var frame = inference.Decode(Jpeg(640, 640));
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => inference.DetectAsync(model, frame, 0.5, CancellationToken.None));
+        Assert.Equal(ModelTexts.OutputsDoNotFit, refused.Message);
+    }
+
     [Fact]
     public async Task A_class_without_a_name_is_named_by_its_number()
     {
@@ -461,5 +478,49 @@ public sealed class InferenceTests : IDisposable
         Assert.False(inference.OnGpu);
         Assert.False(inference.GpuAvailable);
         Assert.Equal("CPU (4 cores)", inference.RunsOn);
+    }
+
+    [Fact]
+    public async Task A_card_test_that_hangs_sends_the_calls_waiting_for_the_card_to_the_cpu()
+    {
+        var inference = Inference(change: o => o with
+        {
+            FindGraphicsCard = _ => ExecutionTarget.DirectMl,
+            CreateSession = (path, _) => new InferenceSession(path),
+            CardName = _ => "Test card",
+            CardWorth = (_, _) => true,
+        });
+        await inference.SetUseGpuAsync(true);
+        var running = Model(OnnxModel.Picture().Output("output0", [1, 6, YoloBoxes], YoloV8(2, (320, 320, 64, 64, 0, 0.9f))), ModelFormat.Yolo, ["a", "b"]);
+        using var frame = inference.Decode(Jpeg(640, 640));
+        Assert.Single(await inference.DetectAsync(running, frame, 0.5, CancellationToken.None));
+        Assert.True(inference.OnGpu);
+
+        // A new model's card test hangs in the driver and holds the card.
+        using var hang = new ManualResetEventSlim();
+        using var testing = new ManualResetEventSlim();
+        inference.BeforeCardTest = () =>
+        {
+            testing.Set();
+            hang.Wait(TimeSpan.FromSeconds(30));
+        };
+        var added = Model(OnnxModel.Picture().Output("output0", [1, 6, YoloBoxes], YoloV8(2, (320, 320, 64, 64, 0, 0.9f))), ModelFormat.Yolo, ["a", "b"]);
+        var addedCall = inference.DetectAsync(added, frame, 0.5, CancellationToken.None);
+        await Eventually.TrueAsync(() => testing.IsSet, "the new model's card test holds the card");
+
+        // A frame of the running model waits for the card.
+        var waiting = inference.DetectAsync(running, frame, 0.5, CancellationToken.None);
+        await Eventually.TrueAsync(() => inference.CardWaiting == 1, "the running model's call waits for the card");
+
+        // The test runs out of time: the card is given up, the waiting call goes on on the CPU.
+        await Eventually.TrueAsync(() =>
+        {
+            _time.Advance(OnnxInference.CardTestLimit);
+            return waiting.IsCompleted && addedCall.IsCompleted;
+        }, "both calls ended on the CPU");
+        Assert.Single(await waiting);
+        Assert.Single(await addedCall);
+        Assert.False(inference.GpuAvailable);
+        hang.Set();
     }
 }

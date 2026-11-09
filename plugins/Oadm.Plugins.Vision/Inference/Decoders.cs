@@ -354,6 +354,13 @@ internal static class Decoders
         var boxes = outputs.Floats(boxesAt);
         var scores = outputs.Floats(scoresAt);
         var n = (int)infos[boxesAt].Shape[1];
+        var labels = 1L;
+        foreach (var d in infos[labelsAt].Shape)
+        {
+            labels *= d;
+        }
+
+        Require(n >= 0 && boxes.Length >= n * 4 && scores.Length >= n && labels >= n);
 
         // A model that was not handed the input's size gives its boxes 0 to 1.
         var relative = true;
