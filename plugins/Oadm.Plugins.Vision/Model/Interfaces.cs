@@ -39,6 +39,49 @@ public interface IFrameSource
 }
 
 /// <summary>A decoded picture, shared by every model node of one frame. Disposed by the runtime after the frame.</summary>
+/// <summary>A model's input a frame is decoded for: its size and how the picture is fitted into it.</summary>
+public readonly record struct ModelInput(int Width, int Height, ModelFit Fit);
+
+/// <summary>
+/// What a pipeline's models need of a frame's pixels (docs/spec/vision-center.md "Running"): the inputs of its whole-picture
+/// model calls. A pipeline that crops (Classify) needs the whole picture and has none.
+/// </summary>
+public sealed record PictureNeed(IReadOnlyList<ModelInput> Inputs)
+{
+    /// <summary>
+    /// The smallest of the scales 1/8, 1/4, 1/2 and 1 whose picture (<paramref name="scaledSize"/> gives a scale's size of a
+    /// <paramref name="width"/> x <paramref name="height"/> picture) still fills every input at least as finely as the whole
+    /// picture would: never more scaled up than from the whole picture.
+    /// </summary>
+    public float ScaleFor(int width, int height, Func<float, (int Width, int Height)> scaledSize)
+    {
+        ArgumentNullException.ThrowIfNull(scaledSize);
+        foreach (var scale in (ReadOnlySpan<float>)[0.125f, 0.25f, 0.5f])
+        {
+            var (w, h) = scaledSize(scale);
+            if (Inputs.All(i => Fits(i, width, height, w, h)))
+            {
+                return scale;
+            }
+        }
+
+        return 1;
+    }
+
+    private static bool Fits(ModelInput input, int width, int height, int w, int h)
+    {
+        if (input.Fit == ModelFit.Stretch)
+        {
+            // Each axis on its own: the scaled picture must keep the pixels the input takes of each axis.
+            return w >= Math.Min(width, input.Width) && h >= Math.Min(height, input.Height);
+        }
+
+        // Shape kept: the picture lands scaled by the smaller ratio, so it needs that many pixels across and down.
+        var placed = Math.Min(1.0, Math.Min((double)input.Width / width, (double)input.Height / height));
+        return w >= Math.Ceiling(width * placed) && h >= Math.Ceiling(height * placed);
+    }
+}
+
 public interface IVisionFrame : IDisposable
 {
     int Width { get; }
@@ -57,6 +100,12 @@ public interface IInference
 {
     /// <summary>Decodes a JPEG once per frame; refuses pictures over the pixel limits before any pixel memory is taken.</summary>
     IVisionFrame Decode(ReadOnlyMemory<byte> jpeg);
+
+    /// <summary>
+    /// As <see cref="Decode(ReadOnlyMemory{byte})"/>, decoded only as large as <paramref name="need"/> asks (null: the whole
+    /// picture): a JPEG decodes at a half, a quarter or an eighth of its size in a fraction of the time.
+    /// </summary>
+    IVisionFrame Decode(ReadOnlyMemory<byte> jpeg, PictureNeed? need) => Decode(jpeg);
 
     /// <summary>The objects of <paramref name="model"/> in the whole frame, at most <see cref="VisionLimits.MaxObjects"/>, highest score first; scores below <paramref name="minScore"/> (0 to 1) are left out.</summary>
     Task<IReadOnlyList<Detection>> DetectAsync(VisionModel model, IVisionFrame frame, double minScore, CancellationToken ct);

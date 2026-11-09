@@ -284,7 +284,15 @@ internal sealed class Evaluator : IPipelineEvaluator
                 _work.Add((built, parent));
             }
         }
+
+        // Crops need the whole picture; whole-picture calls only as many pixels as their inputs take.
+        PictureNeed = _work.Any(w => w.Node is ClassifyNode)
+            ? null
+            : new PictureNeed([.. _work.Select(w => w.Node).OfType<DetectNode>().Select(d => new ModelInput(d.Model.InputWidth, d.Model.InputHeight, d.Model.Fit))]);
     }
+
+    /// <inheritdoc />
+    public PictureNeed? PictureNeed { get; }
 
     public IReadOnlyList<Emission> CurrentStates
     {
@@ -300,10 +308,38 @@ internal sealed class Evaluator : IPipelineEvaluator
         }
     }
 
-    public async Task<FrameResult> RunAsync(IVisionFrame frame, DateTimeOffset at, CancellationToken ct)
+    /// <inheritdoc />
+    public IFramePrefetch? Prefetch(IVisionFrame frame, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(frame);
-        var context = new FrameContext(frame, at, _inference, _options.Time, ct) { Zone = _options.TimeZone, EventStates = _options.EventStates };
+        Dictionary<string, Task<(IReadOnlyList<Detection> Detections, double Ms)>>? calls = null;
+        FrameContext? context = null;
+        foreach (var (node, parent) in _work)
+        {
+            // Only what needs nothing but the picture: a Detect node right after the Camera always runs with the frame.
+            if (node is DetectNode detect && parent is not null && _byId.GetValueOrDefault(parent) is CameraNode)
+            {
+                context ??= new FrameContext(frame, default, _inference, _options.Time, ct);
+                calls ??= new(StringComparer.Ordinal);
+                calls[node.Id] = detect.CallAsync(context);
+            }
+        }
+
+        return calls is null ? null : new FramePrefetch(calls);
+    }
+
+    public Task<FrameResult> RunAsync(IVisionFrame frame, DateTimeOffset at, CancellationToken ct) => RunAsync(frame, at, null, ct);
+
+    /// <inheritdoc />
+    public async Task<FrameResult> RunAsync(IVisionFrame frame, DateTimeOffset at, IFramePrefetch? prefetch, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(frame);
+        var context = new FrameContext(frame, at, _inference, _options.Time, ct)
+        {
+            Zone = _options.TimeZone,
+            EventStates = _options.EventStates,
+            Prefetched = (prefetch as FramePrefetch)?.Calls,
+        };
         var outputs = context.Outputs;
         string? failure = null;
         foreach (var (node, parent) in _work)

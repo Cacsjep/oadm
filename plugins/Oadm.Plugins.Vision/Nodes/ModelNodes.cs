@@ -22,6 +22,9 @@ internal sealed class DetectNode : VisionNode
     private readonly double _minScore;
     private readonly HashSet<string>? _classes;
 
+    /// <summary>The model it runs on the whole picture (the frame is decoded only as large as its input needs).</summary>
+    public VisionModel Model => _model;
+
     public DetectNode(PipelineNode node, PortKind? input, VisionModel model) : base(node, NodeKinds.DetectKind, input)
     {
         _model = model;
@@ -29,10 +32,14 @@ internal sealed class DetectNode : VisionNode
         _classes = NodeKindsSettings.ClassSet(node);
     }
 
+    /// <summary>The model call on the frame's picture, measured (also started early, before the frame's turn).</summary>
+    public Task<(IReadOnlyList<Detection> Detections, double Ms)> CallAsync(FrameContext frame) =>
+        MeasureAsync(frame, _model, () => frame.Inference.DetectAsync(_model, frame.Frame, _minScore, frame.Ct));
+
     public override async ValueTask<NodeOutput> RunAsync(NodeOutput? input, FrameContext frame)
     {
-        var (detections, ms) = await MeasureAsync(frame, _model,
-            () => frame.Inference.DetectAsync(_model, frame.Frame, _minScore, frame.Ct)).ConfigureAwait(false);
+        var call = frame.Prefetched?.GetValueOrDefault(Id) ?? CallAsync(frame);
+        var (detections, ms) = await call.ConfigureAwait(false);
         var objects = new List<VisionObject>(Math.Min(detections.Count, VisionLimits.MaxObjects));
         foreach (var d in detections)
         {

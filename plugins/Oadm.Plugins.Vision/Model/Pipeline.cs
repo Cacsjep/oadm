@@ -21,9 +21,11 @@ public sealed record Resolution(int Width, int Height)
 }
 
 /// <summary>A point relative to the picture: 0 to 1 on both axes, (0, 0) top left.</summary>
+[System.Text.Json.Serialization.JsonConverter(typeof(RelativePointJson))]
 public sealed record RelativePoint(double X, double Y);
 
-/// <summary>A box relative to the picture: 0 to 1, (X, Y) its top left corner.</summary>
+/// <summary>A box relative to the picture: 0 to 1, (X, Y) its top left corner. Its JSON holds only X, Y, Width and Height.</summary>
+[System.Text.Json.Serialization.JsonConverter(typeof(RelativeBoxJson))]
 public sealed record RelativeBox(double X, double Y, double Width, double Height)
 {
     public double Right => X + Width;

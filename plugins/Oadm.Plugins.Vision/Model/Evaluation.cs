@@ -129,11 +129,31 @@ public interface IPipelineEvaluator
 {
     Task<FrameResult> RunAsync(IVisionFrame frame, DateTimeOffset at, CancellationToken ct);
 
+    /// <summary>
+    /// Starts the model calls of <paramref name="frame"/> that need nothing but its picture (a Detect node right after the
+    /// Camera) as soon as it is decoded, beside the frames still in work (docs/spec/vision-center.md "Running"); null: none.
+    /// The frame stays undisposed until <see cref="IFramePrefetch.WhenDoneAsync"/> ended.
+    /// </summary>
+    IFramePrefetch? Prefetch(IVisionFrame frame, CancellationToken ct) => null;
+
+    /// <summary>As <see cref="RunAsync(IVisionFrame, DateTimeOffset, CancellationToken)"/>, taking the calls <paramref name="prefetch"/> started.</summary>
+    Task<FrameResult> RunAsync(IVisionFrame frame, DateTimeOffset at, IFramePrefetch? prefetch, CancellationToken ct) => RunAsync(frame, at, ct);
+
     /// <summary>The rule action Reset counter and the daily reset: a Count node (and its Line) start again at 0.</summary>
     void ResetCounter(string nodeId);
 
     /// <summary>The Event nodes that are on now, with their last values: the full report after a start.</summary>
     IReadOnlyList<Emission> CurrentStates { get; }
+
+    /// <summary>What its model calls need of a frame's pixels; null: the whole picture.</summary>
+    PictureNeed? PictureNeed => null;
+}
+
+/// <summary>The model calls a frame started early (<see cref="IPipelineEvaluator.Prefetch"/>).</summary>
+public interface IFramePrefetch
+{
+    /// <summary>Ends when every call ended (a failure or a cancellation included, never thrown): the frame may go then.</summary>
+    Task WhenDoneAsync();
 }
 
 /// <summary>The graph check (docs/spec/vision-center.md rule 8): errors per node and for the whole graph.</summary>

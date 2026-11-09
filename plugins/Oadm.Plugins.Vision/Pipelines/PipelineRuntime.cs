@@ -862,13 +862,32 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
     private Task<FrameOutcome> Process(SerialWork serial, IPipelineEvaluator evaluator, ReadOnlyMemory<byte> jpeg, CancellationToken ct, DateTimeOffset? at = null)
     {
         var time = at ?? _time.GetUtcNow();
-        var decoded = Task.Run(() => _inference.Decode(jpeg), CancellationToken.None);
+        var need = evaluator.PictureNeed;
+
+        // Decoded at once beside the frames in work, and its picture-only model calls started with it: a pipeline whose
+        // model takes longer than a frame keeps the workers busy instead of waiting for its turn.
+        var decoded = Task.Run(
+            () =>
+            {
+                var frame = _inference.Decode(jpeg, need);
+                try
+                {
+                    return (Frame: frame, Prefetch: evaluator.Prefetch(frame, ct));
+                }
+                catch
+                {
+                    frame.Dispose();
+                    throw;
+                }
+            },
+            CancellationToken.None);
         return serial.RunAsync(async () =>
         {
             IVisionFrame frame;
+            IFramePrefetch? prefetch;
             try
             {
-                frame = await decoded.ConfigureAwait(false);
+                (frame, prefetch) = await decoded.ConfigureAwait(false);
             }
 #pragma warning disable CA1031 // A picture that cannot be decoded is a failed frame.
             catch (Exception ex)
@@ -878,13 +897,13 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
                 return new FrameOutcome(null, jpeg, Resolution.Default, time, ex.Message, evaluator);
             }
 
-            using (frame)
+            try
             {
                 var size = new Resolution(frame.Width, frame.Height);
                 try
                 {
                     ct.ThrowIfCancellationRequested();
-                    var result = await evaluator.RunAsync(frame, time, ct).ConfigureAwait(false);
+                    var result = await evaluator.RunAsync(frame, time, prefetch, ct).ConfigureAwait(false);
                     return new FrameOutcome(result, jpeg, size, time, result.ModelFailure, evaluator);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -898,6 +917,16 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
                     LogEvaluationFailed(_logger, ex);
                     return new FrameOutcome(null, jpeg, size, time, ex.Message, evaluator);
                 }
+            }
+            finally
+            {
+                // A call started early may still read the picture (a cancelled or failed frame): it ends first.
+                if (prefetch is not null)
+                {
+                    await prefetch.WhenDoneAsync().ConfigureAwait(false);
+                }
+
+                frame.Dispose();
             }
         });
     }

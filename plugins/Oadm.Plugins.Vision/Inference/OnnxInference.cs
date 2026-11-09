@@ -163,6 +163,9 @@ public sealed class OnnxInference : IInference, IDisposable
     public IVisionFrame Decode(ReadOnlyMemory<byte> jpeg) => VisionFrame.Decode(jpeg);
 
     /// <inheritdoc />
+    public IVisionFrame Decode(ReadOnlyMemory<byte> jpeg, PictureNeed? need) => VisionFrame.Decode(jpeg, need);
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<Detection>> DetectAsync(VisionModel model, IVisionFrame frame, double minScore, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -175,7 +178,7 @@ public sealed class OnnxInference : IInference, IDisposable
         var min = (float)Math.Clamp(minScore, 0, 1);
         return await RunAsync(
             model,
-            tensor => Preprocess.Write(picture.Image, null, model.Fit, model.Scaling, model.InputWidth, model.InputHeight, tensor),
+            tensor => Preprocess.Write(picture.Levels, null, model.Fit, model.Scaling, model.InputWidth, model.InputHeight, tensor),
             (outputs, fit) => ToDetections(model, Decoders.Detect(model.Format, outputs, min, model.InputWidth, model.InputHeight), fit),
             ct).ConfigureAwait(false);
     }
@@ -198,7 +201,7 @@ public sealed class OnnxInference : IInference, IDisposable
             var region = picture.PixelsOf(regions[i]);
             calls[i] = RunAsync(
                 model,
-                tensor => Preprocess.Write(picture.Image, region, model.Fit, model.Scaling, model.InputWidth, model.InputHeight, tensor),
+                tensor => Preprocess.Write(picture.Levels, region, model.Fit, model.Scaling, model.InputWidth, model.InputHeight, tensor),
                 (outputs, _) =>
                 {
                     var (id, score) = Decoders.Classify(outputs);

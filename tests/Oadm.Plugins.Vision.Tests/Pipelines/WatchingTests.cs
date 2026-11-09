@@ -56,6 +56,33 @@ public sealed class WatchingTests
     }
 
     [Fact]
+    public async Task AFramesModelCallsStartWhenItIsDecodedWhileTheFrameBeforeStillRuns()
+    {
+        await using var vision = await VisionHarness.StartAsync();
+        vision.Inference.HasRoom = true;
+        using var gate = new SemaphoreSlim(0);
+        using var calls = new SemaphoreSlim(0);
+        vision.Evaluators.Gate = gate;
+        vision.Evaluators.Prefetch = calls;
+        var saved = await vision.SaveAsync(vision.NewPipeline());
+        await vision.StreamingAsync();
+        var evaluator = vision.Evaluators.Of(saved.Id)!;
+
+        vision.Frames.Send(vision.Inside.Id, "A");
+        await Eventually.TrueAsync(() => evaluator.Prefetched.Count >= 1, "A's calls started");
+        vision.Frames.Send(vision.Inside.Id, "B");
+        await Eventually.TrueAsync(() => evaluator.Prefetched.Count >= 2, "B's calls started beside A");
+        Assert.Empty(evaluator.Frames); // A still waits at the gate: B did not wait for its turn
+
+        calls.Release(10);
+        gate.Release(10);
+        await Eventually.TrueAsync(() => vision.Runtime.DeliveredFrames >= 2, "both frames were delivered");
+        Assert.Equal(["A", "B"], evaluator.Frames); // the evaluator still takes them in order
+        Assert.Equal(["A", "B"], evaluator.RanWithPrefetch);
+        Assert.Equal(0, evaluator.DisposedTooEarly); // no frame went while its calls could read it
+    }
+
+    [Fact]
     public async Task EmissionsArePublishedOnTheCameraAndStatefulTypesReportFirst()
     {
         await using var vision = await VisionHarness.StartAsync();

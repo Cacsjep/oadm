@@ -293,8 +293,21 @@ recognition).
 
 - A frame runs through the graph from the camera, each node once per frame, the outputs handed by reference (no copy of
   objects per link). Branches after a model node share its result: two Lines after one Track run one model call.
-  `Nodes/PipelineEvaluator` builds the nodes that can run; frames go through it one at a time, only the decoding runs in
-  parallel.
+  `Nodes/PipelineEvaluator` builds the nodes that can run; frames go through it one at a time. Beside it run, for up to
+  `MaxFramesInWork` (4) frames: the decoding and the model calls that need nothing but the picture (a Detect node right
+  after the Camera, `IPipelineEvaluator.Prefetch`, decision 2026-11-09: a pipeline whose model takes longer than a frame
+  kept the free workers idle; yolo11n on one CPU thread 9 fps, now 29). Everything with state (Track, Line, Count, the
+  rest) runs in the frames' order; a frame is freed only after its early calls ended.
+- A frame is decoded only as large as the pipeline's models need (`PictureNeed`, decision 2026-11-09): a JPEG decodes at
+  a half, a quarter or an eighth of its size in a fraction of the time, the smallest of them whose picture still fills
+  every Detect input at least as finely as the whole picture would (720p into a 640 input: a half). A pipeline with a
+  Classify node, whose crops need every pixel, decodes the whole picture. Boxes stay relative to the picture.
+- A model's input is drawn with linear sampling from the smallest of the picture's halves that is still at least as
+  large as the input needs (`Inference/PictureLevels`: each half made once per frame with a 2 x 2 box filter and shared by
+  the frame's calls; what mipmaps are, without Skia building them again on every call), so nothing is scaled down by more
+  than half in one step, as the models' own training resizes do.
+- A preview's state carries the trails only on the Track node and every box and point rounded to 1/100,000 of the
+  picture without its computed edges (`RelativeJson`); the page reads it off the UI thread and applies only the newest.
 - A node works only when something after it needs it: a branch that ends without an Event or Count node and is not shown
   on the page costs nothing. A preview runs every node (`EvaluatorOptions.AllNodes`).
 - A node with an error, and every node after it, never runs; the other branches do.
@@ -575,6 +588,19 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
 
 ## Measured
 
+- The work around a model call (`StageTimesTests`, RealModel, release build, one thread, 2026-11-09), a 720p camera
+  picture into a 640 letterbox input:
+
+  | Stage | Before | Now |
+  |---|---|---|
+  | JPEG decode 720p / 1080p | 6.3 / 14 ms | 3.0 / 6.7 ms (decoded at half, for a 640 input) |
+  | The picture into the input | 8.2 ms (Skia's mipmaps built on every call) | 1.6 ms (720p), 3.3 ms (1080p) |
+  | Decode and input per frame, 720p / 1080p | about 14.5 / 22 ms | 6.2 / 11.4 ms |
+  | A pipeline with yolo11n on the CPU | 9.1 fps | 29 fps (4 frames in work) |
+  | A busy preview's state (100 objects, 5 nodes) | 116 KB, read 3.8 ms on the UI thread | 58 KB (6.5 KB with gzip), read 2.7 ms beside it |
+
+  The work around the model is now under 1 ms of a yolo11n call (106 ms on one thread) and within the noise of RF-DETR's.
+  The tracker takes 0.3 ms for 60 objects, the evaluator 2.6 ms for 32 nodes and 300 objects (release).
 - One frame through 32 nodes with 300 objects (Detect, Track, 7 Area > Line > Count > Event branches, a fake model):
   about 7 ms on the development PC (debug build, `EvaluatorPerfTests`), without the model call.
 - The graph check of 30 nodes: about 0.1 ms.

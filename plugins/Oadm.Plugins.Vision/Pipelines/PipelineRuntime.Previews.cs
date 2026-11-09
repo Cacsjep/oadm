@@ -423,6 +423,37 @@ internal sealed partial class PipelineRuntime
         return string.Join(" · ", values.Prepend(state));
     }
 
+    /// <summary>
+    /// <paramref name="output"/> without its objects' trails: only a Track node draws them, the nodes after it hand the same
+    /// objects on (twelve points each were most of a busy preview's state).
+    /// </summary>
+    internal static NodeOutput WithoutTrails(NodeOutput output)
+    {
+        static bool Trailed(IReadOnlyList<VisionObject> list)
+        {
+            foreach (var o in list)
+            {
+                if (o.Trail.Count > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if (!Trailed(output.Objects) && !Trailed(output.Dropped))
+        {
+            return output;
+        }
+
+        return output with
+        {
+            Objects = [.. output.Objects.Select(o => o.Trail.Count > 0 ? o with { Trail = [] } : o)],
+            Dropped = [.. output.Dropped.Select(o => o.Trail.Count > 0 ? o with { Trail = [] } : o)],
+        };
+    }
+
     /// <summary>The page's state of a preview: every node's output of its latest result, the recent lists, its check.</summary>
     private PreviewEvent EventOf(Preview preview)
     {
@@ -437,7 +468,7 @@ internal sealed partial class PipelineRuntime
                 {
                     if (result.Nodes.TryGetValue(node.Id, out var output))
                     {
-                        nodes.Add(output);
+                        nodes.Add(node.Kind == NodeKinds.Track ? output : WithoutTrails(output));
                     }
                 }
             }

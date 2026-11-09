@@ -34,6 +34,10 @@ On **Busy** or **Overloaded**:
 Vision Center uses at most half of the server's CPU cores for its models, one model call per core, so the server stays
 responsive. All pipelines share these workers and one copy of each model in memory.
 
+A pipeline works on up to 4 pictures at once: while one picture is counted, the model already looks at the next ones. A
+model that needs a tenth of a second on one core still keeps up with 25 pictures a second when cores are free. OADM decodes
+each picture only as large as the model needs, so a larger stream resolution costs little more.
+
 ## Graphics card
 
 **Use GPU** at the top right is on by default and counts for the whole server. With a usable card, OADM tests each model on

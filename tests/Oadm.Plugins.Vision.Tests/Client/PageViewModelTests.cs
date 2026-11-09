@@ -358,7 +358,7 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
-    public void Live_events_update_the_list_and_the_shown_pipeline()
+    public async Task Live_events_update_the_list_and_the_shown_pipeline()
     {
         var ctx = PageSamples.Context();
         using var vm = new VisionViewModel(ctx) { Check = PageSamples.Check };
@@ -366,6 +366,7 @@ public sealed class PageViewModelTests
         var editor = vm.ShowEditor(PageSamples.GatePeople, isNew: false);
         editor.StartPreview();
         vm.HandleEvent(new Oadm.Sdk.Plugins.PluginEvent(VisionMethods.PreviewTopic, VisionJson.Serialize(PageSamples.Preview(editor.PreviewId!))));
+        await Eventually.TrueAsync(() => vm.AppliedPreviews == 1, "the preview read off the UI thread and applied");
         Assert.Equal("2 inside", editor.Canvas.Find("h")!.Live);
         vm.HandleEvent(new Oadm.Sdk.Plugins.PluginEvent(VisionMethods.PipelinesTopic, VisionJson.Serialize(new PipelineList
         {

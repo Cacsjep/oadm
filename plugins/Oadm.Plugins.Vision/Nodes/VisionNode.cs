@@ -48,6 +48,31 @@ internal sealed class FrameContext(IVisionFrame frame, DateTimeOffset at, IInfer
     public CancellationToken Ct { get; } = ct;
 
     public List<Emission> Emissions { get; } = [];
+
+    /// <summary>The model calls started when the frame was decoded, by node id (<see cref="IPipelineEvaluator.Prefetch"/>).</summary>
+    public IReadOnlyDictionary<string, Task<(IReadOnlyList<Detection> Detections, double Ms)>>? Prefetched { get; init; }
+}
+
+/// <summary>The Detect calls of a frame started early; <see cref="WhenDoneAsync"/> never throws.</summary>
+internal sealed class FramePrefetch(Dictionary<string, Task<(IReadOnlyList<Detection> Detections, double Ms)>> calls) : IFramePrefetch
+{
+    public IReadOnlyDictionary<string, Task<(IReadOnlyList<Detection> Detections, double Ms)>> Calls => calls;
+
+    public async Task WhenDoneAsync()
+    {
+        foreach (var call in calls.Values)
+        {
+            try
+            {
+                await call.ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // The frame's run reports the failure; here only its end counts.
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+            }
+        }
+    }
 }
 
 /// <summary>A model call failed: the frame ends (<see cref="FrameResult.ModelFailure"/>).</summary>

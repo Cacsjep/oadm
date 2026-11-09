@@ -596,6 +596,53 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
         }
     }
 
+    private string? _waitingPreview;
+    private bool _readingPreview;
+
+    /// <summary>The preview's state has been applied (tests wait for it).</summary>
+    internal int AppliedPreviews { get; private set; }
+
+    /// <summary>
+    /// A preview's state, up to 25 a second (docs/spec/vision-center.md "Page"): read off the UI thread, the newest one only
+    /// (a state that arrives while one is read replaces the waiting one), then applied on the caller's context.
+    /// </summary>
+    private async Task ApplyPreviewAsync(string? json)
+    {
+        _waitingPreview = json;
+        if (_readingPreview)
+        {
+            return;
+        }
+
+        _readingPreview = true;
+        try
+        {
+            while (_waitingPreview is { } next)
+            {
+                _waitingPreview = null;
+                PreviewEvent preview;
+                try
+                {
+                    preview = await Task.Run(() => VisionJson.Deserialize<PreviewEvent>(next)).ConfigureAwait(true);
+                }
+                catch (ArgumentException)
+                {
+                    continue; // a malformed state changes nothing; the next one brings it
+                }
+
+                if (!_disposed)
+                {
+                    Editor?.ApplyPreview(preview);
+                    AppliedPreviews++;
+                }
+            }
+        }
+        finally
+        {
+            _readingPreview = false;
+        }
+    }
+
     /// <summary>A live event: the pipelines, the models, the stats, the shown pipeline's preview.</summary>
     public void HandleEvent(PluginEvent e)
     {
@@ -614,7 +661,7 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
                     ApplyStats(VisionJson.Deserialize<VisionStats>(e.PayloadJson));
                     break;
                 case VisionMethods.PreviewTopic:
-                    Editor?.ApplyPreview(VisionJson.Deserialize<PreviewEvent>(e.PayloadJson));
+                    _ = ApplyPreviewAsync(e.PayloadJson);
                     break;
             }
         }

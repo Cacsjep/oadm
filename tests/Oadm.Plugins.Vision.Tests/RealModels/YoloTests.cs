@@ -197,6 +197,10 @@ public sealed class YoloxNanoTests(RealModelFixture fixture, ITestOutputHelper o
     private static readonly YoloExpected Expected = new(ModelFormat.Yolox, 416, true, ModelScaling.ZeroTo255Bgr, ClassLists.Coco80Id)
     {
         MayMiss = [RealModelChecks.RightCar, RealModelChecks.CarBehindTheFence],
+
+        // The smallest model guesses a person at 26 % across two at the skate bowl since the input is drawn as YOLOX's
+        // training draws it (linear, no mipmaps, 2026-11-09); its real people stay above 30 %.
+        MinScore = 0.3,
     };
 
     [RealModelFact(File)]

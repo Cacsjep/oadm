@@ -77,21 +77,32 @@ internal static class Preprocess
     /// <returns>Where the region landed in the input.</returns>
     public static FitTransform Write(SKImage source, SKRectI? region, ModelFit fit, ModelScaling scaling, int width, int height, float[] tensor)
     {
-        ArgumentNullException.ThrowIfNull(source);
+        using var levels = new PictureLevels(source);
+        return Write(levels, region, fit, scaling, width, height, tensor);
+    }
+
+    /// <summary>
+    /// As <see cref="Write(SKImage, SKRectI?, ModelFit, ModelScaling, int, int, float[])"/>, from the frame's
+    /// <paramref name="levels"/>: the region drawn with linear sampling from the smallest level still as large as the input
+    /// needs (a picture made smaller keeps its thin edges as with mipmaps; the levels are made once per frame).
+    /// </summary>
+    public static FitTransform Write(PictureLevels levels, SKRectI? region, ModelFit fit, ModelScaling scaling, int width, int height, float[] tensor)
+    {
+        ArgumentNullException.ThrowIfNull(levels);
         ArgumentNullException.ThrowIfNull(tensor);
+        var source = levels.Full;
         var part = region ?? new SKRectI(0, 0, source.Width, source.Height);
         var transform = FitTransform.Of(fit, part.Width, part.Height, width, height);
+        var (image, from) = levels.For(part, Math.Min(transform.ScaleX, transform.ScaleY));
         using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
         using (var canvas = new SKCanvas(bitmap))
         {
-            canvas.Clear(fit switch
+            if (fit != ModelFit.Stretch)
             {
-                ModelFit.Letterbox => LetterboxGrey,
-                _ => SKColors.Black,
-            });
+                canvas.Clear(fit == ModelFit.Letterbox ? LetterboxGrey : SKColors.Black);
+            }
 
-            // Linear with mipmaps: a picture made smaller keeps its thin edges, one made larger stays smooth.
-            canvas.DrawImage(source, SKRect.Create(part.Left, part.Top, part.Width, part.Height), transform.Placed, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
+            canvas.DrawImage(image, from, transform.Placed, new SKSamplingOptions(SKFilterMode.Linear));
         }
 
         WriteTensor(bitmap, tensor, scaling);
@@ -116,17 +127,21 @@ internal static class Preprocess
         var rowPixels = bitmap.RowBytes / 4;
         float r0 = 1 / (255f * norm[0].Std), g0 = 1 / (255f * norm[1].Std), b0 = 1 / (255f * norm[2].Std);
         float rm = norm[0].Mean / norm[0].Std, gm = norm[1].Mean / norm[1].Std, bm = norm[2].Mean / norm[2].Std;
+        var all = tensor.AsSpan(0, 3 * plane);
         for (var y = 0; y < height; y++)
         {
             var row = pixels.Slice(y * rowPixels, width);
             var at = y * width;
-            for (var x = 0; x < width; x++)
+            var red = all.Slice(at, width);
+            var green = all.Slice(plane + at, width);
+            var blue = all.Slice((2 * plane) + at, width);
+            for (var x = 0; x < row.Length && x < red.Length && x < green.Length && x < blue.Length; x++)
             {
                 // Rgba8888 little endian: R in the lowest byte.
                 var p = row[x];
-                tensor[at + x] = (p & 0xFF) * r0 - rm;
-                tensor[plane + at + x] = ((p >> 8) & 0xFF) * g0 - gm;
-                tensor[2 * plane + at + x] = ((p >> 16) & 0xFF) * b0 - bm;
+                red[x] = ((p & 0xFF) * r0) - rm;
+                green[x] = (((p >> 8) & 0xFF) * g0) - gm;
+                blue[x] = (((p >> 16) & 0xFF) * b0) - bm;
             }
         }
     }
@@ -138,16 +153,20 @@ internal static class Preprocess
         var plane = width * height;
         var pixels = MemoryMarshal.Cast<byte, uint>(bitmap.GetPixelSpan());
         var rowPixels = bitmap.RowBytes / 4;
+        var all = tensor.AsSpan(0, 3 * plane);
         for (var y = 0; y < height; y++)
         {
             var row = pixels.Slice(y * rowPixels, width);
             var at = y * width;
-            for (var x = 0; x < width; x++)
+            var blue = all.Slice(at, width);
+            var green = all.Slice(plane + at, width);
+            var red = all.Slice((2 * plane) + at, width);
+            for (var x = 0; x < row.Length && x < red.Length && x < green.Length && x < blue.Length; x++)
             {
                 var p = row[x];
-                tensor[at + x] = (p >> 16) & 0xFF;
-                tensor[plane + at + x] = (p >> 8) & 0xFF;
-                tensor[2 * plane + at + x] = p & 0xFF;
+                blue[x] = (p >> 16) & 0xFF;
+                green[x] = (p >> 8) & 0xFF;
+                red[x] = p & 0xFF;
             }
         }
     }

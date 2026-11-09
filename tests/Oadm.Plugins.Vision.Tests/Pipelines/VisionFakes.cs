@@ -163,6 +163,55 @@ internal sealed class FakeEvaluator(FakeEvaluators owner, Pipeline pipeline, Pip
     }
 
     public void ResetCounter(string nodeId) => _resets.Enqueue(nodeId);
+
+    private readonly ConcurrentQueue<string> _prefetched = new();
+    private readonly ConcurrentQueue<string> _taken = new();
+
+    private int _disposedTooEarly;
+
+    /// <summary>Frames disposed while their early calls could still read them.</summary>
+    public int DisposedTooEarly => Volatile.Read(ref _disposedTooEarly);
+
+    /// <summary>The texts of the frames whose early calls started (at decoding), in order.</summary>
+    public IReadOnlyList<string> Prefetched => [.. _prefetched];
+
+    /// <summary>The texts of the frames that ran with their early calls, in order.</summary>
+    public IReadOnlyList<string> RanWithPrefetch => [.. _taken];
+
+    /// <summary>When <see cref="FakeEvaluators.Prefetch"/> is set: early calls that end when the gate lets them.</summary>
+    public IFramePrefetch? Prefetch(IVisionFrame frame, CancellationToken ct)
+    {
+        if (owner.Prefetch is not { } gate)
+        {
+            return null;
+        }
+
+        _prefetched.Enqueue(Frame.TextOf(frame.Jpeg));
+        return new FakePrefetch(gate.WaitAsync(CancellationToken.None), (FakeVisionFrame)frame, () => Interlocked.Increment(ref _disposedTooEarly));
+    }
+
+    public Task<FrameResult> RunAsync(IVisionFrame frame, DateTimeOffset at, IFramePrefetch? prefetch, CancellationToken ct)
+    {
+        if (prefetch is not null)
+        {
+            _taken.Enqueue(Frame.TextOf(frame.Jpeg));
+        }
+
+        return RunAsync(frame, at, ct);
+    }
+}
+
+/// <summary>Early calls of a frame: done when the gate lets them; records whether the frame was still there then.</summary>
+internal sealed class FakePrefetch(Task call, FakeVisionFrame frame, Action disposedTooEarly) : IFramePrefetch
+{
+    public async Task WhenDoneAsync()
+    {
+        await call;
+        if (frame.Disposed)
+        {
+            disposedTooEarly();
+        }
+    }
 }
 
 /// <summary>The evaluator factory of the fakes: every evaluator it built, in order.</summary>
@@ -171,6 +220,9 @@ internal sealed class FakeEvaluators
     private readonly ConcurrentQueue<FakeEvaluator> _built = new();
 
     public SemaphoreSlim? Gate { get; set; }
+
+    /// <summary>Set: the evaluators start early calls at decoding, which end when this lets them.</summary>
+    public SemaphoreSlim? Prefetch { get; set; }
 
     /// <summary>The emissions of a frame (default: an Event node "ev" fires once per frame "hit").</summary>
     public Func<Pipeline, string, IReadOnlyList<Emission>> Emit { get; set; } = (_, text) => text == "hit"
