@@ -83,12 +83,12 @@
         </Grid>
       </Border>
 
-      <!-- Models (Manage vision models): Upload model, the models with their ⋯ menu, an upload's progress and Cancel in its row. -->
+      <!-- Models (Manage vision models): Import model (the wizard), the models with their ⋯ menu. -->
       <Border x:Name="ModelsCard" Grid.Row="1" Classes="card" DataContext="{Binding Models}" x:DataType="vm:ModelsViewModel" IsVisible="{Binding MayManage}">
         <StackPanel Spacing="6">
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
             <TextBlock Classes="cardTitle" Text="{x:Static vm:VisionTexts.Models}" VerticalAlignment="Center" />
-            <ui:ToolbarButton Grid.Column="1" x:Name="UploadButton" Classes="atEnd" IconKey="upload" Text="{x:Static vm:VisionTexts.UploadModel}" Command="{Binding UploadCommand}" />
+            <ui:ToolbarButton Grid.Column="1" x:Name="ImportButton" Classes="atEnd" IconKey="upload" Text="{x:Static vm:VisionTexts.ImportModel}" Command="{Binding ImportCommand}" />
           </Grid>
           <ListBox x:Name="ModelList" Classes="readOnlyList" ItemsSource="{Binding Rows}" MaxHeight="220" IsVisible="{Binding HasRows}">
             <ListBox.DataTemplates>
@@ -105,27 +105,6 @@
                   </Button>
                   <ui:ProgressRing Grid.Column="1" Grid.RowSpan="2" Width="16" Height="16" VerticalAlignment="Center" HorizontalAlignment="Center"
                                    IsVisible="{Binding IsSaving}" />
-                </Grid>
-              </DataTemplate>
-              <DataTemplate x:DataType="vm:UploadRow">
-                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="6" RowSpacing="2" Margin="0,2">
-                  <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                  <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsWorking}">
-                    <ui:ProgressRing Width="14" Height="14" IsVisible="{Binding IsChecking}" VerticalAlignment="Center" />
-                    <TextBlock Classes="secondary" Text="{Binding StateText}" VerticalAlignment="Center" />
-                  </StackPanel>
-                  <ProgressBar Grid.Row="2" MinWidth="0" Minimum="0" Maximum="100" Value="{Binding Percent}" IsVisible="{Binding IsSending}" />
-                  <TextBlock Grid.Row="1" Grid.RowSpan="2" Classes="fieldMessage error" Text="{Binding Refusal}" TextWrapping="Wrap" IsVisible="{Binding HasRefusal}" />
-                  <Panel Grid.Column="1" Grid.RowSpan="3" VerticalAlignment="Center">
-                    <Button x:Name="CancelUpload" Classes="toolbar iconOnly" Command="{Binding CancelCommand}" ToolTip.Tip="{x:Static vm:VisionTexts.Cancel}"
-                            IsVisible="{Binding IsSending}">
-                      <ui:OadmIcon Data="{StaticResource Icon.close}" />
-                    </Button>
-                    <Button x:Name="DismissUpload" Classes="toolbar iconOnly" Command="{Binding DismissCommand}" ToolTip.Tip="{x:Static vm:VisionTexts.Dismiss}"
-                            IsVisible="{Binding HasRefusal}">
-                      <ui:OadmIcon Data="{StaticResource Icon.close}" />
-                    </Button>
-                  </Panel>
                 </Grid>
               </DataTemplate>
             </ListBox.DataTemplates>
@@ -190,7 +169,7 @@
               <vm:PipelineCanvas x:Name="Canvas" Canvas="{Binding Canvas}" />
               <TextBlock Classes="secondary" Text="{Binding Canvas.ZoomText}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10,0,0,8" IsHitTestVisible="False" />
               <Canvas DataContext="{Binding Canvas.Picker}" x:DataType="vm:NodePickerViewModel">
-                <Border x:Name="NodePicker" Classes="treePopup" Width="260" Canvas.Left="{Binding Left}" Canvas.Top="{Binding Top}" IsVisible="{Binding IsOpen}">
+                <Border x:Name="NodePicker" Classes="treePopup" Width="{x:Static vm:CanvasViewModel.PickerWidth}" Canvas.Left="{Binding Left}" Canvas.Top="{Binding Top}" IsVisible="{Binding IsOpen}">
                   <DockPanel>
                     <ui:SearchBox x:Name="NodeSearch" DockPanel.Dock="Top" Classes="stretch" Text="{Binding SearchText}" Placeholder="{x:Static vm:NodePickerViewModel.Placeholder}" />
                     <TextBlock DockPanel.Dock="Top" Classes="secondary" Text="{x:Static vm:NodePickerViewModel.EmptyText}" IsVisible="{Binding IsEmpty}" />
@@ -412,6 +391,11 @@
                     <DataGridTextColumn Width="85" Binding="{Binding Score}" CellStyleClasses="number" x:DataType="vm:ObjectRow">
                       <DataGridTextColumn.Header>
                         <TextBlock Classes="numberHeader" Text="Score" />
+                      </DataGridTextColumn.Header>
+                    </DataGridTextColumn>
+                    <DataGridTextColumn Width="70" Binding="{Binding Size}" CellStyleClasses="number" x:DataType="vm:ObjectRow">
+                      <DataGridTextColumn.Header>
+                        <TextBlock Classes="numberHeader" Text="Size" ToolTip.Tip="{x:Static vm:VisionTexts.SizeTip}" />
                       </DataGridTextColumn.Header>
                     </DataGridTextColumn>
                     <DataGridTextColumn Width="115" Binding="{Binding TimeInside}" CellStyleClasses="number" x:DataType="vm:ObjectRow">

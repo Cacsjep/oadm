@@ -105,7 +105,7 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
 - **Class names**: from the model's metadata (`names`, as Ultralytics exports write it) when its count fits the classes
   and the names are more than the ids (`{0: '0', 1: '1', ...}` of onnx-community's YOLOv10 names nothing; its count
   still gives the classes, so 80 take "COCO, 80 classes"),
-  else a labels file uploaded with it (one name per line, as many as classes; another count is refused), else a built-in
+  else a labels file uploaded with it (one name per line, as many as classes; another count is refused; the page loads one in Import model's Labels step instead), else a built-in
   class list by the class count ("Class lists"), else "Class 0", "Class 1", ... Formats whose outputs do not give the
   class count (YOLO with suppression, DETR with labels) take the names of the metadata or the labels file, else "Class
   <id>" for the ids they report.
@@ -118,14 +118,37 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
   stored is refused: "This model is already stored as <name>." Shown per model: kind, input size, classes, class list,
   size, the pipelines that use it, SHA-256, the time of one call on the CPU and on the card. The page's ⋯ menu of a model:
   Rename, **Settings** (format, fit, scaling, and the input size of a model without a fixed one; refusals below their
-  fields), Class list, Delete in red (`updateModel`).
+  fields; each of the three with an info icon whose tooltip draws every choice, the chosen one in the accent:
+  `ModelSettingDiagram`, the picture in a 16:9 camera picture letterboxed, stretched or padded into the square input, the
+  numbers one orange pixel gives per scaling, the formats with the models they read), Class list, Delete in red
+  (`updateModel`).
+- **Import model** (decisions 2026-11-09: a wizard that guides users who are no experts; first only the file, then
+  everything found, the labels last; the card's button, never "Upload model"; `ModelImportViewModel`, the shared
+  `ui:WizardSteps`): one form per step, Back / Next, Import on the last.
+  1. **Model**: a drawing of what happens (`ModelImportDrawing`: a camera picture, your model, the objects found with a
+     box), one line ("Choose your ONNX model. OADM checks it, finds out what it is and sets it up.") and the file
+     button. Next sends the file (progress and Cancel in the step), then the model check; the model is stored from here
+     on. A refusal shows below the file. The same file again after Back is not sent again; another file replaces the
+     stored one.
+  2. **Settings**: "Model checked" (the green chip) and what the check found ("Detection · 576x576 · 91 classes · read as
+     RF-DETR"), "The settings are set for this model. Change one only if your model was made differently.", the Name
+     (the server's name for the file; unique), the **Model family** the check found (`ModelFamilies.Of`: by the format, a
+     classifier by its scaling; only the families of the model's kind: YOLOv8 / YOLO11 / YOLO12, YOLOv10 / YOLO26 end to
+     end, YOLOX, RF-DETR, DETR, RT-DETR / D-FINE, DETR with labels, ImageNet classifier, YOLO classifier; a line naming
+     its models below; another family sets its format, fit and scaling), then the Settings form (`ModelSettingsForm`,
+     shared with the dialog) with each drawing below its select and one line on what the chosen value does.
+  3. **Labels**: **Load labels file** (a `.txt`, one name per line: its lines become the own names; another count shows
+     below them) and the Class list form (`ModelClassListForm`, shared with the dialog).
+  Import saves name, settings and labels in one `updateModel`; a refused setting (a format whose outputs do not fit)
+  returns to Settings below its field. Cancel or closing the window ends a running upload and deletes the model the
+  wizard stored, except a Missing model the file brought back.
 - **Limits**: at most 20 models, each at most 500 MB, 4 GB together, at most 1,000 classes. Uploads in progress count;
   a Missing model counts once its file is stored again.
 - **Delete** is refused while a pipeline uses the model ("Used by 2 pipelines: Gate 1, Lane 2."), checked against every
   pipeline; a user limited to a device group sees only their own pipelines in Used by.
 - **Backups** keep the model list (name, kind, settings, SHA-256) and the user's class lists, never the files, like
   add-on files. At the start a model whose file is absent or of another size is **Missing** (no hash at every start):
-  its pipelines show "Upload the model Gate people again." Uploading a file with the same SHA-256 brings it back with its
+  its pipelines show "Import the model Gate people again." Importing a file with the same SHA-256 brings it back with its
   settings, the CPU time measured again.
 - Idle model sessions are freed after 2 minutes.
 
@@ -162,7 +185,7 @@ nodes with their links and places on the canvas (JSON, camelCase, one row per pi
 recognition).
 
 - **Modes** as for Text recognition readers:
-  - **Watching** (default): runs on the camera's MJPEG stream at 1, 2, 4, 8, 12 or 15 frames per second (default 8:
+  - **Watching** (default): runs on the camera's MJPEG stream at 1, 2, 4, 8, 12, 15, 20 or 25 frames per second (default 8:
     tracking needs at least about 5), the same stream rules as a reader (`VapixRequestOptions.LiveStream`, reopened after a
     drop, the problems in the list).
   - **On action**: runs on one picture when a rule runs the action **Run pipeline**. Nodes that need a stream (Track,
@@ -258,8 +281,10 @@ recognition).
 - A constant-velocity Kalman filter per object on the box centre, width and height; the measured box is handed on, the
   filter only predicts where to match.
 - Two rounds of IoU matching per class, greedy by the best IoU: detections with a score of at least 50 % against every
-  track (IoU at least 0.2), then the lower ones against the confirmed tracks still unmatched (IoU at least 0.5). Only a
-  detection of at least 50 % starts a track.
+  track (IoU at least 0.2), then the lower ones against the tracks seen last frame and still unmatched (IoU at least 0.5).
+  Any unmatched detection starts a track (decision 2026-11-09: a model whose scores stay at 20 to 30 % tracked nothing
+  when only 50 % started one; the Detect node's minimum score and a Filter already chose the objects, Confirm after keeps
+  noise from an id).
 - An object gets its id (1, 2, ... per Track node) once it was seen Confirm after frames in a row, so noise uses up no
   id; a lost one keeps its id for Keep lost objects, by frame time. A trail of the last 12 bottom centres per object.
 - At most 300 tracks: when they are full, the oldest lost track makes room.
@@ -339,9 +364,9 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
 - **Left: the pipelines**: name, camera, mode, state chip ("Watching · 8 fps", orange when slower, red per kind of
   problem with the server's text as tooltip, the chips of Text recognition), one live line (the first Count node, else
   the first Event node; sent only on change, at most twice a second), **New** (the camera first), **Delete** (red,
-  confirmation) and a search. The card **Models** below it for users with Manage vision models: Upload model, the models
+  confirmation) and a search. The card **Models** below it for users with Manage vision models: Import model, the models
   with their ⋯ menu (Rename, Settings, Class list, Delete in red); below it the card **Class lists** (decision
-  2026-11-08: its own card). Each pipeline row has a ⋯ menu: Copy to cameras, then Delete in red. Empty page: "Upload a model, then create a
+  2026-11-08: its own card). Each pipeline row has a ⋯ menu: Copy to cameras, then Delete in red. Empty page: "Import a model, then create a
   pipeline."
 - **Canvas | right column**: the shared splitter (`GridSplitter.paneSplitter`) between them. The right column is 420 px
   by default and at least that, the canvas at least 620 px (its toolbar fits); in a narrow window the canvas keeps its
@@ -358,7 +383,13 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
     second child beside the first).
   - Drag from an output to an input links them; while dragging, inputs that do not fit are dimmed and a drop there
     does nothing. A link is selected by a click and deleted with Delete.
-  - Move nodes by dragging, pan by dragging the empty canvas, zoom with the wheel (25 % to 200 %), **Fit view** and
+  - A control input without a link (Reset, Send now, Only while, Second) adds what it takes (decision 2026-11-09: a Timer
+    was hard to find): a click on its dot, or on the **+** left of it on the selected node (a dashed stub to the dot),
+    opens the node list with only the kinds whose output it takes (a Timer and a Throttle for a pulse; the yes-or-no
+    nodes for Only while and Second). The new node goes up and left of the node, its output linked into that input. The
+    node list is 340 px wide (its descriptions fit).
+  - Move nodes by dragging, pan by dragging the empty canvas, zoom with the wheel (25 % to 200 %), **Fit view** (centred
+    across, at most 24 px from the top: a new pipeline's camera sits at the top, the graph grows downwards) and
     **Tidy up** (lays the graph out by depth from top to bottom, branches side by side, a parent centred above its
     children) in the toolbar. Places are stored with the pipeline.
   - Select a node with a click; Delete removes it with its links; Ctrl+Z and Ctrl+Y undo and redo inside the draft until
@@ -380,7 +411,7 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   - Pause holds the frame as in Text recognition; while paused the draft runs again on the same frame after every change,
     so a minimum score or a filter can be tuned on one picture.
 - **Right, below: the selected node**: its settings form, then its **live output**, the feedback the user asked for:
-  - Detect, Filter, Track, Area: objects in this frame, a table of them (Object, Class, Score, Time inside), the node's
+  - Detect, Filter, Track, Area: objects in this frame, a table of them (Object, Class, Score, Size: the height as a share of the picture's, as a Filter counts it; Time inside), a Filter also the sizes of what came in ("Sizes 6 to 12 %"), the node's
     time per frame. Line: the last 20 crossings (Time, Direction, Class, Object). Count: the value. Event: whether it is
     on, the last 20 times it fired with its values (a preview's own list: a preview never publishes, "Previews").
   - Nothing selected: the pipeline's own settings (name, mode).
@@ -397,8 +428,8 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   unchanged watching pipeline shares its stream and shows its counts; any other draft has a stream of its own, counts
   against the watching limit and starts its counts at 0. A preview publishes no events and changes no counter of the
   saved pipeline.
-- **Loading feedback**: "Reading the pipelines" and "Reading the pipeline" overlays as in Text recognition; an upload shows
-  its progress and Cancel in the model's row; the model check a ring in the row.
+- **Loading feedback**: "Reading the pipelines" and "Reading the pipeline" overlays as in Text recognition; Import model
+  shows the upload's progress, then "Checking the model", below the Model step's fields, Cancel usable.
 
 ## Load
 
@@ -435,7 +466,7 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   message running past its parent are refused; function default attributes (`attribute_proto`) are walked like a
   node's attributes. Any exception of the model check is a refusal ("it does not load (...)"); a fixed mask side
   outside 1 to 4096 is refused before memory is taken.
-- **Uploads.** A failed write or flush ends the upload: "The file could not be written on the server. Upload the model
+- **Uploads.** A failed write or flush ends the upload: "The file could not be written on the server. Import the model
   again." An upload being checked keeps its bytes and place counted until stored or refused; the count and size rule
   is one rule at the start and again in the store's write lock: models with a file, plus uploads in progress, plus
   uploads being checked. Missing models count at neither step (they are listed and can be deleted). Stored record

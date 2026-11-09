@@ -121,6 +121,13 @@ public sealed class PipelineCanvas : Control
             return;
         }
 
+        if (canvas.EmptyControlAt(world) is { } empty)
+        {
+            canvas.SelectedNode = empty.Node;
+            canvas.OpenPickerInto(empty.Node, empty.Port);
+            return;
+        }
+
         canvas.Picker.Close();
         if (canvas.EyeAt(world) is { } eyeOf)
         {
@@ -189,6 +196,7 @@ public sealed class PipelineCanvas : Control
 
         var tip = canvas.EyeAt(world) is not null ? VisionTexts.ShowOnVideo
             : canvas.PlusAt(world) is not null ? VisionTexts.AddAfter
+            : canvas.EmptyControlAt(world) is not null ? VisionTexts.AddInto
             : canvas.CanEdit && canvas.OutputPortAt(world) is not null ? VisionTexts.DragToLink
             : null;
         if (!Equals(ToolTip.GetTip(this), tip))
@@ -448,6 +456,16 @@ public sealed class PipelineCanvas : Control
             context.DrawEllipse(dot, new Pen(lit ? accent : linkBrush, 1), at, CanvasGeometry.ControlPortRadius, CanvasGeometry.ControlPortRadius);
             var label = theme.Body(inputs[i].Label, theme.Brush("Oadm.TextSecondaryBrush"));
             context.DrawText(label, new Point(rect.X + 14, at.Y - (label.Height / 2)));
+
+            // The selected node's empty inputs get a + on the left, like the + below an output: a click adds a Timer or a
+            // yes-or-no node into the input.
+            if (canvas.ShowsControlPlus(node) && canvas.ControlLinkOf(node, inputs[i].Port) is null)
+            {
+                var plus = CanvasGeometry.ControlPlusRect(node.X, node.Y, i);
+                context.DrawLine(new Pen(linkBrush, 1, new DashStyle([2, 2], 0)), new Point(plus.Right, at.Y), new Point(at.X - CanvasGeometry.ControlPortRadius, at.Y));
+                context.DrawRectangle(fill, new Pen(linkBrush, 1), plus, 3, 3);
+                DrawIcon(context, "add", theme.Brush("Oadm.TextSecondaryBrush"), plus.Deflate(3));
+            }
         }
 
         if (node.Live.Length > 0)

@@ -12,7 +12,7 @@ using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Vision.Tests.Client;
 
-/// <summary>The page's view models without a window: the node form from its fields, the preview, uploads, the overlay, the list.</summary>
+/// <summary>The page's view models without a window: the node form from its fields, the preview, the overlay, the list.</summary>
 public sealed class PageViewModelTests
 {
     private static PipelineEditorViewModel Editor(FakePageContext ctx, Pipeline pipeline, bool isNew = false) =>
@@ -258,102 +258,6 @@ public sealed class PageViewModelTests
         Assert.False(editor.Canvas.UndoCommand.CanExecute(null));
         var stored = VisionJson.Deserialize<SavePipelineRequest>(ctx.LastPayloadOf(VisionMethods.SavePipeline)).Pipeline!;
         Assert.Equal(editor.Canvas.Find("e")!.X, stored.Nodes.Single(n => n.Id == "e").X); // places are stored
-    }
-
-    // ---- Uploads ----
-
-    [Fact]
-    public async Task An_upload_sends_chunks_of_the_servers_size_with_progress_then_the_check()
-    {
-        var ctx = PageSamples.Context();
-        var chunks = new List<UploadChunkRequest>();
-        ctx.Answers[VisionMethods.BeginUpload] = json =>
-        {
-            Assert.Equal("person\ncar", VisionJson.Deserialize<BeginUploadRequest>(json).Labels);
-            return VisionJson.Serialize(new BeginUploadReply { UploadId = "u1", ChunkBytes = 4 });
-        };
-        var progress = new List<double>();
-        var models = new ModelsViewModel(ctx);
-        ctx.Answers[VisionMethods.UploadChunk] = json =>
-        {
-            chunks.Add(VisionJson.Deserialize<UploadChunkRequest>(json));
-            return "{}";
-        };
-        ctx.Answers[VisionMethods.FinishUpload] = _ =>
-        {
-            Assert.True(models.Rows.OfType<UploadRow>().Single().IsChecking);
-            return VisionJson.Serialize(new FinishUploadReply { Model = PageSamples.Helmet with { Id = "m9", Name = "Small" } });
-        };
-        models.Rows.CollectionChanged += (_, _) =>
-        {
-            foreach (var row in models.Rows.OfType<UploadRow>())
-            {
-                row.PropertyChanged += (_, e) =>
-                {
-                    if (e.PropertyName == nameof(UploadRow.Progress))
-                    {
-                        progress.Add(row.Progress);
-                    }
-                };
-            }
-        };
-
-        await models.UploadFilesAsync([new MemoryModelFile("small.onnx", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]), new MemoryModelFile("labels.txt", "person\ncar"u8.ToArray())]);
-        Assert.Equal([0L, 4L, 8L], chunks.Select(c => c.Offset));
-        Assert.Equal([4, 4, 2], chunks.Select(c => c.Data.Length));
-        Assert.All(chunks, c => Assert.Equal("u1", c.UploadId));
-        Assert.Equal([0.4, 0.8, 1.0], progress);
-        Assert.Empty(models.Rows.OfType<UploadRow>());
-        Assert.Contains(models.Rows.OfType<ModelRow>(), r => r.Name == "Small");
-    }
-
-    [Fact]
-    public async Task A_refusal_stays_in_the_row_in_the_servers_words()
-    {
-        var ctx = PageSamples.Context();
-        ctx.Answers[VisionMethods.BeginUpload] = _ => VisionJson.Serialize(new BeginUploadReply { UploadId = "u1", ChunkBytes = 1024 });
-        ctx.Answers[VisionMethods.UploadChunk] = _ => "{}";
-        ctx.Answers[VisionMethods.FinishUpload] = _ => VisionJson.Serialize(new FinishUploadReply { Refusal = "This model cannot run here: it needs a custom operator." });
-        var models = new ModelsViewModel(ctx);
-        await models.UploadFilesAsync([new MemoryModelFile("bad.onnx", [1, 2, 3])]);
-        var row = Assert.Single(models.Rows.OfType<UploadRow>());
-        Assert.Equal("This model cannot run here: it needs a custom operator.", row.Refusal);
-        Assert.False(row.IsChecking);
-        Assert.False(row.CancelCommand.CanExecute(null));
-        row.DismissCommand.Execute(null);
-        Assert.Empty(models.Rows);
-    }
-
-    [Fact]
-    public async Task Cancel_ends_the_upload_on_the_server()
-    {
-        var ctx = PageSamples.Context();
-        var models = new ModelsViewModel(ctx);
-        var gate = new TaskCompletionSource<string?>();
-        ctx.Answers[VisionMethods.BeginUpload] = _ => VisionJson.Serialize(new BeginUploadReply { UploadId = "u1", ChunkBytes = 2 });
-        ctx.AsyncAnswers[VisionMethods.UploadChunk] = _ => gate.Task;
-        ctx.Answers[VisionMethods.CancelUpload] = _ => "{}";
-        var upload = models.UploadFilesAsync([new MemoryModelFile("big.onnx", new byte[10])]);
-        await Eventually.TrueAsync(() => ctx.CallsOf(VisionMethods.UploadChunk) == 1, "the first chunk on its way");
-        var row = Assert.Single(models.Rows.OfType<UploadRow>());
-        Assert.True(row.CancelCommand.CanExecute(null));
-        row.CancelCommand.Execute(null);
-        gate.SetResult("{}");
-        await upload;
-        Assert.Equal(1, ctx.CallsOf(VisionMethods.UploadChunk));
-        Assert.Equal("u1", VisionJson.Deserialize<UploadRequest>(ctx.LastPayloadOf(VisionMethods.CancelUpload)).UploadId);
-        Assert.Equal(0, ctx.CallsOf(VisionMethods.FinishUpload));
-        Assert.Empty(models.Rows.OfType<UploadRow>());
-    }
-
-    [Fact]
-    public async Task A_refused_begin_shows_the_reason_in_the_row()
-    {
-        var ctx = PageSamples.Context();
-        ctx.Answers[VisionMethods.BeginUpload] = _ => throw new InvalidOperationException("At most 20 models.");
-        var models = new ModelsViewModel(ctx);
-        await models.UploadFilesAsync([new MemoryModelFile("one.onnx", [1])]);
-        Assert.Equal("At most 20 models.", Assert.Single(models.Rows.OfType<UploadRow>()).Refusal);
     }
 
     // ---- The overlay ----

@@ -24,7 +24,8 @@ public sealed record PickerKind(NodeKindInfo Kind) : PickerEntry
 
 /// <summary>
 /// The node list (docs/spec/vision-center.md "Page"): Add node opens it with every kind, the + of a node with only the kinds
-/// that take its output (and links the new node). A search narrows it; the groups keep the order of the catalogue.
+/// that take its output (and links the new node), the + of an empty control input with only the kinds whose output it takes
+/// (a Timer for Reset; the new node links into it). A search narrows it; the groups keep the order of the catalogue.
 /// </summary>
 public sealed partial class NodePickerViewModel : ObservableObject
 {
@@ -36,6 +37,11 @@ public sealed partial class NodePickerViewModel : ObservableObject
 
     /// <summary>The node whose + opened the list; null for Add node.</summary>
     public NodeViewModel? From { get; private set; }
+
+    /// <summary>The node whose empty control input opened the list (<see cref="IntoPort"/>); the new node links into it.</summary>
+    public NodeViewModel? Into { get; private set; }
+
+    public string? IntoPort { get; private set; }
 
     /// <summary>Where the list sits on the canvas (screen pixels of the canvas control).</summary>
     [ObservableProperty]
@@ -63,7 +69,27 @@ public sealed partial class NodePickerViewModel : ObservableObject
     public void Open(NodeViewModel? from, PortKind? output, double left, double top)
     {
         From = from;
+        Into = null;
+        IntoPort = null;
         _kinds = [.. NodeKinds.All.Where(k => k.Group is not null && (from is null || (output is { } o && Fits(k, o))))];
+        Left = left;
+        Top = top;
+        SearchText = string.Empty;
+        Fill();
+        IsOpen = true;
+    }
+
+    /// <summary>
+    /// Opens the list for the control input <paramref name="port"/> of <paramref name="into"/>: only the kinds whose output it
+    /// takes (<paramref name="accepts"/>: a Timer's pulse, a yes or no).
+    /// </summary>
+    public void OpenInto(NodeViewModel into, string port, PortKind accepts, double left, double top)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+        From = null;
+        Into = into;
+        IntoPort = port;
+        _kinds = [.. NodeKinds.All.Where(k => k.Group is not null && Gives(k, accepts))];
         Left = left;
         Top = top;
         SearchText = string.Empty;
@@ -75,6 +101,15 @@ public sealed partial class NodePickerViewModel : ObservableObject
     {
         IsOpen = false;
         From = null;
+        Into = null;
+        IntoPort = null;
+    }
+
+    /// <summary>A kind can give <paramref name="output"/>: from no input (a Timer) or from one of the inputs it takes.</summary>
+    public static bool Gives(NodeKindInfo kind, PortKind output)
+    {
+        ArgumentNullException.ThrowIfNull(kind);
+        return kind.Accepts.Count == 0 ? kind.Output(null) == output : kind.Accepts.Any(a => kind.Output(a) == output);
     }
 
     /// <summary>A kind fits an output with its data input or one of its control inputs.</summary>

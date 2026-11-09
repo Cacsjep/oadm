@@ -210,7 +210,7 @@ public sealed class ModelLibraryTests : IDisposable
         var missing = Assert.Single(restored.All);
         Assert.True(missing.Missing);
         Assert.Null(restored.FileOf(model.Id));
-        Assert.Equal("Upload the model Gate people again.", ModelTexts.UploadAgain(missing.Name));
+        Assert.Equal("Import the model Gate people again.", ModelTexts.UploadAgain(missing.Name));
 
         var back = (await UploadAsync(restored, file, "whatever.onnx")).Model!;
         Assert.Equal(model.Id, back.Id);

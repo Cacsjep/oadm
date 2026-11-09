@@ -13,9 +13,9 @@ public static class VisionInfo
     public const string IconKey = "flow";
 
     /// <summary>The page's subtitle.</summary>
-    public const string Description = "Builds detections from the cameras' pictures for the event rules.";
+    public const string Description = "Custom analytics pipelines with your own model.";
 
-    public const string EmptyText = "Upload a model, then create a pipeline.";
+    public const string EmptyText = "Import a model, then create a pipeline.";
 
     /// <summary>"View vision pipelines": the host's automatic show permission ("oadm.vision:show").</summary>
     public const string ViewPermissionName = "View vision pipelines";

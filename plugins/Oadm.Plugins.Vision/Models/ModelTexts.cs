@@ -54,15 +54,15 @@ public static class ModelTexts
 
     public static readonly string TooManyLabels = string.Create(CultureInfo.InvariantCulture, $"A labels file has at most {VisionLimits.MaxClasses:N0} names.");
 
-    public const string UploadGone = "The upload ended. Upload the model again.";
+    public const string UploadGone = "The upload ended. Import the model again.";
 
-    public const string UploadOutOfOrder = "A part of the upload got lost. Upload the model again.";
+    public const string UploadOutOfOrder = "A part of the upload got lost. Import the model again.";
 
-    public const string UploadTooLong = "The file is larger than its upload said. Upload the model again.";
+    public const string UploadTooLong = "The file is larger than its upload said. Import the model again.";
 
-    public const string UploadNotWritten = "The file could not be written on the server. Upload the model again.";
+    public const string UploadNotWritten = "The file could not be written on the server. Import the model again.";
 
-    public const string UploadTooShort = "The file is smaller than its upload said. Upload the model again.";
+    public const string UploadTooShort = "The file is smaller than its upload said. Import the model again.";
 
     public static string AlreadyStored(string name) => $"This model is already stored as {name}.";
 
@@ -124,8 +124,8 @@ public static class ModelTexts
         return string.Create(CultureInfo.InvariantCulture, $"Used by {models.Count} {(models.Count == 1 ? "model" : "models")}: {string.Join(", ", models)}.");
     }
 
-    /// <summary>A pipeline whose model is Missing: "Upload the model Gate people again."</summary>
-    public static string UploadAgain(string name) => $"Upload the model {name} again.";
+    /// <summary>A pipeline whose model is Missing: "Import the model Gate people again."</summary>
+    public static string UploadAgain(string name) => $"Import the model {name} again.";
 
     /// <summary>The default name of class <paramref name="id"/>.</summary>
     public static string ClassName(int id) => string.Create(CultureInfo.InvariantCulture, $"Class {id}");

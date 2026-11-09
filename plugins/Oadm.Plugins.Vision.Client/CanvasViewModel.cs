@@ -185,13 +185,83 @@ public sealed partial class CanvasViewModel : ObservableObject
         Picker.Open(from, from.OutputKind, (plus.Right * Zoom) + PanX + 8, (plus.Top * Zoom) + PanY - 10);
     }
 
-    /// <summary>A kind chosen in the node list: the new node (linked after the + node), selected.</summary>
+    /// <summary>
+    /// The + of the empty control input <paramref name="port"/> of <paramref name="into"/> (or its dot): the node list with only
+    /// the kinds whose output the input takes, left of the +.
+    /// </summary>
+    public void OpenPickerInto(NodeViewModel into, string port)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+        var inputs = into.ControlInputs;
+        var index = -1;
+        for (var i = 0; i < inputs.Count; i++)
+        {
+            if (inputs[i].Port == port)
+            {
+                index = i;
+            }
+        }
+
+        if (!CanEdit || index < 0)
+        {
+            return;
+        }
+
+        var plus = CanvasGeometry.ControlPlusRect(into.X, into.Y, index);
+        Picker.OpenInto(into, port, inputs[index].Accepts, Math.Max(8, (plus.X * Zoom) + PanX - PickerWidth - 8), (plus.Top * Zoom) + PanY - 10);
+    }
+
+    /// <summary>The node list's width (VisionView.axaml): the list opens left of a control input's +.</summary>
+    public const double PickerWidth = 340;
+
+    /// <summary>A kind chosen in the node list: the new node (linked after the + node, or into the control input), selected.</summary>
     public NodeViewModel? Choose(NodeKindInfo kind)
     {
         ArgumentNullException.ThrowIfNull(kind);
         var from = Picker.From;
+        var into = Picker.Into;
+        var port = Picker.IntoPort;
         Picker.Close();
-        return Add(kind, from);
+        return into is not null && port is not null ? AddInto(kind, into, port) : Add(kind, from);
+    }
+
+    /// <summary>
+    /// A new node of <paramref name="kind"/> up and left of <paramref name="into"/>, its output linked into the control input
+    /// <paramref name="port"/> (a Timer into Reset); selected.
+    /// </summary>
+    public NodeViewModel? AddInto(NodeKindInfo kind, NodeViewModel into, string port)
+    {
+        ArgumentNullException.ThrowIfNull(kind);
+        ArgumentNullException.ThrowIfNull(into);
+        if (!CanEdit || kind.Id == NodeKinds.Camera || Nodes.Count >= VisionLimits.MaxNodes)
+        {
+            return null;
+        }
+
+        Record();
+        var at = into.ControlPortAt(port) ?? CanvasGeometry.InputPort(into.X, into.Y);
+        var node = AddViewModel(new PipelineNode
+        {
+            Id = NewId(),
+            Kind = kind.Id,
+            Name = FreeName(kind.Label),
+            X = Math.Round(into.X - CanvasGeometry.ColumnStep),
+            Y = Math.Round(at.Y - CanvasGeometry.NodeHeight - CanvasGeometry.RowGap),
+        });
+        Check(); // the new node's output kind
+        if (TryPort(node, into, out var chosen, port) && chosen == port)
+        {
+            if (ControlLinkOf(into, port) is { } old)
+            {
+                Links.Remove(old);
+            }
+
+            Links.Add(new LinkViewModel(node, into, port));
+        }
+
+        AfterChange();
+        SelectedNode = node;
+        return node;
     }
 
     /// <summary>
@@ -751,7 +821,7 @@ public sealed partial class CanvasViewModel : ObservableObject
         FitView();
     }
 
-    /// <summary>Fit view: every node in the view, at most 100 %.</summary>
+    /// <summary>Fit view: every node in the view, at most 100 %, centred across and near the top (the graph grows downwards).</summary>
     [RelayCommand]
     public void FitView()
     {
@@ -767,9 +837,12 @@ public sealed partial class CanvasViewModel : ObservableObject
         var zoom = Math.Clamp(Math.Min(ViewportSize.Width / (x1 - x0), ViewportSize.Height / (y1 - y0)), CanvasGeometry.MinZoom, 1);
         Zoom = zoom;
         PanX = ((ViewportSize.Width - ((x1 - x0) * zoom)) / 2) - (x0 * zoom);
-        PanY = ((ViewportSize.Height - ((y1 - y0) * zoom)) / 2) - (y0 * zoom);
+        PanY = Math.Min(TopRoom, (ViewportSize.Height - ((y1 - y0) * zoom)) / 2) - (y0 * zoom);
         Bump();
     }
+
+    /// <summary>Fit view leaves at most this much above the graph (screen pixels; the node list opens there too).</summary>
+    public const double TopRoom = 24;
 
     /// <summary>The wheel: zoom by <paramref name="factor"/> around <paramref name="screen"/> (it stays under the pointer), 25 % to 200 %.</summary>
     public void ZoomAt(Point screen, double factor)
@@ -824,6 +897,47 @@ public sealed partial class CanvasViewModel : ObservableObject
     public NodeViewModel? PlusAt(Point world) =>
         Nodes.LastOrDefault(n => ShowsPlus(n) && PlusOf(n).Inflate(2).Contains(world));
 
+    /// <summary>
+    /// The empty control input under <paramref name="world"/>: its + (the selected node) or its dot (any node); a click adds a
+    /// node into it.
+    /// </summary>
+    public (NodeViewModel Node, string Port)? EmptyControlAt(Point world)
+    {
+        if (!CanEdit)
+        {
+            return null;
+        }
+
+        for (var n = Nodes.Count - 1; n >= 0; n--)
+        {
+            var node = Nodes[n];
+            var inputs = node.ControlInputs;
+            for (var i = 0; i < inputs.Count; i++)
+            {
+                if (ControlLinkOf(node, inputs[i].Port) is not null)
+                {
+                    continue;
+                }
+
+                var dot = CanvasGeometry.ControlPort(node.X, node.Y, i);
+                if (CanvasGeometry.Distance(world, dot) <= CanvasGeometry.PortReach
+                    || (ShowsControlPlus(node) && CanvasGeometry.ControlPlusRect(node.X, node.Y, i).Inflate(2).Contains(world)))
+                {
+                    return (node, inputs[i].Port);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>The + of the empty control inputs shows on the selected node.</summary>
+    public bool ShowsControlPlus(NodeViewModel node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        return CanEdit && node.IsSelected && node.ControlInputs.Count > 0;
+    }
+
     public NodeViewModel? EyeAt(Point world) =>
         Nodes.LastOrDefault(n => n.CanShowOnVideo && CanvasGeometry.EyeRect(n.X, n.Y).Contains(world));
 
@@ -836,7 +950,7 @@ public sealed partial class CanvasViewModel : ObservableObject
     /// </summary>
     public Avalonia.Input.StandardCursorType? CursorAt(Point world)
     {
-        return PlusAt(world) is not null || EyeAt(world) is not null ? Avalonia.Input.StandardCursorType.Hand
+        return PlusAt(world) is not null || EyeAt(world) is not null || EmptyControlAt(world) is not null ? Avalonia.Input.StandardCursorType.Hand
             : CanEdit && OutputPortAt(world) is not null ? Avalonia.Input.StandardCursorType.Cross
             : NodeAt(world) is not null || LinkAt(world) is not null ? Avalonia.Input.StandardCursorType.Hand
             : null;

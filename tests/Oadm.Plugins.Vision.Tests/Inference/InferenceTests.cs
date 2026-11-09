@@ -332,7 +332,7 @@ public sealed class InferenceTests : IDisposable
         var inference = Inference();
         using var frame = inference.Decode(Jpeg(64, 64));
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => inference.DetectAsync(model, frame, 0.5, CancellationToken.None));
-        Assert.Equal("Upload the model Gate people again.", error.Message);
+        Assert.Equal("Import the model Gate people again.", error.Message);
     }
 
     [Fact]

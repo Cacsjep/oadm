@@ -14,25 +14,7 @@
   <Grid RowDefinitions="Auto,Auto,Auto">
     <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ModelSettingsViewModel.Title}" />
     <Border Grid.Row="1" Classes="dialogBody">
-      <StackPanel Classes="form">
-        <ui:FormField Classes="wide" LabelAbove="True" Label="Format">
-          <ComboBox x:Name="FormatBox" HorizontalAlignment="Stretch" ItemsSource="{Binding Formats}" SelectedItem="{Binding Format}" />
-        </ui:FormField>
-        <ui:FormField Classes="wide" LabelAbove="True" Label="Fit">
-          <ComboBox x:Name="FitBox" HorizontalAlignment="Stretch" ItemsSource="{x:Static vm:ModelSettingsViewModel.Fits}" SelectedItem="{Binding Fit}" />
-        </ui:FormField>
-        <ui:FormField Classes="wide" LabelAbove="True" Label="Scaling">
-          <ComboBox x:Name="ScalingBox" HorizontalAlignment="Stretch" ItemsSource="{x:Static vm:ModelSettingsViewModel.Scalings}" SelectedItem="{Binding Scaling}" />
-        </ui:FormField>
-        <Grid ColumnDefinitions="*,*" ColumnSpacing="12" IsVisible="{Binding CanSize}">
-          <ui:FormField Classes="wide" LabelAbove="True" Label="Input width">
-            <TextBox x:Name="WidthBox" Text="{Binding InputWidth}" />
-          </ui:FormField>
-          <ui:FormField Grid.Column="1" Classes="wide" LabelAbove="True" Label="Input height">
-            <TextBox x:Name="HeightBox" Text="{Binding InputHeight}" />
-          </ui:FormField>
-        </Grid>
-      </StackPanel>
+      <vm:ModelSettingsForm x:Name="Form" />
     </Border>
     <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
       <Button Classes="primary" Content="Save" Command="{Binding OkCommand}" ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />

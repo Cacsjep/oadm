@@ -311,8 +311,6 @@ public sealed class TimerAndCompareTests
         public Task<bool> EditModelAsync(ModelEditViewModel form) => Task.FromResult(false);
 
         public Task<bool> EditClassListAsync(ClassListEditViewModel form) => Task.FromResult(false);
-
-        public Task<IReadOnlyList<IModelFile>?> PickModelFilesAsync() => Task.FromResult<IReadOnlyList<IModelFile>?>(null);
     }
 
     [Fact]

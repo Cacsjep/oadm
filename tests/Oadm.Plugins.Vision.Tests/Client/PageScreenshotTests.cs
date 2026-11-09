@@ -3,6 +3,7 @@ using Avalonia.VisualTree;
 
 using Oadm.Plugins.Vision.Api;
 using Oadm.Plugins.Vision.Client;
+using Oadm.Plugins.Vision.Model;
 using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Vision.Tests.Client;
@@ -139,6 +140,17 @@ public sealed class PageScreenshotTests
                 Assert.True(view.FindControl<Border>("NodePicker")!.IsEffectivelyVisible);
                 Assert.DoesNotContain(editor.Canvas.Picker.ShownKinds, k => k.Id == Oadm.Plugins.Vision.Model.NodeKinds.Detect);
                 Headless.Capture(window, $"vision-node-picker-{suffix}.png");
+
+                // The Event node's empty Send now: its + and the list of the nodes that give a pulse.
+                var send = editor.Canvas.Find("e")!;
+                editor.Canvas.SelectedNode = send;
+                editor.Canvas.OpenPickerInto(send, Oadm.Plugins.Vision.Model.NodeKinds.SendPort);
+                Headless.Pump();
+                Assert.Contains(Oadm.Plugins.Vision.Model.NodeKinds.TimerKind, editor.Canvas.Picker.ShownKinds);
+                Headless.Capture(window, $"vision-node-picker-send-{suffix}.png");
+                editor.Canvas.Choose(Oadm.Plugins.Vision.Model.NodeKinds.TimerKind);
+                Headless.Pump();
+                Headless.Capture(window, $"vision-timer-into-send-{suffix}.png");
             }
 
             window.Close();
@@ -147,7 +159,7 @@ public sealed class PageScreenshotTests
     }
 
     [Fact]
-    public async Task Page_renders_an_upload_in_the_models_card_and_the_empty_page()
+    public async Task The_import_wizard_renders_each_step_and_the_empty_page()
     {
         var suffix = Headless.Appearance;
         await Headless.Session.Dispatch(async () =>
@@ -157,19 +169,37 @@ public sealed class PageScreenshotTests
             ctx.Answers[VisionMethods.BeginUpload] = _ => VisionJson.Serialize(new BeginUploadReply { UploadId = "u1", ChunkBytes = 40 });
             var chunks = 0;
             ctx.AsyncAnswers[VisionMethods.UploadChunk] = _ => ++chunks < 5 ? Task.FromResult<string?>("{}") : gate.Task;
+            var stored = PageSamples.RfDetr with { Id = "m9", Name = "rf-detr-small", ClassListId = null, Fit = ModelFit.Stretch, Scaling = ModelScaling.ImageNet };
+            ctx.Answers[VisionMethods.FinishUpload] = _ => VisionJson.Serialize(new FinishUploadReply { Model = stored });
+            ctx.Answers[VisionMethods.UpdateModel] = json => VisionJson.Serialize(VisionJson.Deserialize<UpdateModelRequest>(json).Model);
             var (vm, view, window) = await ShowAsync(ctx);
             using (vm)
             {
-                var upload = vm.Models.UploadFilesAsync([new MemoryModelFile("rf-detr-small.onnx", new byte[400])]);
+                Assert.Equal(VisionTexts.ImportModel, view.FindControl<ToolbarButton>("ImportButton")!.Text);
+                using var wizard = new ModelImportViewModel(vm.Models, view);
+                var dialog = new ModelImportWindow { DataContext = wizard };
+                Oadm.Client.App.ApplyCrispText(dialog);
+                dialog.Show();
                 Headless.Pump();
-                var row = Assert.Single(vm.Models.Rows.OfType<UploadRow>());
-                Assert.Equal(0.4, row.Progress, 3);
-                Assert.Equal("Upload 40 %", row.StateText);
-                Headless.Capture(window, $"vision-models-upload-{suffix}.png");
-                ctx.Answers[VisionMethods.CancelUpload] = _ => "{}";
-                row.CancelCommand.Execute(null);
+                Headless.Capture(dialog, $"vision-import-start-{suffix}.png");
+
+                wizard.SetFile(new MemoryModelFile("rf-detr-small.onnx", new byte[400]));
+                var next = wizard.NextCommand.ExecuteAsync(null);
+                Headless.Pump();
+                Assert.Equal(0.4, wizard.Progress, 3);
+                Assert.Equal("Upload 40 %", wizard.ProgressText);
+                Headless.Capture(dialog, $"vision-import-upload-{suffix}.png");
                 gate.SetResult("{}");
-                await upload;
+                await next;
+                Headless.Pump();
+                Assert.True(wizard.IsSettingsStep);
+                Assert.True(dialog.FindControl<ModelSettingsForm>("SettingsForm")!.GetVisualDescendants().OfType<ModelSettingDiagram>().Count(d => d.IsEffectivelyVisible) == 3);
+                Headless.Capture(dialog, $"vision-import-settings-{suffix}.png");
+
+                await wizard.NextCommand.ExecuteAsync(null);
+                Headless.Pump();
+                Headless.Capture(dialog, $"vision-import-labels-{suffix}.png");
+                dialog.Close();
             }
 
             window.Close();
@@ -216,12 +246,12 @@ public sealed class PageScreenshotTests
             Oadm.Client.App.ApplyCrispText(dialog);
             dialog.Show();
             Headless.Pump();
-            Assert.False(dialog.FindControl<ClassNamesField>("OwnNames")!.IsEffectivelyVisible);
+            Assert.False(dialog.GetVisualDescendants().OfType<ClassNamesField>().Single(f => f.Name == "OwnNames").IsEffectivelyVisible);
             Headless.Capture(dialog, $"vision-class-list-dialog-{suffix}.png");
             form.SelectedChoice = form.Choices[0];
             form.Own.Text = "person\ncar";
             Headless.Pump();
-            Assert.True(dialog.FindControl<ClassNamesField>("OwnNames")!.IsEffectivelyVisible);
+            Assert.True(dialog.GetVisualDescendants().OfType<ClassNamesField>().Single(f => f.Name == "OwnNames").IsEffectivelyVisible);
             Assert.Contains(dialog.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == VisionTexts.WrongClassCount);
             Headless.Capture(dialog, $"vision-class-list-own-{suffix}.png");
             dialog.Close();
@@ -300,7 +330,7 @@ public sealed class PageScreenshotTests
             Oadm.Client.App.ApplyCrispText(fixedInput);
             fixedInput.Show();
             Headless.Pump();
-            Assert.False(fixedInput.FindControl<TextBox>("WidthBox")!.IsEffectivelyVisible);
+            Assert.False(fixedInput.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "WidthBox").IsEffectivelyVisible);
             Headless.Capture(fixedInput, $"vision-model-settings-fixed-{suffix}.png");
             fixedInput.Close();
             return true;

@@ -23,9 +23,13 @@ public sealed record SettingChoice<T>(T Value, string Name)
 /// </summary>
 public sealed partial class ModelSettingsViewModel : ValidatingViewModel
 {
-    public ModelSettingsViewModel(VisionModel model)
+    /// <param name="model">The stored model.</param>
+    /// <param name="guided">The Import model wizard: each setting with its drawing and what the chosen one does below it (the
+    /// Settings dialog has them in the info icons).</param>
+    public ModelSettingsViewModel(VisionModel model, bool guided = false)
     {
         Model = model ?? throw new ArgumentNullException(nameof(model));
+        IsGuided = guided;
         Formats = model.Kind == ModelKind.Detection
             ? [new(ModelFormat.Yolo, "YOLO"), new(ModelFormat.YoloWithSuppression, "YOLO with suppression"), new(ModelFormat.Detr, "DETR"),
                 new(ModelFormat.RfDetr, "RF-DETR"), new(ModelFormat.DetrWithLabels, "DETR with labels"), new(ModelFormat.Yolox, "YOLOX"),
@@ -47,6 +51,31 @@ public sealed partial class ModelSettingsViewModel : ValidatingViewModel
     public event EventHandler<bool>? CloseRequested;
 
     public VisionModel Model { get; }
+
+    /// <summary>The wizard's form: the drawings show inline with a line on the chosen value; else in the info icons.</summary>
+    public bool IsGuided { get; }
+
+    public bool IsNotGuided => !IsGuided;
+
+    public ModelKind Kind => Model.Kind;
+
+    /// <summary>The info icon's text (the Settings dialog); null in the wizard, which shows the drawing inline.</summary>
+    public string? FormatInfo => IsGuided ? null : VisionTexts.FormatInfo;
+
+    public string? FitInfo => IsGuided ? null : VisionTexts.FitInfo;
+
+    public string? ScalingInfo => IsGuided ? null : VisionTexts.ScalingInfo;
+
+    /// <summary>What the chosen value does, below its select in the wizard.</summary>
+    public string? FormatHint => IsGuided ? VisionTexts.FormatInfo : null;
+
+    public string? FitHint => IsGuided ? VisionTexts.FitMeaning(Fit.Value) : null;
+
+    public string? ScalingHint => IsGuided ? VisionTexts.ScalingMeaning(Scaling.Value) : null;
+
+    partial void OnFitChanged(SettingChoice<ModelFit> value) => OnPropertyChanged(nameof(FitHint));
+
+    partial void OnScalingChanged(SettingChoice<ModelScaling> value) => OnPropertyChanged(nameof(ScalingHint));
 
     public static string Title => VisionTexts.ModelSettings;
 

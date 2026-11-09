@@ -272,7 +272,7 @@ public sealed class VisionGraphTests(ITestOutputHelper output)
         var camera = b.Add(NodeKinds.Camera);
         var detect = b.After(camera, NodeKinds.Detect, PipelineBuilder.DetectSettings());
         var check = VisionGraph.Check(b.Build(), id => id == missing.Id ? missing : null);
-        Assert.Equal("Upload the model Gate people again.", check.NodeErrors[detect]);
+        Assert.Equal("Import the model Gate people again.", check.NodeErrors[detect]);
     }
 
     [Fact]

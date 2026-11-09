@@ -27,8 +27,6 @@ public sealed class ClassListTests
             ClassListForms.Add(form);
             return Task.FromResult(ClassList(form));
         }
-
-        public Task<IReadOnlyList<IModelFile>?> PickModelFilesAsync() => Task.FromResult<IReadOnlyList<IModelFile>?>(null);
     }
 
     private static async Task<(ModelsViewModel Models, FakePageContext Ctx, Dialogs Dialogs)> LoadAsync()

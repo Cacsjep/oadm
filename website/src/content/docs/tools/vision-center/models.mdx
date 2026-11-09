@@ -5,7 +5,7 @@ description: Models that work with Vision Center, with their links and licences,
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
-import upload from '../../../../assets/screens/vision-center-upload.png';
+import importSettings from '../../../../assets/screens/vision-center-import.png';
 import classList from '../../../../assets/screens/vision-center-class-list.png';
 
 A model is a file that finds objects in a picture (**Detection**: boxes with a class and a score) or names what a picture
@@ -24,8 +24,8 @@ upload it:
 | **DETR** | DETR of Facebook Research, also as Hugging Face exports it | Class names from **COCO, 91 ids** |
 | **RT-DETR** | RT-DETR, D-FINE and YOLO26 as Hugging Face exports them (onnx-community) | Class names from **COCO, 80 classes** |
 | **RF-DETR** | RF-DETR of Roboflow | Also the segmentation models: they find boxes |
-| **DETR with labels** | RT-DETR, D-FINE and other models that give boxes, scores and labels | Upload a labels file |
-| **Classification** | Models with one score per class | For the [Classify](../nodes/#classify) node. Upload a labels file |
+| **DETR with labels** | RT-DETR, D-FINE and other models that give boxes, scores and labels | Load a labels file when you import it |
+| **Classification** | Models with one score per class | For the [Classify](../nodes/#classify) node. Load a labels file when you import it |
 
 OADM also chooses how the picture is fitted to the model's input: with bars (YOLO), stretched (RF-DETR, RT-DETR, DETR with
 labels, classification) or scaled with its shape kept (DETR).
@@ -49,7 +49,7 @@ animals and everyday objects, 80 kinds) unless the row says otherwise. Upload th
 | RF-DETR large | 122 MB | Apache-2.0 | [rf-detr-large-2026.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-large-2026.onnx) | Should work. Slower, finds more |
 | RF-DETR xlarge | 458 MB | Platform Model License 1.0 | [rf-detr-xlarge.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-xlarge.onnx) | Should work. Very slow without a graphics card |
 | RF-DETR 2xlarge | 460 MB | Platform Model License 1.0 | [rf-detr-xxlarge.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-xxlarge.onnx) | Should work. Very slow without a graphics card |
-| RF-DETR base, Objects365 (365 kinds of objects) | 108 MB | Apache-2.0 | [rf-detr-base-o365.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-base-o365.onnx) | Should work. Upload it with a labels file of the Objects365 names |
+| RF-DETR base, Objects365 (365 kinds of objects) | 108 MB | Apache-2.0 | [rf-detr-base-o365.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-base-o365.onnx) | Should work. Load a labels file of the Objects365 names when you import it |
 | RF-DETR segmentation nano to large | 123 to 131 MB | Apache-2.0 | [All files](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/tree/main) (`rf-detr-seg-*.onnx`) | Should work. OADM uses their boxes only |
 
 <Aside type="caution">
@@ -98,7 +98,7 @@ Trained on COCO (80 kinds). Upload the file as it is. Times are for one picture 
 
 ### Classification
 
-Classifiers name what a box or a picture shows. These files carry no class names: upload them with a labels file of the
+Classifiers name what a box or a picture shows. These files carry no class names: when you import one, load a labels file of the
 1,000 ImageNet names, one per line (the `id2label` list of the
 [config.json](https://huggingface.co/Xenova/resnet-50/resolve/a16f29143f08c4e5c5a4a89f6f185d8edac4b6af/config.json) of
 ResNet-50, in its order).
@@ -110,23 +110,29 @@ ResNet-50, in its order).
 | YOLO11n-cls | AGPL-3.0 | [yolo11n-cls.onnx](https://huggingface.co/mobilint/YOLO11n-cls/resolve/ea1f8e6d3e3f4441bbc09052ab532d36e694186d/yolo11n-cls.onnx) | Tested: 224 x 224, 0.01 s, once **Settings** of the model set **Scaling** to **0 to 1** (the file says nothing about it). A file exported with `yolo export model=yolo11n-cls.pt format=onnx` keeps the right scaling |
 | Your own classifier | Yours | | Export with one picture in and one score per class out. Should work |
 
-## Upload a model
+## Import a model
 
-Uploading needs the permission **Manage vision models** (administrators).
-
-<Image src={upload} alt="The Models card with three models and an upload at 40 %" class="screen" />
+Importing needs the permission **Manage vision models** (administrators). **Import model** in the **Models** card opens a
+wizard in three steps.
 
 <Steps>
 
-1. In the **Models** card on the left of the page, click **Upload model**.
-2. Choose the `.onnx` file. To give the classes their names, choose a labels file (`.txt`, one name per line, one line
-   per class) together with it.
-3. The row shows **Upload** with its progress (**Cancel** stops it), then a ring while OADM checks the model.
-4. The model shows with its kind, input size, classes and size, for example
-   `Detection · 576x576 · 91 classes · 121 MB`. Hover over it for the pipelines that use it, the SHA-256 and the time of
-   one call on the CPU and on the graphics card.
+1. **Model**: choose the `.onnx` file and click **Next**. The file goes up with its progress, then OADM checks the
+   model. A file OADM cannot run says why below it.
+2. **Settings**: **Model checked** and what OADM found, for example `Detection · 576x576 · 91 classes · read as RF-DETR`,
+   the name and the **Model family** OADM found (YOLOv8, RF-DETR, an ImageNet classifier and others). The settings are
+   already set for the model. Each one shows a picture of what it does; change the family or a setting only if your
+   model was made differently (see [Change how a model is read](#change-how-a-model-is-read)).
+3. **Labels**: the class list, or the model's own names. **Load labels file** fills them from a `.txt` file with one
+   name per line. Click **Import**.
 
 </Steps>
+
+<Image src={importSettings} alt="The Settings step of Import model: Model checked, Format, Fit and Scaling with their pictures" class="screen" />
+
+The model shows in the card with its kind, input size, classes and size, for example
+`Detection · 576x576 · 91 classes · 121 MB`. Hover over it for the pipelines that use it, the SHA-256 and the time of one
+call on the CPU and on the graphics card. **Cancel** removes the file again.
 
 A new model is named after its file. The ⋯ menu of a model has **Rename**, **Class list** and **Delete**. **Delete** is
 refused while a pipeline uses the model, for example **Used by 2 pipelines: Gate 1, Lane 2.**
@@ -163,7 +169,7 @@ data in other files. For you this means:
 A model knows its classes by number. OADM names them, in this order:
 
 1. The names inside the model file, as Ultralytics writes them.
-2. A labels file uploaded with the model.
+2. A labels file loaded in **Labels** when you import the model.
 3. A built-in class list, when the model has 91 or 80 classes.
 4. Else `Class 0`, `Class 1` and so on.
 
@@ -232,7 +238,7 @@ Your own trained RF-DETR: the [rf-detr-onnx](https://github.com/PierreMarieCurie
 ### Classification
 
 Any model with one picture in and one score per class out, for example a classifier of PyTorch exported with
-`torch.onnx.export` like DETR above, with one output. Upload a labels file with it. OADM gives a classifier a 224 x 224
+`torch.onnx.export` like DETR above, with one output. Load a labels file when you import it. OADM gives a classifier a 224 x 224
 input when the file leaves the size open, and scales the picture as ImageNet models are trained, except for Ultralytics'
 files, which say so in the file.
 
@@ -249,5 +255,5 @@ files, which say so in the file.
 ## Backups
 
 A backup keeps the model list, its settings and your class lists, never the model files. After a restore a model shows
-**Missing** and its pipelines say **Upload the model Gate people again.** Upload the same file: the model comes back with
+**Missing** and its pipelines say **Import the model Gate people again.** Import the same file: the model comes back with
 its settings.

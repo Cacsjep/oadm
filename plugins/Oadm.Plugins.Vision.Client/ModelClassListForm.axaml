@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Vision.Client"
+             x:Class="Oadm.Plugins.Vision.Client.ModelClassListForm"
+             x:DataType="vm:ModelEditViewModel">
+  <!-- A model's class list, shared by the Class list dialog and the Import model wizard (docs/spec/vision-center.md
+       "Class lists"): the lists that fit, or its own names to edit; a chosen list's names read only. -->
+  <StackPanel Classes="form">
+    <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.ClassListTitle}" Hint="{Binding NoFittingList}">
+      <ComboBox x:Name="ListBox" HorizontalAlignment="Stretch" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}">
+        <ComboBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:ClassListChoice">
+            <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+    </ui:FormField>
+    <vm:ClassNamesField x:Name="OwnNames" DataContext="{Binding Own}" IsVisible="{Binding $parent[UserControl].((vm:ModelEditViewModel)DataContext).IsOwn, FallbackValue=False}" />
+    <ui:FormField Classes="wide" LabelAbove="True" Label="Classes" IsVisible="{Binding ChosenNames, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+      <TextBox x:Name="ListNames" Text="{Binding ChosenNames, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" MinHeight="80" MaxHeight="300" />
+    </ui:FormField>
+  </StackPanel>
+</UserControl>

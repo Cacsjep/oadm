@@ -12,7 +12,7 @@ namespace Oadm.Plugins.Vision.Client;
 /// <summary>
 /// The Vision Center page. Layout and input routing only: the canvas and the video overlay hand their input to the view
 /// models, the node list's choice goes to the canvas, the camera picker, the Stream settings and model dialogs, the file
-/// picker of Upload model; the view model watches while the view is in the visual tree.
+/// pickers and the wizard of Import model; the view model watches while the view is in the visual tree.
 /// </summary>
 /// <summary>The widths the canvas and the right column may take in a page of a given width (the resizer's stops).</summary>
 public readonly record struct ColumnLimits(double CanvasMin, double RightMin, double RightMax);
@@ -387,8 +387,8 @@ public partial class VisionView : UserControl, IVisionDialogs
         return ok;
     }
 
-    /// <summary>The model file, and a labels file with it if wanted (one name per line).</summary>
-    public async Task<IReadOnlyList<IModelFile>?> PickModelFilesAsync()
+    /// <summary>The model file (ONNX) or a labels file (text, one name per line).</summary>
+    public async Task<IModelFile?> PickModelFileAsync(bool labels)
     {
         if (TopLevel.GetTopLevel(this) is not { } top)
         {
@@ -397,23 +397,37 @@ public partial class VisionView : UserControl, IVisionDialogs
 
         var files = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = VisionTexts.ChooseModelFile,
-            AllowMultiple = true,
-            FileTypeFilter = [new FilePickerFileType("ONNX model") { Patterns = ["*.onnx", "*.txt"] }],
+            Title = labels ? VisionTexts.LabelsFile : VisionTexts.ChooseModelFile,
+            AllowMultiple = false,
+            FileTypeFilter = [labels ? new FilePickerFileType(VisionTexts.LabelsFile) { Patterns = ["*.txt"] } : new FilePickerFileType("ONNX model") { Patterns = ["*.onnx"] }],
         }).ConfigureAwait(true);
         if (files.Count == 0)
         {
             return null;
         }
 
-        var list = new List<IModelFile>();
-        foreach (var file in files)
+        var props = await files[0].GetBasicPropertiesAsync().ConfigureAwait(true);
+        return new PickedFile(files[0], (long)(props.Size ?? 0));
+    }
+
+    /// <summary>The Import model wizard; closing it without Import ends the upload and drops a stored model.</summary>
+    public async Task<bool> ImportModelAsync(ModelImportViewModel form)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+        var ok = false;
+        var window = new ModelImportWindow { DataContext = form };
+        form.CloseRequested += (_, result) =>
         {
-            var props = await file.GetBasicPropertiesAsync().ConfigureAwait(true);
-            list.Add(new PickedFile(file, (long)(props.Size ?? 0)));
+            ok = result;
+            window.Close();
+        };
+        await ShowDialogAsync(window).ConfigureAwait(true);
+        if (!ok)
+        {
+            await form.AbandonAsync().ConfigureAwait(true);
         }
 
-        return list;
+        return ok;
     }
 
     private async Task ShowDialogAsync(Window window)

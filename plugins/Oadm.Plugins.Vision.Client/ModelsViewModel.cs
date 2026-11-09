@@ -21,7 +21,7 @@ public interface IModelFile
     Task<Stream> OpenReadAsync();
 }
 
-/// <summary>A row of the Models card: a stored model or an upload on its way.</summary>
+/// <summary>A row of the Models card.</summary>
 public abstract class ModelsRow : ObservableObject;
 
 /// <summary>A stored model: name, its line (kind, input, classes, size, pipelines) and the ⋯ menu.</summary>
@@ -66,76 +66,12 @@ public sealed partial class ModelRow : ModelsRow
     }
 }
 
-/// <summary>An upload in the Models card: progress and Cancel in the row, then the model check's ring, a refusal in the row.</summary>
-public sealed partial class UploadRow(string fileName) : ModelsRow, IDisposable
-{
-    private CancellationTokenSource? _cancel;
-
-    public string FileName { get; } = fileName;
-
-    /// <summary>0 to 1 of the file sent.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Percent), nameof(StateText))]
-    public partial double Progress { get; set; }
-
-    public double Percent => Progress * 100;
-
-    /// <summary>The server checks the model (the ring).</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StateText), nameof(IsSending))]
-    [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
-    public partial bool IsChecking { get; set; }
-
-    /// <summary>Why the model was not kept ("This model cannot run here: ..."); null while it goes on.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasRefusal), nameof(IsSending), nameof(IsWorking))]
-    [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
-    public partial string? Refusal { get; set; }
-
-    public bool HasRefusal => Refusal is not null;
-
-    /// <summary>The bar shows while the file goes up.</summary>
-    public bool IsSending => !IsChecking && Refusal is null;
-
-    public bool IsWorking => Refusal is null;
-
-    public string StateText => IsChecking ? VisionTexts.CheckingModel : VisionTexts.Uploading(Progress);
-
-    /// <summary>Raised by Dismiss: the row goes.</summary>
-    public event EventHandler? Dismissed;
-
-    internal CancellationToken Start()
-    {
-        _cancel = new CancellationTokenSource();
-        return _cancel.Token;
-    }
-
-    internal void Finish()
-    {
-        _cancel?.Dispose();
-        _cancel = null;
-    }
-
-    private bool CanCancel() => _cancel is not null && !IsChecking && Refusal is null;
-
-    [RelayCommand(CanExecute = nameof(CanCancel))]
-    private void Cancel() => _cancel?.Cancel();
-
-    [RelayCommand]
-    private void Dismiss() => Dismissed?.Invoke(this, EventArgs.Empty);
-
-    internal void NotifyCancel() => CancelCommand.NotifyCanExecuteChanged();
-
-    public void Dispose() => Finish();
-}
-
 /// <summary>
-/// The Models card (docs/spec/vision-center.md "Models"), for users with Manage vision models: Upload model sends the file in
-/// chunks of the server's size with its progress and Cancel in the row, then the model check (a ring in the row); a refusal stays
-/// in the row in the server's words. The ⋯ menu of a model: Rename, Class list, Delete in red (refused while pipelines use it).
+/// The Models card (docs/spec/vision-center.md "Models"), for users with Manage vision models: Import model opens the wizard
+/// (<see cref="ModelImportViewModel"/>), which sends the file in chunks of the server's size, then the model check. The ⋯ menu of a model: Rename, Class list, Delete in red (refused while pipelines use it).
 /// Below the models the class lists ("Class lists"): the built-in ones to view, the user's to edit and delete.
 /// </summary>
-public sealed partial class ModelsViewModel : ObservableObject
+public sealed partial class ModelsViewModel : ObservableObject, IModelImporter
 {
     /// <summary>"oadm.vision:models".</summary>
     public static readonly string ModelsPermissionKey = VisionInfo.PluginId + ":" + VisionInfo.ModelsPermission;
@@ -155,7 +91,7 @@ public sealed partial class ModelsViewModel : ObservableObject
     public IVisionDialogs? Dialogs { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(UploadCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ImportCommand))]
     public partial bool MayManage { get; private set; }
 
     public RangeObservableCollection<ModelsRow> Rows { get; } = [];
@@ -226,7 +162,7 @@ public sealed partial class ModelsViewModel : ObservableObject
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>The list (listModels, the models event): rows updated in place by id, uploads stay at the end.</summary>
+    /// <summary>The list (listModels, the models event): rows updated in place by id.</summary>
     public void Apply(ModelList list)
     {
         ArgumentNullException.ThrowIfNull(list);
@@ -256,7 +192,6 @@ public sealed partial class ModelsViewModel : ObservableObject
             _rows.Remove(gone);
         }
 
-        rows.AddRange(Rows.OfType<UploadRow>());
         Rows.ReplaceAll(rows);
         HasRows = Rows.Count > 0;
         Changed?.Invoke(this, EventArgs.Empty);
@@ -264,47 +199,25 @@ public sealed partial class ModelsViewModel : ObservableObject
 
     private bool CanUpload() => MayManage;
 
-    /// <summary>Upload model: the file picker (the model, and a labels file with it if wanted), then the upload.</summary>
+    /// <summary>Import model: the wizard (file, family, check, settings, classes); the card shows the model once imported.</summary>
     [RelayCommand(CanExecute = nameof(CanUpload))]
-    private async Task UploadAsync()
+    private async Task ImportAsync()
     {
-        if (Dialogs is { } dialogs && await dialogs.PickModelFilesAsync().ConfigureAwait(true) is { Count: > 0 } files)
+        if (Dialogs is { } dialogs)
         {
-            await UploadFilesAsync(files).ConfigureAwait(true);
+            await dialogs.ImportModelAsync(new ModelImportViewModel(this, dialogs)).ConfigureAwait(true);
         }
     }
 
-    /// <summary>
-    /// Sends the model file (the first .onnx, else the first file) with the text of a .txt file as its labels: chunks of the
-    /// server's size, progress after each, Cancel between them; then the model check. The row goes once the model is stored.
-    /// </summary>
-    public async Task UploadFilesAsync(IReadOnlyList<IModelFile> files)
+    /// <inheritdoc />
+    public async Task<FinishUploadReply> SendAsync(IModelFile file, string? labels, Action<double> progress, Action checking, CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(files);
-        var file = files.FirstOrDefault(f => f.Name.EndsWith(".onnx", StringComparison.OrdinalIgnoreCase)) ?? (files.Count > 0 ? files[0] : null);
-        if (file is null)
-        {
-            return;
-        }
-
-        var labelsFile = files.FirstOrDefault(f => !ReferenceEquals(f, file) && f.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase));
-        var row = new UploadRow(file.Name);
-        row.Dismissed += (_, _) => RemoveRow(row);
-        Rows.Add(row);
-        HasRows = true;
-        var ct = row.Start();
-        row.NotifyCancel();
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(progress);
+        ArgumentNullException.ThrowIfNull(checking);
         string? uploadId = null;
         try
         {
-            // The labels file is read here: a file that cannot be read says so in the row.
-            string? labels = null;
-            if (labelsFile is not null)
-            {
-                using var reader = new StreamReader(await labelsFile.OpenReadAsync().ConfigureAwait(true));
-                labels = await reader.ReadToEndAsync(ct).ConfigureAwait(true);
-            }
-
             var beginJson = await _ctx.InvokeAsync(VisionMethods.BeginUpload,
                 VisionJson.Serialize(new BeginUploadRequest { FileName = file.Name, Size = file.Length, Labels = labels }), ct).ConfigureAwait(true);
             var begin = VisionJson.Deserialize<BeginUploadReply>(beginJson);
@@ -330,48 +243,45 @@ public sealed partial class ModelsViewModel : ObservableObject
                     var request = new UploadChunkRequest { UploadId = uploadId, Offset = offset, Data = chunk[..read] };
                     await _ctx.InvokeAsync(VisionMethods.UploadChunk, VisionJson.Serialize(request), ct).ConfigureAwait(true);
                     offset += read;
-                    row.Progress = file.Length > 0 ? Math.Min(1, (double)offset / file.Length) : 1;
+                    progress(file.Length > 0 ? Math.Min(1, (double)offset / file.Length) : 1);
                 }
             }
 
             ct.ThrowIfCancellationRequested();
-            row.IsChecking = true;
+            checking();
             var finishJson = await _ctx.InvokeAsync(VisionMethods.FinishUpload, VisionJson.Serialize(new UploadRequest { UploadId = uploadId }), CancellationToken.None)
                 .ConfigureAwait(true);
-            var finish = VisionJson.Deserialize<FinishUploadReply>(finishJson);
             uploadId = null;
-            if (finish.Refusal is { } refusal || finish.Model is null)
+            var finish = VisionJson.Deserialize<FinishUploadReply>(finishJson);
+            if (finish.Model is { } model && finish.Refusal is null)
             {
-                row.IsChecking = false;
-                row.Refusal = finish.Refusal ?? "This model cannot run here.";
-                return;
+                Apply(new ModelList { Models = [.. Models.Where(m => m.Id != model.Id), model], UsedBy = _modelsUsedBy });
             }
 
-            RemoveRow(row);
-            Apply(new ModelList
-            {
-                Models = [.. Models.Where(m => m.Id != finish.Model.Id), finish.Model],
-                UsedBy = _modelsUsedBy,
-            });
+            return finish;
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (Exception)
         {
-            RemoveRow(row);
             await CancelOnServerAsync(uploadId).ConfigureAwait(true);
+            throw;
         }
-#pragma warning disable CA1031 // The server's reason in the row (over the limits, a refused file).
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            row.IsChecking = false;
-            row.Refusal = ServerErrors.Message(ex);
-            await CancelOnServerAsync(uploadId).ConfigureAwait(true);
-        }
-        finally
-        {
-            row.Finish();
-            row.NotifyCancel();
-        }
+    }
+
+    /// <inheritdoc />
+    async Task<VisionModel> IModelImporter.UpdateAsync(VisionModel model)
+    {
+        var json = await _ctx.InvokeAsync(VisionMethods.UpdateModel, VisionJson.Serialize(new UpdateModelRequest { Model = model }), CancellationToken.None)
+            .ConfigureAwait(true);
+        var stored = VisionJson.Deserialize<VisionModel>(json);
+        Apply(new ModelList { Models = [.. Models.Select(m => m.Id == stored.Id ? stored : m)], UsedBy = _modelsUsedBy });
+        return stored;
+    }
+
+    /// <inheritdoc />
+    async Task IModelImporter.DeleteAsync(string modelId)
+    {
+        await _ctx.InvokeAsync(VisionMethods.DeleteModel, VisionJson.Serialize(new ModelRequest { ModelId = modelId }), CancellationToken.None).ConfigureAwait(true);
+        Apply(new ModelList { Models = [.. Models.Where(m => m.Id != modelId)], UsedBy = _modelsUsedBy });
     }
 
     private async Task CancelOnServerAsync(string? uploadId)
@@ -391,12 +301,6 @@ public sealed partial class ModelsViewModel : ObservableObject
 #pragma warning restore CA1031
         {
         }
-    }
-
-    private void RemoveRow(ModelsRow row)
-    {
-        Rows.Remove(row);
-        HasRows = Rows.Count > 0;
     }
 
     /// <summary>The entries of a model's ⋯ menu (ui:RowActions): Rename, Classes, then Delete in red.</summary>

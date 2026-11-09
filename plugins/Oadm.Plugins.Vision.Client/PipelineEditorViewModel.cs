@@ -37,8 +37,11 @@ public interface IVisionDialogs
     /// <summary>New, Edit or View of a class list: true when the user chose its main button.</summary>
     Task<bool> EditClassListAsync(ClassListEditViewModel form);
 
-    /// <summary>The model file and an optional labels file; null when cancelled.</summary>
-    Task<IReadOnlyList<IModelFile>?> PickModelFilesAsync();
+    /// <summary>The model file (an ONNX file) or, with <paramref name="labels"/>, a labels file (text); null when cancelled.</summary>
+    Task<IModelFile?> PickModelFileAsync(bool labels) => Task.FromResult<IModelFile?>(null);
+
+    /// <summary>The Import model wizard until it closes: true when the model was imported.</summary>
+    Task<bool> ImportModelAsync(ModelImportViewModel form) => Task.FromResult(false);
 }
 
 /// <summary>

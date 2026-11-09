@@ -1,0 +1,50 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Vision.Client"
+             x:Class="Oadm.Plugins.Vision.Client.ModelSettingsForm"
+             x:DataType="vm:ModelSettingsViewModel">
+  <!-- A model's settings, shared by the Settings dialog and the Import model wizard (docs/spec/vision-center.md "Models"):
+       Format, Fit, Scaling, the input size of a model without a fixed one. The drawing of each setting sits in its info icon
+       (dialog) or below it with what the chosen value does (wizard, for users who are no experts). -->
+  <StackPanel Classes="form">
+    <ui:FormField Classes="wide" LabelAbove="True" Label="Format" Info="{Binding FormatInfo}" Hint="{Binding FormatHint}">
+      <ui:FormField.InfoPicture>
+        <DataTemplate x:DataType="vm:ModelSettingsViewModel">
+          <vm:ModelSettingDiagram Setting="Format" Kind="{Binding Kind}" Value="{Binding Format.Value}" />
+        </DataTemplate>
+      </ui:FormField.InfoPicture>
+      <ComboBox x:Name="FormatBox" HorizontalAlignment="Stretch" ItemsSource="{Binding Formats}" SelectedItem="{Binding Format}" />
+    </ui:FormField>
+    <vm:ModelSettingDiagram x:Name="FormatPicture" Setting="Format" Kind="{Binding Kind}" Value="{Binding Format.Value}" IsVisible="{Binding IsGuided}" HorizontalAlignment="Left" />
+
+    <ui:FormField Classes="wide" LabelAbove="True" Label="Fit" Info="{Binding FitInfo}" Hint="{Binding FitHint}">
+      <ui:FormField.InfoPicture>
+        <DataTemplate x:DataType="vm:ModelSettingsViewModel">
+          <vm:ModelSettingDiagram Setting="Fit" Value="{Binding Fit.Value}" />
+        </DataTemplate>
+      </ui:FormField.InfoPicture>
+      <ComboBox x:Name="FitBox" HorizontalAlignment="Stretch" ItemsSource="{x:Static vm:ModelSettingsViewModel.Fits}" SelectedItem="{Binding Fit}" />
+    </ui:FormField>
+    <vm:ModelSettingDiagram x:Name="FitPicture" Setting="Fit" Value="{Binding Fit.Value}" IsVisible="{Binding IsGuided}" HorizontalAlignment="Left" />
+
+    <ui:FormField Classes="wide" LabelAbove="True" Label="Scaling" Info="{Binding ScalingInfo}" Hint="{Binding ScalingHint}">
+      <ui:FormField.InfoPicture>
+        <DataTemplate x:DataType="vm:ModelSettingsViewModel">
+          <vm:ModelSettingDiagram Setting="Scaling" Value="{Binding Scaling.Value}" />
+        </DataTemplate>
+      </ui:FormField.InfoPicture>
+      <ComboBox x:Name="ScalingBox" HorizontalAlignment="Stretch" ItemsSource="{x:Static vm:ModelSettingsViewModel.Scalings}" SelectedItem="{Binding Scaling}" />
+    </ui:FormField>
+    <vm:ModelSettingDiagram x:Name="ScalingPicture" Setting="Scaling" Value="{Binding Scaling.Value}" IsVisible="{Binding IsGuided}" HorizontalAlignment="Left" />
+
+    <Grid ColumnDefinitions="*,*" ColumnSpacing="12" IsVisible="{Binding CanSize}">
+      <ui:FormField Classes="wide" LabelAbove="True" Label="Input width">
+        <TextBox x:Name="WidthBox" Text="{Binding InputWidth}" />
+      </ui:FormField>
+      <ui:FormField Grid.Column="1" Classes="wide" LabelAbove="True" Label="Input height">
+        <TextBox x:Name="HeightBox" Text="{Binding InputHeight}" />
+      </ui:FormField>
+    </Grid>
+  </StackPanel>
+</UserControl>

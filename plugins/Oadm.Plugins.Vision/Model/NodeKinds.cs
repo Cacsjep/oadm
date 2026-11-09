@@ -294,7 +294,7 @@ public static class NodeKinds
         [
             Classes(),
             MinScore("50"),
-            new() { Key = MinSizeKey, Label = "Minimum size", Type = NodeFieldType.Number, Optional = true, Min = 0, Max = 100, Unit = "%", Slider = true, Hint = "Share of the picture's height." },
+            new() { Key = MinSizeKey, Label = "Minimum size", Type = NodeFieldType.Number, Optional = true, Min = 0, Max = 100, Unit = "%", Slider = true, Hint = "The object's height as a share of the picture's. Live output shows the sizes." },
             new() { Key = MaxSizeKey, Label = "Maximum size", Type = NodeFieldType.Number, Optional = true, Min = 0, Max = 100, Unit = "%", Slider = true },
             new() { Key = LabelKey, Label = "Class of Classify", Type = NodeFieldType.Text, Optional = true },
         ],

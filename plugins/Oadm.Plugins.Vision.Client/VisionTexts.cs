@@ -67,7 +67,26 @@ public static class VisionTexts
     public const string Optional = "Optional";
 
     // Models.
-    public const string UploadModel = "Upload model";
+    public const string ImportModel = "Import model";
+    public const string SizeTip = "Height, share of the picture's";
+    public const string LabelsFile = "Labels file";
+    public const string ModelFamily = "Model family";
+    public const string ChooseModelFileFirst = "Choose the model file.";
+    public const string StepModel = "Model";
+    public const string StepSettings = "Settings";
+    public const string StepLabels = "Labels";
+    public const string LoadLabels = "Load labels file";
+    public const string ImportIntro = "Choose your ONNX model. OADM checks it, finds out what it is and sets it up.";
+    public const string LabelsStepHint = "The names shown on the boxes and offered in the nodes. A labels file has one name per line.";
+    public const string Back = "Back";
+    public const string Next = "Next";
+    public const string Import = "Import";
+    public const string ModelChecked = "Model checked";
+    public const string SettingsReady = "The settings are set for this model. Change one only if your model was made differently.";
+    public const string FormatInfo = "How the model's answer is read. It must fit how the model was made.";
+    public const string FitInfo = "How the camera's wide picture goes into the model's input.";
+    public const string ScalingInfo = "What the model gets for each pixel.";
+    public const string AddInto = "Add a node into this input";
     public const string CheckingModel = "Checking the model";
     public const string Cancel = "Cancel";
     public const string Dismiss = "Dismiss";
@@ -77,7 +96,7 @@ public static class VisionTexts
     public const string ModelClasses = "Class names";
     public const string ChooseModelFile = "Choose a model file";
     public const string Missing = "Missing";
-    public const string MissingTip = "Upload the file again to use it.";
+    public const string MissingTip = "Import the file again to use it.";
     public const string DeleteModel = "Delete model";
     public const string DeletePipeline = "Delete pipeline";
     public const string ClassesHint = "One name per line.";
@@ -182,6 +201,31 @@ public static class VisionTexts
     public static string NewPipelineName(int number) => string.Create(CultureInfo.InvariantCulture, $"Pipeline {number}");
 
     /// <summary>"Upload 42 %".</summary>
+    /// <summary>What a fit does, below its select in the Import model wizard.</summary>
+    public static string FitMeaning(ModelFit fit) => fit switch
+    {
+        ModelFit.Stretch => "The whole picture, squeezed into the input. For RF-DETR, RT-DETR and classifiers.",
+        ModelFit.KeepShapePad => "The whole picture at the top, the rest filled. For DETR.",
+        _ => "The whole picture, scaled down with bars above and below. For YOLO and YOLOX.",
+    };
+
+    /// <summary>What a scaling does, below its select in the Import model wizard.</summary>
+    public static string ScalingMeaning(ModelScaling scaling) => scaling switch
+    {
+        ModelScaling.ImageNet => "Values shifted by the average of the ImageNet pictures. For DETR, RF-DETR and ImageNet classifiers.",
+        ModelScaling.ZeroTo255Bgr => "The raw values with blue first. For YOLOX.",
+        _ => "Each colour from 0 to 1. For YOLO and most other exports.",
+    };
+
+    /// <summary>What the model check found, below "Model checked" ("Detection · 640x640 · 80 classes · read as YOLO").</summary>
+    public static string Found(VisionModel model, string formatName)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        var kind = model.Kind == ModelKind.Classification ? "Classification" : "Detection";
+        var classes = model.ClassNames.Count;
+        return string.Create(CultureInfo.InvariantCulture, $"{kind} · {model.InputWidth}x{model.InputHeight} · {classes:N0} {(classes == 1 ? "class" : "classes")} · read as {formatName}");
+    }
+
     public static string Uploading(double fraction) => string.Create(CultureInfo.InvariantCulture, $"Upload {Math.Round(Math.Clamp(fraction, 0, 1) * 100)} %");
 
     /// <summary>"Detection · 576x576 · 91 classes · 129 MB · 2 pipelines".</summary>
@@ -231,6 +275,25 @@ public static class VisionTexts
     };
 
     public static string Objects(int count) => count == 1 ? "1 object" : string.Create(CultureInfo.InvariantCulture, $"{count} objects");
+
+    /// <summary>An object's height as a share of the picture's: "9 %" (what Minimum size and Maximum size of a Filter count).</summary>
+    public static string Size(double height) => string.Create(CultureInfo.InvariantCulture, $"{Math.Round(Math.Clamp(height, 0, 1) * 100)} %");
+
+    /// <summary>A Filter's live output: the sizes of the objects that came in, " · Sizes 6 to 12 %" (empty without objects).</summary>
+    public static string Sizes(IReadOnlyList<double> heights)
+    {
+        ArgumentNullException.ThrowIfNull(heights);
+        if (heights.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var low = Math.Round(Math.Clamp(heights.Min(), 0, 1) * 100);
+        var high = Math.Round(Math.Clamp(heights.Max(), 0, 1) * 100);
+        return low == high
+            ? string.Create(CultureInfo.InvariantCulture, $" · Size {low} %")
+            : string.Create(CultureInfo.InvariantCulture, $" · Sizes {low} to {high} %");
+    }
 
     /// <summary>The live output's first line: "5 in this picture · 18 ms per picture · 2 left out".</summary>
     public static string InThisPicture(int count, double? ms, int? dropped)

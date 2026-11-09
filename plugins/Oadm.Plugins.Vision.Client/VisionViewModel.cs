@@ -365,7 +365,7 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
 
     public bool HasError => !string.IsNullOrEmpty(ErrorText);
 
-    /// <summary>No pipeline at all: "Upload a model, then create a pipeline."</summary>
+    /// <summary>No pipeline at all: "Import a model, then create a pipeline."</summary>
     public bool ShowEmpty => !IsLoading && _rows.Count == 0 && Editor is null;
 
     public static string EmptyText => VisionInfo.EmptyText;

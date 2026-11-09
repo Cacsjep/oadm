@@ -110,8 +110,8 @@ public static class GraphTexts
         return $"{kind.Label} works only while Watching.";
     }
 
-    /// <summary>"Upload the model Gate people again."</summary>
-    public static string UploadAgain(string modelName) => $"Upload the model {modelName} again.";
+    /// <summary>"Import the model Gate people again."</summary>
+    public static string UploadAgain(string modelName) => $"Import the model {modelName} again.";
 
     /// <summary>"The model Gate people has no class bicycle."</summary>
     public static string NoSuchClass(string modelName, string className) => $"The model {modelName} has no class {className}.";

@@ -28,7 +28,7 @@ A user limited to a [device group](../../../admin/device-groups/) sees only the 
 |---|---|
 | **At most 8 pipelines can watch at once. Set another pipeline to On action first.** | Set another pipeline to **On action**, or use a server with more cores. [Limits](../speed/#limits) |
 | **At most 4 pipelines can watch at once at the site Building B. Set another pipeline there to On action first.** | The same for the cameras of that site |
-| **Upload the model Gate people again.** | The model file is missing, for example after a restore. Upload the same file in **Models** |
+| **Import the model Gate people again.** | The model file is missing, for example after a restore. Import the same file with **Import model** |
 | **The models fail on the pictures of this pipeline. The server log has the details.** | Check the server log on the **Logs** page. Try the model on the CPU: turn off **Use GPU** |
 | **Starting: testing the graphics card.** | Wait: the pipeline starts by itself |
 | **The pipeline's camera is no longer in its device group.** | Put the camera back in the device group, or delete the pipeline |
@@ -37,7 +37,7 @@ A user limited to a [device group](../../../admin/device-groups/) sees only the 
 
 ## Model upload
 
-The row of an upload says why a model was not kept.
+**Import model** says below the file why a model was not kept.
 
 | Message | Do this |
 |---|---|
@@ -48,12 +48,13 @@ The row of an upload says why a model was not kept.
 | **This model cannot run here: it needs inputs other than one picture.** | Export it with only the picture as the input |
 | **This model cannot run here: its picture input is not in floating point numbers.** | Export it again with a floating point input |
 | **This model cannot run here: its outputs match no format Vision Center reads.** | See [Formats OADM reads](../models/#formats-oadm-reads). Export it in one of them |
-| **This model cannot run here: the labels file has 80 names, the model has 91 classes.** | Give the labels file one line per class, or upload without it and choose a [class list](../models/#class-lists) |
 | **This model cannot run here: it does not load (…).** | The text after it comes from ONNX Runtime. Export the model again, with a newer opset |
 | **This model is already stored as RF-DETR medium.** | The same file is there already. Use that model |
+| **This file is not a model of this family. Choose another family or Find automatically.** | The file finds objects and the family classifies, or the other way. Choose another family or **Find automatically** |
+| **The model's outputs do not fit this family. Choose another family or Find automatically.** | The model comes from another family. Choose it, or **Find automatically** |
 | **A model is at most 500 MB.**, **OADM keeps at most 20 models. Delete one first.**, **The models take at most 4 GB together. Delete one first.** | Delete a model you do not use, or use a smaller one |
-| **Choose an ONNX file (.onnx).** | Choose the `.onnx` file. A labels file goes with it as `.txt` |
-| **The upload ended. Upload the model again.** | The upload stopped for a minute. Upload again |
+| **Choose an ONNX file (.onnx).** | Choose the `.onnx` file. Load a labels file later, in **Labels** |
+| **The upload ended. Import the model again.** | The upload stopped for a minute. Import it again |
 
 ## Detections
 

@@ -8,8 +8,11 @@ using Oadm.Sdk.Client.Collections;
 
 namespace Oadm.Plugins.Vision.Client;
 
-/// <summary>An object of a node's output in this frame: Object (the tracked id), Class, Score, Time inside.</summary>
-public sealed record ObjectRow(string ObjectId, string Class, string Score, string TimeInside);
+/// <summary>
+/// An object of a node's output in this frame: Object (the tracked id), Class, Score, Size (its height as a share of the
+/// picture's, as the Filter's sizes count it), Time inside.
+/// </summary>
+public sealed record ObjectRow(string ObjectId, string Class, string Score, string Size, string TimeInside);
 
 /// <summary>A crossing of a Line node: Time, Direction, Class, Object.</summary>
 public sealed record CrossingRow(string Time, string Direction, string Class, string ObjectId);
@@ -161,11 +164,13 @@ public sealed partial class NodeOutputViewModel : ObservableObject
                     o.TrackId is { } id ? VisionTexts.ObjectId(id) : "—",
                     o.Label?.ClassName ?? o.Detection.ClassName,
                     VisionTexts.Score(o.Label?.Score ?? o.Detection.Score),
+                    VisionTexts.Size(o.Detection.Box.Height),
                     o.InsideSeconds is { } s ? VisionTexts.Seconds(s) : string.Empty)));
                 HasRows = Objects.Count > 0;
                 Summary = output is null ? VisionTexts.NothingYet
                     : output.Label is { } label && objects.Count == 0 ? $"{label.ClassName} {VisionTexts.Score(label.Score)}"
-                    : VisionTexts.InThisPicture(objects.Count, output.Milliseconds, node.Kind == NodeKinds.Filter ? output.Dropped.Count : null);
+                    : VisionTexts.InThisPicture(objects.Count, output.Milliseconds, node.Kind == NodeKinds.Filter ? output.Dropped.Count : null)
+                        + (node.Kind == NodeKinds.Filter ? VisionTexts.Sizes([.. objects.Concat(output.Dropped).Select(o => o.Detection.Box.Height)]) : string.Empty);
                 break;
         }
     }

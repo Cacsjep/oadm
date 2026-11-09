@@ -44,7 +44,7 @@ public static partial class AddOnCatalog
     public static readonly IReadOnlyList<AddOnEntry> Entries =
     [
         new(TextRecognitionId, "Text recognition", "Reads text in camera pictures."),
-        new(VisionCenterId, "Vision Center", "Finds, tracks and counts objects in camera pictures."),
+        new(VisionCenterId, "Vision Center", "Custom analytics pipelines with your own model."),
     ];
 
     /// <summary>The entry with <paramref name="id"/> (ordinal, ignoring case), or null.</summary>

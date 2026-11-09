@@ -77,6 +77,14 @@ public static class CanvasGeometry
     public static Point ControlPort(double x, double y, int index = 0) =>
         new(x, y + NodeHeight + (index * ControlRowHeight) + (ControlRowHeight / 2) - 6);
 
+    /// <summary>The + left of an empty control input of the selected node: a click adds a node into that input (a Timer into Reset).</summary>
+    public static Rect ControlPlusRect(double x, double y, int index = 0)
+    {
+        var port = ControlPort(x, y, index);
+        const double size = 16;
+        return new Rect(port.X - 34 - size, port.Y - (size / 2), size, size);
+    }
+
     public static Rect EyeRect(double x, double y) => new(x + NodeWidth - EyeSize - 6, y + 5, EyeSize, EyeSize);
 
     /// <summary>The control points of a link's curve from <paramref name="from"/> (an output) down to <paramref name="to"/> (an input).</summary>

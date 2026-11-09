@@ -44,12 +44,12 @@ Count the people who pass a door, per day.
 
 1. Download a model, for example
    [rf-detr-medium.onnx](https://huggingface.co/PierreMarieCurie/rf-detr-onnx/resolve/main/rf-detr-medium.onnx) (121 MB).
-   In the **Models** card click **Upload model** and choose the file.
+   In the **Models** card click **Import model**, choose the file and click **Next** until **Import**.
 2. Click **New** in **Pipelines** and choose the camera. Enter a name and leave **Mode** on **Watching**.
 3. Click **Add node** and add **Detect objects**. Choose the model and, under **Classes**, `person`. Then add **Track**
    and **Line** below it with the **+** under each node. Drag the line across the door on the video.
-4. Add **Count** below the line and **Event** below the count. Add a **Timer** with **Every** **Day** at `00:00` and drag
-   from its output to **Reset** on the count.
+4. Add **Count** below the line and **Event** below the count. Click the count, then the **+** left of its **Reset** and choose
+   **Timer**. Its **Every** is **Day** at `00:00`.
 5. Watch the In and Out numbers on the video and in **Live output**, then click **Save**.
 
 </Steps>

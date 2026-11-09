@@ -115,7 +115,7 @@ public sealed record VisionModel
     /// <summary>One call on the graphics card, ms; null: not tried or not used.</summary>
     public double? GpuMs { get; init; }
 
-    /// <summary>The file is not there (after a restore on another computer): its pipelines show "Upload the model ... again."</summary>
+    /// <summary>The file is not there (after a restore on another computer): its pipelines show "Import the model ... again."</summary>
     public bool Missing { get; init; }
 
     public DateTimeOffset UploadedAt { get; init; }
