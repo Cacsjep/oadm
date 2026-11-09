@@ -71,6 +71,7 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
     private readonly CancellationTokenSource _stopping = new();
     private readonly ITimer _recheck;
     private readonly ITimer _live;
+    private readonly ITimer _previewLive;
     private readonly ITimer _sweep;
     private readonly ITimer _statsTimer;
     private volatile Dictionary<string, string> _problems = [];
@@ -98,6 +99,7 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
         {
             _recheck = _time.CreateTimer(_ => _ = QuietlyAsync(SyncAsync, "the check of the pipelines"), null, RecheckInterval, RecheckInterval);
             _live = _time.CreateTimer(_ => TickLive(), null, VisionLimits.LiveEvery, VisionLimits.LiveEvery);
+            _previewLive = _time.CreateTimer(_ => TickPreviews(), null, VisionLimits.PreviewEvery, VisionLimits.PreviewEvery);
             _sweep = _time.CreateTimer(_ => _ = QuietlyAsync(SweepPreviewsAsync, "the end of old previews"), null, PreviewSweepInterval, PreviewSweepInterval);
             _statsTimer = _time.CreateTimer(_ => TickStats(), null, PipelineStats.SampleInterval, PipelineStats.SampleInterval);
         }
@@ -450,6 +452,7 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
 
             await _recheck.DisposeAsync().ConfigureAwait(false);
             await _live.DisposeAsync().ConfigureAwait(false);
+            await _previewLive.DisposeAsync().ConfigureAwait(false);
             await _sweep.DisposeAsync().ConfigureAwait(false);
             await _statsTimer.DisposeAsync().ConfigureAwait(false);
             await StopLoopsAsync(_ => true).ConfigureAwait(false);
@@ -1056,12 +1059,26 @@ internal sealed partial class PipelineRuntime : IAsyncDisposable
 
     private void MarkLive() => Interlocked.Exchange(ref _liveChanged, 1);
 
-    /// <summary>The live timer: the previews' new states to their users, and the pipeline list when a live line changed.</summary>
-    private void TickLive()
+    /// <summary>The preview timer: each preview with a new frame sends its state to its user.</summary>
+    private void TickPreviews()
     {
         try
         {
             PublishPreviews();
+        }
+#pragma warning disable CA1031 // A timer callback never throws; the next tick tries again.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogBackgroundFailed(_logger, "sending the previews", ex);
+        }
+    }
+
+    /// <summary>The live timer: the pipeline list when a live line changed.</summary>
+    private void TickLive()
+    {
+        try
+        {
             if (Interlocked.Exchange(ref _liveChanged, 0) == 1)
             {
                 LiveChanged?.Invoke(this, EventArgs.Empty);

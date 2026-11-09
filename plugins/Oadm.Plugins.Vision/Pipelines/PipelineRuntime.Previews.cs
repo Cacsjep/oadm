@@ -14,7 +14,7 @@ namespace Oadm.Plugins.Vision.Pipelines;
 /// the watching limits (also per site) after the saved pipelines. At most <see cref="VisionLimits.MaxPreviews"/>,
 /// <see cref="VisionLimits.MaxPreviewsPerUser"/> per user (a further one ends that user's oldest); each belongs to the user
 /// who started it and ends <see cref="VisionLimits.PreviewLease"/> after the page's last call. Its state reaches only that
-/// user, at most every <see cref="VisionLimits.LiveEvery"/>. Pause holds the latest frame in memory and runs the draft on it
+/// user, at most every <see cref="VisionLimits.PreviewEvery"/>. Pause holds the latest frame in memory and runs the draft on it
 /// again after every change (latest wins, one worker); nothing ever reaches the disk.
 /// </summary>
 internal sealed partial class PipelineRuntime
@@ -456,7 +456,7 @@ internal sealed partial class PipelineRuntime
         }
     }
 
-    /// <summary>The live timer: each preview with a new state sends it to its user (at most every <see cref="VisionLimits.LiveEvery"/>).</summary>
+    /// <summary>The preview timer: each preview with a new state sends it to its user (at most every <see cref="VisionLimits.PreviewEvery"/>).</summary>
     private void PublishPreviews()
     {
         List<Preview> previews;

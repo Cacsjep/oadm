@@ -3,7 +3,7 @@ namespace Oadm.Plugins.Vision.Model;
 /// <summary>Every limit of Vision Center in one place (docs/spec/vision-center.md "Limits", "Load", "Models").</summary>
 public static class VisionLimits
 {
-    public static readonly IReadOnlyList<int> FpsChoices = [1, 2, 4, 8, 12, 15];
+    public static readonly IReadOnlyList<int> FpsChoices = [1, 2, 4, 8, 12, 15, 20, 25];
 
     public const int DefaultFps = 8;
 
@@ -79,8 +79,14 @@ public static class VisionLimits
 
     public static readonly TimeSpan PreviewKeepAlive = TimeSpan.FromSeconds(10);
 
-    /// <summary>The live lines of the page: at most this often per pipeline or preview.</summary>
+    /// <summary>The live lines of the pipeline list: at most this often per pipeline.</summary>
     public static readonly TimeSpan LiveEvery = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>
+    /// A preview's state (boxes, live lines, outputs) to its page: at most this often, so the boxes on the video follow every
+    /// frame up to 25 per second (decision 2026-11-09: twice a second looked like 1 fps). A preview sends only after a new frame.
+    /// </summary>
+    public static readonly TimeSpan PreviewEvery = TimeSpan.FromMilliseconds(40);
 
     /// <summary>Count changed: at most once per this.</summary>
     public static readonly TimeSpan CountChangedEvery = TimeSpan.FromSeconds(1);

@@ -69,6 +69,22 @@ public sealed class ObjectTrackerTests
     }
 
     [Fact]
+    public void Objects_whose_scores_stay_low_are_tracked_too()
+    {
+        // Oranges on a belt at 20 to 30 %: no detection ever reaches the high score, each moves a little per frame.
+        var fixture = TrackFixture.Load("two-people-crossing.json");
+        var low = fixture.Frames.Select(f => f with
+        {
+            Detections = [.. f.Detections.Select(d => (d.Truth, d.Detection with { Score = 0.25 }))],
+        }).ToList();
+        Assert.All(low.SelectMany(f => f.Objects), o => Assert.True(o.Detection.Score < ObjectTracker.HighScore));
+        var (idsOf, perFrame) = Run(fixture with { Frames = low });
+        Assert.Equal([1], idsOf[1]);
+        Assert.Equal([2], idsOf[2]);
+        Assert.Equal(0, perFrame[1]); // still not confirmed in the second frame (Confirm after 3)
+    }
+
+    [Fact]
     public void A_crowd_of_fifty_keeps_one_id_per_person()
     {
         var fixture = TrackFixture.Load("crowd-50.json");

@@ -36,7 +36,7 @@ public sealed class PreviewTests
     }
 
     [Fact]
-    public async Task ItsStateReachesOnlyItsUserAtMostEveryHalfSecond()
+    public async Task ItsStateReachesOnlyItsUserOncePerTickWithANewFrame()
     {
         await using var vision = await VisionHarness.StartAsync();
         var me = vision.Context.CallAsAllDevices("anna");
@@ -52,7 +52,11 @@ public sealed class PreviewTests
         await Eventually.TrueAsync(() => vision.Runtime.KeptPreviewResults >= 2, "the second frame ran");
         Assert.Equal(before, vision.Runtime.SentPreviewEvents);
 
-        vision.Time.Advance(VisionLimits.LiveEvery);
+        // The boxes follow the frames (up to 25 a second), not the live lines' half second.
+        Assert.True(VisionLimits.PreviewEvery <= TimeSpan.FromSeconds(1.0 / 25));
+        vision.Time.Advance(VisionLimits.PreviewEvery);
+        Assert.Equal(before + 1, vision.Runtime.SentPreviewEvents);
+        vision.Time.Advance(VisionLimits.PreviewEvery); // no new frame: nothing to send
         Assert.Equal(before + 1, vision.Runtime.SentPreviewEvents);
         var sent = vision.Context.PublishedEvents.Last(e => e.Topic == VisionMethods.PreviewTopic);
         Assert.Equal(PluginEventAudienceKind.User, sent.Audience.Kind);

@@ -21,7 +21,7 @@ public sealed record TrackerSettings(int ConfirmFrames, TimeSpan KeepLost)
 /// </summary>
 public sealed class ObjectTracker
 {
-    /// <summary>A detection at or above this score is a high one (round 1, may start a track).</summary>
+    /// <summary>A detection at or above this score is a high one (round 1); any detection may start a track.</summary>
     public const double HighScore = 0.5;
 
     /// <summary>The least IoU of a match in round 1 (ByteTrack's 0.8 distance).</summary>
@@ -76,8 +76,9 @@ public sealed class ObjectTracker
         // Round 1: high detections against every track.
         Match(objects, count, matchOf, high: true, FirstRoundIoU, _ => true);
 
-        // Round 2: low detections against the confirmed tracks seen last frame and still unmatched.
-        Match(objects, count, matchOf, high: false, SecondRoundIoU, t => t.Confirmed && !t.Lost);
+        // Round 2: low detections against the tracks seen last frame and still unmatched (a model whose scores stay low,
+        // 20 to 30 %, is tracked too: its new tracks start from low detections and confirm here).
+        Match(objects, count, matchOf, high: false, SecondRoundIoU, t => !t.Lost);
 
         // Matched tracks take their detection.
         for (var d = 0; d < count; d++)
@@ -119,11 +120,13 @@ public sealed class ObjectTracker
             }
         }
 
-        // Unmatched high detections start tracks while there is room (lost tracks make room first, the oldest first).
+        // Unmatched detections start tracks while there is room (lost tracks make room first, the oldest first). Every object
+        // that reaches the node counts: the Detect node's minimum score and a Filter already chose them; Confirm after keeps
+        // noise from an id.
         for (var d = 0; d < count; d++)
         {
             var o = objects[d];
-            if (matchOf[d] is not null || o.Detection.Score < HighScore)
+            if (matchOf[d] is not null)
             {
                 continue;
             }
