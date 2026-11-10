@@ -302,10 +302,15 @@ public static class VisionTexts
             : string.Create(CultureInfo.InvariantCulture, $" · Sizes {low} to {high} %");
     }
 
-    /// <summary>The live output's first line: "5 in this picture · 18 ms per picture · 2 left out".</summary>
-    public static string InThisPicture(int count, double? ms, int? dropped)
+    /// <summary>The live output's first line: "5 in this picture · 3 below 50 % · 18 ms per picture · 2 left out".</summary>
+    public static string InThisPicture(int count, double? ms, int? dropped, int? below = null, int? minScore = null)
     {
         var text = string.Create(CultureInfo.InvariantCulture, $"{count} in this picture");
+        if (below is { } b && minScore is { } min)
+        {
+            text += string.Create(CultureInfo.InvariantCulture, $" · {b} below {min} %");
+        }
+
         if (ms is { } m)
         {
             text += string.Create(CultureInfo.InvariantCulture, $" · {Math.Round(m)} ms per picture");

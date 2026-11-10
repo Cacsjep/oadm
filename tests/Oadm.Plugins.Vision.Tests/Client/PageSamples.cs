@@ -322,7 +322,7 @@ internal static class PageSamples
             Nodes =
             [
                 new() { NodeId = "a", Kind = PortKind.Picture, Live = "1280x720" },
-                new() { NodeId = "b", Kind = PortKind.Objects, Objects = [.. people, Car], Milliseconds = 18, Live = "5 objects · 18 ms" },
+                new() { NodeId = "b", Kind = PortKind.Objects, Objects = [.. people, Car], Below = 3, Milliseconds = 18, Live = "5 objects · 18 ms" },
                 new() { NodeId = "c", Kind = PortKind.Objects, Objects = people, Dropped = [Car], Live = "4 kept · 1 left out" },
                 new() { NodeId = "d", Kind = PortKind.TrackedObjects, Objects = tracked, Live = "3 tracked" },
                 new() { NodeId = "e", Kind = PortKind.Crossings, Crossings = [crossing], In = 12, Out = 7, Live = "In 12 · Out 7" },

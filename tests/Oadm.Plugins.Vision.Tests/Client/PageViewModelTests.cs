@@ -209,7 +209,7 @@ public sealed class PageViewModelTests
         editor.Canvas.SelectedNode = editor.Canvas.Find("b");
         Assert.True(editor.Output.IsObjects);
         Assert.Equal(5, editor.Output.Objects.Count);
-        Assert.Equal("5 in this picture · 18 ms per picture", editor.Output.Summary);
+        Assert.Equal("5 in this picture · 3 below 50 % · 18 ms per picture", editor.Output.Summary);
 
         editor.Canvas.SelectedNode = editor.Canvas.Find("e");
         Assert.True(editor.Output.IsCrossings);

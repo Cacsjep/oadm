@@ -424,14 +424,17 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
     arrow keys). An Area or Line node added on the canvas starts drawing at once.
   - Pause holds the frame as in Text recognition; while paused the draft runs again on the same frame after every change,
     so a minimum score or a filter can be tuned on one picture.
-- **Right, below: the selected node**: its settings form, then for Detect objects and Classify **What the model sees**
-  (decided 2026-11-10), then its **live output**, the feedback the user asked for:
+- **Right, below: the selected node**: three cards, its settings form, for Detect objects and Classify **What the model
+  sees** (decided 2026-11-10), and its **live output**, the feedback the user asked for. The cards use the column's width
+  (`ui:FlowColumns`, decided 2026-11-10): side by side once each gets 380 px (`PageLayout.NodeCardMinWidth`, at most 3,
+  each into the shortest column), one below the other in a narrow column; the fields in the settings card flow into
+  columns of at least 260 px instead of growing. Nothing selected: the pipeline's settings in one card.
   - What the model sees: the model's input of the preview's latest (or held) frame as the server draws it for the model
     call (`getModelView`, `IInference.ModelView`, the same `Preprocess.Draw` as the tensor, the frame decoded with the
     pipeline's `PictureNeed`), before the values are scaled; a caption "576x576 · Letterbox" and Refresh. Classify on
     objects: one tile per object (the box with its margin), at most 8. Read when the node is selected, with the next frame
     after its model or area changed, and on Refresh; never live. Live view only, as Pause; in memory only, never stored.
-  - Detect, Filter, Track, Area: objects in this frame, a table of them (Object, Class, Score, Size: the height as a share of the picture's, as a Filter counts it; Time inside), a Filter also the sizes of what came in ("Sizes 6 to 12 %"), the node's
+  - Detect, Filter, Track, Area: objects in this frame, a table of them (Object, Class, Score, Size: the height as a share of the picture's, as a Filter counts it; Time inside, an Area only), a Filter also the sizes of what came in ("Sizes 6 to 12 %"), Detect objects how many of its classes scored below its minimum, down to 10 % ("3 below 50 %", `NodeOutput.Below`: only the preview asks the model down to 10 %, a saved pipeline never), the node's
     time per frame. Line: the last 20 crossings (Time, Direction, Class, Object). Count: the value. Event: whether it is
     on, the last 20 times it fired with its values (a preview's own list: a preview never publishes, "Previews").
   - Nothing selected: the pipeline's own settings (name, mode).

@@ -192,6 +192,36 @@ public sealed class PipelineEvaluatorTests
         Assert.Equal("1 object", r.Nodes[filter].Live);
     }
 
+    // The page's preview counts the objects of the chosen classes below the minimum score, down to 10 %; a saved pipeline asks
+    // the model only for its minimum score and counts nothing.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Detect_in_the_preview_counts_the_objects_below_its_minimum_score(bool preview)
+    {
+        var b = new PipelineBuilder();
+        var camera = b.Add(NodeKinds.Camera);
+        var detect = b.After(camera, NodeKinds.Detect, PipelineBuilder.DetectSettings(50, "person"), show: true);
+        var h = new EvaluatorHarness(b.Build(), allNodes: preview);
+        var r = await h.RunAsync(0,
+            Det.Person(0.2, 0.9, 0.9),
+            Det.Person(0.4, 0.9, 0.3),   // below
+            Det.Person(0.6, 0.9, 0.12),  // below
+            Det.Person(0.8, 0.9, 0.05),  // under 10 %: not counted
+            Det.Car(0.5, 0.5, 0.3));     // another class
+        Assert.Single(r.Nodes[detect].Objects);
+        if (preview)
+        {
+            Assert.Equal(VisionLimits.BelowScoreFloor, h.Inference.MinScores[0], 9);
+            Assert.Equal(2, r.Nodes[detect].Below);
+        }
+        else
+        {
+            Assert.Equal(0.5, h.Inference.MinScores[0], 9);
+            Assert.Null(r.Nodes[detect].Below);
+        }
+    }
+
     [Fact]
     public async Task Detect_keeps_its_classes_and_shows_count_and_time()
     {

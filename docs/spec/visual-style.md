@@ -176,6 +176,9 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 - `EventPicker` over an `EventTree` of `EventChoice` (id, name, folders, available, description): the event select, a
   field with the chosen event's folders, its panel with search, the folder tree and the event's description (the event
   rule dialog's events, Vision Center's Choose event).
+- `FlowColumns`: a panel that uses its width instead of stretching its children: as many equal columns as fit its
+  `MinColumnWidth` (at most `MaxColumns`), row by row (`Packing` Rows: form fields) or each child into the shortest
+  column (Columns: cards); invisible children take no room. Vision Center's cards below the video and their fields.
 - `SearchBox`: every search field. `OadmIcon`: every icon; class `fieldIcon` with `inner` puts an icon into a text box
   through its `InnerLeftContent` (the login's user name and password). `LeadingIcon`: wraps one ComboBox or TextBox and
   puts a `fieldIcon` at its left inside, level with the input's first line (the theme's `ui|LeadingIcon > ComboBox`,

@@ -234,11 +234,14 @@
 
       <GridSplitter x:Name="VideoSplitter" Grid.Row="1" Classes="paneSplitter" />
 
-      <Border x:Name="NodeCard" Grid.Row="2" Classes="card">
+      <!-- Below the video: cards that use the width (ui:FlowColumns): side by side when the column is wide, one below the
+           other when it is narrow; the fields in a card flow the same way instead of growing. -->
+      <Border x:Name="NodeCard" Grid.Row="2">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled">
           <Panel>
             <!-- Nothing selected: the pipeline's own settings. -->
-            <StackPanel x:Name="PipelineForm" Spacing="10" IsVisible="{Binding ShowPipelineForm}">
+            <Border Classes="card" IsVisible="{Binding ShowPipelineForm}">
+            <StackPanel x:Name="PipelineForm" Spacing="10">
               <TextBlock Classes="cardTitle" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
               <StackPanel Spacing="8" IsEnabled="{Binding MayChange}">
                 <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Name}">
@@ -253,9 +256,12 @@
               </ui:FormField>
               <TextBlock Classes="secondary" Text="{Binding SelectionNote}" TextWrapping="Wrap" />
             </StackPanel>
+            </Border>
 
-            <!-- A node selected: its form, drawn from its fields, then its live output. -->
-            <StackPanel x:Name="NodePanel" Spacing="12" IsVisible="{Binding HasForm}">
+            <!-- A node selected: its form, drawn from its fields; What the model sees; its live output. Each its own card. -->
+            <ui:FlowColumns x:Name="NodePanel" Packing="Columns" MinColumnWidth="{x:Static vm:PageLayout.NodeCardMinWidth}" MaxColumns="3"
+                            ColumnSpacing="{x:Static vm:PageLayout.CardGap}" RowSpacing="{x:Static vm:PageLayout.CardGap}" IsVisible="{Binding HasForm}">
+              <Border x:Name="NodeFormCard" Classes="card">
               <StackPanel Spacing="10" DataContext="{Binding Form}" x:DataType="vm:NodeFormViewModel">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                   <vm:NodeKindIcon Kind="{Binding Node.Kind}" Width="16" Height="16" VerticalAlignment="Center" />
@@ -276,7 +282,7 @@
                   <ItemsControl x:Name="Fields" ItemsSource="{Binding Fields}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
-                        <StackPanel Spacing="8" />
+                        <ui:FlowColumns MinColumnWidth="{x:Static vm:PageLayout.FieldMinWidth}" RowSpacing="8" />
                       </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <!-- A field another field hides (VisibleWhen) takes no room. -->
@@ -371,10 +377,13 @@
                 </StackPanel>
               </StackPanel>
 
+              </Border>
+
               <!-- What the model of a Detect objects or Classify node gets of the latest frame (Live view only). -->
-              <StackPanel x:Name="ModelViewPanel" Spacing="8" DataContext="{Binding ModelView}" x:DataType="vm:ModelViewViewModel" IsVisible="{Binding IsShown}">
+              <Border x:Name="ModelViewCard" Classes="card" IsVisible="{Binding ModelView.IsShown}">
+              <StackPanel x:Name="ModelViewPanel" Spacing="8" DataContext="{Binding ModelView}" x:DataType="vm:ModelViewViewModel">
                 <Grid ColumnDefinitions="*,Auto">
-                  <TextBlock Classes="sectionTitle" Text="{x:Static vm:ModelViewViewModel.Title}" VerticalAlignment="Center" />
+                  <TextBlock Classes="cardTitle" Text="{x:Static vm:ModelViewViewModel.Title}" VerticalAlignment="Center" />
                   <ui:ToolbarButton x:Name="RefreshModelViewButton" Grid.Column="1" Icon="{DynamicResource Icon.refresh}" Text="{x:Static vm:ModelViewViewModel.RefreshTip}"
                                     Command="{Binding RefreshCommand}" />
                 </Grid>
@@ -401,9 +410,12 @@
                 </ItemsControl>
               </StackPanel>
 
+              </Border>
+
               <!-- The live output of the selected node. -->
+              <Border x:Name="OutputCard" Classes="card">
               <StackPanel x:Name="OutputPanel" Spacing="8" DataContext="{Binding Output}" x:DataType="vm:NodeOutputViewModel">
-                <TextBlock Classes="sectionTitle" Text="{x:Static vm:VisionTexts.LiveOutput}" />
+                <TextBlock Classes="cardTitle" Text="{x:Static vm:VisionTexts.LiveOutput}" />
                 <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsEvent}">
                   <ui:StatusChip Text="{Binding StateText}" IsOk="{Binding IsOn}" IsVisible="{Binding HasState}" />
                 </StackPanel>
@@ -423,12 +435,12 @@
                         <TextBlock Classes="numberHeader" Text="Score" />
                       </DataGridTextColumn.Header>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Width="70" Binding="{Binding Size}" CellStyleClasses="number" x:DataType="vm:ObjectRow">
+                    <DataGridTextColumn Width="80" Binding="{Binding Size}" CellStyleClasses="number" x:DataType="vm:ObjectRow">
                       <DataGridTextColumn.Header>
                         <TextBlock Classes="numberHeader" Text="Size" ToolTip.Tip="{x:Static vm:VisionTexts.SizeTip}" />
                       </DataGridTextColumn.Header>
                     </DataGridTextColumn>
-                    <DataGridTextColumn Width="115" Binding="{Binding TimeInside}" CellStyleClasses="number" x:DataType="vm:ObjectRow">
+                    <DataGridTextColumn Width="115" Binding="{Binding TimeInside}" IsVisible="{Binding #ObjectsGrid.((vm:NodeOutputViewModel)DataContext).ShowTimeInside, FallbackValue=False}" CellStyleClasses="number" x:DataType="vm:ObjectRow">
                       <DataGridTextColumn.Header>
                         <TextBlock Classes="numberHeader" Text="Time inside" />
                       </DataGridTextColumn.Header>
@@ -454,7 +466,8 @@
                   </DataGrid.Columns>
                 </DataGrid>
               </StackPanel>
-            </StackPanel>
+              </Border>
+            </ui:FlowColumns>
           </Panel>
         </ScrollViewer>
       </Border>

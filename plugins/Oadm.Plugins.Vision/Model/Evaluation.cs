@@ -38,6 +38,12 @@ public sealed record NodeOutput
     /// <summary>The objects it gives (Detect, Classify, Filter, Track, Area).</summary>
     public IReadOnlyList<VisionObject> Objects { get; init; } = [];
 
+    /// <summary>
+    /// Detect objects in the page's preview: the objects of the chosen classes below the minimum score, down to
+    /// <see cref="VisionLimits.BelowScoreFloor"/> (the page shows "3 below 50 %"); null elsewhere.
+    /// </summary>
+    public int? Below { get; init; }
+
     /// <summary>Filter: the objects it left out (drawn dashed).</summary>
     public IReadOnlyList<VisionObject> Dropped { get; init; } = [];
 

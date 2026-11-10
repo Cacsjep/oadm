@@ -97,11 +97,25 @@ public sealed class PageScreenshotTests
                 Headless.Pump();
                 Assert.True(view.FindControl<DataGrid>("ObjectsGrid")!.IsEffectivelyVisible);
                 Assert.Equal(5, editor.Output.Objects.Count);
+                Assert.Equal("5 in this picture · 3 below 50 % · 18 ms per picture", editor.Output.Summary);
                 await editor.ModelView.ReadAsync();
                 Headless.Pump();
                 Assert.True(view.FindControl<Border>("ModelViewPicture")!.IsEffectivelyVisible);
                 Assert.Equal("576x576 · Letterbox", editor.ModelView.Caption);
                 Headless.Capture(window, $"vision-page-detect-{suffix}.png");
+
+                // A wide right column: the cards side by side, the fields at their width instead of grown.
+                var narrow = view.RightWidth;
+                view.SetRightWidth(narrow + 700);
+                window.UpdateLayout();
+                Headless.Pump();
+                var formCard = view.FindControl<Border>("NodeFormCard")!;
+                var outputCard = view.FindControl<Border>("OutputCard")!;
+                Assert.True(view.FindControl<Border>("ModelViewCard")!.Bounds.X > formCard.Bounds.X || outputCard.Bounds.X > formCard.Bounds.X, "a card sits beside the form");
+                Headless.Capture(window, $"vision-page-detect-wide-{suffix}.png");
+                view.SetRightWidth(narrow);
+                window.UpdateLayout();
+                Headless.Pump();
 
                 // Nothing selected: the pipeline's own settings.
                 editor.Canvas.ClearSelection();

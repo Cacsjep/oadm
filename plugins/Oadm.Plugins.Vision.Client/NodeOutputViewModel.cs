@@ -169,11 +169,16 @@ public sealed partial class NodeOutputViewModel : ObservableObject
                 HasRows = Objects.Count > 0;
                 Summary = output is null ? VisionTexts.NothingYet
                     : output.Label is { } label && objects.Count == 0 ? $"{label.ClassName} {VisionTexts.Score(label.Score)}"
-                    : VisionTexts.InThisPicture(objects.Count, output.Milliseconds, node.Kind == NodeKinds.Filter ? output.Dropped.Count : null)
+                    : VisionTexts.InThisPicture(objects.Count, output.Milliseconds, node.Kind == NodeKinds.Filter ? output.Dropped.Count : null,
+                        output.Below, MinScoreOf(node))
                         + (node.Kind == NodeKinds.Filter ? VisionTexts.Sizes([.. objects.Concat(output.Dropped).Select(o => o.Detection.Box.Height)]) : string.Empty);
                 break;
         }
     }
+
+    /// <summary>A Detect objects node's minimum score in percent (50 when not set).</summary>
+    private static int? MinScoreOf(NodeViewModel node) =>
+        node.Kind == NodeKinds.Detect ? (int)Math.Round(Oadm.Plugins.Vision.Graph.NodeSettings.Number(node.Settings[NodeKinds.MinScoreKey]) ?? 50) : null;
 
     private void Note(string text)
     {
