@@ -61,7 +61,7 @@ what OADM loads and what you ship.
 
 ## The project files
 
-Both parts use the project SDK `Oadm.Plugin.Sdk`, in the version of the other packages (`Sdk="Oadm.Plugin.Sdk/4.5.2"`).
+Both parts use the project SDK `Oadm.Plugin.Sdk`, in the version of the other packages (`Sdk="Oadm.Plugin.Sdk/x.y.z"`).
 It names the assemblies, references the OADM SDK without copying it and writes `plugin.json` from the server project's
 properties. The properties, and what OADM provides at runtime: [Plugin basics](../plugins/#the-project-files).
 

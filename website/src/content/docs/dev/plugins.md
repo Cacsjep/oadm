@@ -61,7 +61,7 @@ references the OADM SDK without copying it (the host has it), writes `plugin.jso
 and copies the plugin folder to `.oadm/plugins/<id>/` after every build:
 
 ```xml
-<Project Sdk="Oadm.Plugin.Sdk/4.5.2">
+<Project Sdk="Oadm.Plugin.Sdk/x.y.z">
   <PropertyGroup>
     <OadmPluginId>acme.hello</OadmPluginId>
     <Version>1.0.0</Version>

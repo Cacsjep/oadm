@@ -166,7 +166,7 @@ without one; a connection that failed keeps trying. The Target column shows the 
 nothing, and it replaces **Send test** for these actions.
 
 A new recipient needs only its address. TLS for MQTT, and security and login for OPC UA, are there when you need them. Certificates come from the
-[PKI](/tools/pki/) page: import or create one there, then choose it in the recipient. OPC UA with security needs a certificate imported into PKI.
+[PKI](../pki/) page: import or create one there, then choose it in the recipient. OPC UA with security needs a certificate imported into PKI.
 
 The first action waits up to 15 seconds for the connection. After that an action does not wait for a connection that is down: it fails, and the event log says why. Nothing is sent later. Use the event
 **Recipient not connected** to act on it.
@@ -184,7 +184,7 @@ The first action waits up to 15 seconds for the connection. After that an action
 
 The **Event log** below the rules and recipients lists what happened: the events your rules use, when a rule turned on, off or ran, and every
 action with its result. The newest entries come first and new ones appear live. OADM keeps the log for 30 days or
-100,000 entries. Administrators can empty it with **Delete all**.
+100,000 entries. **Delete all** empties it and needs the permission **Delete the event log** (administrators have it).
 
 ## Good to know
 

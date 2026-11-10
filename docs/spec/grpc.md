@@ -41,7 +41,7 @@ used again.
   anything but a start page; the start page is the only change the Administrator role accepts, else
   FAILED_PRECONDITION; FAILED_PRECONDITION for a `version` older than the stored role: "Another administrator changed the
   role X meanwhile. Click Discard and make your changes again.", version 0 = no check; INVALID_ARGUMENT names, over 50
-  roles), `DeleteRole(id)` (custom roles without users), `Mine` (the caller's role name, its permissions with names and
+  custom roles), `DeleteRole(id)` (custom roles without users), `Mine` (the caller's role name, its permissions with names and
   `devices = 4`: all devices or the group's name, its summary without excepted devices, site and tag names, single
   device count, the view's device_count). `ServerSettings.roles_notice = 22` (administrators only): what operators lost
   with the upgrade to roles.

@@ -68,7 +68,7 @@ always-on `oadm.acap` stays as it is). The context menu dialog **Applications (A
     checked as a warning), "No applications", "All running" (ok) or the problems ("1 task problem, 1 license problem,
     1 license ends soon, 2 not running"; error for a failed task or a missing or invalid license, warning for licenses
     that end soon and tasks with warnings). Problems sort first.
-  - **Applications** (right): the applications of the selected devices, one row per device and application: address,
+  - **Apps** (right): the applications of the selected devices, one row per device and application: address,
     application, version, status (Running, Stopped, Idle), license (the end date of a valid license, "Valid", "Not
     required", "Missing", "Invalid"), vendor, ⋯. Application, Status and Vendor share the free width. Its header row:
     **Install licenses**, **Start**, **Stop**, **Remove** (they act on the selected application rows; what does not fit

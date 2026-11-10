@@ -206,23 +206,6 @@ public static class VisionTexts
 
     public static string NewPipelineName(int number) => string.Create(CultureInfo.InvariantCulture, $"Pipeline {number}");
 
-    /// <summary>"Upload 42 %".</summary>
-    /// <summary>What a fit does, below its select in the Import model wizard.</summary>
-    public static string FitMeaning(ModelFit fit) => fit switch
-    {
-        ModelFit.Stretch => "The whole picture, squeezed into the input. For RF-DETR, RT-DETR and classifiers.",
-        ModelFit.KeepShapePad => "The whole picture at the top, the rest filled. For DETR.",
-        _ => "The whole picture, scaled down with bars above and below. For YOLO and YOLOX.",
-    };
-
-    /// <summary>What a scaling does, below its select in the Import model wizard.</summary>
-    public static string ScalingMeaning(ModelScaling scaling) => scaling switch
-    {
-        ModelScaling.ImageNet => "Values shifted by the average of the ImageNet pictures. For DETR, RF-DETR and ImageNet classifiers.",
-        ModelScaling.ZeroTo255Bgr => "The raw values with blue first. For YOLOX.",
-        _ => "Each colour from 0 to 1. For YOLO and most other exports.",
-    };
-
     /// <summary>What the model check found, below "Model detected" ("Detection · 640x640 · 80 classes").</summary>
     public static string Found(VisionModel model)
     {
@@ -235,6 +218,7 @@ public static class VisionTexts
     /// <summary>Below a select of Import model whose value the user changed: "The check found RF-DETR."</summary>
     public static string CheckFound(string name) => "The check found " + name + ".";
 
+    /// <summary>"Upload 42 %".</summary>
     public static string Uploading(double fraction) => string.Create(CultureInfo.InvariantCulture, $"Upload {Math.Round(Math.Clamp(fraction, 0, 1) * 100)} %");
 
     /// <summary>"Detection · 576x576 · 91 classes · 129 MB · 2 pipelines".</summary>

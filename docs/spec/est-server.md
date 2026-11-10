@@ -208,8 +208,7 @@ The camera sends no event when a renewal fails (see "The camera's own EST errors
   addresses stay until the hourly check finds no managed device there. A chosen interface that goes away while listening
   closes the listener ("Interface ... is not available"); failures of the hourly check and of the 30 s retry are logged.
 - Robustness: a failed write of the store is logged and tried again; stopping never opens a listener or relay any more.
-- Scale: a per-device index (`_profilesOf`) keeps Stop and Forget O(1) per device (`RenewalTests`, Perf at the device limit; measured: 30,000 cameras in
-  about 0.5 s); one read of the device list per check; at most 20 log lines per check, then one summary line.
+- Scale: a per-device index (`_profilesOf`) keeps Stop and Forget O(1) per device (`RenewalTests`, Perf at the device limit); one read of the device list per check; at most 20 log lines per check, then one summary line.
 
 ## Setting up a camera
 
@@ -321,7 +320,8 @@ previous web server certificate, test certificates deleted).
 
 ## License of the code
 
-`plugins/Oadm.Plugins.Pki/Est` and `plugins/Oadm.Plugins.Pki.Client/Est` carry their own `LICENSE` (source-available: the
+`plugins/Oadm.Plugins.Pki/Est` and `plugins/Oadm.Plugins.Pki.Client/Est` are under their own license
+(`plugins/Oadm.Plugins.Pki/Est/LICENSE`, one file for both; source-available: the
 source can be read, using the EST server needs an OADM PRO license; changing or removing the license check is not
 allowed). The rest of OADM, PKI included, stays Apache-2.0. The THIRD-PARTY notices name the part ("Except the part Est of
 the plugin oadm.pki").

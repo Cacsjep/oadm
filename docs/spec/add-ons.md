@@ -9,7 +9,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 Plugins of OADM that are not in its installers: an administrator downloads the plugin's ZIP, clicks Install on the Plugins
 page and chooses it, the client sends it to the server, and every client gets the client part from the server. The same
 steps work online and offline. The first ones are the vision plugins, which analyse the cameras' pictures on the server
-(text recognition, `docs/spec/ocr.md`; Vision Center, `docs/spec/vision-center.md`, spec only). OADM itself stays free of models and inference libraries; no extra installer.
+(text recognition, `docs/spec/ocr.md`; Vision Center, `docs/spec/vision-center.md`). OADM itself stays free of models and inference libraries; no extra installer.
 
 **Name for users: "optional plugins"** (decision 2026-11-03): the card "Optional plugins" on the Plugins page,
 audit "Installed optional plugin ...", log lines the Logs page shows, docs and every UI text. "Add-on" stays the name in
@@ -102,8 +102,8 @@ computer. A client loads the client part its server hands it: the user must trus
   field of the hash file; `check-server-hash.sh` checks it). ZIPs from before it have no file: the first update after it offers
   the new ZIP. A change in the SDK or host is the floor's matter (rule 3), not the fingerprint's.
 - The built-in hash: `manage package addons` writes `artifacts/publish/addons/<rid>/addon-hashes-<version>.txt`, one
-  "`<id> <sha256>`" per line; the server's publish passes it as `-p:OadmAddOnHashFile=<file>`; `Oadm.Server.csproj` turns each
-  line into assembly metadata `OadmAddOnSha256:<id>`; `AssemblyAddOnHashes` reads it (`IAddOnHashes`). Assembly metadata
+  "`<id> <sha256> <fingerprint>`" per line; the server's publish passes it as `-p:OadmAddOnHashFile=<file>`; `Oadm.Server.csproj` turns each
+  line into assembly metadata `OadmAddOnSha256:<id>` and `OadmAddOnContent:<id>`; `AssemblyAddOnHashes` reads it (`IAddOnHashes`). Assembly metadata
   survives `PublishSingleFile` and needs no file next to the exe. Only the hashes of that system go into its server, so
   the ZIPs are built first and never again after that (`docs/spec/packaging.md` "Add-on ZIPs"). `packaging/addons/check-server-hash.sh`
   compares the published exe with the ZIP in `release.yml`.

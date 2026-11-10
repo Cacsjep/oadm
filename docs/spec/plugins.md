@@ -258,10 +258,10 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   - Which method each bundled plugin uses (what its callers relied on before): `Parse` in DHCP server, NTP server, PKI,
     EST server, 802.1X server, Dashboards, Live view and Edge recording export; `ParseOrEmpty` in Action Rule Editor,
     Application management, Device triggers, Edge storage, Hardening scan, Image Health, I/O monitor, Load test,
-    Metadata monitor, Text recognition, Snapshot report, System report and the page API of VAPIX commander. Options
-    that differ from the common ones stay as they were on the wire: camelCase enums in Applications (ACAP),
-    Application management, Device triggers, Network and Users; enum names in Dashboards, Load test and Text
-    recognition; nulls written in EST server, 802.1X server and Users.
+    Metadata monitor, Text recognition, Vision Center, Snapshot report, System report and the page API of VAPIX
+    commander. Options that differ from the common ones stay as they were on the wire: camelCase enums in Applications
+    (ACAP), Application management, Device triggers, Network and Users; enum names in Dashboards, Load test, Text
+    recognition and Vision Center; nulls written in EST server, 802.1X server and Users.
   - Not moved, on purpose: the task payloads with their own "Nothing was changed." texts (`UsersJson.ParsePayload`,
     `AcapPayload`, `DateTimePayload.Parse`, `FirmwarePayload.Parse`, `NetworkPayload`, the configuration payloads;
     Users, Network and Applications (ACAP) take only their options from the helper), the strict library and export
@@ -296,7 +296,7 @@ Task plugin names and groups: `DisplayName` is at most `TaskPluginNames.MaxDispl
 ends with "..." (dialog tasks too); it is the menu and toolbar name only, the tasks pane shows `GetTaskName`. The server
 registry strips trailing "..." / "…" and shortens longer names to 31 characters + "…" (logged); empty groups become
 `General`. Bundled task plugins: Restart, Upgrade AXIS OS, Date and time, Export and Import configuration, Configure
-devices, Use OADM as NTP server (Maintenance), Applications (ACAP) (Applications), Users (Users), Network settings and
+devices, Create configuration file, Use OADM as NTP server (Maintenance), Applications (ACAP) (Applications), Users (Users), Network settings and
 Assign IP address (Network), the PKI tasks and EST - Certificate Enrollment (Security, contributed by `oadm.pki` and
 `oadm.est`); `TaskPluginNamesTests` checks every plugin deployed to `artifacts/plugins`.
 
@@ -382,7 +382,7 @@ The code: `src/Oadm.Sdk.Client/ClientPlugins.cs`, `ToolbarPlugins.cs`. Everythin
   one or a short `RetryDelay`). A failed read ends its own subscription before the wait. `ctx.RunAsync(handle,
   retryDelay, ct)` (the first form) stays. Pages: NTP server, DHCP server, Hardening scan, PKI, Live View, Dashboards
   (read and watch); I/O Monitor, Metadata Monitor, Action Rule Editor, Applications, Edge storage, Image Health
-  Dashboard, Load test, Text recognition, EST server, 802.1X server (watch only). Device triggers keeps its own loop: it
+  Dashboard, Load test, Text recognition, Vision Center, EST server, 802.1X server (watch only). Device triggers keeps its own loop: it
   reads again only while no event arrives. Tests `Oadm.Client.Tests` `PluginEventWatchTests`.
 - **A guarded call** (`GuardedRun`, SDK 0.12.0; guide: `dev/core-plugins.md` "A guarded call"):
   `await GuardedRun.RunAsync(work)` runs a server call of a page or dialog and returns null, or the text to show when it failed (`ServerErrors.Message`: the server's reason, else the
@@ -507,7 +507,7 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
   (0.12.0: `PluginJson` or `ByteSize` in Action Rule Editor, Applications (ACAP), Application management, the
   configuration tasks, Dashboards, Device triggers, DHCP server, Edge recording export, Edge storage, Hardening scan,
   Image Health, I/O monitor, Live view, Load test, Metadata monitor, Network, NTP server, PKI with the EST and 802.1X
-  servers, Snapshot report, System report, Text recognition, Upgrade AXIS OS, Users and VAPIX commander; PKI also
+  servers, Snapshot report, System report, Text recognition, Upgrade AXIS OS, Users, VAPIX commander and Vision Center; PKI also
   `IRecipientCertificates` and `IRecipientCertificateUse`; Modbus, MQTT and OPC UA `RecipientType.Sessions`; 0.11.0:
   Notifications `ActionField.Recipient`; constants such as `AxisOsTexts.Name` are compiled in and need none; 0.4.0:
   Date and time, Outputs, Restart, Web View).
@@ -578,7 +578,8 @@ box back with the error below the list (`PluginsViewModel.SwitchAsync`).
 
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
   **Off by default: Action Rule Editor, Application management, Dashboards, Device triggers, Edge Recording Export, Edge
-  storage, Hardening scan, Image Health Dashboard, Load test, I/O Monitor, Live View, Metadata Monitor and Snapshot report**, and inside PKI the EST and 802.1X servers (their
+  storage, Hardening scan, Image Health Dashboard, Load test, I/O Monitor, Live View, Metadata Monitor and Snapshot report**,
+  the optional plugins Text recognition and Vision Center, and inside PKI the EST and 802.1X servers (their
   own Turn on, below). The administrator's choices are the server setting `Plugins.Enabled` (JSON object package id ->
   on; packages without a choice use their default), applied before the core plugins start
   (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).

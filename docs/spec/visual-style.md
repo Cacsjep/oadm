@@ -47,7 +47,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   compliance), **Sites** (built in, below Compliance; while the role may see sites), then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (the built-in
   Event rules first, then VAPIX Commander, Device triggers, Action Rule Editor), Security (PKI, Hardening scan), Monitoring
-  (Live View, Dashboards, Metadata Monitor, I/O Monitor, Image Health Dashboard, Load test), Vision (Text recognition;
+  (Live View, Dashboards, Metadata Monitor, I/O Monitor, Image Health Dashboard, Load test), Vision (Text recognition, Vision Center;
   `CorePluginGroups.RailOrder`), Reporting (Snapshot report; System report
   has no page), Maintenance (Edge Recording Export, Edge storage), Integrations, Utilities (Web View), Extensions (default,
   third-party)): only groups with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
@@ -186,7 +186,7 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   (`Icon.squareA`, `Icon.squareFunction`, `Icon.squareB`: A f B); class `accent` gives the icon the accent colour (the
   operator's f, decided 2026-11-02); class `found` sets a green check (the value is what a check found) and `changed` a
   warning triangle (the user picked another; Import model of Vision Center, decided 2026-11-10); without an icon the input
-  keeps its usual padding. The check row is `Grid.checkRow`: star columns capped at `Oadm.CheckFieldWidth`,
+  keeps its usual padding (pseudo-class `:noIcon`). The check row is `Grid.checkRow`: star columns capped at `Oadm.CheckFieldWidth`,
   `Oadm.CheckOperatorWidth`, `Oadm.CheckValueWidth` (the event select above the checks spans the three, its info icon and
   the checks' remove icon share the last column, `SharedSizeGroup` CheckEnd), so the row keeps those widths and shrinks
   on a narrow window; each input is a label-less `ui:FormField` (`wide inline`) so leaving it shows its error.
@@ -284,8 +284,8 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
     without devices); `DevicePickerViewModel.ErrorText` shows a refusal directly below the list.
 - `PageDeviceChoice`: the device choice of every page that reads many devices. The "Selected devices" button (a command
   button with the devices icon in a page toolbar), All devices / tags / chosen devices resolved now, the Devices page
-  selection to start with, the last choice kept on this computer (Action Rule Editor, Edge storage, Image Health
-  Dashboard, Hardening scan, Snapshot report).
+  selection to start with, the last choice kept on this computer (Action Rule Editor, Applications, Edge storage, Image
+  Health Dashboard, Hardening scan, Load test, Snapshot report).
 - `DeviceIcon`: every device icon in a list. The category icon `Icon.device.*`, neutral when OK, amber for Credentials
   required / Password not set / Certificate changed, red for Unreachable, `ShowStatusToolTip` = the status message on
   hover (device grid, `DeviceTree`, Compliance, Edge Recording Export).
@@ -340,6 +340,6 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 
 **Client only** (`src/Oadm.Client/Controls`, prefix `c`): `PageTitleBar` (every host page header), `CollapsibleCard`
 (every card that folds: the Settings page; closed by default, opens by itself when an input inside shows a validation
-error), `TagChipList` (the tags of a device as chips), `LiveViewPanel` (the live view beside the device grid),
+error), `TagChipList` (the tags of a device as chips), `TagColorPicker` (the color of a tag, the tags dialog), `LiveViewPanel` (the live view beside the device grid),
 `SplashLogo` (the animated logo of the start splash), `GridSelection` (a grid's multi-item selection to its view model in
 one step).

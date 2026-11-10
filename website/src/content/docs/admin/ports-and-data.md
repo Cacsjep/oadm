@@ -13,6 +13,7 @@ description: Network ports, the data folder and what to back up.
 | UDP 67 | [DHCP server](../../tools/dhcp-server/), only when enabled |
 | TCP 9454 | [EST server](../../tools/est-server/): cameras get their certificates, only while it runs (the port can be changed) |
 | UDP 1812 | [802.1X server](../../tools/radius-server/): switches check the cameras, only while it runs (the port can be changed) |
+| UDP 50000 to 50799 | [Load test](../../tools/load-test/): video from the cameras, only while a check runs |
 
 The Windows installer opens TCP 5080 for Domain and Private networks. The server opens each other port only while it is
 in use, as in the table. The server runs as Local System / root because the NTP and DHCP servers need privileged ports.

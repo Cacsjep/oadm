@@ -1,6 +1,6 @@
 # OPC UA
 
-Event rule action **Write OPC UA value** and the recipient type **OPC UA**, spec: [recipient sessions](../../docs/spec/recipient-sessions.md).
+Id `oadm.opcua`, server only, always on. Event rule action **Write OPC UA value** and the recipient type **OPC UA**, spec: [recipient sessions](../../docs/spec/recipient-sessions.md).
 
 - Library: OPCFoundation.NetStandard.Opc.Ua.Client 2.0.1 (OPC Foundation MIT License 1.00).
 - One session per recipient, shared by its rules (`RecipientSessionPool`). One write of the Value attribute per action; nothing is browsed or subscribed, and the only reads are the stack's own: the keep alive and what it reads while a session opens.

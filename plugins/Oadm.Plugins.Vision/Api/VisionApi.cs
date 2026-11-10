@@ -105,7 +105,7 @@ public static class VisionMethods
     /// </summary>
     public const string GetModelView = "getModelView";
 
-    /// <summary>Event <see cref="PreviewEvent"/>: the preview's live node outputs, at most every <see cref="VisionLimits.LiveEvery"/>, only to its user.</summary>
+    /// <summary>Event <see cref="PreviewEvent"/>: the preview's live node outputs, at most every <see cref="VisionLimits.PreviewEvery"/>, only to its user.</summary>
     public const string PreviewTopic = "preview";
 
     /// <summary>Event <see cref="PipelineList"/> after a pipeline was created, changed or deleted, or its state changed.</summary>

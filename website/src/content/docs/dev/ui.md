@@ -25,6 +25,11 @@ Add the namespace `xmlns:ui="using:Oadm.Sdk.Client.Controls"` to your XAML.
 | `ui:FormField Label Hint Error` | **Every labeled input**: the label left, level with the input; below the input its validation error, else the `Hint`. The widths come from the theme (`Oadm.FormLabelWidth` 180, `Oadm.FormInputWidth` 280; a narrower row shrinks the input). Class `wide`: the input fills the row. Class `inline`: the label sizes to its text (fields in one line, From / To). `LabelAbove` (SDK 0.5.0): the label above a full-width input. Without a label the label column stays empty, so a check box or a button row lines up with the inputs. `Error` only for content without data validation (a group of check boxes, a text value) |
 | `ui:FormField Info`, `ui:InfoIcon Text` | The explanation of a field as an info icon right of the input (hover and click), instead of a long hint. `InfoPicture` / `PictureTemplate` (a `DataTemplate`) adds a drawing below the text |
 | `ui:PasswordBox Text` | **Every password field**: a bullet mask and an eye button ("Show password" / "Hide password"). Never a `TextBox` with `PasswordChar` |
+| `ui:LeadingIcon Icon` | Wraps one `TextBox` or `ComboBox` and puts an icon at its left inside. Class `accent`: the icon in the accent colour; `found`: a green check (the value is what a check found); `changed`: a warning triangle (the user picked another) |
+| `ui:NumberSlider Text Minimum Maximum Step Unit` | A number users tune: the input, its unit, then a slider; both change the one value. `HasError` gives the input the red border, the error goes below the row through `FormField.Error` |
+| `ui:DayChips` + `DayChoice.Week()` | The weekday toggle chips, Monday first (`IDayChoice` items) |
+| `ui:EventPicker Tree Selected` | The event select: an `EventTree` of `EventChoice`s with search, folders and the event's description |
+| `ui:FlowColumns MinColumnWidth MaxColumns Packing` | A panel that uses its width: as many equal columns as fit, row by row (`FlowPacking.Rows`, form fields) or each child into the shortest column (`Columns`, cards) |
 | `ui:FileRow FileName Details Error Command` | A chosen local file with its "Choose file" button; write sizes with `ByteSize.Text` |
 | `ui:WizardSteps ItemsSource` | The step row of a wizard (`WizardStepItem`: index, name, current step, can open, open) |
 | `ComboBox Classes="grouped"` + `GroupedChoice.Build(items, group, text)` | A select field with grey group headers and indented choices; bind `SelectedItem` to a `GroupedChoice`, its `Value` is the item |
@@ -242,14 +247,14 @@ compile time, so use `DynamicResource` in XAML (`Icon="{DynamicResource Icon.ref
 task's menu icon, a toolbar button) takes the key without `Icon.` (`IconKey="refresh"`). The keys:
 
 `activity`, `add`, `app`, `arrowUpRight`, `audit`, `barChart`, `bell`, `braces`, `calendarClock`, `cancel`, `check`, `chevronDown`, `chevronLeft`, `chevronRight`,
-`chevronUp`, `circle`, `clipboardCheck`, `clock`, `close`, `cloud`, `cloudCheck`, `columns`, `command`, `compare`, `copy`,
+`chevronUp`, `circle`, `circleCheck`, `clipboardCheck`, `clock`, `close`, `cloud`, `cloudCheck`, `columns`, `command`, `compare`, `copy`,
 `crossing`, `deleteAll`, `details`, `devices`, `download`, `edit`, `eraser`, `export`, `externalLink`, `eye`, `eyeOff`,
 `file`, `filter`, `firmware`, `flame`, `flow`, `focus`, `focusArea`, `folder`, `gauge`, `globe`, `grid`, `gridAdd`,
 `groupBy`, `hardDrive`, `hardDriveDownload`, `hash`, `help`, `hold`, `home`, `hourglass`, `identify`, `info`, `key`, `layers`, `lightbulb`,
 `lock`, `lockOpen`, `log`, `logout`, `logs`, `maximize`, `merge`, `metronome`, `minimize`, `more`, `network`, `panelClose`,
 `panelOpen`, `pause`, `pin`, `plugin`, `polygon`, `range`, `redo`, `refresh`, `remove`, `restart`, `route`, `save`, `scan`,
 `search`, `send`, `server`, `settings`, `shield`, `shieldAlert`, `sliders`, `snapshot`, `squareA`, `squareActivity`,
-`squareB`, `squareFunction`, `start`, `stop`, `tag`, `tasks`, `text`, `thermometer`, `toggle`, `undo`, `upload`, `user`,
+`squareB`, `squareFunction`, `start`, `stop`, `tag`, `tasks`, `text`, `thermometer`, `toggle`, `triangleAlert`, `undo`, `upload`, `user`,
 `users`, `video`, `workflow`, `wrench`, `zap`.
 
 Device categories: `device.camera`, `device.encoder`, `device.speaker`, `device.audio`, `device.intercom`,

@@ -239,9 +239,9 @@ Switches differ; the server assumes nothing a switch may leave out and is strict
   NAS-IP-Address (both are shown in the log, not trusted).
 - **Text attributes** decoded as UTF-8; invalid bytes shown as replacement characters; control and format characters
   removed before they reach the UI or a log.
-- **Fixtures:** recorded conversations of real switches (Cisco IOS / IOS-XE, HPE Aruba, Juniper, Netgear, Ubiquiti, Zyxel,
-  MikroTik as available) under `tests/.../Fixtures/Radius`, each replayed in a test; new switch quirks become a fixture
-  first.
+- **Fixtures** (not built yet, see "Code (server)"): recorded conversations of real switches (Cisco IOS / IOS-XE, HPE
+  Aruba, Juniper, Netgear, Ubiquiti, Zyxel, MikroTik as available) under `tests/Oadm.Plugins.Radius.Tests/Fixtures/Radius`,
+  each replayed in a test; new switch quirks become a fixture first.
 
 ## Certificates and the list of certificates no longer accepted
 
@@ -332,14 +332,15 @@ records, `docs/spec/settings-backup.md`).
   echoed; every optional attribute missing; every malformed case of "Parsing and RFC compliance" dropped.
 - Fuzz tests of the RADIUS, EAP and EAP-TLS parsers (random and mutated packets from the fixtures): never an exception
   outside the parser, never a hang, never more memory than the limits.
-- The recorded switch fixtures replayed; the MAC formats of every vendor normalized.
+- The MAC formats of every vendor normalized; the recorded switch fixtures replayed once there are any.
 - Full EAP-TLS conversations with a BouncyCastle TLS client as the camera through an in-memory switch: TLS 1.2 and 1.3,
   fragment sizes 500 to 1,400 and small `Framed-MTU`, every state of the table, every refusal (unknown CA, expired, an
   unmanaged device, another site), alerts in both directions with their texts, timeouts with a `FakeTimeProvider`.
 - Switches added, changed and removed while sessions run; the 802.1X server policy: minimum version 1.3 refuses a 1.2 client
   with the alert text, an old CBC suite is offered only with minimum 1.0 or 1.1.
 - Perf (`Category=Perf`): 100,000 authentications, the session table and the log at their limits.
-- Hardware (opt-in, `Category=HardwareWrite`, never automatic): a camera with a certificate of a CA of PKI on a real switch.
+- Hardware (opt-in, `Category=HardwareWrite`, never automatic): a camera with a certificate of a CA of PKI on a real switch (not built
+  yet).
 
 ## Code (protocol)
 

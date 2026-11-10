@@ -1,6 +1,6 @@
 # Vision Center
 
-Status: **built** (2026-11-08). Open: a run of both vision add-ons on a graphics card in one server (DirectML and CUDA),
+Status: **built** (2026-11-08). Open: a run of both vision add-ons on a CUDA card in one server (DirectML done),
 the accuracy with real models on the development cameras (DETR, RF-DETR), macOS and Linux runs ("Open points").
 Decisions of the maintainer on 2026-11-08: no model ships, the user uploads their own; pipelines branch but never loop
 or merge; counts are live and reach rules as events, nothing is stored; free; detection and classification in the first
@@ -133,8 +133,8 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
   2. **Settings**: centered, a green check, "Model detected" and what the check found ("Detection · 576x576 · 91
      classes"; decided 2026-11-10); then the Name (a tag icon; the server's name for the file; unique), the **Model
      family** the check found (`ModelFamilies.Of`: by the format, a classifier by its scaling; only the families of the
-     model's kind: YOLOv8 / YOLO11 / YOLO12, YOLOv10 / YOLO26 end to end, YOLOX, RF-DETR, DETR, RT-DETR / D-FINE, DETR with
-     labels, ImageNet classifier, YOLO classifier; another family sets its format, fit and scaling) and the Settings form
+     model's kind: "YOLOv8, YOLO11, YOLO12"; "YOLOv10, YOLO26 end to end"; YOLOX; RF-DETR; DETR; "RT-DETR, D-FINE";
+     DETR with labels; ImageNet classifier; YOLO classifier; another family sets its format, fit and scaling) and the Settings form
      (`ModelSettingsForm`, shared with the dialog). Family, Format, Fit and Scaling carry a green check while they hold
      what the check found and a warning once the user picks another, with "The check found Stretch." below it
      (`ui:LeadingIcon` classes `found` / `changed`); their info icons hold the same texts and drawings as the Settings
@@ -255,7 +255,8 @@ recognition).
   (Timer, Time window), Output (Count, Statistics, Event).
 
 - A node has a name (unique in the pipeline whatever its case, at most 64 characters, no control characters ("Use letters, digits and punctuation only.", the rules' phrase), "Area 1"
-  with the lowest free number like the areas of Text recognition); rules and dashboards name it.
+  with the lowest free number like the areas of Text recognition, Detect objects, Classify and Track first without a
+  number); only an Event node shows it, as the event's name ("Page").
 - Areas and lines are stored relative to the picture (0 to 1), so a change of resolution keeps them in place.
 - **Crossing direction** (decision 2026-11-08): In is from the left of the line's drawn direction to its right, as seen
   on the picture; for a line drawn from left to right, walking down the picture is In. The In arrow points to that side.
@@ -428,7 +429,7 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   sees** (decided 2026-11-10), and its **live output**, the feedback the user asked for. The cards use the column's width
   (`ui:FlowColumns`, decided 2026-11-10): side by side once each gets 380 px (`PageLayout.NodeCardMinWidth`, at most 3,
   each into the shortest column), one below the other in a narrow column; the fields in the settings card flow into
-  columns of at least 260 px instead of growing. Nothing selected: the pipeline's settings in one card The fields keep the spacing of every form; each field of a node has an info icon with one short sentence (`NodeFieldInfo.Info`, decided 2026-11-10; a test keeps every field covered), Mode too. The Camera has no live output card (its stream size is its Stream field). Only an Event node shows its Name field (the event's name in the rules; decided 2026-11-10): the other nodes keep the unique name they get when added (the kind's name, "Detect objects 2"). The Classes field reads its model's names again when the form's model changes.
+  columns of at least 260 px instead of growing. Nothing selected: the pipeline's own settings (name, mode) in one card. The fields keep the spacing of every form; each field of a node has an info icon with one short sentence (`NodeFieldInfo.Info`, decided 2026-11-10; a test keeps every field covered), Mode too. The Camera has no live output card (its stream size is its Stream field). Only an Event node shows its Name field (the event's name in the rules; decided 2026-11-10): the other nodes keep the unique name they get when added (the kind's name, "Detect objects 2"). The Classes field reads its model's names again when the form's model changes.
   - What the model sees: the model's input of the preview's latest (or held) frame as the server draws it for the model
     call (`getModelView`, `IInference.ModelView`, the same `Preprocess.Draw` as the tensor, the frame decoded with the
     pipeline's `PictureNeed`), before the values are scaled; a caption "576x576 · Letterbox" and Refresh. Classify on
@@ -437,7 +438,6 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   - Detect, Filter, Track, Area: objects in this frame, a table of them (Object, Class, Score, Size: the height as a share of the picture's, as a Filter counts it; Time inside, an Area only), a Filter also the sizes of what came in ("Sizes 6 to 12 %"), Detect objects how many of its classes scored below its minimum, down to 10 % ("3 below 50 %", `NodeOutput.Below`: only the preview asks the model down to 10 %, a saved pipeline never), the node's
     time per frame. Line: the last 20 crossings (Time, Direction, Class, Object). Count: the value. Event: whether it is
     on, the last 20 times it fired with its values (a preview's own list: a preview never publishes, "Previews").
-  - Nothing selected: the pipeline's own settings (name, mode).
 - **The live line on each node card** (n8n's item counts): Camera "AXIS Q1798-LE · 1280x720 @ 8 fps", Detect "5
   objects · 18 ms", Filter "3 objects", Classify "3 objects · 18 ms" (on a picture "blue 87 % · 18 ms"), Track "3
   tracked", Area "2 inside", Line "In 12 · Out 7" (one of them for a line of one direction), Count "14", Statistics "Highest 14", Compare "14 > 10 · Yes" ("2 ≤ 4 ≤ 6 · Yes" for Between), And / Or, Device event
@@ -445,7 +445,8 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   objects", Timer "Next 00:00" ("Next Tue 06:30" weekly), Time window "Yes until 18:00" or "No until 08:00" ("No until
   Fri 22:00" more than a day ahead), Event "On",
   "Off" or "Fired 3 s ago" ("Fired now" below a second, then minutes and hours); the number of objects on each link while
-  the page shows. Sent at most twice a second per pipeline.
+  the page shows. Sent with the preview's state after a new frame, at most 25 times a second (`PreviewEvery`, decision
+  2026-11-09).
 - **Previews**: while the page shows a pipeline, the server runs its draft as a preview, as Text recognition does
   (`startPreview` on every change and every 10 s, a lease of 30 s, at most 8 per server and 2 per user). A saved
   unchanged watching pipeline shares its stream and shows its counts; any other draft has a stream of its own, counts
@@ -722,8 +723,6 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
 - Hugging Face and ONNX Model Zoo classifiers carry no class names: the user uploads a labels file (the 1,000 ImageNet
   names from the export's `config.json` `id2label`); a built-in ImageNet list is not decided. Google's MobileNet of
   Hugging Face (1,001 classes with a background class, mean and deviation 0.5) is not covered by the scalings.
-- "COCO, 80 classes" is also the list of RT-DETR, D-FINE and Transformers.js YOLO26 (the same 80 names): its name says
-  YOLO only.
 - DETR of Hugging Face is trained with the shorter side at 800; the free input takes 640 by default (690 ms per
   picture), 800 is not measured.
 - Not tested, no ready ONNX file: DEIM (Intellindust publishes PyTorch weights, OpenVINO files only), a YOLO

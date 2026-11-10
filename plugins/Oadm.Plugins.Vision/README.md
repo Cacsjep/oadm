@@ -44,9 +44,11 @@ detect, classify, filter, track, areas, lines, counts and rule events. Read only
 |---|---|---|
 | `listPipelines`, `getPipeline` | show | The caller's pipelines with their state and live line; one pipeline |
 | `savePipeline`, `deletePipeline` | change | Field and node errors in the reply, nothing stored on an error; audited |
+| `copyPipeline` | change | Copies of a saved pipeline on other cameras, at most 100; audited |
 | `checkGraph` | show | The server's check of a draft |
 | `startPreview`, `stopPreview` | show | The page's preview of a draft: a 30 s lease, kept every 10 s |
 | `pausePreview`, `resumePreview` | show + Live view | Holds the frame; the draft runs again on it after every change |
+| `getModelView` | show + Live view | What a Detect objects or Classify node's model gets of the preview's frame |
 | `listModels` | show | The models and the pipelines that use each |
 | `beginModelUpload`, `uploadModelChunk`, `finishModelUpload`, `cancelModelUpload` | models | The chunked upload and the model check; audited |
 | `updateModel`, `deleteModel` | models | Rename, class names or list, format, fit, scaling, input size; delete refused while used; audited |
@@ -55,8 +57,9 @@ detect, classify, filter, track, areas, lines, counts and rule events. Read only
 | `getEngine`, `setUseGpu` | show; change, all devices | What runs the models; Use GPU, audited |
 | `getCameraOptions` | show | Video sources and sizes of a camera |
 | `getStats` | show | The runtime stats; keeps the topic `stats` on for 30 s |
+| `listEventTypes` | show | The on and off events a Device event node may follow |
 
-Events to the page: `pipelines`, `preview` (only to its user, at most twice a second), `models`, `stats`.
+Events to the page: `pipelines`, `preview` (only to its user, after a new frame, at most 25 times a second), `models`, `stats`.
 
 ## Tests
 
@@ -124,4 +127,4 @@ YOLO nano models 80 to 110 ms, YOLOX nano 27 ms, YOLOX tiny 74 ms, DETR R50 at 6
 RT-DETR v2 R18 710 ms, D-FINE S 460 ms, RF-DETR small 645 ms, ResNet-50 76 ms, MobileNetV2 10 ms, YOLO11n-cls 8 ms (table
 in the spec, "Measured").
 
-Open: a real model test (DETR, RF-DETR) on the development cameras, a GPU run of both vision add-ons, macOS and Linux.
+Open: a real model test (DETR, RF-DETR) on the development cameras, a CUDA run on Linux, macOS and Linux.

@@ -49,7 +49,7 @@ passwords) and skip themselves without it: [Testing](https://oadm.app/dev/testin
 | `plugins/` | Bundled plugins, see [`plugins/README.md`](plugins/README.md) (folders, build, tests; the SDK guide is the website's developer pages) |
 | `samples/`, `templates/` | The plugins of the developer tutorials with their tests; the `dotnet new` templates made from them |
 | `tests/` | xUnit tests |
-| `tools/` | The `oadm` tool, `manage new`, the SDK reference and notices generators |
+| `tools/` | The `oadm` tool, `manage new`, the SDK reference and notices generators, the discovery probe, the base list of Axis CVEs |
 | `website/`, `packaging/` | Website and user docs (https://oadm.app/); installers |
 | `docs/` | The feature specs (`docs/spec/`) and the RFCs the protocol code follows (`docs/rfc/`) |
 

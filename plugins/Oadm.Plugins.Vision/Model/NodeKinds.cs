@@ -190,7 +190,6 @@ public static class NodeKinds
     public const string PointsKey = "points";
     public const string AnchorKey = "anchor";
     public const string DirectionsKey = "directions";
-    /// <summary>No field any more: a Timer into Count's Reset replaced it (decision 2026-11-08). Kept until the runtime drops its daily reset.</summary>
     public const string MinObjectsKey = "minObjects";
     public const string AtLeastKey = "atLeastSeconds";
     public const string OffAfterKey = "offAfterSeconds";

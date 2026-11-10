@@ -1,5 +1,7 @@
 # Vulnerabilities (CVE)
 
+Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
+
 Which managed devices may be affected by a published Axis CVE. Built into OADM (not a plugin: plugins cannot add device
 grid columns), read only, nothing is ever written to a device.
 

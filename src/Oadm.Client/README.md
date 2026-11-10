@@ -20,8 +20,6 @@ Spec: `docs/spec/myaxis.md`. Needs a MyAxis account and a server with `MyAxisSer
    macOS no new website data of OADM; Linux with WPE no `oadm-myaxis-*` folder in the temp folder after the window closed.
 6. Log out, log in as another user: that user is signed out.
 
-Not verified on 2026-11-02 (no account at hand): that the login returns to `axis_destination`, how long a session lasts.
-
 ### MyAxis sign-in on WebKitGTK (Ubuntu 24.04, Debian 12)
 
 `MyAxis/WebKitGtkCookies` reads the cookies through WebKitGTK itself (the package has no cookie manager there). Run

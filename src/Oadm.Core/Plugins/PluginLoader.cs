@@ -438,7 +438,7 @@ public sealed partial class PluginLoader
     [LoggerMessage(Level = LogLevel.Debug, Message = "Plugin root {Root} does not exist, skipped")]
     private partial void LogRootMissing(string? root);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Loaded plugin package {PackageId} {Version} from {Directory} ({Count} plugin(s))")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Loaded plugin package {PackageId} {Version} from {Directory}, plugins: {Count}")]
     private partial void LogPackageLoaded(string packageId, string version, string directory, int count);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Skipped type {Type} in {PackageId}: contributed by a core plugin or no parameterless constructor")]

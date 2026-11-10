@@ -1,6 +1,6 @@
 # Modbus
 
-Event rule action **Write Modbus value** and the recipient type **Modbus**, spec: [recipient sessions](../../docs/spec/recipient-sessions.md).
+Id `oadm.modbus`, server only, always on. Event rule action **Write Modbus value** and the recipient type **Modbus**, spec: [recipient sessions](../../docs/spec/recipient-sessions.md).
 
 - Our own Modbus TCP client, no library: functions 05, 06 and 16 only. There is no read function in the code.
 - One connection per recipient, shared by its rules (`RecipientSessionPool`). Requests go one at a time; a reply counts only with its transaction id, the unit id and exactly the echo of the request.

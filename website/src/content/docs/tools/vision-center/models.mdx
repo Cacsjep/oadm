@@ -137,8 +137,8 @@ refused while a pipeline uses the model, for example **Used by 2 pipelines: Gate
 
 ### The model check
 
-Before OADM keeps a model, it opens it and runs it once on a blank picture. A model that fails is not kept and the row
-says why, for example **This model cannot run here: it needs data in other files. Export it as one file.** See
+Before OADM keeps a model, it opens it and runs it once on a blank picture. A model that fails is not kept and **Import model**
+says why below the file, for example **This model cannot run here: it needs data in other files. Export it as one file.** See
 [Troubleshooting](../troubleshooting/#model-upload) for every reason.
 
 ## Class names
@@ -158,7 +158,7 @@ belong to how the model was trained.
 | Class list | Fits |
 |---|---|
 | **COCO, 91 ids** | DETR and RF-DETR trained on COCO. 80 names; the 11 unused numbers are never shown |
-| **COCO, 80 classes** | YOLO trained on COCO, the same names without gaps |
+| **COCO, 80 classes** | YOLO, RT-DETR and D-FINE trained on COCO, the same names without gaps |
 | Your own lists | Any model with as many classes as the list has names |
 
 The section **Class lists** below **Models** shows them. **New** creates a list: a **Name** and the names, one per line.

@@ -14,8 +14,6 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 - MyAxis sign-ins ([myaxis.md](myaxis.md)): the session cookie of each user, AES-256-GCM like device passwords with the user
   id as associated data (table MyAxisSessions); never in a gRPC answer, a backup or the log; sent only to www.axis.com.
 - Never log passwords or digest headers.
-- MyAxis sessions ([myaxis.md](myaxis.md), spec): per user, encrypted like device passwords with the user id as associated
-  data, never in a gRPC answer, a log or a backup; sent only to www.axis.com.
 
 ## TLS
 
@@ -70,7 +68,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `AccessPolicy.DeniedMessage`); it sets `CallerContext` (user, role, the role's `PermissionSet`), so a task's Owner is
   "<user>@<client machine>". `Logout` revokes. Failed logins: 5 per user in 5 minutes, then 5 minutes locked, logged.
   Per client address (IPv6: per /64): 50 failed logins in 5 minutes, then every login from that address is refused until
-  the 5 minutes end (`LoginAddressLimit` on the `AddressRateLimiter` of the site port, asked before the request is looked
+  the 5 minutes end (`LoginAddressLimit`, built on the `AddressRateLimiter` the site port uses too, asked before the request is looked
   at; 50 because users behind one NAT share an address and a single name locks after 5; audited once as "Login locked"
   with the address; signed-in users go on). Before authentication nothing long is kept: a user name over 64 or a
   password over 256 characters (the limits of the users) is a wrong login with the same answer, never looked up or
@@ -196,7 +194,8 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   whole into a temporary file in the same folder that then replaces it (`JsonClientSettingsStore.Replace`; what an
   interrupted save left is removed at a start once it is older than a minute: a younger temporary file may be the save
   of another client of the same user). On Linux and macOS it is created with mode 0600 and an older file
-  is limited to its owner once at the start; on Windows it has the rights of the user's data folder.- The title bar shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out; a
+  is limited to its owner once at the start; on Windows it has the rights of the user's data folder.
+- The title bar shows the logged-in user (initial avatar + name, tooltip "Logged in as ... (role) on ...") with Log out; a
   click on the user opens **Your role** (`Shell/MyRoleWindow`, `MyRoleViewModel`, `RoleService.Mine`): the role's name
   and what it allows, grouped like the matrix, read-only. `UserSession` keeps role name and permission keys
   (`Has(key)`, `PermissionsChanged`), fed by Login / Me and the session stream (`ServerConnection`); a server without
@@ -270,7 +269,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
 - "Save to credential list" of the login editor is shown to administrators only and the server ignores it for other
   roles (`RetryAuth`), like everywhere the credential list is written.
 - Candidates: the credential list and credentials typed on the page; passwords of managed devices are never tried on new
-  devices; at most 10 rejected credentials per device. Details in "Add Devices Page".
+  devices; at most 10 rejected credentials per device. Details in `docs/spec/add-devices.md`.
 - Users with a device group: the credential list is never tried for them (adding, Retry, Log in, the waiting list): a
   session tries the list only after `DiscoveryAuthenticator.AllowCredentialList` (users with all devices, the server's
   automatic add), else only what was typed for it (fail closed). Test `AddDevicesScopeTests` (no credential request reaches
@@ -343,7 +342,9 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   protocol=UDP localport=<port> program=<exe> profile=domain,private`) through `ICommandRunner`. A rule can cover a port
   range (SDK 0.6.0 `FirewallRule.LastPort`, `ForServiceRange`, netsh `localport=<first>-<last>`): the Load test
   opens "OADM Server (Load test, UDP 50000-50799)" for the RTP over UDP of its stream probes only while a check
-  runs ([live-view.md](live-view.md) "Stream probes").
+  runs ([live-view.md](live-view.md) "Stream probes"). The site port keeps "OADM Server (Site nodes, TCP 5081)" while it
+  listens (`SiteManager`), and every plugin listener on the server's own network keeps a rule named by its reason while
+  it is open (`LocalNetwork`): "OADM Server (EST server, TCP 9454)", "OADM Server (802.1X server, UDP 1812)".
 - **Folders** (the service runs as SYSTEM / root): at start (step 0 of `OadmServerHost.StartAsync`, service mode only)
   the data folder, the runtime extraction folder and every plugin folder must be writable only by administrators / root
   (`Oadm.Server.Hosting.FolderGuard` over `IFolderPermissions`: `WindowsFolderPermissions`, `UnixFolderPermissions`). Windows: owner and every entry SYSTEM / Administrators / TrustedInstaller, no
@@ -397,6 +398,6 @@ server.
 roles, first administrator, sessions, throttling, audit), `LoginLimitsTests` (long names and passwords, the audit entry
 of unknown names, the limit per address), `TlsPinningTests` (real Kestrel with TLS), `MasterKeyCheckTests`,
 `MasterKeyFileTests`, `KeyReplacedNoticeTests`, `DeviceLimitsTests`, `UploadStoreTests`; `MethodRoleTests` in the DHCP,
-NTP, PKI and VAPIX Commander test projects; `tests/Oadm.Client.Tests`: `LoginTests`, `CrashHandlingTests`.
+NTP, PKI, Hardening scan and VAPIX Commander test projects; `tests/Oadm.Client.Tests`: `LoginTests`, `CrashHandlingTests`.
 `TestServerHost` calls as the administrator "admin" (`InvokerFor(token)` / `InvokerForUserAsync(name, role)` for others,
 `createAdmin: false` for an empty user table, PBKDF2 with 1,000 iterations for speed).

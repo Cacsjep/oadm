@@ -9,6 +9,7 @@ cd website
 npm ci
 npm run dev       # http://localhost:4321/
 npm run build     # static site in dist/
+npm run build:offline  # the Help pages shipped with the client
 ```
 
 - Pages: `src/content/docs/` (Markdown or MDX), sidebar in `astro.config.mjs`.

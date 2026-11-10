@@ -37,7 +37,8 @@ OADM is an independent project. It is not made, sponsored or endorsed by Axis Co
 - **Free and open source**: Apache-2.0, also for commercial use.
 - **Live video** in the device list, with PTZ, zoom and focus: [Live preview](../../devices/live-view/). Saved views of
   several cameras: [Live View](../../tools/live-view/).
-- **Event rules**: when a device event happens, set an output, send an email or an HTTP request:
+- **Event rules**: when a device event happens, set an output, send an email, an HTTP request or a TCP message, or
+  write to MQTT, Modbus or OPC UA:
   [Event rules](../../tools/event-rules/).
 - **NTP server** and **DHCP server** built in: [NTP server](../../tools/ntp-server/),
   [DHCP server](../../tools/dhcp-server/).
@@ -52,6 +53,15 @@ OADM is an independent project. It is not made, sponsored or endorsed by Axis Co
   [Edge Recording Export](../../tools/edge-recording-export/).
 - **Monitoring**: [Metadata Monitor](../../tools/metadata-monitor/), [I/O Monitor](../../tools/io-monitor/),
   [Image Health Dashboard](../../tools/image-health-dashboard/).
+- **Dashboards** of live values and video, and **Device triggers** for any device event in the rules:
+  [Dashboards](../../tools/dashboards/), [Device triggers](../../tools/device-triggers/).
+- **Applications** of many devices on one page, with licenses, log and settings: [Applications](../../tools/applications/).
+- **Vulnerabilities**: the published Axis CVEs of each device's AXIS OS in the device list:
+  [Vulnerabilities](../../devices/devices-page/#vulnerabilities).
+- **AXIS OS from axis.com**: Upgrade AXIS OS downloads the versions for you: [Upgrade AXIS OS](../../tasks/firmware/).
+- **Load test** of the cameras and the network to the server: [Load test](../../tools/load-test/).
+- **Text recognition** and **Vision Center** as optional plugins: read text and run your own detection models on camera
+  pictures: [Text recognition](../../tools/text-recognition/), [Vision Center](../../tools/vision-center/).
 - **Web View**: the web interface of the devices in tabs, logged in: [Web View](../../tools/web-view/).
 - **Tags** to group devices: [Tags](../../devices/tags/).
 - **Compliance**: see which devices need attention and check your own rules: [Compliance](../../devices/compliance/).
@@ -66,7 +76,9 @@ OADM is an independent project. It is not made, sponsored or endorsed by Axis Co
 ## Moving from ADM
 
 - Install OADM next to ADM; both can manage the same devices.
-- Add the devices again with **Discovery**, a network range or **Import from file** (a list of addresses).
+- Add the devices with **Import from ADM** (the device export of ADM, with its logins and tags), **Discovery**, a
+  network range or **Import from file** (a list of addresses). See
+  [Import from AXIS Device Manager](../../devices/add/#import-from-axis-device-manager).
 - Keep your ADM configuration files: **Configure devices** reads `.cfg` files.
 
 [Install OADM](../install/)

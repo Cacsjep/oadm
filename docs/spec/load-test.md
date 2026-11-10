@@ -123,10 +123,11 @@ the plugin, not settings.
   only while a check runs, through `FirewallRuleKeeper` (a rule left by a crash is removed at start).
 - The graphs are new shared controls in `Oadm.Sdk.Client/Controls`: `ui:LineChart` and `ui:BarChart` (theme colours in
   both appearances, a tooltip on hover, points reduced to the pixel width so 200 streams x 300 s stay fast), no chart
-  dependency; they go into the catalogue of `visual-style.md` "Shared controls" when built, for other plugins too.
+  dependency; in the catalogue of `visual-style.md` "Shared controls", for other plugins too.
 - The streams are not shared with live view (`LiveViewHub`): each counts as its own connection to the camera.
 - gRPC through `PluginService.Invoke` and a plugin event stream for the live values; methods `start`, `cancel` and
-  `deleteRun` are Operator, `getRun` and `listRuns` Viewer.
+  `deleteRun` need the permission `oadm.load-test:run` ("Run load tests", Administrator and Operator by default), the
+  others (`plan`, `listRuns`, `getRun`, `getStream`) the page's `show` permission (Viewer too: a Monitoring page).
 
 ## Tests
 

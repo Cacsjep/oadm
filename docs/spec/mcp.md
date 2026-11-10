@@ -2,6 +2,8 @@
 
 Status: **spec, not built**.
 
+Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
+
 An AI agent (Claude Code, Claude Desktop, VS Code, any MCP client) can do through MCP what a user can do in the client,
 with the same login, role, device group, checks and audit log. The MCP server is part of the OADM server (core, free,
 Apache-2.0), off by default. Plugins add their own tools through the SDK, so a new plugin is usable by agents without a

@@ -1,6 +1,6 @@
 # MQTT
 
-Event rule action **Publish MQTT message** and the recipient type **MQTT**, spec: [recipient sessions](../../docs/spec/recipient-sessions.md).
+Id `oadm.mqtt`, server only, always on. Event rule action **Publish MQTT message** and the recipient type **MQTT**, spec: [recipient sessions](../../docs/spec/recipient-sessions.md).
 
 - Library MQTTnet. One connection per recipient, shared by its rules (`RecipientSessionPool`); the plugin never reconnects by itself.
 - Output only: nothing subscribes, and no received message is handled.

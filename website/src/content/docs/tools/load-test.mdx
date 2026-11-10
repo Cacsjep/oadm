@@ -19,9 +19,9 @@ The Load test is off by default. An administrator turns it on on the **Plugins**
 
 1. Open **Load test** in the navigation rail and choose the cameras with **Choose cameras**: all devices, tags,
    or single cameras. The page shows how many cameras, how long the check takes and the expected rate.
-2. Click **Start** and confirm. Up to 50 cameras stream at once; more cameras run one group after the other. One check
-   takes at most 1,000 cameras.
-3. Each group runs five steps of 2 minutes: 25 %, 50 %, 75 % and all of its cameras, then all of them in **Low light**.
+2. Click **Start** and confirm. Up to 50 cameras stream at once; more cameras run one batch after the other. One check
+   takes at most 1,000 camera streams; a camera with several sensors has one per sensor.
+3. Each batch runs five steps of 2 minutes: 25 %, 50 %, 75 % and all of its cameras, then all of them in **Low light**.
    The graphs grow every second.
 4. Read the result: the cards show the cameras checked, the peak rate, the worst loss and the headroom (the last step
    without a problem), the table one row per camera with the result of each step, worst first. Click a row for that

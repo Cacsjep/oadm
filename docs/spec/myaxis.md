@@ -39,8 +39,8 @@ Each OADM user can sign in to their own MyAxis account. With it, Upgrade AXIS OS
 - After each page that finished loading on `www.axis.com` outside `/my-axis/login` (also with a language prefix such as
   `/en-us/my-axis/login`; pages of the login hosts such as `auth.axis.com` never count) the window reads the cookies of `https://www.axis.com`. With `axis_connect_session_sid` it
   sends `name=value` to the server (`MyAxisService.SignIn`) and shows "Checking the sign-in" until the server answers;
-  accepted: the window closes. The cookie can come a moment before axis.com finished the sign-in: a refusal (or no
-  cookie yet) is tried again up to 6 times, 500 ms apart, before "MyAxis did not accept the sign-in. Try again." and the
+  accepted: the window closes. The cookie can come a moment before axis.com finished the sign-in: the window
+  tries up to 6 times in all (a refusal or no cookie yet), 500 ms apart (`MyAxisSignInViewModel.Attempts`), before "MyAxis did not accept the sign-in. Try again." and the
   login page again. The client learns of an expired sign-in when it connects and when the button is clicked.
 - The browser is a native window nothing can be drawn over, so it is hidden under a `ui:LoadingOverlay`: "Loading
   MyAxis" from the first moment until a page finished loading (and during each later page load); "Signing in" from the
@@ -85,7 +85,7 @@ Each OADM user can sign in to their own MyAxis account. With it, Upgrade AXIS OS
   handler (`tests/Shared/FakeAxisCom.cs`); no unit test reaches the network.
 - **Storage**: one row per user (`MyAxisSessions`: user id, the encrypted session with the user id as associated data,
   signed in at, last accepted at, expired); EF migration `MyAxisSessions`. Deleted on Sign out, with the user (foreign
-  key, cascade), and when axis.com refuses it (the row stays with expired set and no session, so the button shows it).
+  key, cascade), and the session alone is removed when axis.com refuses it (the row stays with expired set, so the button shows it).
   Removed from every backup copy.
 - **Expired**: an AXIS OS download answered with a 3xx to a login page, 401 or 403 deletes the user's session; the task
   fails with "Your MyAxis sign-in has expired. Sign in to MyAxis again. Nothing was changed." and the button shows it.

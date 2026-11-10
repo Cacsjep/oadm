@@ -5,7 +5,7 @@
     package Oadm.Plugin.Sdk (<Project Sdk="Oadm.Plugin.Sdk/x.y.z">) and, in this repository, by samples/ with
     OadmSdkFromSource=true (project references instead of packages). The part follows the project name only: these
     properties are set before the project file is read (OadmPluginPart and OadmPluginName work on the command line).
-    Spec: docs/plugin-sdk.md.
+    Spec: docs/spec/plugins.md.
   -->
   <Import Project="Oadm.Plugin.Versions.props" />
   <Import Project="$(MSBuildThisFileDirectory)..\Sdk\Oadm.Plugin.Package.props" Condition="Exists('$(MSBuildThisFileDirectory)..\Sdk\Oadm.Plugin.Package.props')" />

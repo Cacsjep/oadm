@@ -7,7 +7,8 @@ dialogs, pages, device API, decisions and tests are in each plugin's `README.md`
 always on: `docs/spec/plugins.md` "Plugins on and off".
 
 Optional plugins (add-ons: not in the installers, installed on the Plugins page) are not listed here: the mechanism is
-`docs/spec/add-ons.md`, each one has its own spec (Text recognition, id `oadm.ocr`: `docs/spec/ocr.md`).
+`docs/spec/add-ons.md`, each one has its own spec (Text recognition, id `oadm.ocr`: `docs/spec/ocr.md`; Vision Center, id `oadm.vision`:
+`docs/spec/vision-center.md`).
 
 Common to all task plugins: every device request and every wait is a named step; every successful task ends with the
 engine's step **Completed**; names follow `docs/spec/tasks.md` (no secrets, at most 48 characters). A new static

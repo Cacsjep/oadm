@@ -37,7 +37,7 @@ and its tests; `dotnet new oadm-action -n MyAction` creates a working copy (in a
 | Member | Purpose |
 |---|---|
 | `NeedsDevice` | True: the rule picks target devices; `ExecuteAsync` runs once per device with `ctx.Vapix` logged in to it |
-| `Fields` | The settings form: `Text`, `Multiline`, `Number`, `Bool`, `Choice`, `DynamicChoice`, `Password`, `Code`, `KeyValues`, `File`, `Recipient`, `ClientCertificate`, `TrustedCertificate` |
+| `Fields` | The settings form: `Text`, `Multiline`, `Number`, `Bool`, `Choice`, `DynamicChoice`, `Password`, `Code`, `KeyValues`, `Recipient`, `ClientCertificate`, `TrustedCertificate` (`File` only in compliance checks) |
 | `RecipientTypes` | The kinds of recipient the plugin declares (SDK 0.11.0, default none) |
 | `Validate(settings, statefulRule)` | Your own checks beyond required fields, numbers and lengths; errors per field key |
 | `Describe(settings)` | The short text of the rules list ("Virtual input 64") |

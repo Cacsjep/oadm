@@ -104,4 +104,5 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `RoutingRulesTests.AllowedBannedApiUsers` (the router, routed DNS, `LocalNetwork` behind `IDeviceNetwork` and
   `IPluginNetwork`, `VapixClient`, the probe, the mDNS browser, `ServerSettings`, the gRPC channel and the server certificate, the site link, the client's `DeviceWebRelay`, its Help docs server (`DocsServer`, local files on 127.0.0.1) and its new version check
   (GitHub, never a device), self update (`Oadm.Contracts.Updates`: the GitHub releases and the helper's version check of the
-  OADM server), and the sockets of the DHCP and NTP servers and the Notifications actions).
+  OADM server), the CVE list update of client and server (NVD, cve.org, opt-in), the MyAxis downloads and the AXIS OS
+  listings of axis.com, and the sockets of the DHCP and NTP servers, the Notifications actions and the Modbus recipient).

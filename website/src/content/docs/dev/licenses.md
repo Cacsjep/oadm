@@ -101,7 +101,7 @@ public Task StartAsync(ICorePluginContext ctx, CancellationToken ct)
     return Task.CompletedTask;
 }
 
-public async Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct)
+public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
 {
     if (_license is { IsValid: false })
     {

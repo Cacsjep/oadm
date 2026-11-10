@@ -28,12 +28,12 @@ installed version.
   - `offlineRedirects`: `/` is a plain redirect page (meta refresh, no script) to the first page of "Devices",
     `/devices/add/`.
   - The integration `oadm-offline-docs` (`astro:build:done`) removes `intro.mp4`, `intro-poster.jpg` and `og-image.png`
-    from the output (public/ stays as it is) and turns every link of the built pages to `dev/`, `api/` or `activate/`
+    from the output (public/ stays as it is) and turns every link of the built pages to `dev/`, `api/`, `start/` or `activate/`
     into a link to oadm.app (Markdown, components and the sidebar alike; Astro 7's Markdown processor runs no rehype
     plugins without `@astrojs/markdown-remark`).
   - Pagefind indexes only the built pages, so search finds no left-out page.
 - `npm run build:offline` (`website/scripts/build-offline.mjs`: sets the flag, writes the changelog page, builds into
-  `website/dist-offline/`, git-ignored) and then checks the output: `index.html` exists, no `dev/`, `api/` or `activate/`
+  `website/dist-offline/`, git-ignored) and then checks the output: `index.html` exists, no `dev/`, `api/`, `start/` or `activate/`
   page, no `intro.mp4`, no Pagefind fragment of a left-out page, every `href` and `src` to a local path has its file.
   `node scripts/build-offline.mjs --check` checks an existing output only. `pages.yml` runs it after the site build
   (not published).

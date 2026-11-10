@@ -18,7 +18,7 @@ installer results, disk space; no offline path).
    ([packaging.md](packaging.md)): services, firewall rules, folder rights, plugin cleanup and the MSI's rollback stay the
    installers' job. Never a file swap of a running installation.
 3. **No extra app.** The helper that runs the installer is the same program in update mode (`Oadm.Server --update`,
-   `Oadm.Client --update`), copied to a folder of its own first (in the program's own data folder, never a shared
+   `Oadm.Client --update-helper`), copied to a folder of its own first (in the program's own data folder, never a shared
    temporary folder) so the installer can replace the
    original.
 4. **Only stable releases of `Cacsjep/oadm`**, never a pre-release, never a downgrade, never the same version. The
@@ -38,8 +38,8 @@ installer results, disk space; no offline path).
    control group), on macOS as its own launchd job (`launchctl submit -l com.oadm.update`), on Windows as a detached
    process (the Service Control Manager does not stop a service's child processes).
 10. **A silent update keeps the setup type.** "Client only" stays client only, "Server and client" stays both:
-    - Windows: `OADM_SETUP` is set today only in the setup screens (`Sequence="ui"`), which `/qn` skips. It is also set in
-      the execute sequence after `MigrateFeatureStates`, and the helper passes no feature properties.
+    - Windows: `OADM_SETUP` is set after `MigrateFeatureStates` in the setup screens and in the execute sequence
+      (`Sequence="both"`), so `/qn`, which skips the screens, keeps it too; the helper passes no feature properties.
     - macOS: `installer -pkg` remembers no choices. The helper passes a choice file (`-applyChoiceChangesXML`) with
       `com.oadm.choice.server` unselected when no server is installed (no `/Library/LaunchDaemons/com.oadm.server.plist`).
     - Linux: server and client are separate packages, each updates only itself.

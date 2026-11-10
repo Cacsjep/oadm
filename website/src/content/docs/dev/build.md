@@ -20,7 +20,7 @@ On the first `run dev`, trust the server, then create the first administrator (n
 
 | Command | What it does |
 |---|---|
-| `manage build [all\|server\|client\|plugins\|docs] [--release]` | Build the solution, a part of it, or with `docs` the SDK reference of this website |
+| `manage build [all\|server\|client\|plugins\|docs\|docs-offline] [--release]` | Build the solution, a part of it, with `docs` the SDK reference of this website, with `docs-offline` the client's Help |
 | `manage run server [--port N] [--data DIR]` | Run the server in the foreground on `https://0.0.0.0:5080` |
 | `manage run client [--fake] [--server URL] [--data DIR]` | Run the client; `--fake` uses sample data without a server |
 | `manage run dev [--port N] [--data DIR]` | Server in the background (log in `artifacts/logs/server-dev.log`), then the client; closing the client stops the server |
@@ -29,8 +29,9 @@ On the first `run dev`, trust the server, then create the first administrator (n
 | `manage publish [all\|server\|client] [--rid RID] [--version V]` | Self-contained single-file apps in `artifacts/publish/<app>/<rid>`, plugins next to each exe |
 | `manage package <windows\|linux\|macos> [--rid RID] [--version V]` | Installer (MSI, .deb, .pkg) in `artifacts/packages/` |
 | `manage package site-node [--rid RID]` | The OADM Site Node installers (Windows MSI, Linux .deb) |
+| `manage package addons [--rid RID] [--version V]` | The ZIPs of the optional plugins, one per plugin and platform; build them before the server's publish |
 | `manage package nuget [--version V]` | The NuGet packages of the plugin SDK in `artifacts/nuget` (SDK, test helpers, project SDK, templates, the `oadm` command) |
-| `manage new <task\|page\|action> --name NAME [--id ID]` | A new plugin from a tutorial, under your name, in `plugins/` and `tests/` and added to `Oadm.sln`; `--id` defaults to `community.<name>` |
+| `manage new <task\|page\|action> --name NAME [--id ID]` | A new plugin from a tutorial, under your name, in `plugins/` and `tests/` and added to `Oadm.sln`; `--id` defaults to `community.<name in kebab case>` |
 | `manage license keys\|sign` | Key pair and license keys for a plugin you sell, see [Plugin licenses](../licenses/) |
 | `manage clean` | Remove `bin`, `obj` and `artifacts` (data folders stay) |
 | `manage info` | Show the .NET SDK, configuration and RID in use |

@@ -174,6 +174,7 @@ plugin that links it.
 | `DeviceEvents/` | A device's event list (`EventDeclarations`, `DeviceEvent`); the client part's filter rows in `DeviceEvents/Client` |
 | `DeviceClock/` | `CameraClock`: the clock check before a certificate goes onto a camera |
 | `DeviceId/` | `AxisDeviceId`: the Axis device ID check, with the Axis root certificates |
+| `Vision/`, `Vision.Client/` | Shared by the optional plugins Text recognition and Vision Center: frames, engine, previews, stats; the picture overlay, the Stream settings dialog |
 
 Other plugins' code is linked the same way: the disk list of the Edge storage API is
 `..\Oadm.Plugins.EdgeStorage\Disks\*.cs` (`EdgeDisk`, `EdgeDisks.Parse`, `FirstProblem`); link it instead of parsing
@@ -200,7 +201,7 @@ Other plugins' code is linked the same way: the disk list of the Edge storage AP
   (`docs/spec/packaging.md`).
 - `THIRD-PARTY-NOTICES.txt` is generated from the `*.deps.json` of every plugin folder (`tools/Oadm.Notices`). A plugin
   folder, or a part of one, with its own `LICENSE` is named at the top (PKI's `Est/` and `Radius/`).
-- An optional plugin (`<OadmAddOn>true</OadmAddOn>`, Text recognition) is never in the installers: `manage package
+- An optional plugin (`<OadmAddOn>true</OadmAddOn>`: Text recognition, Vision Center) is never in the installers: `manage package
   addons` makes its ZIP per platform (`docs/spec/add-ons.md`).
 - `Oadm.Server --self-check` of the published server loads every plugin and calls its `ICorePlugin.SelfCheck`; the
   release runs it on every platform.
