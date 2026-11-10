@@ -5,6 +5,7 @@
              xmlns:api="using:Oadm.Plugins.Vision.Api"
              xmlns:model="using:Oadm.Plugins.Vision.Model"
              xmlns:shared="using:Oadm.Plugins.Shared.Vision.Client"
+             xmlns:img="using:Avalonia.Media.Imaging"
              x:Class="Oadm.Plugins.Vision.Client.VisionView"
              x:DataType="vm:VisionViewModel"
              ui:PageHeader.Subtitle="{x:Static api:VisionInfo.Description}">
@@ -324,7 +325,6 @@
                               </ComboBox.ItemTemplate>
                             </ComboBox>
                           </ui:FormField>
-                          <TextBlock x:Name="ClassListLine" Classes="secondary" Text="{Binding ClassListText}" IsVisible="{Binding HasClassList}" />
                         </StackPanel>
                       </DataTemplate>
                       <DataTemplate x:DataType="vm:ClassesFieldViewModel">
@@ -369,6 +369,36 @@
                     </ItemsControl.DataTemplates>
                   </ItemsControl>
                 </StackPanel>
+              </StackPanel>
+
+              <!-- What the model of a Detect objects or Classify node gets of the latest frame (Live view only). -->
+              <StackPanel x:Name="ModelViewPanel" Spacing="8" DataContext="{Binding ModelView}" x:DataType="vm:ModelViewViewModel" IsVisible="{Binding IsShown}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock Classes="sectionTitle" Text="{x:Static vm:ModelViewViewModel.Title}" VerticalAlignment="Center" />
+                  <ui:ToolbarButton x:Name="RefreshModelViewButton" Grid.Column="1" Icon="{DynamicResource Icon.refresh}" Text="{x:Static vm:ModelViewViewModel.RefreshTip}"
+                                    Command="{Binding RefreshCommand}" />
+                </Grid>
+                <TextBlock Classes="secondary" Text="{Binding Caption}" IsVisible="{Binding Caption, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock Classes="secondary" Text="{Binding Problem}" IsVisible="{Binding HasProblem}" TextWrapping="Wrap" />
+                <ui:ProgressRing Width="16" Height="16" IsVisible="{Binding IsLoading}" HorizontalAlignment="Left" />
+                <Border x:Name="ModelViewPicture" Classes="modelPicture" HorizontalAlignment="Left" IsVisible="{Binding HasPicture}">
+                  <Image Source="{Binding Picture}" Stretch="Uniform" MaxHeight="260" />
+                </Border>
+                <!-- At most 8 tiles: a plain panel, no virtualization needed. -->
+                <ItemsControl x:Name="ModelViewTiles" ItemsSource="{Binding Tiles}" IsVisible="{Binding HasTiles}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel ItemSpacing="6" LineSpacing="6" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="img:Bitmap">
+                      <Border Classes="modelPicture">
+                        <Image Source="{Binding}" Stretch="Uniform" Width="88" Height="88" />
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
               </StackPanel>
 
               <!-- The live output of the selected node. -->

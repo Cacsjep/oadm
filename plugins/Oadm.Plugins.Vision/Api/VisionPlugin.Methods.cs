@@ -187,6 +187,24 @@ public sealed partial class VisionPlugin
                 return VisionJson.Serialize(await runtime.PausePreviewAsync(previewId, owner, caller.UserName).ConfigureAwait(false));
             }
 
+            case VisionMethods.GetModelView:
+            {
+                // A picture of the camera's video, as Pause: only for users who may see it, the camera in their devices.
+                if (!MaySeePictures(caller))
+                {
+                    throw new DeviceAccessRefusedException(PipelineRules.PauseNeedsLiveView);
+                }
+
+                var request = VisionJson.Deserialize<ModelViewRequest>(payloadJson);
+                if (runtime.PreviewDraftOf(request.PreviewId, owner, caller.UserName) is not { } draft)
+                {
+                    return VisionJson.Serialize(new ModelViewReply { Problem = PipelineRules.NoPictureYet });
+                }
+
+                await CallDevices.RequireAsync(caller, [draft.DeviceId], ct).ConfigureAwait(false);
+                return VisionJson.Serialize(await runtime.ModelViewAsync(request.PreviewId, request.NodeId, owner, caller.UserName).ConfigureAwait(false));
+            }
+
             case VisionMethods.ResumePreview:
                 return VisionJson.Serialize(await runtime.ResumePreviewAsync(VisionJson.Deserialize<PreviewRequest>(payloadJson).PreviewId, owner, caller.UserName).ConfigureAwait(false));
 

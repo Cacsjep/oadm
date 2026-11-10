@@ -360,6 +360,10 @@ internal static class PageSamples
         ctx.Answers[VisionMethods.GetCameraOptions] = _ => VisionJson.Serialize(new CameraOptions { VideoSources = [1, 2], Resolutions = [new(1920, 1080), new(1280, 720)] });
         ctx.Answers[VisionMethods.StartPreview] = json => VisionJson.Serialize(new PreviewReply { PreviewId = VisionJson.Deserialize<PreviewRequest>(json).PreviewId });
         ctx.Answers[VisionMethods.StopPreview] = _ => "{}";
+        ctx.Answers[VisionMethods.GetModelView] = _ => VisionJson.Serialize(new ModelViewReply
+        {
+            Pictures = [ModelViewPicture()], InputWidth = 576, InputHeight = 576, Fit = ModelFit.Letterbox, Whole = true,
+        });
         ctx.Answers[VisionMethods.SavePipeline] = json =>
         {
             var p = VisionJson.Deserialize<SavePipelineRequest>(json).Pipeline!;
@@ -373,6 +377,40 @@ internal static class PageSamples
     {
         using var stream = new MemoryStream(bytes);
         return Task.FromResult<Bitmap?>(new Bitmap(stream));
+    }
+
+    /// <summary>The gate as a 576x576 Letterbox model input: the picture in a band of 324 rows between grey bars (SkiaSharp, no session).</summary>
+    public static byte[] ModelViewPicture()
+    {
+        using var bitmap = new SkiaSharp.SKBitmap(576, 576);
+        using (var canvas = new SkiaSharp.SKCanvas(bitmap))
+        {
+            canvas.Clear(new SkiaSharp.SKColor(114, 114, 114));
+            const float top = 126, scale = 0.45f;
+            using var paint = new SkiaSharp.SKPaint { IsAntialias = true };
+            void Fill(string color, float x, float y, float w, float h)
+            {
+                paint.Color = SkiaSharp.SKColor.Parse(color);
+                canvas.DrawRect(x * scale, top + (y * scale), w * scale, h * scale, paint);
+            }
+
+            Fill("#1e2328", 0, 0, 1280, 720);
+            Fill("#2b3540", 0, 0, 1280, 330);
+            Fill("#3d4650", 520, 120, 240, 210);
+            Fill("#232a31", 560, 160, 160, 170);
+            Fill("#2f3439", 0, 330, 1280, 95);
+            foreach (var (x, y) in new[] { (0.30, 0.66), (0.52, 0.70), (0.72, 0.74), (0.82, 0.75) })
+            {
+                Fill("#9aa3ad", (float)((x + 0.005) * 1280), (float)((y + 0.05) * 720), 30, 100);
+                paint.Color = SkiaSharp.SKColor.Parse("#9aa3ad");
+                canvas.DrawCircle((float)((x + 0.0175) * 1280) * scale, top + ((float)((y + 0.025) * 720) * scale), 11 * scale, paint);
+            }
+
+            Fill("#6f7b88", 0.08f * 1280, 0.52f * 720, 0.15f * 1280, 0.07f * 720);
+        }
+
+        using var image = SkiaSharp.SKImage.FromBitmap(bitmap);
+        return image.Encode(SkiaSharp.SKEncodedImageFormat.Jpeg, 90).ToArray();
     }
 
     /// <summary>A drawn gate with people (1280x720) as PNG bytes; needs the headless session.</summary>

@@ -88,13 +88,25 @@ internal static class Preprocess
     /// </summary>
     public static FitTransform Write(PictureLevels levels, SKRectI? region, ModelFit fit, ModelScaling scaling, int width, int height, float[] tensor)
     {
-        ArgumentNullException.ThrowIfNull(levels);
         ArgumentNullException.ThrowIfNull(tensor);
+        using var bitmap = Draw(levels, region, fit, width, height, out var transform);
+        WriteTensor(bitmap, tensor, scaling);
+        return transform;
+    }
+
+    /// <summary>
+    /// The picture a model gets before its values are scaled: <paramref name="region"/> (the whole picture when null) drawn
+    /// into a <paramref name="width"/> x <paramref name="height"/> input by <paramref name="fit"/>. The tensor and the page's
+    /// "What the model sees" both come from here.
+    /// </summary>
+    public static SKBitmap Draw(PictureLevels levels, SKRectI? region, ModelFit fit, int width, int height, out FitTransform transform)
+    {
+        ArgumentNullException.ThrowIfNull(levels);
         var source = levels.Full;
         var part = region ?? new SKRectI(0, 0, source.Width, source.Height);
-        var transform = FitTransform.Of(fit, part.Width, part.Height, width, height);
+        transform = FitTransform.Of(fit, part.Width, part.Height, width, height);
         var (image, from) = levels.For(part, Math.Min(transform.ScaleX, transform.ScaleY));
-        using var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
+        var bitmap = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
         using (var canvas = new SKCanvas(bitmap))
         {
             if (fit != ModelFit.Stretch)
@@ -105,8 +117,7 @@ internal static class Preprocess
             canvas.DrawImage(image, from, transform.Placed, new SKSamplingOptions(SKFilterMode.Linear));
         }
 
-        WriteTensor(bitmap, tensor, scaling);
-        return transform;
+        return bitmap;
     }
 
     /// <summary>The RGB values of <paramref name="bitmap"/> into <paramref name="tensor"/>, channels first.</summary>

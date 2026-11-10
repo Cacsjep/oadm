@@ -83,8 +83,14 @@ internal sealed class ClassifyNode : VisionNode
     {
         _model = model;
         _keep = keepLost;
+        _region = RegionOf(node);
+    }
+
+    /// <summary>What a Classify node on a picture classifies: the bounding box of its area, else the whole picture.</summary>
+    internal static RelativeBox RegionOf(PipelineNode node)
+    {
         var points = NodeSettings.Points(VisionGraph.Setting(node, NodeKinds.PointsKey));
-        _region = points is { Count: >= 3 } ? Bounds(points) : Whole;
+        return points is { Count: >= 3 } ? Bounds(points) : Whole;
     }
 
     public override async ValueTask<NodeOutput> RunAsync(NodeOutput? input, FrameContext frame)

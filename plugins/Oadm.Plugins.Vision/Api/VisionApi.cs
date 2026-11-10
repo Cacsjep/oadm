@@ -99,6 +99,12 @@ public static class VisionMethods
 
     public const string ResumePreview = "resumePreview";
 
+    /// <summary>
+    /// <see cref="ModelViewRequest"/> -> <see cref="ModelViewReply"/>: what the model of a Detect objects or Classify node gets
+    /// of the preview's latest (or held) frame. View and Live view.
+    /// </summary>
+    public const string GetModelView = "getModelView";
+
     /// <summary>Event <see cref="PreviewEvent"/>: the preview's live node outputs, at most every <see cref="VisionLimits.LiveEvery"/>, only to its user.</summary>
     public const string PreviewTopic = "preview";
 
@@ -233,6 +239,32 @@ public sealed record PreviewReply
     public string? Problem { get; init; }
 
     public bool Paused { get; init; }
+}
+
+public sealed record ModelViewRequest
+{
+    public string? PreviewId { get; init; }
+
+    public string? NodeId { get; init; }
+}
+
+/// <summary>"What the model sees": the model's input pictures (one; a Classify node on objects one per object, at most 8).</summary>
+public sealed record ModelViewReply
+{
+    /// <summary>JPEGs of the model's input size (base64 in JSON); empty with a <see cref="Problem"/>.</summary>
+    public IReadOnlyList<byte[]> Pictures { get; init; } = [];
+
+    public int InputWidth { get; init; }
+
+    public int InputHeight { get; init; }
+
+    public ModelFit Fit { get; init; }
+
+    /// <summary>The picture is the model's view of the whole frame or its area (not one crop per object).</summary>
+    public bool Whole { get; init; }
+
+    /// <summary>Why there is no picture ("No picture yet.").</summary>
+    public string? Problem { get; init; }
 }
 
 public sealed record PauseReply

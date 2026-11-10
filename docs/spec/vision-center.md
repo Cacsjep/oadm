@@ -175,9 +175,8 @@ was trained.
   upload it again.
 - The page: the section **Class lists** below Models (built-in: View; own: Edit, Delete in red; New); its dialog holds
   Name and the names, one per line. A model's ⋯ menu **Class list** offers "Own names" and the fitting lists, and says
-  below the select when none fits ("No class list has 90 names. Create one or use own names."). Detect objects shows
-  the model's list read only ("Class list: COCO, 91 ids"); the Classes pickers and every label follow the
-  names in effect. Lists change no live event: the page reads them again after its own changes. Used by shows to every
+  below the select when none fits ("No class list has 90 names. Create one or use own names."). Detect objects does not
+  repeat the model's list (decided 2026-11-10); the Classes pickers and every label follow the names in effect. Lists change no live event: the page reads them again after its own changes. Used by shows to every
   user (models are server-wide).
 
 ## Pipelines
@@ -425,7 +424,13 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
     arrow keys). An Area or Line node added on the canvas starts drawing at once.
   - Pause holds the frame as in Text recognition; while paused the draft runs again on the same frame after every change,
     so a minimum score or a filter can be tuned on one picture.
-- **Right, below: the selected node**: its settings form, then its **live output**, the feedback the user asked for:
+- **Right, below: the selected node**: its settings form, then for Detect objects and Classify **What the model sees**
+  (decided 2026-11-10), then its **live output**, the feedback the user asked for:
+  - What the model sees: the model's input of the preview's latest (or held) frame as the server draws it for the model
+    call (`getModelView`, `IInference.ModelView`, the same `Preprocess.Draw` as the tensor, the frame decoded with the
+    pipeline's `PictureNeed`), before the values are scaled; a caption "576x576 · Letterbox" and Refresh. Classify on
+    objects: one tile per object (the box with its margin), at most 8. Read when the node is selected, with the next frame
+    after its model or area changed, and on Refresh; never live. Live view only, as Pause; in memory only, never stored.
   - Detect, Filter, Track, Area: objects in this frame, a table of them (Object, Class, Score, Size: the height as a share of the picture's, as a Filter counts it; Time inside), a Filter also the sizes of what came in ("Sizes 6 to 12 %"), the node's
     time per frame. Line: the last 20 crossings (Time, Direction, Class, Object). Count: the value. Event: whether it is
     on, the last 20 times it fired with its values (a preview's own list: a preview never publishes, "Previews").
@@ -499,8 +504,8 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
 
 ## Permissions
 
-- **View vision pipelines**: the page, the pipelines, their live output. The video, Pause and object cut-outs need the
-  host's **Live view** too.
+- **View vision pipelines**: the page, the pipelines, their live output. The video, Pause, What the model sees and object
+  cut-outs need the host's **Live view** too.
 - **Change vision pipelines**: New, Delete, Save, the canvas, drawing areas and lines, Use GPU (with all devices).
 - **Manage vision models**: upload, change and delete models and class lists (Administrators by default, not Operators;
   all devices: models are server-wide).

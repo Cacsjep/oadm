@@ -60,6 +60,35 @@ public sealed class InferenceTests : IDisposable
         };
     }
 
+    // What the model sees: the model call's own drawing, the letterbox bars in grey 114, a crop per region.
+    [Theory]
+    [InlineData(ModelFit.Letterbox, true)]
+    [InlineData(ModelFit.Stretch, false)]
+    public void The_model_view_is_the_pictures_drawing_into_the_models_input(ModelFit fit, bool bars)
+    {
+        var inference = Inference();
+        var model = new VisionModel { Id = "v", Kind = ModelKind.Detection, Fit = fit, InputWidth = 320, InputHeight = 320, FixedInput = true };
+        var views = inference.ModelView(model, Jpeg(1280, 640), null, [new RelativeBox(0, 0, 1, 1), new RelativeBox(0.5, 0.5, 0.25, 0.25)]);
+
+        Assert.Equal(2, views.Count);
+        using var whole = SKBitmap.Decode(views[0]);
+        Assert.Equal((320, 320), (whole.Width, whole.Height));
+        var top = whole.GetPixel(160, 5); // 1280 x 640 into 320 x 320: a band of 160 rows in the middle
+        var middle = whole.GetPixel(160, 160);
+        Assert.InRange(middle.Red, 80, 100); // the picture's grey 90
+        if (bars)
+        {
+            Assert.InRange(top.Red, 105, 123); // Letterbox grey 114
+        }
+        else
+        {
+            Assert.InRange(top.Red, 80, 100);
+        }
+
+        using var crop = SKBitmap.Decode(views[1]);
+        Assert.Equal((320, 320), (crop.Width, crop.Height));
+    }
+
     /// <summary>A grey picture of <paramref name="width"/> x <paramref name="height"/> as a JPEG.</summary>
     private static byte[] Jpeg(int width, int height)
     {

@@ -2,6 +2,7 @@ using Oadm.Plugins.Shared;
 using Oadm.Plugins.Vision.Api;
 using Oadm.Plugins.Vision.Events;
 using Oadm.Plugins.Vision.Model;
+using Oadm.Plugins.Vision.Nodes;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Vision.Pipelines;
@@ -103,6 +104,76 @@ internal sealed partial class PipelineRuntime
         {
             return !string.IsNullOrEmpty(previewId) && _previews.TryGetValue(previewId, out var preview) && preview.IsOf(owner, user) ? preview.Draft : null;
         }
+    }
+
+    /// <summary>
+    /// "What the model sees" (docs/spec/vision-center.md "Check and tune"): the input the model of the preview's node
+    /// <paramref name="nodeId"/> gets of the latest (or held) frame, drawn by the model call's own code; a Classify node on
+    /// objects one crop per object (at most <see cref="PipelineRules.MaxModelViewCrops"/>). In memory only.
+    /// </summary>
+    public async Task<ModelViewReply> ModelViewAsync(string? previewId, string? nodeId, string owner, string user)
+    {
+        Preview? preview;
+        lock (_previews)
+        {
+            if (string.IsNullOrEmpty(previewId) || !_previews.TryGetValue(previewId, out preview) || !preview.IsOf(owner, user))
+            {
+                return new ModelViewReply { Problem = PipelineRules.NoPictureYet };
+            }
+        }
+
+        FrameOutcome? last;
+        Pipeline draft;
+        IPipelineEvaluator? evaluator;
+        lock (preview)
+        {
+            last = preview.Held is { } held ? held.Outcome : preview.Last;
+            draft = preview.Draft;
+            evaluator = preview.Evaluator;
+        }
+
+        var node = draft.Nodes.FirstOrDefault(n => n.Id == nodeId);
+        var model = node is null ? null : _models.Find(PipelineRules.Text(node, NodeKinds.ModelKey));
+        if (node is null || model is null || node.Kind is not (NodeKinds.Detect or NodeKinds.Classify))
+        {
+            return new ModelViewReply { Problem = PipelineRules.NodeDidNotRun };
+        }
+
+        var reply = new ModelViewReply { InputWidth = model.InputWidth, InputHeight = model.InputHeight, Fit = model.Fit };
+        if (last is null || last.Result is null)
+        {
+            return reply with { Problem = PipelineRules.NoPictureYet };
+        }
+
+        IReadOnlyList<RelativeBox> regions;
+        if (node.Kind == NodeKinds.Detect)
+        {
+            regions = [new RelativeBox(0, 0, 1, 1)];
+            reply = reply with { Whole = true };
+        }
+        else if (!last.Result.Nodes.TryGetValue(node.Id, out var output) || output.Kind is null)
+        {
+            return reply with { Problem = PipelineRules.NodeDidNotRun };
+        }
+        else if (output.Kind == PortKind.Picture)
+        {
+            regions = [ClassifyNode.RegionOf(node)];
+            reply = reply with { Whole = true };
+        }
+        else
+        {
+            regions = [.. output.Objects.Take(PipelineRules.MaxModelViewCrops).Select(o => ClassifyNode.WithMargin(o.Detection.Box))];
+            if (regions.Count == 0)
+            {
+                return reply with { Problem = PipelineRules.NoObjectsToClassify };
+            }
+        }
+
+        // Decoded as for the pipeline: the same size of picture the model call drew from.
+        var need = node.Kind == NodeKinds.Detect ? evaluator?.PictureNeed : null;
+        var jpeg = last.Jpeg;
+        var pictures = await Task.Run(() => _inference.ModelView(model, jpeg, need, regions)).ConfigureAwait(false);
+        return reply with { Pictures = pictures };
     }
 
     /// <summary>

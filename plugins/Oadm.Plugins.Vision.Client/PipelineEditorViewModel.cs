@@ -70,7 +70,6 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
     private readonly Func<byte[], Task<Bitmap?>> _decode;
     private readonly Func<Pipeline, GraphCheck> _check;
     private readonly ILiveVideo? _video;
-    private readonly Func<VisionModel, string>? _classListName;
     private readonly Func<Guid, string> _cameraText;
     private string _savedJson;
     private bool _loading;
@@ -90,10 +89,8 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
         Func<string, string, bool> pipelineNameTaken,
         Func<IReadOnlyList<VisionModel>> models,
         Func<byte[], Task<Bitmap?>> decode,
-        Func<Pipeline, GraphCheck>? check = null,
-        Func<VisionModel, string>? classListName = null)
+        Func<Pipeline, GraphCheck>? check = null)
     {
-        _classListName = classListName;
         _cameraText = cameraText;
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         ArgumentNullException.ThrowIfNull(pipeline);
@@ -120,6 +117,7 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
         VideoSources = [pipeline.VideoSource];
         Resolutions = [pipeline.Resolution];
         Canvas = new CanvasViewModel(pipeline.Nodes, pipeline.Links) { CanEdit = MayChange };
+        ModelView = new ModelViewViewModel(ReadModelViewAsync, () => PreviewId, _decode, MayPause);
         _loading = false;
 
         Canvas.Checker = (nodes, links) => _check(ToPipeline() with { Nodes = nodes, Links = links });
@@ -234,6 +232,9 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
     public string SelectionNote => IsLinkSelected ? VisionTexts.LinkSelected : VisionTexts.SelectNode;
 
     public NodeOutputViewModel Output { get; } = new();
+
+    /// <summary>"What the model sees" of the selected Detect objects or Classify node.</summary>
+    public ModelViewViewModel ModelView { get; }
 
     // ---- The video and its overlay ----
 
@@ -355,8 +356,6 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
         return [];
     }
 
-    string? INodeFormHost.ClassListOf(string? modelId) =>
-        _classListName is { } name && _models().FirstOrDefault(m => m.Id == modelId) is { } model ? VisionTexts.ClassListOf(name(model)) : null;
 
     private IReadOnlyList<EventTypeChoice>? _eventTypes;
 
@@ -789,6 +788,15 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
         {
             Output.Apply(node, _last);
         }
+
+        ModelView.FrameArrived();
+    }
+
+    private async Task<ModelViewReply?> ReadModelViewAsync(string previewId, string nodeId)
+    {
+        var json = await _ctx.InvokeAsync(VisionMethods.GetModelView, VisionJson.Serialize(new ModelViewRequest { PreviewId = previewId, NodeId = nodeId }), CancellationToken.None)
+            .ConfigureAwait(true);
+        return VisionJson.Deserialize<ModelViewReply>(json);
     }
 
     // ---- Save ----
@@ -909,6 +917,7 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
 
         RebuildOverlay();
         DraftChanged();
+        ModelView.DraftChanged(Canvas.SelectedNode);
     }
 
     private void OnCanvasViewChanged(object? sender, EventArgs e)
@@ -958,6 +967,8 @@ public sealed partial class PipelineEditorViewModel : ValidatingViewModel, INode
         {
             Output.Apply(node, _last);
         }
+
+        ModelView.Select(node);
     }
 
     private void RebuildOverlay()

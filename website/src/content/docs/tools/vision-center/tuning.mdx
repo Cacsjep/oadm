@@ -42,14 +42,21 @@ Select a node to see its settings and below them what it finds now.
 **Size** is the box's height as a share of the picture's height, the same number as **Minimum size** and **Maximum size**
 of a Filter.
 
+## What the model sees
+
+Select a **Detect objects** or **Classify** node to see the picture its model gets, above the live output. The caption
+shows the model's input size and fit, for example `576x576 · Letterbox`. Grey bars above and below the picture are the
+letterbox. Objects that look tiny here are tiny for the model too. A **Classify** node after objects shows one tile per
+object, at most 8. Click **Refresh** for the latest picture; while paused it shows the held picture.
+
 ## Pause
 
 Press Pause in the bottom left corner of the video to hold the picture. While paused, every change runs again on the same
 picture, so you can tune a **Minimum score** or a filter on one picture. Press Resume to go on.
 
 <Aside>
-Pause is only for this page. Saved pipelines keep running and rules keep firing. The video and Pause need the **Live view**
-permission.
+Pause is only for this page. Saved pipelines keep running and rules keep firing. The video, Pause and What the model sees
+need the **Live view** permission.
 </Aside>
 
 ## Tune

@@ -97,6 +97,10 @@ public sealed class PageScreenshotTests
                 Headless.Pump();
                 Assert.True(view.FindControl<DataGrid>("ObjectsGrid")!.IsEffectivelyVisible);
                 Assert.Equal(5, editor.Output.Objects.Count);
+                await editor.ModelView.ReadAsync();
+                Headless.Pump();
+                Assert.True(view.FindControl<Border>("ModelViewPicture")!.IsEffectivelyVisible);
+                Assert.Equal("576x576 · Letterbox", editor.ModelView.Caption);
                 Headless.Capture(window, $"vision-page-detect-{suffix}.png");
 
                 // Nothing selected: the pipeline's own settings.
@@ -240,9 +244,9 @@ public sealed class PageScreenshotTests
             {
                 Assert.True(view.FindControl<ListBox>("ClassListList")!.IsEffectivelyVisible);
                 Assert.Equal(3, vm.Models.ClassLists.Count);
-                vm.Editor!.Canvas.SelectedNode = vm.Editor.Canvas.Find("b"); // Detect objects names its class list
+                vm.Editor!.Canvas.SelectedNode = vm.Editor.Canvas.Find("b"); // Detect objects does not repeat its class list
                 Headless.Pump();
-                Assert.Contains(view.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "Class list: Gate classes");
+                Assert.DoesNotContain(view.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text?.StartsWith("Class list: ", StringComparison.Ordinal) == true);
                 Headless.Capture(window, $"vision-class-lists-{suffix}.png");
             }
 

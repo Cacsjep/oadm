@@ -1553,6 +1553,13 @@
   <Style Selector="Border.liveVideo:pointerover :is(Control).videoHover">
     <Setter Property="IsVisible" Value="True" />
   </Style>
+  <!-- A model's input picture (Vision Center: What the model sees): a thin frame, so the letterbox bars show their edge -->
+  <Style Selector="Border.modelPicture">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
   <Style Selector="Border.videoOverlay">
     <Setter Property="Background" Value="{StaticResource Oadm.OverlayBrush}" />
     <Setter Property="CornerRadius" Value="{StaticResource Oadm.ControlCornerRadius}" />

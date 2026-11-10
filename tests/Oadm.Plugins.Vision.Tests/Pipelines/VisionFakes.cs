@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -72,6 +73,10 @@ internal sealed class FakeInference : IInference
 
     public Task<IReadOnlyList<Detection>> DetectAsync(VisionModel model, IVisionFrame frame, double minScore, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<Detection>>([]);
+
+    /// <summary>"What the model sees": one "frame text|model id|region" per region.</summary>
+    public IReadOnlyList<byte[]> ModelView(VisionModel model, ReadOnlyMemory<byte> jpeg, PictureNeed? need, IReadOnlyList<RelativeBox> regions) =>
+        [.. regions.Select(r => Encoding.UTF8.GetBytes(Frame.TextOf(jpeg) + "|" + model.Id + "|" + string.Create(CultureInfo.InvariantCulture, $"{r.X},{r.Y},{r.Width},{r.Height}")))];
 
     public Task<IReadOnlyList<ClassResult>> ClassifyAsync(VisionModel model, IVisionFrame frame, IReadOnlyList<RelativeBox> regions, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<ClassResult>>([]);

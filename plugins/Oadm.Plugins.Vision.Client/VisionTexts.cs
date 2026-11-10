@@ -40,6 +40,12 @@ public static class VisionTexts
 
     // The right column.
     public const string LiveOutput = "Live output";
+    public const string WhatTheModelSees = "What the model sees";
+    public const string RefreshModelView = "Refresh";
+
+    /// <summary>Below "What the model sees": "576x576 · Stretch".</summary>
+    public static string ModelViewCaption(int width, int height, ModelFit fit) =>
+        string.Create(CultureInfo.InvariantCulture, $"{width}x{height} · {ModelSettingsViewModel.Fits.First(f => f.Value == fit).Name}");
     public const string NothingYet = "Nothing yet.";
     public const string LinkInputFirst = "Link an input first.";
     public const string FixErrorFirst = "Nothing runs until the error is fixed.";
@@ -157,8 +163,6 @@ public static class VisionTexts
         };
     }
 
-    /// <summary>Below the Model field of Detect objects: "Class list: COCO, 91 ids".</summary>
-    public static string ClassListOf(string name) => "Class list: " + name;
 
     // Errors of the page's own checks, the same as the server's (docs/spec/vision-center.md "Pipelines").
     public const string PipelineNameTaken = "Another pipeline has this name.";
