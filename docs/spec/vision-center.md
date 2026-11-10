@@ -136,7 +136,8 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
      classifier by its scaling; only the families of the model's kind: YOLOv8 / YOLO11 / YOLO12, YOLOv10 / YOLO26 end to
      end, YOLOX, RF-DETR, DETR, RT-DETR / D-FINE, DETR with labels, ImageNet classifier, YOLO classifier; a line naming
      its models below; another family sets its format, fit and scaling), then the Settings form (`ModelSettingsForm`,
-     shared with the dialog) with each drawing below its select and one line on what the chosen value does.
+     shared with the dialog) with the drawings of Fit and Scaling below their selects (Format has none there: its select
+     names the formats) and one line on what the chosen value does.
   3. **Labels**: **Load labels file** (a `.txt`, one name per line: its lines become the own names; another count shows
      below them) and the Class list form (`ModelClassListForm`, shared with the dialog).
   Import saves name, settings and labels in one `updateModel`; a refused setting (a format whose outputs do not fit)

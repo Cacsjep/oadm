@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 
@@ -10,7 +12,9 @@ namespace Oadm.Sdk.Client.Controls;
 /// theme's text box look (same height, padding and centering), masked with <see cref="Mask"/>, and an
 /// eye button on the right that shows the password as plain text and hides it again (tooltip
 /// "Show password" / "Hide password"). Bind <see cref="TextBox.Text"/> as usual; key bindings and focus
-/// work like on any text box. <see cref="TextBox.RevealPassword"/> is the shown state.
+/// work like on any text box. <see cref="TextBox.RevealPassword"/> is the shown state. A paste drops its line breaks (a
+/// password never holds one; a plain text box keeps only the first line, which is empty when the copied text starts with a
+/// line break).
 /// </summary>
 public class PasswordBox : TextBox
 {
@@ -42,6 +46,39 @@ public class PasswordBox : TextBox
         RevealButton.Click += (_, _) => RevealPassword = !RevealPassword;
         InnerRightContent = RevealButton;
         UpdateReveal();
+        PastingFromClipboard += OnPasting;
+    }
+
+    /// <summary>The text a paste inserts: the clipboard's text without its line breaks.</summary>
+    internal static string WithoutLineBreaks(string text) => text.Replace("\r", string.Empty, StringComparison.Ordinal).Replace("\n", string.Empty, StringComparison.Ordinal);
+
+    private void OnPasting(object? sender, RoutedEventArgs e)
+    {
+        if (IsReadOnly || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard)
+        {
+            return; // the text box's own paste
+        }
+
+        e.Handled = true;
+        _ = PasteWithoutLineBreaksAsync(clipboard);
+    }
+
+    private async Task PasteWithoutLineBreaksAsync(IClipboard clipboard)
+    {
+        string? text;
+        try
+        {
+            text = await clipboard.TryGetTextAsync();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return; // a clipboard the system would not hand out: nothing pasted, like the text box's own paste
+        }
+
+        if (!string.IsNullOrEmpty(text))
+        {
+            SelectedText = WithoutLineBreaks(text); // replaces the selection or inserts at the caret
+        }
     }
 
     /// <summary>The eye button (exposed for tests).</summary>

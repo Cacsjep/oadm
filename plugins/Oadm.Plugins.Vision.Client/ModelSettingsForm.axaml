@@ -6,7 +6,8 @@
              x:DataType="vm:ModelSettingsViewModel">
   <!-- A model's settings, shared by the Settings dialog and the Import model wizard (docs/spec/vision-center.md "Models"):
        Format, Fit, Scaling, the input size of a model without a fixed one. The drawing of each setting sits in its info icon
-       (dialog) or below it with what the chosen value does (wizard, for users who are no experts). -->
+       (dialog) or below it with what the chosen value does (wizard, for users who are no experts; Format has no drawing there,
+       its select names the formats). -->
   <StackPanel Classes="form">
     <ui:FormField Classes="wide" LabelAbove="True" Label="Format" Info="{Binding FormatInfo}" Hint="{Binding FormatHint}">
       <ui:FormField.InfoPicture>
@@ -16,7 +17,6 @@
       </ui:FormField.InfoPicture>
       <ComboBox x:Name="FormatBox" HorizontalAlignment="Stretch" ItemsSource="{Binding Formats}" SelectedItem="{Binding Format}" />
     </ui:FormField>
-    <vm:ModelSettingDiagram x:Name="FormatPicture" Setting="Format" Kind="{Binding Kind}" Value="{Binding Format.Value}" IsVisible="{Binding IsGuided}" HorizontalAlignment="Left" />
 
     <ui:FormField Classes="wide" LabelAbove="True" Label="Fit" Info="{Binding FitInfo}" Hint="{Binding FitHint}">
       <ui:FormField.InfoPicture>

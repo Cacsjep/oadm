@@ -31,6 +31,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ### Fixed
 
+- A pasted password that starts with a line break no longer leaves the password field empty.
 - Text recognition: the package for Intel Macs has its recognition library, it was missing since 4.10.0.
 - After a logout the next user no longer sees the last user's devices, tasks or page values.
 - Operators and custom roles can again use the Edge storage tools, Action Rule Editor runs and VAPIX Commander rollouts.

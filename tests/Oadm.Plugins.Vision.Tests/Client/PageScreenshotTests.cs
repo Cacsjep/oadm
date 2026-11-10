@@ -193,7 +193,7 @@ public sealed class PageScreenshotTests
                 await next;
                 Headless.Pump();
                 Assert.True(wizard.IsSettingsStep);
-                Assert.True(dialog.FindControl<ModelSettingsForm>("SettingsForm")!.GetVisualDescendants().OfType<ModelSettingDiagram>().Count(d => d.IsEffectivelyVisible) == 3);
+                Assert.True(dialog.FindControl<ModelSettingsForm>("SettingsForm")!.GetVisualDescendants().OfType<ModelSettingDiagram>().Count(d => d.IsEffectivelyVisible) == 2); // Fit and Scaling; the Format select names the formats
                 Headless.Capture(dialog, $"vision-import-settings-{suffix}.png");
 
                 await wizard.NextCommand.ExecuteAsync(null);

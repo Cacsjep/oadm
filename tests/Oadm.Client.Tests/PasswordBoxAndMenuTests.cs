@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -53,6 +54,32 @@ public sealed class PasswordBoxAndMenuTests
             Assert.Same(eye, ((OadmIcon)password.RevealButton.Content!).Data);
             window.Close();
             return Task.CompletedTask;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task A_pasted_password_loses_its_line_breaks()
+    {
+        HeadlessUnitTestSession session = HeadlessSession.Shared;
+        await session.Dispatch(async () =>
+        {
+            var password = new PasswordBox { Width = 280 };
+            var window = new Window { Width = 400, Height = 200, Content = password };
+            window.Show();
+            password.Focus();
+            Dispatcher.UIThread.RunJobs();
+
+            // Copied from a mail or a list: a line break before and after the password.
+            await window.Clipboard!.SetTextAsync("\r\ns3cret!\r\n");
+            password.Paste();
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => { Dispatcher.UIThread.RunJobs(); return password.Text == "s3cret!"; }, "the pasted password");
+
+            // A paste replaces the selection, as in any text box.
+            password.SelectAll();
+            await window.Clipboard!.SetTextAsync("new\npass");
+            password.Paste();
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => { Dispatcher.UIThread.RunJobs(); return password.Text == "newpass"; }, "the second paste");
+            window.Close();
         }, CancellationToken.None);
     }
 
