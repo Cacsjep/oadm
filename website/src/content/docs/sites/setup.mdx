@@ -25,7 +25,8 @@ Download the site node from the [latest release](https://github.com/Cacsjep/oadm
 </Steps>
 
 - Silent install with the server's address: `msiexec /i OADM-SiteNode-<version>-win-x64.msi SERVER=oadm.example.com /qn`.
-- Data folder: `%ProgramData%\OADM Site Node`. Uninstalling keeps it.
+- Data folder: `%ProgramData%\OADM Site Node`. Uninstalling keeps it, so the node stays connected after a reinstall. To
+  remove it too, delete it in PowerShell as administrator: `Remove-Item -Recurse -Force "$env:ProgramData\OADM Site Node"`.
 
 </TabItem>
 <TabItem label="Linux">
@@ -40,7 +41,9 @@ sudo apt install ./oadm-site-node_*.deb                             # service on
 
 - Service: `oadm-site-node` (`sudo systemctl status oadm-site-node`). It runs as its own user, not as root.
 - App: app menu > **OADM Site Node**, or `oadm-site-node-app`.
-- Data folder: `/var/lib/oadm-site-node`. Uninstalling keeps it.
+- Data folder: `/var/lib/oadm-site-node`. Uninstalling keeps it, so the node stays connected after a reinstall. To
+  remove it too: `sudo apt purge oadm-site-node oadm-site-node-app`, `sudo rm -rf /var/lib/oadm-site-node` and
+  `sudo deluser oadm-site-node`.
 
 </TabItem>
 </Tabs>

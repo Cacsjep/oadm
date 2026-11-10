@@ -31,7 +31,8 @@ For **Install now** the server reaches github.com on TCP 443; for **Update clien
 
 It holds the database (devices, tasks, users), the plugin settings including the PKI's certificate authorities, and
 `master.key`, which encrypts every stored password, and the installed [optional plugins](../plugins/#optional-plugins)
-in `addons`. Only administrators / root can read it. Uninstalling keeps it.
+in `addons`. Only administrators / root can read it. Uninstalling keeps it; to delete it too, see
+[Remove all data](../../start/install/#remove-all-data).
 
 ## Backup
 

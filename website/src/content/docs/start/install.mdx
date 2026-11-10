@@ -93,6 +93,43 @@ Intel Macs (x64).
 </TabItem>
 </Tabs>
 
+## Remove all data
+
+Uninstalling keeps the data folder, so a new install picks up where you left off. To remove OADM completely, uninstall
+it first, then delete the data folder. This deletes the devices, passwords, users, tasks, logs and the PKI's
+certificate authorities and cannot be undone: make a [backup](../../admin/settings/#backup-and-restore) first if you
+might need any of it.
+
+<Tabs syncKey="os">
+<TabItem label="Windows">
+
+In PowerShell as administrator:
+
+```powershell
+Remove-Item -Recurse -Force "$env:ProgramData\OADM"
+```
+
+</TabItem>
+<TabItem label="Linux">
+
+```sh
+sudo apt purge oadm-server oadm-client
+sudo rm -rf /var/lib/oadm
+```
+
+</TabItem>
+<TabItem label="macOS">
+
+```sh
+sudo rm -rf "/Library/Application Support/OADM"
+```
+
+</TabItem>
+</Tabs>
+
+The client keeps its settings and logs per user in `%LOCALAPPDATA%\Oadm`, `~/.local/share/Oadm` or
+`~/Library/Application Support/Oadm`. Delete that folder for each user too.
+
 ## Without installing
 
 Every release also has `OADM-Server-<version>-<system>.zip` and `OADM-Client-<version>-<system>.zip`: the server and
