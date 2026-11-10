@@ -21,18 +21,23 @@ public enum FlowPacking
 /// </summary>
 public sealed class FlowColumns : Panel
 {
+    /// <summary>The property of <see cref="MinColumnWidth"/>.</summary>
     public static readonly StyledProperty<double> MinColumnWidthProperty =
         AvaloniaProperty.Register<FlowColumns, double>(nameof(MinColumnWidth), 320);
 
+    /// <summary>The property of <see cref="MaxColumns"/>.</summary>
     public static readonly StyledProperty<int> MaxColumnsProperty =
         AvaloniaProperty.Register<FlowColumns, int>(nameof(MaxColumns), 4);
 
+    /// <summary>The property of <see cref="ColumnSpacing"/>.</summary>
     public static readonly StyledProperty<double> ColumnSpacingProperty =
         AvaloniaProperty.Register<FlowColumns, double>(nameof(ColumnSpacing), 12);
 
+    /// <summary>The property of <see cref="RowSpacing"/>.</summary>
     public static readonly StyledProperty<double> RowSpacingProperty =
         AvaloniaProperty.Register<FlowColumns, double>(nameof(RowSpacing), 8);
 
+    /// <summary>The property of <see cref="Packing"/>.</summary>
     public static readonly StyledProperty<FlowPacking> PackingProperty =
         AvaloniaProperty.Register<FlowColumns, FlowPacking>(nameof(Packing));
 
@@ -46,24 +51,28 @@ public sealed class FlowColumns : Panel
         set => SetValue(MinColumnWidthProperty, value);
     }
 
+    /// <summary>The most columns, however wide the panel (default 4).</summary>
     public int MaxColumns
     {
         get => GetValue(MaxColumnsProperty);
         set => SetValue(MaxColumnsProperty, value);
     }
 
+    /// <summary>The gap between two columns (default 12).</summary>
     public double ColumnSpacing
     {
         get => GetValue(ColumnSpacingProperty);
         set => SetValue(ColumnSpacingProperty, value);
     }
 
+    /// <summary>The gap between two children one above the other (default 8; the theme's class <c>form</c> gives 10).</summary>
     public double RowSpacing
     {
         get => GetValue(RowSpacingProperty);
         set => SetValue(RowSpacingProperty, value);
     }
 
+    /// <summary>Row by row (form fields) or into the shortest column (cards).</summary>
     public FlowPacking Packing
     {
         get => GetValue(PackingProperty);
