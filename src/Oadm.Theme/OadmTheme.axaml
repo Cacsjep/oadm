@@ -976,8 +976,17 @@
     <Setter Property="Padding" Value="10,0,8,0" />
   </Style>
   <!-- ui:LeadingIcon: the input makes room for its fieldIcon (like the login's server box) -->
-  <Style Selector="ui|LeadingIcon > ComboBox, ui|LeadingIcon > TextBox">
+  <Style Selector="ui|LeadingIcon:not(:noIcon) > ComboBox, ui|LeadingIcon:not(:noIcon) > TextBox">
     <Setter Property="Padding" Value="34,0,8,0" />
+  </Style>
+  <!-- The large icon above a centered result (Import model of Vision Center: Model detected) -->
+  <Style Selector="ui|OadmIcon.resultIcon">
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ui|OadmIcon.resultIcon.ok">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusOkBrush}" />
   </Style>
   <!-- The row of a field check (and the event select above the checks): star columns capped at Oadm.Check*Width, so
        the row keeps those widths and shrinks on a narrow window. The grid itself does not round its columns (rounding
@@ -1210,6 +1219,11 @@
   </Style>
   <Style Selector="TextBox:error /template/ Border#PART_BorderElement, TextBox:error:pointerover /template/ Border#PART_BorderElement, TextBox:error:focus /template/ Border#PART_BorderElement">
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <!-- ui:NumberSlider: the slider (Fluent's is taller than an input) takes no more height than its number input, so the
+       row sits under its label like any input -->
+  <Style Selector="ui|NumberSlider Slider">
+    <Setter Property="Margin" Value="0,-8" />
   </Style>
   <!-- ui:NumberSlider: its number input gets the red border while the field's error shows below the whole row -->
   <Style Selector="ui|NumberSlider.error TextBox /template/ Border#PART_BorderElement, ui|NumberSlider.error TextBox:pointerover /template/ Border#PART_BorderElement, ui|NumberSlider.error TextBox:focus /template/ Border#PART_BorderElement">
@@ -2608,6 +2622,19 @@
   <!-- ui:LeadingIcon with class accent: the icon in the accent colour (the operator of a field check) -->
   <Style Selector="ui|LeadingIcon.accent ui|OadmIcon.fieldIcon">
     <Setter Property="Foreground" Value="{StaticResource Oadm.AccentHoverBrush}" />
+  </Style>
+  <!-- ui:LeadingIcon.found: the value is what a check found (green check); .changed: the user picked another (warning) -->
+  <Style Selector="ui|LeadingIcon.found">
+    <Setter Property="Icon" Value="{StaticResource Icon.check}" />
+  </Style>
+  <Style Selector="ui|LeadingIcon.found ui|OadmIcon.fieldIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusOkBrush}" />
+  </Style>
+  <Style Selector="ui|LeadingIcon.changed">
+    <Setter Property="Icon" Value="{StaticResource Icon.triangleAlert}" />
+  </Style>
+  <Style Selector="ui|LeadingIcon.changed ui|OadmIcon.fieldIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.StatusWarningBrush}" />
   </Style>
   <Style Selector="ui|OadmIcon.fieldIcon.inner">
     <Setter Property="Margin" Value="7,0,0,0" />

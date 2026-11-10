@@ -5,38 +5,41 @@
              x:Class="Oadm.Plugins.Vision.Client.ModelSettingsForm"
              x:DataType="vm:ModelSettingsViewModel">
   <!-- A model's settings, shared by the Settings dialog and the Import model wizard (docs/spec/vision-center.md "Models"):
-       Format, Fit, Scaling, the input size of a model without a fixed one. The drawing of each setting sits in its info icon
-       (dialog) or below it with what the chosen value does (wizard, for users who are no experts; Format has no drawing there,
-       its select names the formats). -->
+       Format, Fit, Scaling, the input size of a model without a fixed one. The drawing of each setting sits in its info icon.
+       In the wizard each select marks what the check found (ui:LeadingIcon found / changed, what was found below a change). -->
   <StackPanel Classes="form">
-    <ui:FormField Classes="wide" LabelAbove="True" Label="Format" Info="{Binding FormatInfo}" Hint="{Binding FormatHint}">
+    <ui:FormField Classes="wide" LabelAbove="True" Label="Format" Info="{x:Static vm:ModelSettingsViewModel.FormatInfo}" Hint="{Binding FormatHint}">
       <ui:FormField.InfoPicture>
         <DataTemplate x:DataType="vm:ModelSettingsViewModel">
           <vm:ModelSettingDiagram Setting="Format" Kind="{Binding Kind}" Value="{Binding Format.Value}" />
         </DataTemplate>
       </ui:FormField.InfoPicture>
-      <ComboBox x:Name="FormatBox" HorizontalAlignment="Stretch" ItemsSource="{Binding Formats}" SelectedItem="{Binding Format}" />
+      <ui:LeadingIcon Classes.found="{Binding FormatFound}" Classes.changed="{Binding FormatChanged}">
+        <ComboBox x:Name="FormatBox" HorizontalAlignment="Stretch" ItemsSource="{Binding Formats}" SelectedItem="{Binding Format}" />
+      </ui:LeadingIcon>
     </ui:FormField>
 
-    <ui:FormField Classes="wide" LabelAbove="True" Label="Fit" Info="{Binding FitInfo}" Hint="{Binding FitHint}">
+    <ui:FormField Classes="wide" LabelAbove="True" Label="Fit" Info="{x:Static vm:ModelSettingsViewModel.FitInfo}" Hint="{Binding FitHint}">
       <ui:FormField.InfoPicture>
         <DataTemplate x:DataType="vm:ModelSettingsViewModel">
           <vm:ModelSettingDiagram Setting="Fit" Value="{Binding Fit.Value}" />
         </DataTemplate>
       </ui:FormField.InfoPicture>
-      <ComboBox x:Name="FitBox" HorizontalAlignment="Stretch" ItemsSource="{x:Static vm:ModelSettingsViewModel.Fits}" SelectedItem="{Binding Fit}" />
+      <ui:LeadingIcon Classes.found="{Binding FitFound}" Classes.changed="{Binding FitChanged}">
+        <ComboBox x:Name="FitBox" HorizontalAlignment="Stretch" ItemsSource="{x:Static vm:ModelSettingsViewModel.Fits}" SelectedItem="{Binding Fit}" />
+      </ui:LeadingIcon>
     </ui:FormField>
-    <vm:ModelSettingDiagram x:Name="FitPicture" Setting="Fit" Value="{Binding Fit.Value}" IsVisible="{Binding IsGuided}" HorizontalAlignment="Left" />
 
-    <ui:FormField Classes="wide" LabelAbove="True" Label="Scaling" Info="{Binding ScalingInfo}" Hint="{Binding ScalingHint}">
+    <ui:FormField Classes="wide" LabelAbove="True" Label="Scaling" Info="{x:Static vm:ModelSettingsViewModel.ScalingInfo}" Hint="{Binding ScalingHint}">
       <ui:FormField.InfoPicture>
         <DataTemplate x:DataType="vm:ModelSettingsViewModel">
           <vm:ModelSettingDiagram Setting="Scaling" Value="{Binding Scaling.Value}" />
         </DataTemplate>
       </ui:FormField.InfoPicture>
-      <ComboBox x:Name="ScalingBox" HorizontalAlignment="Stretch" ItemsSource="{x:Static vm:ModelSettingsViewModel.Scalings}" SelectedItem="{Binding Scaling}" />
+      <ui:LeadingIcon Classes.found="{Binding ScalingFound}" Classes.changed="{Binding ScalingChanged}">
+        <ComboBox x:Name="ScalingBox" HorizontalAlignment="Stretch" ItemsSource="{x:Static vm:ModelSettingsViewModel.Scalings}" SelectedItem="{Binding Scaling}" />
+      </ui:LeadingIcon>
     </ui:FormField>
-    <vm:ModelSettingDiagram x:Name="ScalingPicture" Setting="Scaling" Value="{Binding Scaling.Value}" IsVisible="{Binding IsGuided}" HorizontalAlignment="Left" />
 
     <Grid ColumnDefinitions="*,*" ColumnSpacing="12" IsVisible="{Binding CanSize}">
       <ui:FormField Classes="wide" LabelAbove="True" Label="Input width">

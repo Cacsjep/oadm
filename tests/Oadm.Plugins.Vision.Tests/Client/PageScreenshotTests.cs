@@ -193,8 +193,16 @@ public sealed class PageScreenshotTests
                 await next;
                 Headless.Pump();
                 Assert.True(wizard.IsSettingsStep);
-                Assert.True(dialog.FindControl<ModelSettingsForm>("SettingsForm")!.GetVisualDescendants().OfType<ModelSettingDiagram>().Count(d => d.IsEffectivelyVisible) == 2); // Fit and Scaling; the Format select names the formats
+                Assert.DoesNotContain(dialog.FindControl<ModelSettingsForm>("SettingsForm")!.GetVisualDescendants().OfType<ModelSettingDiagram>(), d => d.IsEffectivelyVisible); // the drawings sit in the info icons, as in the Settings dialog
                 Headless.Capture(dialog, $"vision-import-settings-{suffix}.png");
+
+                // Another fit than the check found: a warning in its select and what was found below it.
+                var found = wizard.Settings!.Fit;
+                wizard.Settings.Fit = ModelSettingsViewModel.Fits.First(f => f != found);
+                Headless.Pump();
+                Headless.Capture(dialog, $"vision-import-changed-{suffix}.png");
+                wizard.Settings.Fit = found;
+                Headless.Pump();
 
                 await wizard.NextCommand.ExecuteAsync(null);
                 Headless.Pump();

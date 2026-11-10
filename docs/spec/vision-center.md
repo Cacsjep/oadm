@@ -130,14 +130,15 @@ A model is a stored ONNX file with a name, a kind and what it needs to be read. 
      button. Next sends the file (progress and Cancel in the step), then the model check; the model is stored from here
      on. A refusal shows below the file. The same file again after Back is not sent again; another file replaces the
      stored one.
-  2. **Settings**: "Model checked" (the green chip) and what the check found ("Detection · 576x576 · 91 classes · read as
-     RF-DETR"), "The settings are set for this model. Change one only if your model was made differently.", the Name
-     (the server's name for the file; unique), the **Model family** the check found (`ModelFamilies.Of`: by the format, a
-     classifier by its scaling; only the families of the model's kind: YOLOv8 / YOLO11 / YOLO12, YOLOv10 / YOLO26 end to
-     end, YOLOX, RF-DETR, DETR, RT-DETR / D-FINE, DETR with labels, ImageNet classifier, YOLO classifier; a line naming
-     its models below; another family sets its format, fit and scaling), then the Settings form (`ModelSettingsForm`,
-     shared with the dialog) with the drawings of Fit and Scaling below their selects (Format has none there: its select
-     names the formats) and one line on what the chosen value does.
+  2. **Settings**: centered, a green check, "Model detected" and what the check found ("Detection · 576x576 · 91
+     classes"; decided 2026-11-10); then the Name (a tag icon; the server's name for the file; unique), the **Model
+     family** the check found (`ModelFamilies.Of`: by the format, a classifier by its scaling; only the families of the
+     model's kind: YOLOv8 / YOLO11 / YOLO12, YOLOv10 / YOLO26 end to end, YOLOX, RF-DETR, DETR, RT-DETR / D-FINE, DETR with
+     labels, ImageNet classifier, YOLO classifier; another family sets its format, fit and scaling) and the Settings form
+     (`ModelSettingsForm`, shared with the dialog). Family, Format, Fit and Scaling carry a green check while they hold
+     what the check found and a warning once the user picks another, with "The check found Stretch." below it
+     (`ui:LeadingIcon` classes `found` / `changed`); their info icons hold the same texts and drawings as the Settings
+     dialog, no drawing or line below a select.
   3. **Labels**: **Load labels file** (a `.txt`, one name per line: its lines become the own names; another count shows
      below them) and the Class list form (`ModelClassListForm`, shared with the dialog).
   Import saves name, settings and labels in one `updateModel`; a refused setting (a format whose outputs do not fit)

@@ -120,10 +120,9 @@ wizard in three steps.
 
 1. **Model**: choose the `.onnx` file and click **Next**. The file goes up with its progress, then OADM checks the
    model. A file OADM cannot run says why below it.
-2. **Settings**: **Model checked** and what OADM found, for example `Detection · 576x576 · 91 classes · read as RF-DETR`,
-   the name and the **Model family** OADM found (YOLOv8, RF-DETR, an ImageNet classifier and others). The settings are
-   already set for the model. Each one shows a picture of what it does; change the family or a setting only if your
-   model was made differently (see [The settings of Import model](../export/#the-settings-of-import-model)).
+2. **Settings**: **Model detected** and what OADM found, for example `Detection · 576x576 · 91 classes`, the name and
+   the **Model family** OADM found (YOLOv8, RF-DETR, an ImageNet classifier and others). The settings are already set
+   for the model, each with a green check; change the family or a setting only if your model was made differently (see [The settings of Import model](../export/#the-settings-of-import-model)).
 3. **Labels**: the class list, or the model's own names. **Load labels file** fills them from a `.txt` file with one
    name per line. Click **Import**.
 

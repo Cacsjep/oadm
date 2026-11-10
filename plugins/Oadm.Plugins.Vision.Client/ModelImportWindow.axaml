@@ -29,24 +29,29 @@
             <ui:ProgressRow Value="{Binding Progress}" Text="{Binding ProgressText}" IsActive="{Binding IsWorking}" IsVisible="{Binding IsWorking}" />
           </StackPanel>
 
-          <!-- 2 Settings: what the check found, the name and family, then each setting with its drawing -->
+          <!-- 2 Settings: what the check found (centered), the name and family, then the settings; each select marks what the
+               check found -->
           <StackPanel Spacing="16" IsVisible="{Binding IsSettingsStep}">
-            <StackPanel Spacing="4">
-              <StackPanel Orientation="Horizontal" Spacing="10">
-                <ui:StatusChip IsOk="True" Text="{x:Static vm:ModelImportViewModel.ModelChecked}" VerticalAlignment="Center" />
-                <TextBlock x:Name="FoundText" Text="{Binding Found}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            <StackPanel Spacing="6" HorizontalAlignment="Center" Margin="0,4,0,4">
+              <ui:OadmIcon Classes="resultIcon ok" Data="{StaticResource Icon.circleCheck}" />
+              <TextBlock Classes="cardTitle" Text="{x:Static vm:ModelImportViewModel.ModelDetected}" HorizontalAlignment="Center" />
+              <TextBlock x:Name="FoundText" Classes="secondary" Text="{Binding Found}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Classes="form"> <!-- one spacing for both forms -->
+              <StackPanel Classes="form">
+                <ui:FormField Classes="wide" LabelAbove="True" Label="Name">
+                  <ui:LeadingIcon Icon="{StaticResource Icon.tag}">
+                    <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="{x:Static vm:ModelImportViewModel.MaxNameLength}" />
+                  </ui:LeadingIcon>
+                </ui:FormField>
+                <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.ModelFamily}" Info="{x:Static vm:VisionTexts.FamilyInfo}" Hint="{Binding FamilyHint}">
+                  <ui:LeadingIcon Classes.found="{Binding FamilyFound}" Classes.changed="{Binding FamilyChanged}">
+                    <ComboBox x:Name="FamilyBox" HorizontalAlignment="Stretch" ItemsSource="{Binding Families}" SelectedItem="{Binding Family}" />
+                  </ui:LeadingIcon>
+                </ui:FormField>
               </StackPanel>
-              <TextBlock Classes="secondary" Text="{x:Static vm:ModelImportViewModel.SettingsReady}" TextWrapping="Wrap" />
+              <vm:ModelSettingsForm x:Name="SettingsForm" DataContext="{Binding Settings}" />
             </StackPanel>
-            <StackPanel Classes="form">
-              <ui:FormField Classes="wide" LabelAbove="True" Label="Name">
-                <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="{x:Static vm:ModelImportViewModel.MaxNameLength}" />
-              </ui:FormField>
-              <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.ModelFamily}" Hint="{Binding FamilyText}">
-                <ComboBox x:Name="FamilyBox" HorizontalAlignment="Stretch" ItemsSource="{Binding Families}" SelectedItem="{Binding Family}" />
-              </ui:FormField>
-            </StackPanel>
-            <vm:ModelSettingsForm x:Name="SettingsForm" DataContext="{Binding Settings}" />
           </StackPanel>
 
           <!-- 3 Labels -->

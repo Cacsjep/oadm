@@ -81,8 +81,8 @@ public static class VisionTexts
     public const string Back = "Back";
     public const string Next = "Next";
     public const string Import = "Import";
-    public const string ModelChecked = "Model checked";
-    public const string SettingsReady = "The settings are set for this model. Change one only if your model was made differently.";
+    public const string ModelDetected = "Model detected";
+    public const string FamilyInfo = "Sets format, fit and scaling for the models of this family.";
     public const string FormatInfo = "How the model's answer is read. It must fit how the model was made.";
     public const string FitInfo = "How the camera's wide picture goes into the model's input.";
     public const string ScalingInfo = "What the model gets for each pixel.";
@@ -217,14 +217,17 @@ public static class VisionTexts
         _ => "Each colour from 0 to 1. For YOLO and most other exports.",
     };
 
-    /// <summary>What the model check found, below "Model checked" ("Detection · 640x640 · 80 classes · read as YOLO").</summary>
-    public static string Found(VisionModel model, string formatName)
+    /// <summary>What the model check found, below "Model detected" ("Detection · 640x640 · 80 classes").</summary>
+    public static string Found(VisionModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
         var kind = model.Kind == ModelKind.Classification ? "Classification" : "Detection";
         var classes = model.ClassNames.Count;
-        return string.Create(CultureInfo.InvariantCulture, $"{kind} · {model.InputWidth}x{model.InputHeight} · {classes:N0} {(classes == 1 ? "class" : "classes")} · read as {formatName}");
+        return string.Create(CultureInfo.InvariantCulture, $"{kind} · {model.InputWidth}x{model.InputHeight} · {classes:N0} {(classes == 1 ? "class" : "classes")}");
     }
+
+    /// <summary>Below a select of Import model whose value the user changed: "The check found RF-DETR."</summary>
+    public static string CheckFound(string name) => "The check found " + name + ".";
 
     public static string Uploading(double fraction) => string.Create(CultureInfo.InvariantCulture, $"Upload {Math.Round(Math.Clamp(fraction, 0, 1) * 100)} %");
 

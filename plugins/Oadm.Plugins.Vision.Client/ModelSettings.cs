@@ -24,8 +24,8 @@ public sealed record SettingChoice<T>(T Value, string Name)
 public sealed partial class ModelSettingsViewModel : ValidatingViewModel
 {
     /// <param name="model">The stored model.</param>
-    /// <param name="guided">The Import model wizard: each setting with its drawing and what the chosen one does below it (the
-    /// Settings dialog has them in the info icons).</param>
+    /// <param name="guided">The Import model wizard: each select shows whether it holds what the check found (a check mark,
+    /// else a warning and what the check found below it).</param>
     public ModelSettingsViewModel(VisionModel model, bool guided = false)
     {
         Model = model ?? throw new ArgumentNullException(nameof(model));
@@ -52,30 +52,51 @@ public sealed partial class ModelSettingsViewModel : ValidatingViewModel
 
     public VisionModel Model { get; }
 
-    /// <summary>The wizard's form: the drawings show inline with a line on the chosen value; else in the info icons.</summary>
+    /// <summary>The wizard's form: the selects mark what the check found (the Settings dialog has no marks).</summary>
     public bool IsGuided { get; }
-
-    public bool IsNotGuided => !IsGuided;
 
     public ModelKind Kind => Model.Kind;
 
-    /// <summary>The info icon's text (the Settings dialog); null in the wizard, which shows the drawing inline.</summary>
-    public string? FormatInfo => IsGuided ? null : VisionTexts.FormatInfo;
+    /// <summary>The info icons' texts (their drawings in <see cref="ModelSettingDiagram"/>), the same in dialog and wizard.</summary>
+    public static string FormatInfo => VisionTexts.FormatInfo;
 
-    public string? FitInfo => IsGuided ? null : VisionTexts.FitInfo;
+    public static string FitInfo => VisionTexts.FitInfo;
 
-    public string? ScalingInfo => IsGuided ? null : VisionTexts.ScalingInfo;
+    public static string ScalingInfo => VisionTexts.ScalingInfo;
 
-    /// <summary>What the chosen value does, below its select in the wizard.</summary>
-    public string? FormatHint => IsGuided ? VisionTexts.FormatInfo : null;
+    /// <summary>The wizard: the select holds what the check found (a green check).</summary>
+    public bool FormatFound => IsGuided && Format.Value == Model.Format;
 
-    public string? FitHint => IsGuided ? VisionTexts.FitMeaning(Fit.Value) : null;
+    /// <summary>The wizard: the user chose another value than the check found (a warning, what was found below).</summary>
+    public bool FormatChanged => IsGuided && Format.Value != Model.Format;
 
-    public string? ScalingHint => IsGuided ? VisionTexts.ScalingMeaning(Scaling.Value) : null;
+    public bool FitFound => IsGuided && Fit.Value == Model.Fit;
 
-    partial void OnFitChanged(SettingChoice<ModelFit> value) => OnPropertyChanged(nameof(FitHint));
+    public bool FitChanged => IsGuided && Fit.Value != Model.Fit;
 
-    partial void OnScalingChanged(SettingChoice<ModelScaling> value) => OnPropertyChanged(nameof(ScalingHint));
+    public bool ScalingFound => IsGuided && Scaling.Value == Model.Scaling;
+
+    public bool ScalingChanged => IsGuided && Scaling.Value != Model.Scaling;
+
+    public string? FormatHint => FormatChanged ? VisionTexts.CheckFound(Formats.First(f => f.Value == Model.Format).Name) : null;
+
+    public string? FitHint => FitChanged ? VisionTexts.CheckFound(Fits.First(f => f.Value == Model.Fit).Name) : null;
+
+    public string? ScalingHint => ScalingChanged ? VisionTexts.CheckFound(Scalings.First(s => s.Value == Model.Scaling).Name) : null;
+
+    partial void OnFormatChanged(SettingChoice<ModelFormat> value) => Notify(nameof(FormatFound), nameof(FormatChanged), nameof(FormatHint));
+
+    partial void OnFitChanged(SettingChoice<ModelFit> value) => Notify(nameof(FitFound), nameof(FitChanged), nameof(FitHint));
+
+    partial void OnScalingChanged(SettingChoice<ModelScaling> value) => Notify(nameof(ScalingFound), nameof(ScalingChanged), nameof(ScalingHint));
+
+    private void Notify(params string[] names)
+    {
+        foreach (var name in names)
+        {
+            OnPropertyChanged(name);
+        }
+    }
 
     public static string Title => VisionTexts.ModelSettings;
 

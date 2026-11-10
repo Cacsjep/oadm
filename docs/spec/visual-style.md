@@ -181,7 +181,9 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   puts a `fieldIcon` at its left inside, level with the input's first line (the theme's `ui|LeadingIcon > ComboBox`,
   `ui|LeadingIcon > TextBox` give the input room for it); the login's server box, the field checks of event rules
   (`Icon.squareA`, `Icon.squareFunction`, `Icon.squareB`: A f B); class `accent` gives the icon the accent colour (the
-  operator's f, decided 2026-11-02). The check row is `Grid.checkRow`: star columns capped at `Oadm.CheckFieldWidth`,
+  operator's f, decided 2026-11-02); class `found` sets a green check (the value is what a check found) and `changed` a
+  warning triangle (the user picked another; Import model of Vision Center, decided 2026-11-10); without an icon the input
+  keeps its usual padding. The check row is `Grid.checkRow`: star columns capped at `Oadm.CheckFieldWidth`,
   `Oadm.CheckOperatorWidth`, `Oadm.CheckValueWidth` (the event select above the checks spans the three, its info icon and
   the checks' remove icon share the last column, `SharedSizeGroup` CheckEnd), so the row keeps those widths and shrinks
   on a narrow window; each input is a label-less `ui:FormField` (`wide inline`) so leaving it shows its error.
