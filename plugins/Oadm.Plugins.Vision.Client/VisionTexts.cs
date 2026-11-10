@@ -40,6 +40,14 @@ public static class VisionTexts
 
     // The right column.
     public const string LiveOutput = "Live output";
+    public const string WhatTheModelSees = "What the model sees";
+    public const string EventNameInfo = "The event's name in the event rules.";
+    public const string ModeInfo = "Watching runs all the time. On action: when a rule runs it.";
+    public const string RefreshModelView = "Refresh";
+
+    /// <summary>Below "What the model sees": "576x576 · Stretch".</summary>
+    public static string ModelViewCaption(int width, int height, ModelFit fit) =>
+        string.Create(CultureInfo.InvariantCulture, $"{width}x{height} · {ModelSettingsViewModel.Fits.First(f => f.Value == fit).Name}");
     public const string NothingYet = "Nothing yet.";
     public const string LinkInputFirst = "Link an input first.";
     public const string FixErrorFirst = "Nothing runs until the error is fixed.";
@@ -81,8 +89,8 @@ public static class VisionTexts
     public const string Back = "Back";
     public const string Next = "Next";
     public const string Import = "Import";
-    public const string ModelChecked = "Model checked";
-    public const string SettingsReady = "The settings are set for this model. Change one only if your model was made differently.";
+    public const string ModelDetected = "Model detected";
+    public const string FamilyInfo = "Sets format, fit and scaling for the models of this family.";
     public const string FormatInfo = "How the model's answer is read. It must fit how the model was made.";
     public const string FitInfo = "How the camera's wide picture goes into the model's input.";
     public const string ScalingInfo = "What the model gets for each pixel.";
@@ -157,8 +165,6 @@ public static class VisionTexts
         };
     }
 
-    /// <summary>Below the Model field of Detect objects: "Class list: COCO, 91 ids".</summary>
-    public static string ClassListOf(string name) => "Class list: " + name;
 
     // Errors of the page's own checks, the same as the server's (docs/spec/vision-center.md "Pipelines").
     public const string PipelineNameTaken = "Another pipeline has this name.";
@@ -217,14 +223,17 @@ public static class VisionTexts
         _ => "Each colour from 0 to 1. For YOLO and most other exports.",
     };
 
-    /// <summary>What the model check found, below "Model checked" ("Detection · 640x640 · 80 classes · read as YOLO").</summary>
-    public static string Found(VisionModel model, string formatName)
+    /// <summary>What the model check found, below "Model detected" ("Detection · 640x640 · 80 classes").</summary>
+    public static string Found(VisionModel model)
     {
         ArgumentNullException.ThrowIfNull(model);
         var kind = model.Kind == ModelKind.Classification ? "Classification" : "Detection";
         var classes = model.ClassNames.Count;
-        return string.Create(CultureInfo.InvariantCulture, $"{kind} · {model.InputWidth}x{model.InputHeight} · {classes:N0} {(classes == 1 ? "class" : "classes")} · read as {formatName}");
+        return string.Create(CultureInfo.InvariantCulture, $"{kind} · {model.InputWidth}x{model.InputHeight} · {classes:N0} {(classes == 1 ? "class" : "classes")}");
     }
+
+    /// <summary>Below a select of Import model whose value the user changed: "The check found RF-DETR."</summary>
+    public static string CheckFound(string name) => "The check found " + name + ".";
 
     public static string Uploading(double fraction) => string.Create(CultureInfo.InvariantCulture, $"Upload {Math.Round(Math.Clamp(fraction, 0, 1) * 100)} %");
 
@@ -295,10 +304,15 @@ public static class VisionTexts
             : string.Create(CultureInfo.InvariantCulture, $" · Sizes {low} to {high} %");
     }
 
-    /// <summary>The live output's first line: "5 in this picture · 18 ms per picture · 2 left out".</summary>
-    public static string InThisPicture(int count, double? ms, int? dropped)
+    /// <summary>The live output's first line: "5 in this picture · 3 below 50 % · 18 ms per picture · 2 left out".</summary>
+    public static string InThisPicture(int count, double? ms, int? dropped, int? below = null, int? minScore = null)
     {
         var text = string.Create(CultureInfo.InvariantCulture, $"{count} in this picture");
+        if (below is { } b && minScore is { } min)
+        {
+            text += string.Create(CultureInfo.InvariantCulture, $" · {b} below {min} %");
+        }
+
         if (ms is { } m)
         {
             text += string.Create(CultureInfo.InvariantCulture, $" · {Math.Round(m)} ms per picture");

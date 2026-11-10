@@ -108,6 +108,27 @@ public sealed class PageViewModelTests
         Assert.Equal("Adults", filter.Name);
     }
 
+    // A new Detect objects has no model: its Classes offer the model's names as soon as one is chosen.
+    [Fact]
+    public void The_classes_follow_the_model_chosen_in_the_form()
+    {
+        using var editor = Editor(PageSamples.Context(), PageSamples.GatePeople);
+        editor.Canvas.SelectedNode = editor.Canvas.Find("b");
+        var model = Assert.IsType<ModelFieldViewModel>(editor.Form!.Fields.Single(f => f.Field.Key == NodeKinds.ModelKey));
+        var classes = Assert.IsType<ClassesFieldViewModel>(editor.Form.Fields.Single(f => f.Field.Key == NodeKinds.ClassesKey));
+        model.Selected = null;
+        Assert.Empty(classes.Names);
+        Assert.Empty(classes.Choices.Items);
+
+        var other = model.Models.First(m => m.Id != "m1");
+        model.Selected = other;
+        Assert.NotEmpty(classes.Names);
+        Assert.Equal(classes.Names, classes.Choices.Items.Select(i => i.Name));
+
+        // Only an Event node shows its name (the event's name in the rules).
+        Assert.False(editor.Canvas.Find("b")!.IsEvent);
+    }
+
     [Fact]
     public void Model_choice_and_time_fields_check_their_values()
     {
@@ -209,7 +230,12 @@ public sealed class PageViewModelTests
         editor.Canvas.SelectedNode = editor.Canvas.Find("b");
         Assert.True(editor.Output.IsObjects);
         Assert.Equal(5, editor.Output.Objects.Count);
-        Assert.Equal("5 in this picture · 18 ms per picture", editor.Output.Summary);
+        Assert.Equal("5 in this picture · 3 below 50 % · 18 ms per picture", editor.Output.Summary);
+        Assert.True(editor.Output.IsShown);
+
+        // The Camera has no live output card: its stream size is in its Stream field.
+        editor.Canvas.SelectedNode = editor.Canvas.Find("a");
+        Assert.False(editor.Output.IsShown);
 
         editor.Canvas.SelectedNode = editor.Canvas.Find("e");
         Assert.True(editor.Output.IsCrossings);

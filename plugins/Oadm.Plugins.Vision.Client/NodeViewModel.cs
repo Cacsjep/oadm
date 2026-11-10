@@ -44,6 +44,9 @@ public sealed partial class NodeViewModel : ObservableObject
 
     public bool IsCamera => Kind == NodeKinds.Camera;
 
+    /// <summary>An Event node: its name is the event's name in the rules, so only it shows the Name field.</summary>
+    public bool IsEvent => Kind == NodeKinds.Event;
+
     /// <summary>The kind's name ("Detect objects").</summary>
     public string KindLabel => NodeLook.Label(Kind);
 

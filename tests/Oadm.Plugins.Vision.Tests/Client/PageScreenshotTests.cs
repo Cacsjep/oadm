@@ -97,7 +97,25 @@ public sealed class PageScreenshotTests
                 Headless.Pump();
                 Assert.True(view.FindControl<DataGrid>("ObjectsGrid")!.IsEffectivelyVisible);
                 Assert.Equal(5, editor.Output.Objects.Count);
+                Assert.Equal("5 in this picture · 3 below 50 % · 18 ms per picture", editor.Output.Summary);
+                await editor.ModelView.ReadAsync();
+                Headless.Pump();
+                Assert.True(view.FindControl<Border>("ModelViewPicture")!.IsEffectivelyVisible);
+                Assert.Equal("576x576 · Letterbox", editor.ModelView.Caption);
                 Headless.Capture(window, $"vision-page-detect-{suffix}.png");
+
+                // A wide right column: the cards side by side, the fields at their width instead of grown.
+                var narrow = view.RightWidth;
+                view.SetRightWidth(narrow + 700);
+                window.UpdateLayout();
+                Headless.Pump();
+                var formCard = view.FindControl<Border>("NodeFormCard")!;
+                var outputCard = view.FindControl<Border>("OutputCard")!;
+                Assert.True(view.FindControl<Border>("ModelViewCard")!.Bounds.X > formCard.Bounds.X || outputCard.Bounds.X > formCard.Bounds.X, "a card sits beside the form");
+                Headless.Capture(window, $"vision-page-detect-wide-{suffix}.png");
+                view.SetRightWidth(narrow);
+                window.UpdateLayout();
+                Headless.Pump();
 
                 // Nothing selected: the pipeline's own settings.
                 editor.Canvas.ClearSelection();
@@ -193,8 +211,16 @@ public sealed class PageScreenshotTests
                 await next;
                 Headless.Pump();
                 Assert.True(wizard.IsSettingsStep);
-                Assert.True(dialog.FindControl<ModelSettingsForm>("SettingsForm")!.GetVisualDescendants().OfType<ModelSettingDiagram>().Count(d => d.IsEffectivelyVisible) == 2); // Fit and Scaling; the Format select names the formats
+                Assert.DoesNotContain(dialog.FindControl<ModelSettingsForm>("SettingsForm")!.GetVisualDescendants().OfType<ModelSettingDiagram>(), d => d.IsEffectivelyVisible); // the drawings sit in the info icons, as in the Settings dialog
                 Headless.Capture(dialog, $"vision-import-settings-{suffix}.png");
+
+                // Another fit than the check found: a warning in its select and what was found below it.
+                var found = wizard.Settings!.Fit;
+                wizard.Settings.Fit = ModelSettingsViewModel.Fits.First(f => f != found);
+                Headless.Pump();
+                Headless.Capture(dialog, $"vision-import-changed-{suffix}.png");
+                wizard.Settings.Fit = found;
+                Headless.Pump();
 
                 await wizard.NextCommand.ExecuteAsync(null);
                 Headless.Pump();
@@ -232,9 +258,9 @@ public sealed class PageScreenshotTests
             {
                 Assert.True(view.FindControl<ListBox>("ClassListList")!.IsEffectivelyVisible);
                 Assert.Equal(3, vm.Models.ClassLists.Count);
-                vm.Editor!.Canvas.SelectedNode = vm.Editor.Canvas.Find("b"); // Detect objects names its class list
+                vm.Editor!.Canvas.SelectedNode = vm.Editor.Canvas.Find("b"); // Detect objects does not repeat its class list
                 Headless.Pump();
-                Assert.Contains(view.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "Class list: Gate classes");
+                Assert.DoesNotContain(view.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text?.StartsWith("Class list: ", StringComparison.Ordinal) == true);
                 Headless.Capture(window, $"vision-class-lists-{suffix}.png");
             }
 

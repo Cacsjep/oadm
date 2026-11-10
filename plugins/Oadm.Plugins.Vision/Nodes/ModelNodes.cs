@@ -25,30 +25,42 @@ internal sealed class DetectNode : VisionNode
     /// <summary>The model it runs on the whole picture (the frame is decoded only as large as its input needs).</summary>
     public VisionModel Model => _model;
 
-    public DetectNode(PipelineNode node, PortKind? input, VisionModel model) : base(node, NodeKinds.DetectKind, input)
+    /// <param name="countBelow">The page's preview: the model call goes down to <see cref="VisionLimits.BelowScoreFloor"/>
+    /// and the output counts the objects below the minimum score (saved pipelines never do: no extra work).</param>
+    public DetectNode(PipelineNode node, PortKind? input, VisionModel model, bool countBelow = false) : base(node, NodeKinds.DetectKind, input)
     {
         _model = model;
         _minScore = (NodeSettings.Number(VisionGraph.Setting(node, NodeKinds.MinScoreKey)) ?? 50) / 100;
         _classes = NodeKindsSettings.ClassSet(node);
+        _floor = countBelow ? Math.Min(_minScore, VisionLimits.BelowScoreFloor) : _minScore;
+        _countBelow = countBelow;
     }
+
+    private readonly double _floor;
+    private readonly bool _countBelow;
 
     /// <summary>The model call on the frame's picture, measured (also started early, before the frame's turn).</summary>
     public Task<(IReadOnlyList<Detection> Detections, double Ms)> CallAsync(FrameContext frame) =>
-        MeasureAsync(frame, _model, () => frame.Inference.DetectAsync(_model, frame.Frame, _minScore, frame.Ct));
+        MeasureAsync(frame, _model, () => frame.Inference.DetectAsync(_model, frame.Frame, _floor, frame.Ct));
 
     public override async ValueTask<NodeOutput> RunAsync(NodeOutput? input, FrameContext frame)
     {
         var call = frame.Prefetched?.GetValueOrDefault(Id) ?? CallAsync(frame);
         var (detections, ms) = await call.ConfigureAwait(false);
         var objects = new List<VisionObject>(Math.Min(detections.Count, VisionLimits.MaxObjects));
+        var below = 0;
         foreach (var d in detections)
         {
-            if (objects.Count >= VisionLimits.MaxObjects)
+            if (_classes is not null && !_classes.Contains(d.ClassName))
             {
-                break;
+                continue;
             }
 
-            if (d.Score >= _minScore && (_classes is null || _classes.Contains(d.ClassName)))
+            if (d.Score < _minScore)
+            {
+                below++;
+            }
+            else if (objects.Count < VisionLimits.MaxObjects)
             {
                 objects.Add(new VisionObject { Detection = d });
             }
@@ -59,6 +71,7 @@ internal sealed class DetectNode : VisionNode
             NodeId = Id,
             Kind = PortKind.Objects,
             Objects = objects,
+            Below = _countBelow ? below : null,
             Milliseconds = ms,
             Live = LiveText.Objects(objects.Count) + LiveText.Ms(ms),
         };
@@ -83,8 +96,14 @@ internal sealed class ClassifyNode : VisionNode
     {
         _model = model;
         _keep = keepLost;
+        _region = RegionOf(node);
+    }
+
+    /// <summary>What a Classify node on a picture classifies: the bounding box of its area, else the whole picture.</summary>
+    internal static RelativeBox RegionOf(PipelineNode node)
+    {
         var points = NodeSettings.Points(VisionGraph.Setting(node, NodeKinds.PointsKey));
-        _region = points is { Count: >= 3 } ? Bounds(points) : Whole;
+        return points is { Count: >= 3 } ? Bounds(points) : Whole;
     }
 
     public override async ValueTask<NodeOutput> RunAsync(NodeOutput? input, FrameContext frame)

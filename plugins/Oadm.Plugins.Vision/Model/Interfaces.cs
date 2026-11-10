@@ -107,6 +107,13 @@ public interface IInference
     /// </summary>
     IVisionFrame Decode(ReadOnlyMemory<byte> jpeg, PictureNeed? need) => Decode(jpeg);
 
+    /// <summary>
+    /// What <paramref name="model"/> gets of <paramref name="jpeg"/> (the page's "What the model sees"): the picture decoded as
+    /// for the pipeline (<paramref name="need"/>), each region drawn into the model's input by its fit as the model call does,
+    /// before its values are scaled; one JPEG per region (a whole picture: <c>(0, 0, 1, 1)</c>). In memory only.
+    /// </summary>
+    IReadOnlyList<byte[]> ModelView(VisionModel model, ReadOnlyMemory<byte> jpeg, PictureNeed? need, IReadOnlyList<RelativeBox> regions) => [];
+
     /// <summary>The picture would decode: a picture within the limits (the held frame of a paused preview).</summary>
     bool Fits(ReadOnlyMemory<byte> jpeg)
     {

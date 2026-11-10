@@ -20,9 +20,6 @@ public interface INodeFormHost
     /// <summary>The stored models of <paramref name="kind"/> (not Missing ones too: they show, the check says to upload them).</summary>
     IReadOnlyList<ModelOption> ModelsOf(ModelKind kind);
 
-    /// <summary>"Class list: COCO, 91 ids" of a stored model; null when there is no such model.</summary>
-    string? ClassListOf(string? modelId) => null;
-
     /// <summary>The class names of the node's own model, or of the model before it; empty without one.</summary>
     IReadOnlyList<string> ClassesFor(NodeViewModel node);
 
@@ -150,6 +147,15 @@ public sealed partial class NodeFormViewModel : ValidatingViewModel
     private void Write(string key, JsonNode? value)
     {
         _canvas.SetSetting(Node, key, value);
+        if (key == NodeKinds.ModelKey)
+        {
+            // Another model: the class names of the Classes field follow it (a new node has none until its model).
+            foreach (var classes in Fields.OfType<ClassesFieldViewModel>())
+            {
+                classes.Reload();
+            }
+        }
+
         UpdateShown();
     }
 }
@@ -173,6 +179,9 @@ public abstract partial class FieldViewModel : ValidatingViewModel
     public string Label => Field.Label;
 
     public string? Hint => Field.Hint;
+
+    /// <summary>What the field does, in its info icon.</summary>
+    public string? Info => Field.Info;
 
     public string? Unit => Field.Unit;
 
@@ -374,11 +383,6 @@ public sealed partial class ModelFieldViewModel : FieldViewModel
 
     public static string ChoosePlaceholder => VisionTexts.ChooseModel;
 
-    /// <summary>The chosen model's class list, read only below the field ("Class list: COCO, 91 ids").</summary>
-    public string? ClassListText => _host.ClassListOf(Selected?.Id);
-
-    public bool HasClassList => ClassListText is not null;
-
     [ObservableProperty]
     public partial ModelOption? Selected { get; set; }
 
@@ -392,8 +396,6 @@ public sealed partial class ModelFieldViewModel : FieldViewModel
 
     partial void OnSelectedChanged(ModelOption? value)
     {
-        OnPropertyChanged(nameof(ClassListText));
-        OnPropertyChanged(nameof(HasClassList));
         Write(value is null ? null : JsonValue.Create(value.Id));
     }
 }
@@ -404,8 +406,7 @@ public sealed partial class ClassesFieldViewModel : FieldViewModel
     public ClassesFieldViewModel(NodeFieldInfo field, NodeViewModel node, INodeFormHost host, Action<string, JsonNode?> write)
         : base(field, node, write)
     {
-        ArgumentNullException.ThrowIfNull(host);
-        Names = host.ClassesFor(node);
+        _host = host ?? throw new ArgumentNullException(nameof(host));
         Choices = new CheckChoiceList(VisionTexts.EveryClass, VisionTexts.EveryClass);
         Reload();
         Choices.Changed += (_, _) =>
@@ -415,7 +416,10 @@ public sealed partial class ClassesFieldViewModel : FieldViewModel
         };
     }
 
-    public IReadOnlyList<string> Names { get; }
+    private readonly INodeFormHost _host;
+
+    /// <summary>The class names of the node's model (or of the model before it), read again on every reload.</summary>
+    public IReadOnlyList<string> Names { get; private set; } = [];
 
     public CheckChoiceList Choices { get; }
 
@@ -423,6 +427,7 @@ public sealed partial class ClassesFieldViewModel : FieldViewModel
 
     public override void Reload()
     {
+        Names = _host.ClassesFor(Node);
         var chosen = NodeValues.Strings(Stored);
         Choices.Set(Names.Select(n => new CheckChoice(n, n)), all: chosen.Count == 0, chosen);
         OnPropertyChanged(nameof(Summary));

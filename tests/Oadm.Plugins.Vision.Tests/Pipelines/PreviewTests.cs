@@ -206,6 +206,38 @@ public sealed class PreviewTests
         Assert.Equal(PipelineRules.PauseNeedsLiveView, error.Message);
     }
 
+    // What the model sees: the model's input of the latest frame, only with Live view, only for a model node.
+    [Fact]
+    public async Task TheModelViewShowsTheModelsInputOfTheLatestFrame()
+    {
+        await using var vision = await VisionHarness.StartAsync();
+        var id = NewId();
+        await vision.PreviewAsync(vision.NewPipeline(), id);
+        var early = await ModelViewAsync(vision, id, "det");
+        Assert.Equal(PipelineRules.NoPictureYet, early.Problem);
+        Assert.Empty(early.Pictures);
+
+        await vision.StreamingAsync();
+        vision.Frames.Send(vision.Inside.Id, "frame 1");
+        await Eventually.TrueAsync(() => vision.Runtime.KeptPreviewResults >= 1, "the frame ran");
+        var view = await ModelViewAsync(vision, id, "det");
+        Assert.Null(view.Problem);
+        Assert.True(view.Whole);
+        Assert.Equal("frame 1|m1|0,0,1,1", Frame.TextOf(Assert.Single(view.Pictures)));
+        var model = vision.Models.Find("m1")!;
+        Assert.Equal((model.InputWidth, model.InputHeight, model.Fit), (view.InputWidth, view.InputHeight, view.Fit));
+
+        // A node without a model has no view; a user without Live view gets none.
+        Assert.Equal(PipelineRules.NodeDidNotRun, (await ModelViewAsync(vision, id, "cam")).Problem);
+        var limited = new FakeCallContextWithout(vision.Context.CallAsAllDevices(), HostPermissionKeys.DevicesLiveView);
+        var error = await Assert.ThrowsAsync<DeviceAccessRefusedException>(() => vision.Context.InvokeAsync(vision.Plugin, limited, VisionMethods.GetModelView,
+            VisionJson.Serialize(new ModelViewRequest { PreviewId = id, NodeId = "det" })));
+        Assert.Equal(PipelineRules.PauseNeedsLiveView, error.Message);
+    }
+
+    private static async Task<ModelViewReply> ModelViewAsync(VisionHarness vision, string id, string nodeId) =>
+        VisionJson.Deserialize<ModelViewReply>(await vision.CallAsync(VisionMethods.GetModelView, new ModelViewRequest { PreviewId = id, NodeId = nodeId }));
+
     [Fact]
     public async Task AnotherUsersPreviewIsNotTheirs()
     {

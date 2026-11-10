@@ -151,6 +151,18 @@ public static class PipelineRules
 
     public const string NothingToPause = "No picture to pause yet.";
 
+    /// <summary>"What the model sees" before the preview's first frame.</summary>
+    public const string NoPictureYet = "No picture yet.";
+
+    /// <summary>"What the model sees" of a Classify node on objects when the frame has none.</summary>
+    public const string NoObjectsToClassify = "No objects in this picture.";
+
+    /// <summary>"What the model sees" of a node that did not run on the frame (an error before it, no model).</summary>
+    public const string NodeDidNotRun = "This node did not run on the picture.";
+
+    /// <summary>At most this many crops in "What the model sees" of a Classify node on objects.</summary>
+    public const int MaxModelViewCrops = 8;
+
     public const string PictureTooLarge = "This picture is too large to pause. Choose a lower resolution.";
 
     public const string PauseNeedsLiveView = "Your role does not allow: Live view.";

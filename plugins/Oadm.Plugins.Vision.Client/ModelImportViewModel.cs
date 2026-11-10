@@ -130,11 +130,9 @@ public sealed partial class ModelImportViewModel : ValidatingViewModel, IDisposa
 
     // ---- Step 2: what the check found ----
 
-    public static string ModelChecked => VisionTexts.ModelChecked;
+    public static string ModelDetected => VisionTexts.ModelDetected;
 
-    public static string SettingsReady => VisionTexts.SettingsReady;
-
-    /// <summary>"Detection · 640x640 · 80 classes · read as YOLO."</summary>
+    /// <summary>"Detection · 640x640 · 80 classes", below Model detected.</summary>
     [ObservableProperty]
     public partial string? Found { get; private set; }
 
@@ -149,11 +147,19 @@ public sealed partial class ModelImportViewModel : ValidatingViewModel, IDisposa
 
     /// <summary>The family the check found; another one sets its format, fit and scaling below.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(FamilyText))]
+    [NotifyPropertyChangedFor(nameof(FamilyFound), nameof(FamilyChanged), nameof(FamilyHint))]
     public partial ModelFamily? Family { get; set; }
 
-    /// <summary>Below the family: the models it stands for.</summary>
-    public string? FamilyText => Family?.Examples;
+    /// <summary>The family the check found (null before a check).</summary>
+    public ModelFamily? FoundFamily { get; private set; }
+
+    /// <summary>The family select holds what the check found (a green check).</summary>
+    public bool FamilyFound => FoundFamily is not null && Family == FoundFamily;
+
+    /// <summary>The user chose another family than the check found (a warning, the found one below).</summary>
+    public bool FamilyChanged => FoundFamily is not null && Family != FoundFamily;
+
+    public string? FamilyHint => FamilyChanged ? VisionTexts.CheckFound(FoundFamily!.Name) : null;
 
     [ObservableProperty]
     public partial ModelSettingsViewModel? Settings { get; private set; }
@@ -343,10 +349,11 @@ public sealed partial class ModelImportViewModel : ValidatingViewModel, IDisposa
                 }
             };
             Settings = settings;
-            Found = VisionTexts.Found(model, settings.Format.Name);
+            Found = VisionTexts.Found(model);
             _settingFamily = true;
             Families = [.. ModelFamilies.All.Where(f => f.Kind == model.Kind)];
-            Family = ModelFamilies.Of(model);
+            FoundFamily = ModelFamilies.Of(model);
+            Family = FoundFamily;
             _settingFamily = false;
             var classList = ModelEditViewModel.ForClassList(model, _importer.Lists);
             classList.PropertyChanged += (_, e) =>

@@ -177,6 +177,28 @@ public sealed class OnnxInference : IInference, IDisposable
     public bool Fits(ReadOnlyMemory<byte> jpeg) => PictureLimits.Fits(jpeg);
 
     /// <inheritdoc />
+    public IReadOnlyList<byte[]> ModelView(VisionModel model, ReadOnlyMemory<byte> jpeg, PictureNeed? need, IReadOnlyList<RelativeBox> regions)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(regions);
+        using var frame = VisionFrame.Decode(jpeg, need);
+        var pictures = new List<byte[]>(regions.Count);
+        foreach (var region in regions)
+        {
+            // The same drawing as the model call (Preprocess.Write): the whole picture as null, a crop by its pixels.
+            SkiaSharp.SKRectI? pixels = region is { X: 0, Y: 0, Width: 1, Height: 1 } ? null : frame.PixelsOf(region);
+            using var bitmap = Preprocess.Draw(frame.Levels, pixels, model.Fit, model.InputWidth, model.InputHeight, out _);
+            using var data = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Jpeg, ModelViewQuality);
+            pictures.Add(data.ToArray());
+        }
+
+        return pictures;
+    }
+
+    /// <summary>The JPEG quality of <see cref="ModelView"/>'s pictures.</summary>
+    internal const int ModelViewQuality = 90;
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<Detection>> DetectAsync(VisionModel model, IVisionFrame frame, double minScore, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(model);

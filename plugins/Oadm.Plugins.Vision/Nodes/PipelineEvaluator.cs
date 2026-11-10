@@ -239,7 +239,7 @@ internal sealed class Evaluator : IPipelineEvaluator
                 NodeKinds.Timer => new TimerNode(node),
                 NodeKinds.TimeWindow => new TimeWindowNode(node),
                 NodeKinds.DeviceEvent => new DeviceEventNode(node),
-                NodeKinds.Detect => new DetectNode(node, input, Model(node, findModel)),
+                NodeKinds.Detect => new DetectNode(node, input, Model(node, findModel), options.AllNodes),
                 NodeKinds.Classify => new ClassifyNode(node, input, Model(node, findModel), keep),
                 NodeKinds.Filter => new FilterNode(node, input),
                 NodeKinds.Track => new TrackNode(node, input),

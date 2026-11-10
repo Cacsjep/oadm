@@ -41,6 +41,15 @@ public static class PageLayout
     /// <summary>The node card's least height: its heading and two fields (measured with the headless page).</summary>
     public const double NodeMinHeight = 210;
 
+    /// <summary>Below the video the cards sit side by side once each gets this width (one column at the least width).</summary>
+    public const double NodeCardMinWidth = 380;
+
+    /// <summary>The fields in a node's card flow into columns of at least this width instead of growing.</summary>
+    public const double FieldMinWidth = 260;
+
+    /// <summary>The gap between the cards below the video (the splitter's height, the gap of every card).</summary>
+    public const double CardGap = 16;
+
     /// <summary>
     /// The limits of the canvas card and the right column in a page of <paramref name="width"/> (the splitter of
     /// <paramref name="splitter"/> between them), in this order when they do not all fit: the canvas keeps its minimum, then the

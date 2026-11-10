@@ -10,6 +10,8 @@ namespace Oadm.Sdk.Client.Controls;
 /// <see cref="SearchBox"/> and with the look of the login's icons (theme class <c>fieldIcon</c>): <c>&lt;ui:LeadingIcon Icon="{StaticResource Icon.squareA}"&gt;&lt;ComboBox /&gt;&lt;/ui:LeadingIcon&gt;</c>.
 /// The theme gives the input room for the icon (<c>ui|LeadingIcon &gt; ComboBox</c>, <c>ui|LeadingIcon &gt; TextBox</c>);
 /// the icon stays level with the input when a validation error shows below it. Decoration only: it takes no clicks.
+/// Without an icon the input keeps its usual padding (pseudo-class <c>:noIcon</c>). The theme classes <c>found</c> (a green
+/// check: the value is what a check found) and <c>changed</c> (a warning triangle: the user picked another one) set the icon.
 /// </summary>
 public sealed class LeadingIcon : Panel
 {
@@ -29,6 +31,7 @@ public sealed class LeadingIcon : Panel
         _icon.Classes.Add("fieldIcon");
         _icon.Classes.Add("leading");
         Children.Add(_icon);
+        PseudoClasses.Set(":noIcon", true);
     }
 
     /// <summary>The icon (<c>{StaticResource Icon.…}</c> or <c>{DynamicResource Icon.…}</c>).</summary>
@@ -44,6 +47,7 @@ public sealed class LeadingIcon : Panel
         if (change.Property == IconProperty)
         {
             _icon.Data = Icon;
+            PseudoClasses.Set(":noIcon", Icon is null);
         }
     }
 }

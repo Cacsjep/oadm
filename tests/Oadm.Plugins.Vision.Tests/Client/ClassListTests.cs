@@ -196,20 +196,6 @@ public sealed class ClassListTests
     }
 
     [Fact]
-    public async Task Detect_objects_shows_its_models_class_list_below_the_model_field()
-    {
-        var ctx = PageSamples.Context();
-        using var vm = new VisionViewModel(ctx) { Check = PageSamples.Check };
-        await vm.LoadAsync(CancellationToken.None);
-        var editor = vm.Editor!;
-        editor.Canvas.SelectedNode = editor.Canvas.Find("b");
-        var model = Assert.IsType<ModelFieldViewModel>(editor.Form!.Fields[0]);
-        Assert.Equal("Class list: Gate classes", model.ClassListText);
-        model.Selected = model.Models.Single(m => m.Id == "m2");
-        Assert.Equal("Class list: Own names", model.ClassListText);
-    }
-
-    [Fact]
     public void Without_a_fitting_list_the_dialog_says_why_and_offers_own_names()
     {
         var form = ModelEditViewModel.ForClassList(PageSamples.Helmet, PageSamples.ClassLists.Lists);

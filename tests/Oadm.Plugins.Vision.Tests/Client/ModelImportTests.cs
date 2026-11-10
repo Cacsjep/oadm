@@ -79,13 +79,32 @@ public sealed class ModelImportTests
         Assert.Equal([4, 4, 2], chunks.Select(c => c.Data.Length));
         Assert.Equal([0.4, 0.8, 1.0], progress.Where(p => p > 0));
         Assert.True(wizard.IsSettingsStep);
-        Assert.Equal("Detection · 640x640 · 6 classes · read as YOLO", wizard.Found);
+        Assert.Equal("Detection · 640x640 · 6 classes", wizard.Found);
         Assert.Equal("small", wizard.Name); // the server's name for it
         Assert.Equal("YOLOv8, YOLO11, YOLO12", wizard.Family!.Name);
         Assert.All(wizard.Families, f => Assert.Equal(ModelKind.Detection, f.Kind));
         Assert.True(wizard.Settings!.IsGuided);
-        Assert.Equal(VisionTexts.FitMeaning(ModelFit.Letterbox), wizard.Settings.FitHint);
-        Assert.Null(wizard.Settings.FitInfo); // the drawing is inline, not in an info icon
+
+        // Every select holds what the check found: a check mark, nothing below it.
+        Assert.True(wizard.FamilyFound && wizard.Settings.FormatFound && wizard.Settings.FitFound && wizard.Settings.ScalingFound);
+        Assert.False(wizard.FamilyChanged || wizard.Settings.FitChanged);
+        Assert.Null(wizard.Settings.FitHint);
+
+        // Another fit: a warning and what the check found below it; back again, the check mark.
+        wizard.Settings.Fit = ModelSettingsViewModel.Fits.First(f => f.Value == ModelFit.Stretch);
+        Assert.True(wizard.Settings.FitChanged);
+        Assert.False(wizard.Settings.FitFound);
+        Assert.Equal(VisionTexts.CheckFound("Letterbox"), wizard.Settings.FitHint);
+        wizard.Settings.Fit = ModelSettingsViewModel.Fits.First(f => f.Value == ModelFit.Letterbox);
+        Assert.True(wizard.Settings.FitFound);
+        Assert.Null(wizard.Settings.FitHint);
+
+        // Another family: its settings, the family marked as changed.
+        var other = wizard.Families.First(f => f != wizard.FoundFamily);
+        wizard.Family = other;
+        Assert.True(wizard.FamilyChanged);
+        Assert.Equal(VisionTexts.CheckFound(wizard.FoundFamily!.Name), wizard.FamilyHint);
+        Assert.Equal(other.Format, wizard.Settings.Format.Value);
         Assert.Contains(models.Rows.OfType<ModelRow>(), r => r.Model.Id == "m9");
     }
 

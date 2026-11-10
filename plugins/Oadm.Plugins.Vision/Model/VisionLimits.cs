@@ -34,6 +34,9 @@ public static class VisionLimits
     /// <summary>The margin around a box for Classify: a share of its size.</summary>
     public const double ClassifyMargin = 0.10;
 
+    /// <summary>The lowest score the preview's Detect objects counts as "below the minimum score" (10 %).</summary>
+    public const double BelowScoreFloor = 0.10;
+
     public const int MaxModels = 20;
 
     public const long MaxModelBytes = 500L * 1024 * 1024;
