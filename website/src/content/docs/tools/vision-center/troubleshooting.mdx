@@ -50,8 +50,7 @@ A user limited to a [device group](../../../admin/device-groups/) sees only the 
 | **This model cannot run here: its outputs match no format Vision Center reads.** | See [Formats OADM reads](../models/#formats-oadm-reads). Export it in one of them |
 | **This model cannot run here: it does not load (…).** | The text after it comes from ONNX Runtime. Export the model again, with a newer opset |
 | **This model is already stored as RF-DETR medium.** | The same file is there already. Use that model |
-| **This file is not a model of this family. Choose another family or Find automatically.** | The file finds objects and the family classifies, or the other way. Choose another family or **Find automatically** |
-| **The model's outputs do not fit this family. Choose another family or Find automatically.** | The model comes from another family. Choose it, or **Find automatically** |
+| **The model's outputs do not fit its format. Choose another format.** | The model comes from another family. Choose its family or format in [the settings](../export/#the-settings-of-import-model) |
 | **A model is at most 500 MB.**, **OADM keeps at most 20 models. Delete one first.**, **The models take at most 4 GB together. Delete one first.** | Delete a model you do not use, or use a smaller one |
 | **Choose an ONNX file (.onnx).** | Choose the `.onnx` file. Load a labels file later, in **Labels** |
 | **The upload ended. Import the model again.** | The upload stopped for a minute. Import it again |
@@ -60,14 +59,14 @@ A user limited to a [device group](../../../admin/device-groups/) sees only the 
 
 | You see | Do this |
 |---|---|
-| No boxes | Lower the **Minimum score** of Detect objects. Use [Pause](../pipelines/#pause) to tune it on one picture. Check that **Classes** holds what you look for |
+| No boxes | Lower the **Minimum score** of Detect objects. Use [Pause](../tuning/#pause) to tune it on one picture. Check that **Classes** holds what you look for |
 | Wrong class names | Choose the right [class list](../models/#class-lists) in the model's ⋯ menu. **No class list has 90 names. Create one or use own names.** means none fits: create one |
-| Boxes in the wrong place or nonsense classes | Check the model's **Settings** ([Change how a model is read](../models/#change-how-a-model-is-read)). A model stored by an earlier version: delete it and upload it again, so OADM recognises its format anew |
+| Boxes in the wrong place or nonsense classes | Check the model's **Settings** ([Change how a model is read](../export/#change-how-a-model-is-read)). A model stored by an earlier version: delete it and upload it again, so OADM recognises its format anew |
 | People far away count as well | Raise **Minimum size** in a Filter |
 | A person counted twice at a line | Raise **Confirm after** or **Keep lost objects** of the Track node, and check the frames per second: tracking needs about 5 or more |
-| Objects never get an id | Track starts only on detections of 50 % or more. Keep the **Minimum score** at 50 % or more |
+| Objects never get an id | Check that the pipeline runs at about 5 frames per second or more, and lower **Confirm after** of Track |
 | In and Out swapped | Draw the line the other way round |
-| A count is 0 after a restart | Counts live in memory. Send them to a rule before, such as an [hourly report](../events/#people-per-hour-over-mqtt) |
+| A count is 0 after a restart | Counts live in memory. Send them to a rule before, such as an [hourly report](../examples/#people-per-hour-over-mqtt) |
 
 ## The canvas
 
@@ -81,7 +80,7 @@ A user limited to a [device group](../../../admin/device-groups/) sees only the 
 | **A Timer links only to Reset, Send now or Throttle.** | Link the Timer to a control input |
 | **Link the second input.** | Link a yes or no to **Second** of And / Or |
 | **A path has at most 2 model nodes.** | Remove a Detect objects or Classify node from the path |
-| **Choose a detection model.** | Choose the model in the node's settings. No model yet: [upload one](../models/#upload-a-model) |
+| **Choose a detection model.** | Choose the model in the node's settings. No model yet: [import one](../models/#import-a-model) |
 | **The model Gate people has no class bicycle.** | Choose classes the model has |
 | **Links cannot form a loop.**, **This node takes only one input.** | Remove the link. Branches split but never join |
 

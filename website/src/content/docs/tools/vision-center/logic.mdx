@@ -1,0 +1,131 @@
+---
+title: Logic, time and output
+description: The nodes for conditions, timers, time windows, counts and events, and the control inputs that link them.
+---
+
+import { Image } from 'astro:assets';
+import logic from '../../../../assets/screens/vision-center-logic.png';
+import eventType from '../../../../assets/screens/vision-center-event-type.png';
+import timers from '../../../../assets/screens/vision-center-timers.png';
+
+These nodes work on numbers, yes or no and pulses. The kinds of links are on [Objects and geometry](../objects/).
+
+## Logic
+
+<Image src={logic} alt="A pipeline with Statistics, Compare, And / Or with a Device event Door open, a Time window and an Event Crowd alert" class="screen" />
+
+### Compare
+
+Takes a number, gives yes while it meets the condition.
+
+| Setting | Values |
+|---|---|
+| **Condition** | **Greater than** (default), **At least**, **Equal to**, **At most**, **Less than** or **Between** |
+| **Value** | Default 10 |
+| **And** | Only for **Between**, default 20. Both ends count |
+
+Live line: `14 > 10 · Yes`, `2 ≤ 4 ≤ 6 · Yes`. Example: yes while more than 20 people are in the lobby.
+
+### And / Or
+
+Takes yes or no and a **Second** one, gives **Both (and)** (default) or **Either (or)**. **Second** must be linked.
+Live line: `Yes`.
+
+### Hold
+
+Takes yes or no, gives yes once its input said yes for **Yes after** and no once it said no for **No after** (each 0 to
+3,600 s, default 5 s). Live line: `Yes` or `Yes in 3 s`. Example: a crowd that stays at least a minute, not a group that
+walks past.
+
+### Throttle
+
+Takes crossings or pulses and passes at most one per **At most one per** (1 to 3,600 s, default 60 s); the others are
+dropped. Live line: `1 passed · 4 held back`.
+
+### Device event
+
+No input, gives yes while an event of the event rules is on, such as an input port or a device trigger.
+
+<Image src={eventType} alt="The Choose event dialog: a search and the events in folders, Door open selected" class="screen fit" />
+
+**Event** opens **Choose event**. Events of Vision Center itself cannot be chosen. Live line: `Yes` or `No`. Example: count
+only while the door contact says open.
+
+## Time
+
+Timers and time windows use the server's local time, with daylight saving.
+
+### Timer
+
+No input, gives a pulse. Works only while **Watching**.
+
+| Setting | Values |
+|---|---|
+| **Every** | **Few minutes**, **Hour**, **Day** (default) or **Week** |
+| **Minutes** | For **Few minutes**: 1 to 59, default 15. 15 pulses at :00, :15, :30 and :45 |
+| **At** | For **Day** and **Week**, default 00:00 |
+| **Day** | For **Week**, default Monday |
+
+The pulse comes with the first picture at or after its time. Times missed while the stream was down are not repeated.
+Live line: `Next 00:00`, weekly `Next Tue 06:30`.
+
+Link a Timer to **Reset** of a Count, **Send now** of an Event or a Throttle (see [Control inputs](#control-inputs)). One
+Timer can do both: the report carries the values before the reset.
+
+### Time window
+
+No input, gives yes between **From** and **To** (default 08:00 to 18:00) on the chosen **Days** (none: every day). A
+window over midnight belongs to the day it starts; **From** equal to **To** is the whole day. Live line: `Yes until 18:00`
+or `No until 08:00`.
+
+Example: link it to **Only while** of an Event to send only during opening hours.
+
+## Output
+
+### Count
+
+Takes objects or crossings, gives a number.
+
+| Input | Value |
+|---|---|
+| Objects | How many are there now |
+| Crossings | In and Out since the last reset. The value is In, or Out for a line that counts Out only. Works only while **Watching** |
+
+It starts at 0 by a pulse into **Reset**, by the rule action [Reset counter](../events/#action-reset-counter) and when
+the server restarts. With **Only while** linked it counts only while that says yes and keeps its value meanwhile. Live
+line: `14`.
+
+### Statistics
+
+Takes a number, gives its **Highest** (default), **Lowest**, **Average** or **Sum** since a pulse into **Reset** or the
+start. Live line: `Highest 14`. Example: the busiest moment of the day, reset at midnight.
+
+### Event
+
+Takes objects, crossings, a number or yes or no, and sends an event to the event rules. Its name is the event's name.
+What it sends follows its input: see [Events and rules](../events/).
+
+| Setting | Values |
+|---|---|
+| **Minimum objects** | Objects only: 1 to 300, default 1 |
+| **At least** | Objects and yes or no: 0 to 3,600 s, default 1 s. On only once it held that long |
+| **Off after** | Objects and yes or no: 0 to 3,600 s, default 2 s |
+
+**Send now** sends a report on each pulse; **Only while** sends only while it says yes. Live line: `On`, `Off` or
+`Fired 3 s ago`.
+
+## Control inputs
+
+Some nodes have extra inputs on their left side, below the main input:
+
+| Input | On | Takes | Does |
+|---|---|---|---|
+| **Reset** | Count, Statistics | A pulse of a Timer | Starts the value again at 0 |
+| **Send now** | Event | A pulse of a Timer | Sends a report with the current values |
+| **Only while** | Count, Event | Yes or no, such as a Time window | Works only while it says yes |
+| **Second** | And / Or | Yes or no | The second condition, required |
+
+A ring takes a pulse, a dot takes yes or no. Each control input takes one link. On the selected node, the **+** left of a
+free control input adds a node that fits it and links it.
+
+<Image src={timers} alt="A Timer Midnight linked to Reset of a Count, and a Timer Every hour linked to Send now of an Event" class="screen" />

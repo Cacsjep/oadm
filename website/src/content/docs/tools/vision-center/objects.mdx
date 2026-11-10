@@ -1,0 +1,140 @@
+---
+title: Objects and geometry
+description: The nodes that find, classify, filter and track objects, and the areas, lines and arrows drawn on the video.
+---
+
+Each node takes one kind of input and gives one kind of output. The node list offers only the nodes that fit.
+
+| Kind | Carries |
+|---|---|
+| Picture | The camera's picture |
+| Objects | Boxes with class and score. After a Track node each object also keeps an id |
+| Crossings | Objects that crossed a line, with In or Out |
+| Number | A live value |
+| Yes or no | A condition |
+| Pulse | A Timer's tick, only into **Reset**, **Send now** or a Throttle |
+
+A pipeline has at most 32 nodes, and at most 2 model nodes (Detect objects, Classify) one after the other. Every node has
+a **Name**, unique in the pipeline: rules and dashboards show it. Numbers, times and conditions are on
+[Logic, time and output](../logic/).
+
+## Camera
+
+The start of every pipeline, one per pipeline. **Stream** opens the stream settings: video source, resolution and frames
+per second.
+
+Live line: the camera and its stream, `AXIS Q1798-LE · 1280x720 @ 8 fps`.
+
+## Models
+
+### Detect objects
+
+Takes a picture, gives objects.
+
+| Setting | Values |
+|---|---|
+| **Model** | A detection model. Below it the model's class list |
+| **Minimum score** | 1 to 99 %, default 50 % |
+| **Classes** | **Every class** or the classes you choose |
+
+At most 300 objects per picture, the surest first. Live line: `5 objects · 18 ms`.
+
+Example: a model of COCO with **Classes** `person` finds only people.
+
+### Classify
+
+Takes a picture or objects, gives the same with a class added.
+
+| Setting | Values |
+|---|---|
+| **Model** | A classification model |
+| **Area** | Only on a picture, optional: classify only the part inside a drawn area. None: the whole picture |
+
+On objects it classifies each box with a little margin, at most 16 per picture. Tracked objects are classified once and
+again every 2 seconds. Live line: `3 objects · 18 ms`, on a picture `blue 87 % · 18 ms`.
+
+Example: Detect objects (person) > Track > Classify with a helmet model > Filter **Class of Classify** `no helmet`.
+
+## Objects
+
+### Filter
+
+Takes objects, keeps the ones that pass all its checks.
+
+| Setting | Values |
+|---|---|
+| **Classes** | Optional: only these classes |
+| **Minimum score** | 1 to 99 %, default 50 % |
+| **Minimum size**, **Maximum size** | Optional, 0 to 100 % of the picture's height |
+| **Class of Classify** | Optional: the class a Classify node before it gave. Upper and lower case do not matter |
+
+Live line: `3 objects`. Example: **Minimum size** 10 % leaves out people far away.
+
+### Track
+
+Takes objects, gives tracked objects: each one keeps an id while it moves. Works only while **Watching**.
+
+| Setting | Values |
+|---|---|
+| **Confirm after** | 1 to 30 pictures in a row, default 3. An object gets its id only then, so a flicker gets none |
+| **Keep lost objects** | 0 to 30 s, default 1 s. An object hidden for a moment keeps its id |
+
+Live line: `3 tracked`. Line, Dwell, Stationary and Direction need a Track node before them.
+
+Every object that reaches Track can start a track. Choose the objects before it with the **Minimum score** of Detect
+objects or a Filter.
+
+### Dwell
+
+Takes tracked objects after an Area, keeps the ones inside the area longer than **Longer than** (1 to 3,600 s, default
+30 s). Works only while **Watching**. Live line: `2 objects`.
+
+Example: people who wait at a counter longer than 2 minutes.
+
+### Stationary
+
+Takes tracked objects, keeps the ones that stayed in one place. Works only while **Watching**.
+
+| Setting | Values |
+|---|---|
+| **Still for** | 5 to 3,600 s, default 60 s |
+| **Movement allowed** | 1 to 20 % of the picture, default 3 %. A larger move starts the time again |
+
+Live line: `2 objects`. Example: a vehicle that stopped in a fire lane.
+
+### Direction
+
+Takes tracked objects, keeps the ones moving along an arrow you draw on the video. Works only while **Watching**.
+
+| Setting | Values |
+|---|---|
+| **Direction** | The arrow, drawn on the video |
+| **Tolerance** | 10 to 90°, default 45° |
+| **Minimum movement** | 1 to 50 % of the picture's height within the last second, default 5 % |
+
+Live line: `2 objects`. Example: people walking the wrong way through an exit.
+
+## Geometry
+
+### Area
+
+Takes objects, keeps the ones inside an area drawn on the video (3 to 16 points).
+
+| Setting | Values |
+|---|---|
+| **Area** | Drawn on the video |
+| **Inside by** | **Bottom centre** (default: feet, wheels), **Centre** or **Any overlap** |
+
+With tracked objects it also counts how long each one has been inside. Live line: `2 inside`.
+
+### Line
+
+Takes tracked objects, gives crossings. Works only while **Watching**.
+
+| Setting | Values |
+|---|---|
+| **Line** | Drawn on the video, with the In arrow |
+| **Count** | **In and Out** (default), **In only** or **Out only** |
+
+An object crosses when the bottom centre of its box passes the line. It never counts the same direction twice in a row.
+Live line: `In 12 · Out 7`.

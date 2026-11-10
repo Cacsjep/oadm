@@ -1,14 +1,12 @@
 ---
 title: Pipelines and the canvas
-description: Build a pipeline on the canvas, check it on the live video, pause, save and copy it to other cameras.
+description: Build a pipeline on the canvas, draw areas and lines on the live video, save and copy it to other cameras.
 ---
 
-import { Steps, Aside } from '@astrojs/starlight/components';
+import { Steps } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
-import detect from '../../../../assets/screens/vision-center-detect.png';
 import picker from '../../../../assets/screens/vision-center-node-picker.png';
 import errors from '../../../../assets/screens/vision-center-errors.png';
-import timers from '../../../../assets/screens/vision-center-timers.png';
 import copy from '../../../../assets/screens/vision-center-copy.png';
 
 A pipeline is one camera and the nodes that work on its pictures. The page has three columns:
@@ -65,20 +63,8 @@ The pipeline runs from top to bottom: the input of a node is at the top of its c
 Each card shows the node's name and one live line, such as `5 objects · 18 ms` or `In 12 · Out 7`. The numbers on the
 links are the objects that pass. A node a branch does not need for an Event or Count costs nothing.
 
-### Control inputs
-
-Some nodes have extra inputs on their left side, below the main input:
-
-| Input | On | Takes | Does |
-|---|---|---|---|
-| **Reset** | Count, Statistics | A pulse of a Timer | Starts the value again at 0 |
-| **Send now** | Event | A pulse of a Timer | Sends a report with the current values |
-| **Only while** | Count, Event | Yes or no, such as a Time window | Works only while it says yes |
-| **Second** | And / Or | Yes or no | The second condition, required |
-
-A ring takes a pulse, a dot takes yes or no. Each control input takes one link.
-
-<Image src={timers} alt="A Timer Midnight linked to Reset of a Count, and a Timer Every hour linked to Send now of an Event" class="screen" />
+Some nodes have extra inputs on their left side, such as **Reset** of a Count. See
+[Control inputs](../logic/#control-inputs).
 
 ### Errors
 
@@ -105,6 +91,8 @@ node always shows.
 
 Each node keeps one colour on the canvas and on the video.
 
+To see what each node finds and tune it on one held picture, see [Check and tune](../tuning/).
+
 ### Draw areas and lines
 
 An Area or Line node added on the canvas starts drawing at once. To draw again, select the node and click
@@ -120,33 +108,6 @@ An Area or Line node added on the canvas starts drawing at once. To draw again, 
 
 **In** is the side the arrow on the line points to. For a line drawn from left to right, walking down the picture is
 **In**. Draw the line the other way round to swap In and Out.
-
-## Live output
-
-Select a node to see its settings and below them what it finds now.
-
-<Image src={detect} alt="Detect objects selected: Model, Class list, Minimum score, Classes, and the live output with 5 objects, their class and score" class="screen" />
-
-| Node | Live output |
-|---|---|
-| Detect objects, Filter, Track, Area | The objects in this picture (Object, Class, Score, Time inside) and the time per picture |
-| Line | In and Out, and the last 20 crossings (Time, Direction, Class, Object) |
-| Count | The value |
-| Event | On or off, and the last 20 times it fired with their values |
-
-While you change a pipeline the page runs your changes as a preview: the live output shows what the draft finds before
-you save. A preview never sends an event: an Event node shows what it would send. A saved, unchanged watching pipeline
-shows its real counts.
-
-### Pause
-
-Press Pause in the bottom left corner of the video to hold the picture. While paused, every change runs again on the same
-picture, so you can tune a **Minimum score** or a filter on one picture. Press Resume to go on.
-
-<Aside>
-Pause is only for this page. Saved pipelines keep running and rules keep firing. The video and Pause need the **Live view**
-permission.
-</Aside>
 
 ## Save
 

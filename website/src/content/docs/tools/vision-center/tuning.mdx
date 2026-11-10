@@ -1,0 +1,70 @@
+---
+title: Check and tune
+description: Check each node on the live video and in its live output, pause on one picture, and tune scores, sizes, frame rates and areas.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import detect from '../../../../assets/screens/vision-center-detect.png';
+
+While you change a pipeline the page runs your changes as a preview: the live video and the live output show what the
+draft finds before you save. A preview never sends an event: an Event node shows what it would send. A saved, unchanged
+watching pipeline shows its real counts.
+
+## Check a pipeline
+
+Work from the camera down, one node at a time.
+
+<Steps>
+
+1. Watch the live line on each card and the numbers on the links. Where a number drops to 0, that node loses the objects.
+2. Select **Detect objects**. Every object you want has a box with the right class. Nothing else has one.
+3. Select the **Filter**, if there is one. The kept boxes are solid, the dropped ones dashed.
+4. Select **Track**. Each object keeps its id while it moves; a new id for the same person means a lost track.
+5. Select the **Area** or **Line**. The objects inside are filled; each crossing shows in the live output.
+6. Select the **Event** and check when it goes on and off.
+
+</Steps>
+
+## Live output
+
+Select a node to see its settings and below them what it finds now.
+
+<Image src={detect} alt="Detect objects selected: Model, Class list, Minimum score, Classes, and the live output with 5 objects, their class and score" class="screen" />
+
+| Node | Live output |
+|---|---|
+| Detect objects, Filter, Track, Area | The objects in this picture (Object, Class, Score, Size, Time inside) and the time per picture. A Filter also shows the sizes that came in, such as `Sizes 6 to 12 %` |
+| Line | In and Out, and the last 20 crossings (Time, Direction, Class, Object) |
+| Count | The value |
+| Event | On or off, and the last 20 times it fired with their values |
+
+**Size** is the box's height as a share of the picture's height, the same number as **Minimum size** and **Maximum size**
+of a Filter.
+
+## Pause
+
+Press Pause in the bottom left corner of the video to hold the picture. While paused, every change runs again on the same
+picture, so you can tune a **Minimum score** or a filter on one picture. Press Resume to go on.
+
+<Aside>
+Pause is only for this page. Saved pipelines keep running and rules keep firing. The video and Pause need the **Live view**
+permission.
+</Aside>
+
+## Tune
+
+| You see | Change |
+|---|---|
+| Objects without a box | Lower the **Minimum score** of Detect objects. Check that **Classes** holds what you look for |
+| Boxes on things that are not there | Raise the **Minimum score**. RT-DETR v2 needs 60 % or more |
+| Far away or small objects that should not count | Read their **Size** in the live output, then set **Minimum size** of a Filter above it |
+| Small objects missed | A larger model, or a model with a larger input size in its **Settings**. A higher stream resolution helps only with small objects |
+| One object gets new ids, or counts twice at a line | Raise **Confirm after** or **Keep lost objects** of Track. Use at least 5 frames per second |
+| Pipelines run slower than set | Lower the frames per second under **Stream** of the Camera node. Counting people needs about 5 to 8. See [Speed and limits](../speed/) |
+| Objects on the edge of an area count, or do not | Change **Inside by** of the Area. **Bottom centre** counts where people stand and vehicles touch the ground |
+| A short crowd sets off the event | Raise **At least** of the Event, or put a **Hold** between Compare and Event |
+| The event goes off and on while objects stay | Raise **Off after** of the Event |
+
+Draw areas and lines on the ground where the objects walk or drive, and check them again after a change of the camera's
+view.
