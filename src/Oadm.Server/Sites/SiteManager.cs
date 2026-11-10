@@ -203,7 +203,7 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
         lock (_lock)
         {
             return _sites.TryGetValue(siteId, out var entry) && entry.State == SiteState.Online && !entry.Row.NotBound
-                && entry.Session is { IsEnded: false, Ready: true };
+                && entry.Session is { IsEnded: false, Ready: true } && entry.Status is not null;
         }
     }
 
@@ -264,7 +264,9 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
             }
 
             session = entry.Session;
-            if (entry.State != SiteState.Online || session is null || session.IsEnded || !session.Ready)
+            // No status from the node yet: its allowed ports are unknown, so the site carries no dial yet (never a
+            // "port not allowed" with a port request for a port the node may well allow).
+            if (entry.State != SiteState.Online || session is null || session.IsEnded || !session.Ready || entry.Status is null)
             {
                 throw SiteException.For(siteId, name, SiteProblem.Offline);
             }
@@ -651,6 +653,8 @@ public sealed partial class SiteManager : ISiteTransport, ISiteStates, ISiteLarg
                 entry.ConnectedSince = null;
                 entry.Version = control.Hello?.Version ?? entry.Version;
                 entry.Requested.Clear(); // a new connection asks again for the ports the node has not allowed
+                entry.Status = null; // its allowed ports come again with its first status: no dial before it
+                entry.ConnectPorts = [];
                 if (fresh)
                 {
                     entry.State = SiteState.Online;

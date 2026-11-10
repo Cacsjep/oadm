@@ -1,0 +1,28 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Vision.Client"
+        x:Class="Oadm.Plugins.Vision.Client.EventTypeWindow"
+        x:DataType="vm:EventTypePickerViewModel"
+        Title="{x:Static vm:EventTypePickerViewModel.Title}"
+        Width="480" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Choose event of the Device event node: the event rules' event select; a ring while the list is read. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:EventTypePickerViewModel.Title}" />
+    <Border Grid.Row="1" Classes="dialogBody">
+      <Panel MinHeight="80">
+        <ui:FormField Classes="wide" LabelAbove="True" Label="Event" Error="{Binding Problem}">
+          <ui:EventPicker x:Name="EventPicker" Tree="{Binding Tree}" Selected="{Binding Selected}" />
+        </ui:FormField>
+        <ui:LoadingOverlay Text="{x:Static vm:EventTypePickerViewModel.LoadingText}" IsVisible="{Binding IsLoading}" />
+      </Panel>
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="OK" Command="{Binding OkCommand}" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

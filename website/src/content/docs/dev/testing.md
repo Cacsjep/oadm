@@ -13,6 +13,8 @@ purpose. The tests use xUnit.
 | (none) | `manage test unit` | Fast tests with fakes. CI runs them on Windows, Linux and macOS for every release |
 | `Perf` | `manage test perf` | 100,000 devices, 50,000 tasks, with a time budget |
 | `Hardware` | `manage test hardware` | Read-only, against your cameras |
+| `RealModel` | `manage test models` | Real downloaded models and photos (Vision Center: RF-DETR medium, two COCO photos). The build downloads them once into the model cache, SHA-256 checked; without them the tests skip |
+| `Gpu` | `manage test gpu` | The vision add-ons on the graphics card (DirectML on Windows x64, CUDA on Linux x64) with the real models, and Text recognition and Vision Center at once in one process. Skip with the reason without a card. Never in `manage test all` or CI; run one at a time, nothing else on the card |
 | `RecipientStack` | `manage test recipients` | Real MQTT, Modbus and OPC UA servers in Docker, connect and write once to each. Also `HardwareWrite`, so no other run and no CI touches them |
 | `HardwareWrite` | never on a device from `manage` | Change a device. Only on purpose, only on a test device |
 

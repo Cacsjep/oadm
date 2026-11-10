@@ -34,6 +34,9 @@ public static partial class AddOnCatalog
     /// <summary>The id of Text recognition (docs/spec/ocr.md).</summary>
     public const string TextRecognitionId = "oadm.ocr";
 
+    /// <summary>The id of Vision Center (docs/spec/vision-center.md).</summary>
+    public const string VisionCenterId = "oadm.vision";
+
     /// <summary>The runtime ids an add-on ZIP is built for, one per server platform.</summary>
     public static readonly IReadOnlyList<string> RuntimeIds = ["win-x64", "linux-x64", "linux-arm64", "osx-x64"];
 
@@ -41,6 +44,7 @@ public static partial class AddOnCatalog
     public static readonly IReadOnlyList<AddOnEntry> Entries =
     [
         new(TextRecognitionId, "Text recognition", "Reads text in camera pictures."),
+        new(VisionCenterId, "Vision Center", "Custom analytics pipelines with your own model."),
     ];
 
     /// <summary>The entry with <paramref name="id"/> (ordinal, ignoring case), or null.</summary>

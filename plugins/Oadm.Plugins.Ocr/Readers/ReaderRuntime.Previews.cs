@@ -22,9 +22,9 @@ internal sealed partial class ReaderRuntime
     /// <summary>How often ended leases are looked for.</summary>
     public static readonly TimeSpan PreviewSweepInterval = TimeSpan.FromSeconds(5);
 
-    private readonly Dictionary<string, Preview> _previews = new(StringComparer.Ordinal);
+    /// <summary>The previews, their leases and limits (shared with Vision Center); also the lock of the previews' state.</summary>
+    private readonly PreviewRegistry<Preview> _previews;
     private readonly ConcurrentDictionary<string, ReaderReading> _previewLast = new(StringComparer.Ordinal);
-    private long _previewOrder;
 
     /// <summary>The previews now (tests): id, whether it has its own stream, the reader whose stream it shares.</summary>
     public IReadOnlyList<(string Id, bool OwnStream, string? SharedWith)> Previews
@@ -56,55 +56,19 @@ internal sealed partial class ReaderRuntime
         try
         {
             ObjectDisposedException.ThrowIf(_stopped, this);
-            Preview? preview = null;
-            Preview? oldest = null;
-            lock (_previews)
-            {
-                if (!string.IsNullOrEmpty(previewId) && _previews.TryGetValue(previewId, out var kept) && kept.IsOf(owner, user))
-                {
-                    if (kept.Reader.DeviceId == reader.DeviceId)
-                    {
-                        preview = kept;
-                    }
-                    else
-                    {
-                        // Another camera: nothing of the old one (its reading, frame and rows) stays under this id.
-                        oldest = kept;
-                    }
-                }
-                else
-                {
-                    var mine = _previews.Values.Where(p => p.IsOf(owner, user)).ToList();
-                    if (mine.Count >= OcrLimits.MaxPreviewsPerUser)
-                    {
-                        // One user never holds more: their oldest preview (a page closed without a word) makes room.
-                        oldest = mine.MinBy(p => p.Order);
-                    }
-                    else if (_previews.Count >= OcrLimits.MaxPreviews)
-                    {
-                        throw new InvalidOperationException(ReaderRules.TooManyPreviews);
-                    }
-                }
-            }
-
+            // Another camera: nothing of the old one (its reading, frame and rows) stays under this id. One user never holds
+            // more than two: their oldest preview (a page closed without a word) makes room.
+            var (kept, oldest) = _previews.Claim(previewId, owner, user, p => p.Reader.DeviceId == reader.DeviceId, ReaderRules.TooManyPreviews);
             if (oldest is not null)
             {
                 await EndPreviewsAsync(p => p == oldest).ConfigureAwait(false);
             }
 
+            Preview preview;
             lock (_previews)
             {
-                if (preview is null)
-                {
-                    // The page's own id (32 hex digits), so it can end a preview whose start answer it never saw; an id in use
-                    // or any other text gets a new one.
-                    var id = IsPreviewId(previewId) && !_previews.ContainsKey(previewId!) ? previewId! : Guid.NewGuid().ToString("N");
-                    preview = new Preview(id, owner, user, Interlocked.Increment(ref _previewOrder));
-                    _previews[preview.Id] = preview;
-                }
-
+                preview = _previews.Open(kept, previewId, (id, order) => new Preview(id, owner, user, order));
                 preview.Reader = reader with { OwnerScopeKey = owner == ICallContext.AllDevicesScopeKey ? null : owner };
-                preview.Expires = _time.GetUtcNow() + OcrLimits.PreviewLease;
             }
 
             if (preview.Held is { } held && !held.Fits(preview.Reader))
@@ -196,14 +160,14 @@ internal sealed partial class ReaderRuntime
 
                 if (preview.Held is null)
                 {
-                    if (last.Jpeg.Length > Frames.MjpegParser.MaxFrameBytes || !_pictureFits(last.Jpeg))
+                    if (!HeldPictures.Fits(last.Jpeg, _pictureFits))
                     {
                         return new PauseReply { Problem = ReaderRules.PictureTooLarge };
                     }
 
                     // Under this lock: from here on no live reading replaces the one held (KeepPreview).
                     var voted = preview.SharedWith is not null || ReaderRules.IsMoving(preview.Reader);
-                    preview.Held = new HeldFrame(last.Jpeg, last.Reading.Time, last.Reader ?? preview.Reader) { ReadFor = voted ? null : last.Reader };
+                    preview.Held = new HeldFrame(last.Jpeg, last.Reading.Time, last.Reader ?? preview.Reader, _previews) { ReadFor = voted ? null : last.Reader };
                     preview.SharedWith = null;
                 }
             }
@@ -276,70 +240,53 @@ internal sealed partial class ReaderRuntime
     {
         lock (_previews)
         {
-            if (preview.Held is not { } held || held.Working || SameAreas(held.ReadFor, preview.Reader))
+            if (preview.Held is { } held)
             {
-                return;
+                held.Worker.Kick(() => preview.Held == held && !SameAreas(held.ReadFor, preview.Reader), ct => RereadOnceAsync(preview, held, ct));
             }
-
-            held.Working = true;
-            var ct = held.Stop.Token;
-            held.Worker = Task.Run(() => RereadLoopAsync(preview, held, ct), CancellationToken.None);
         }
     }
 
-    private async Task RereadLoopAsync(Preview preview, HeldFrame held, CancellationToken ct)
+    /// <summary>One run of the held frame's worker: the newest draft reads the frame.</summary>
+    private async Task RereadOnceAsync(Preview preview, HeldFrame held, CancellationToken ct)
     {
-        while (true)
+        Reader reader;
+        lock (_previews)
         {
-            Reader reader;
+            reader = preview.Reader;
+        }
+
+        try
+        {
+            var read = await _maker!.ReadAsync(reader, held.Jpeg, reuseSource: null, ct).ConfigureAwait(false);
+            read = read with { Reading = read.Reading with { Time = held.Time } }; // the time of the frame, not of the edit
             lock (_previews)
             {
-                if (preview.Held != held || SameAreas(held.ReadFor, preview.Reader))
-                {
-                    held.Working = false;
-                    return;
-                }
-
-                reader = preview.Reader;
+                held.ReadFor = reader;
             }
 
-            try
-            {
-                var read = await _maker!.ReadAsync(reader, held.Jpeg, reuseSource: null, ct).ConfigureAwait(false);
-                read = read with { Reading = read.Reading with { Time = held.Time } }; // the time of the frame, not of the edit
-                lock (_previews)
-                {
-                    held.ReadFor = reader;
-                }
-
-                if (SameAreas(reader, preview.Reader))
-                {
-                    lock (_previews)
-                    {
-                        held.Reads++;
-                    }
-
-                    KeepPreview(preview, read, held);
-                }
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            if (SameAreas(reader, preview.Reader))
             {
                 lock (_previews)
                 {
-                    held.Working = false;
+                    held.Reads++;
                 }
 
-                return;
+                KeepPreview(preview, read, held);
             }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
 #pragma warning disable CA1031 // A failed reading is logged; the page keeps its results and the next edit tries again.
-            catch (Exception ex)
+        catch (Exception ex)
 #pragma warning restore CA1031
+        {
+            LogReadingFailed(_logger, reader.Name, ex);
+            lock (_previews)
             {
-                LogReadingFailed(_logger, reader.Name, ex);
-                lock (_previews)
-                {
-                    held.ReadFor = reader;
-                }
+                held.ReadFor = reader;
             }
         }
     }
@@ -363,9 +310,7 @@ internal sealed partial class ReaderRuntime
             return;
         }
 
-        await held.Stop.CancelAsync().ConfigureAwait(false);
-        await held.Worker.ConfigureAwait(false);
-        held.Stop.Dispose();
+        await held.Worker.StopAsync().ConfigureAwait(false);
     }
 
     /// <summary>The previews that share the stream of the saved reader <paramref name="readerId"/>.</summary>
@@ -581,10 +526,9 @@ internal sealed partial class ReaderRuntime
         List<Preview> ending;
         lock (_previews)
         {
-            ending = [.. _previews.Values.Where(which)];
+            ending = _previews.RemoveWhere(which);
             foreach (var preview in ending)
             {
-                _previews.Remove(preview.Id);
                 _previewLast.TryRemove(preview.Id, out _);
             }
         }
@@ -607,17 +551,13 @@ internal sealed partial class ReaderRuntime
                 return;
             }
 
-            var now = _time.GetUtcNow();
-            await EndPreviewsAsync(p => p.Expires <= now).ConfigureAwait(false);
+            await EndPreviewsAsync(_previews.Expired()).ConfigureAwait(false);
         }
         finally
         {
             _sync.Release();
         }
     });
-
-    /// <summary>A preview id a page made: 32 hex digits.</summary>
-    private static bool IsPreviewId(string? id) => id is { Length: 32 } && id.All(char.IsAsciiHexDigit);
 
     /// <summary>The draft reads like the saved reader's loop: the same camera, source, resolution, rate, Moving objects and areas.</summary>
     private static bool SameReading(Reader loop, Reader draft) =>
@@ -634,18 +574,15 @@ internal sealed partial class ReaderRuntime
     /// The frame a paused preview keeps (docs/spec/ocr.md "Pause"): server memory only, one per preview, the bytes of the reading
     /// it came from. <see cref="ReadFor"/> and the worker's state change under the lock of the previews.
     /// </summary>
-    private sealed class HeldFrame(ReadOnlyMemory<byte> jpeg, DateTimeOffset time, Reader reader)
+    private sealed class HeldFrame(ReadOnlyMemory<byte> jpeg, DateTimeOffset time, Reader reader, object gate)
     {
         public ReadOnlyMemory<byte> Jpeg { get; } = jpeg;
 
         /// <summary>When the frame was read: its results keep this time through every re-read.</summary>
         public DateTimeOffset Time { get; } = time;
 
-        public CancellationTokenSource Stop { get; } = new();
-
-        public Task Worker { get; set; } = Task.CompletedTask;
-
-        public bool Working { get; set; }
+        /// <summary>Reads the frame again with the newest draft, latest wins (shared with Vision Center).</summary>
+        public LatestWinsWorker Worker { get; } = new(gate);
 
         /// <summary>The readings of this frame that reached the page: each event carries its number.</summary>
         public int Reads { get; set; }
@@ -660,29 +597,16 @@ internal sealed partial class ReaderRuntime
     }
 
     /// <summary>One page's preview. Its fields change under <see cref="_sync"/>; <see cref="Reader"/> is read by its loop.</summary>
-    private sealed class Preview(string id, string owner, string user, long order)
+    private sealed class Preview(string id, string owner, string user, long order) : PreviewEntry(id, owner, user, order)
     {
         private volatile Reader _reader = new();
         private volatile string? _streamProblem;
-
-        public string Id { get; } = id;
-
-        /// <summary>The scope of the page that started it (<see cref="OwnerScope.Of"/>).</summary>
-        public string Owner { get; } = owner;
-
-        /// <summary>The user who started it: only they keep, read and stop it.</summary>
-        public string User { get; } = user;
-
-        /// <summary>When it started among the previews (older ones keep their streams first).</summary>
-        public long Order { get; } = order;
 
         public Reader Reader
         {
             get => _reader;
             set => _reader = value;
         }
-
-        public DateTimeOffset Expires { get; set; }
 
         public string? SharedWith { get; set; }
 
@@ -706,8 +630,5 @@ internal sealed partial class ReaderRuntime
             get => _streamProblem;
             set => _streamProblem = value;
         }
-
-        public bool IsOf(string owner, string user) =>
-            Owner == owner && string.Equals(User, user, StringComparison.OrdinalIgnoreCase);
     }
 }

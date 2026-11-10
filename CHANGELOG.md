@@ -9,89 +9,44 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ### Added
 
-- Event rules: Recipients, shared targets for Send email, Send HTTP request and Send TCP message; change a recipient and all its rules follow.
-- Event rules: a recipient has a Test button that says why a send failed.
-- Event rules: MQTT, Modbus and OPC UA recipients, with the actions Publish MQTT message, Write Modbus value and Write OPC UA value.
-- Event rules: the Recipients card shows whether a recipient is connected, and the event Recipient not connected tells a rule when it is gone.
-- Event rules: MQTT and OPC UA recipients can use certificates from the PKI page.
-- Event rules: a changed target asks for the password again, a stored password never goes to a new target.
-- PKI: a certificate or CA a recipient uses cannot be deleted.
-- Plugin SDK 0.12.0: recipient sessions, one call that reads and watches a page's events, GuardedRun, ByteSize and PluginJson.
+- Event rules: Recipients, shared targets for Send email, Send HTTP request and Send TCP message; change one and all its rules follow.
+- Event rules: MQTT, Modbus and OPC UA recipients, with actions that publish a message or write a value.
 - Text recognition reads an area row by row at any turn, so an article and its price stay together.
+- Vision Center, an optional plugin: run your own detection models on the cameras and count objects in areas or over lines for the event rules.
+- Plugin SDK 0.12.0: recipient sessions, GuardedRun, ByteSize, PluginJson and one call that reads and watches a page's events.
 
 ### Changed
 
-- Text recognition: the word order of Text and Text read changes on turned or tabular text, and Text read now holds a line break between rows.
-- Text recognition: the results table shows the rows of an area without a format as lines.
-- Send TCP message: a line break in a value becomes a space, it was removed before.
-
-- Event rules: the mail server, URL or host of an action moves to a recipient; rules from older versions show Choose a recipient until you pick one.
-- Event rules: the target of a recipient is fixed, placeholders stay in the action: message, query, headers, subject and topic.
-- The client's first start after an install or update takes under a second instead of about 5.
-- The client removes the folders older versions left in the temp folder.
-- Event rules: long actions such as a pulse run beside the short ones, and one rule can hold at most half of the action slots.
-- Event rules: an action that cannot start within a minute because too many actions are running is skipped and the event log says so; an action that started runs on all its devices, and turning something off is never skipped.
-- Event rules: Send HTTP request no longer follows a redirect; the action and the recipient's Test name the address it points to.
-- Event rules: names of rules and recipients no longer take line breaks or tabs.
-- Login: after 50 failed logins from one address in 5 minutes, that address waits until the 5 minutes end.
-- Audit: failed logins with unknown user names are one entry per address and minute, with their count.
-- VAPIX Commander: the server decides whether a request changes a device or is dangerous, whatever the command says.
-- VAPIX Commander: a restart, reset, upgrade or user change always needs the dangerous confirmation, also in rollouts and event rules.
-- VAPIX Commander: a request OADM does not know counts as changing the device, so your own read may ask for a confirmation.
-- VAPIX Commander: a path with #, ; or an encoded / or . is refused; a saved command with such a path sends nothing until it is corrected.
-- Event rules: a VAPIX command that now counts as dangerous sends nothing until Allow dangerous commands is ticked.
-- Import configuration: settings areas OADM does not know are not imported, and the dialog names them.
-- Import configuration: users in a file are never imported, only the password policy.
-- Import configuration and Configure devices: DNS, network link, HTTPS ciphers and RTSP ports count as connection settings.
+- Event rules: rules from older versions show Choose a recipient until you pick one.
+- Event rules: an action that cannot start within a minute is skipped and the event log says so.
+- Event rules: Send HTTP request no longer follows a redirect.
+- Event rules: a VAPIX command that counts as dangerous sends nothing until Allow dangerous commands is ticked.
+- Text recognition: the word order changes on turned or tabular text, and Text read holds a line break between rows.
+- VAPIX Commander: the server decides whether a request is dangerous; a restart, reset, upgrade or user change always asks, also in rollouts.
+- Import configuration: settings areas OADM does not know and users in a file are not imported.
 - Install certificates: a private key goes to a device over HTTP only after Send the keys anyway was ticked.
-- Load test: a check ends when its device group changes, and a camera that leaves the group gets its exposure back at once.
-- Load test: users of another device group only see that a check is running.
-- Web View: a link to a website opens in the system browser, a device tab shows only its device.
-- Optional plugins load in the client only over a secure connection to the server.
-- File and transfer sizes read the same everywhere, for example 412 KB, 87.0 MB and 37.0 of 82.4 MB.
-- Network settings, Assign IP address, Import configuration and the certificate tasks start faster on thousands of devices.
+- Login: after 50 failed logins from one address in 5 minutes, that address waits until the 5 minutes end.
+- Web View: a link to a website opens in the system browser.
+- The client starts faster after an update, and tasks start faster on thousands of devices.
 
 ### Fixed
 
 - Text recognition: the package for Intel Macs has its recognition library, it was missing since 4.10.0.
-- Text recognition: a text found twice where two parts of a large area overlap is read once.
-- Event rules: what an action writes to the event log and the server log always stays on one line.
-- Dashboards: a text of several lines stays inside its widget.
-- Plugins page: Restart server waits while an update or another plugin's install runs.
+- After a logout the next user no longer sees the last user's devices, tasks or page values.
 - Operators and custom roles can again use the Edge storage tools, Action Rule Editor runs and VAPIX Commander rollouts.
-- Logging in again after logging out from a plugin page works.
 - Add devices: a found device no longer stays on "logging in" after its login worked.
-- After a logout the next user no longer sees the last user's devices, tasks or page values, also on another server.
-- A task started from a dialog, such as EST - Certificate Enrollment, also finishes when more than 10,000 tasks are in the list.
+- A task started from a dialog also finishes when more than 10,000 tasks are in the list.
 - Live video no longer uses more and more memory while the window is busy.
-- Login: a very long user name or password is refused like a wrong password and no longer fills the server log.
-- Vulnerabilities: an empty list no longer replaces the server's list, and a list dated in the future counts as dated now.
-- Audit: plugin actions that failed or were cancelled are logged too.
-- Event rules: a rule whose target does not answer, such as a mail server that is down, no longer delays other rules.
-- Event rules: stay fast and correct when thousands of devices change tags or are removed.
-- Event log: stays within its size limit during a flood of events.
-- Event rules: a value of an event can no longer add a line to a Send TCP message.
-- Upgrade AXIS OS: one missed status check during the install is no longer reported as a rollback.
-- Upgrade AXIS OS: installing the version a device already runs is Done only after the device really restarted.
-- Upgrade AXIS OS: Cancel after the upload says that the device rolls back by itself and restarts.
+- Event rules: a target that does not answer, such as a mail server that is down, no longer delays other rules.
+- Event rules and the event log stay fast during a flood of events and when thousands of devices change.
+- Upgrade AXIS OS: a missed status check is no longer reported as a rollback, and the same version is Done only after a real restart.
 - Network settings and Assign IP address follow a device that changed its address before it answered.
-- Network settings and Assign IP address no longer say Nothing was changed when the device did not answer.
 - Users: a user name that contains "error" no longer fails the task.
 - Date and time: Set manually no longer sets the last devices of a large run behind.
-- Install certificates: a certificate that is not valid yet, or not for client authentication with IEEE 802.1X, is refused before anything changes.
-- Sites: silent connections to the site port can no longer keep site nodes from connecting again.
-- Sites: a site node that was taken over can no longer use up the server's memory.
-- Sites: a site that shows Not bound no longer accepts the key its node had before the Reset.
-- Web View on macOS: the page of one device can no longer send requests to another open device.
-- Web View: the debug log no longer holds the query of a request, which can carry a password.
-- Web View: when the server refuses a request, the tab says why.
-- Web View: a device page can open at most one website in your browser every 5 seconds.
+- Install certificates: a certificate that is not valid yet is refused before anything changes.
 - Dashboards and Live View no longer show a load error after you leave the page.
-- Two clients started at the same time no longer lose a settings save.
-- The client settings file is saved safely and is readable only by its owner on Linux and macOS.
-- A service that finds a plugin folder other users could change no longer loads it and moves it aside; the other plugins load.
-- Optional plugins such as Text recognition are no longer deleted at a server start because of a loose file elsewhere in the data folder, only when other users could change the plugin's own folder; the Plugins page then says why.
-- A damaged request to a plugin page is refused with a plain text instead of a plugin error.
+- Plugins page: Restart server waits while an update or another plugin's install runs.
+- Security: fixes for site nodes, Web View on macOS, plugin folders, the client settings file and very long login names.
 
 ## [4.11.0] - 2026-11-05
 

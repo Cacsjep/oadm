@@ -9,7 +9,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 Plugins of OADM that are not in its installers: an administrator downloads the plugin's ZIP, clicks Install on the Plugins
 page and chooses it, the client sends it to the server, and every client gets the client part from the server. The same
 steps work online and offline. The first ones are the vision plugins, which analyse the cameras' pictures on the server
-(text recognition, `docs/spec/ocr.md`). OADM itself stays free of models and inference libraries; no extra installer.
+(text recognition, `docs/spec/ocr.md`; Vision Center, `docs/spec/vision-center.md`, spec only). OADM itself stays free of models and inference libraries; no extra installer.
 
 **Name for users: "optional plugins"** (decision 2026-11-03): the card "Optional plugins" on the Plugins page,
 audit "Installed optional plugin ...", log lines the Logs page shows, docs and every UI text. "Add-on" stays the name in

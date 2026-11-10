@@ -335,7 +335,7 @@ public sealed class PageLayoutTests
         var picture = view.PictureControl;
         var rect = picture.PictureRect;
         var place = picture.TranslatePoint(new Point(rect.X, rect.Y), window)!.Value;
-        var button = view.FindControl<Button>("PauseButton")!;
+        var button = view.FindControl<PicturePauseBar>("PauseBar")!.Button;
         var lines = new[] { "VideoColumn", "VideoCard", "ResultsCard" }.Select(n => Edges(view.FindControl<Control>(n)!))
             .Concat([Edges(view.FindControl<Control>("ResultsSplitter")!), Edges(view.FindControl<Control>("SettingsCard")!), Edges(button)])
             .Append(string.Create(CultureInfo.InvariantCulture, $"Picture left {place.X} top {place.Y} width {rect.Width} height {rect.Height}"));

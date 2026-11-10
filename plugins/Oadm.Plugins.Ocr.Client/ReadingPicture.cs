@@ -58,13 +58,8 @@ public sealed class ReadingPicture : Control
     /// <summary>The smallest area drawn, relative to the picture (a click is not an area).</summary>
     public const double MinAreaSize = AreaGeometry.MinSize;
 
-    /// <summary>The side of a handle and how near the pointer must be to take it, in pixels.</summary>
-    private const double HandleSize = 8;
-
-    private const double HandleReach = 7;
-
     /// <summary>An area with a side below this (pixels) is small: the handles' reach would cover it, a press inside moves it.</summary>
-    internal const double SmallArea = 4 * HandleReach;
+    internal const double SmallArea = ShapeHandles.SmallArea;
 
     private Point? _drawStart;
     private Point _drawNow;
@@ -148,24 +143,15 @@ public sealed class ReadingPicture : Control
     }
 
     /// <summary>Where the picture sits inside the control (its shape kept, centered).</summary>
-    public Rect PictureRect => Fit(Bounds.Size, Aspect);
+    public Rect PictureRect => PictureFit.Fit(Bounds.Size, Aspect);
 
     /// <summary>A move or resize is in progress.</summary>
     public bool IsDragging => _edit is not null;
 
-    private double Aspect => AspectOf(PictureSize);
-
-    /// <summary>The picture's shape.</summary>
-    internal static double AspectOf(Resolution size) => size.Width > 0 && size.Height > 0 ? (double)size.Width / size.Height : 16.0 / 9;
+    private double Aspect => PictureFit.AspectOf(PictureSize.Width, PictureSize.Height);
 
     /// <summary>A point of the control relative to the picture (0 to 1 each, clamped).</summary>
-    public Point ToRelative(Point point)
-    {
-        var picture = PictureRect;
-        return picture.Width <= 0 || picture.Height <= 0
-            ? default
-            : new Point(Math.Clamp((point.X - picture.X) / picture.Width, 0, 1), Math.Clamp((point.Y - picture.Y) / picture.Height, 0, 1));
-    }
+    public Point ToRelative(Point point) => PictureFit.ToRelative(point, PictureRect);
 
     /// <summary>The rectangle between two relative points.</summary>
     public static RelativeBox BoxBetween(Point a, Point b) => AreaGeometry.Between(a.X, a.Y, b.X, b.Y);
@@ -197,12 +183,9 @@ public sealed class ReadingPicture : Control
             && ToRect(selected.Box, picture) is var rect
             && !(rect.Contains(point) && (rect.Width < SmallArea || rect.Height < SmallArea)))
         {
-            foreach (var (handle, at) in Handles(rect))
+            if (ShapeHandles.HitRect(rect, point) is var handle and not AreaHandle.None)
             {
-                if (Math.Abs(point.X - at.X) <= HandleReach && Math.Abs(point.Y - at.Y) <= HandleReach)
-                {
-                    return (selected, handle);
-                }
+                return (selected, handle);
             }
         }
 
@@ -266,18 +249,7 @@ public sealed class ReadingPicture : Control
         InvalidateVisual();
     }
 
-    protected override Size MeasureOverride(Size availableSize)
-    {
-        var width = double.IsInfinity(availableSize.Width) ? 640 : availableSize.Width;
-        var height = width / Aspect;
-        if (!double.IsInfinity(availableSize.Height) && height > availableSize.Height)
-        {
-            height = availableSize.Height;
-            width = height * Aspect;
-        }
-
-        return new Size(width, height);
-    }
+    protected override Size MeasureOverride(Size availableSize) => PictureFit.Measure(availableSize, Aspect);
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
@@ -335,7 +307,7 @@ public sealed class ReadingPicture : Control
             return;
         }
 
-        Cursor = IsDrawing ? new Cursor(StandardCursorType.Cross) : CursorOf(CanEdit ? HitTest(position).Handle : AreaHandle.None);
+        Cursor = IsDrawing ? new Cursor(StandardCursorType.Cross) : ShapeHandles.CursorOf(CanEdit ? HitTest(position).Handle : AreaHandle.None);
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
@@ -397,16 +369,7 @@ public sealed class ReadingPicture : Control
             return;
         }
 
-        var step = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? AreaGeometry.BigNudge : AreaGeometry.Nudge;
-        Vector? nudge = e.Key switch
-        {
-            Key.Left => new Vector(-step, 0),
-            Key.Right => new Vector(step, 0),
-            Key.Up => new Vector(0, -step),
-            Key.Down => new Vector(0, step),
-            _ => null,
-        };
-        if (nudge is { } by && Areas?.Any(a => a.IsSelected) == true)
+        if (ShapeGeometry.NudgeOf(e.Key, e.KeyModifiers) is { } by && Areas?.Any(a => a.IsSelected) == true)
         {
             NudgeRequested?.Invoke(this, by);
             e.Handled = true;
@@ -473,11 +436,11 @@ public sealed class ReadingPicture : Control
 
         if (IsDrawing)
         {
-            DrawHint(context, picture, OcrTexts.DrawHint, top: true);
+            ShapePainter.DrawHint(context, new OverlayTheme(this), picture, OcrTexts.DrawHint, top: true);
         }
         else if (ShowStartHint)
         {
-            DrawHint(context, picture, OcrTexts.StartHint, top: false);
+            ShapePainter.DrawHint(context, new OverlayTheme(this), picture, OcrTexts.StartHint, top: false);
         }
     }
 
@@ -541,94 +504,23 @@ public sealed class ReadingPicture : Control
             context.DrawRectangle(area.IsSelected ? Tint(accent, 0.16) : Tint(grey, 0.06), area.IsSelected ? solid : dashed, rect);
             var name = string.IsNullOrWhiteSpace(area.Name) ? " " : area.Name.Trim();
             var text = new FormattedText(name, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, font, size, area.IsSelected ? onAccent : greyText);
-            var tag = new Rect(rect.X - 1, rect.Y - text.Height - 4, text.Width + 10, text.Height + 4);
-            if (tag.Y < picture.Y)
-            {
-                tag = tag.WithY(rect.Y + 1);
-            }
-
-            context.FillRectangle(area.IsSelected ? accent : greyTag, tag, 3);
-            context.DrawText(text, new Point(tag.X + 5, tag.Y + 2));
+            ShapePainter.DrawTag(context, text, rect.TopLeft, picture, area.IsSelected ? accent : greyTag);
             if (area.IsSelected && CanEdit && !IsDrawing)
             {
-                var border = new Pen(onAccent, 1);
-                foreach (var (_, at) in Handles(rect))
-                {
-                    context.DrawRectangle(accent, border, new Rect(at.X - (HandleSize / 2), at.Y - (HandleSize / 2), HandleSize, HandleSize));
-                }
+                ShapePainter.DrawHandles(context, ShapeHandles.OfRect(rect).Select(h => h.At), accent, onAccent);
             }
         }
     }
 
-    /// <summary>A hint on the theme's overlay: at the top of the picture, or in its middle.</summary>
-    private void DrawHint(DrawingContext context, Rect picture, string hint, bool top)
-    {
-        var text = new FormattedText(hint, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Font("Oadm.FontFamily"),
-            Number("Oadm.FontSizeBody", 12), Brush("Oadm.TextPrimaryBrush"));
-        var y = top ? picture.Y + 10 : picture.Y + ((picture.Height - text.Height - 10) / 2);
-        var box = new Rect(picture.X + ((picture.Width - text.Width) / 2) - 10, y, text.Width + 20, text.Height + 10);
-        context.FillRectangle(Brush("Oadm.OverlayBrush"), box, 4);
-        context.DrawText(text, new Point(box.X + 10, box.Y + 5));
-    }
+    private static Rect ToRect(RelativeBox box, Rect picture) => PictureFit.ToControl(box.X, box.Y, box.Width, box.Height, picture);
 
-    /// <summary>The eight handles of an area: the corners and the middle of each edge.</summary>
-    private static IEnumerable<(AreaHandle Handle, Point At)> Handles(Rect rect)
-    {
-        var midX = rect.X + (rect.Width / 2);
-        var midY = rect.Y + (rect.Height / 2);
-        yield return (AreaHandle.TopLeft, rect.TopLeft);
-        yield return (AreaHandle.TopRight, rect.TopRight);
-        yield return (AreaHandle.BottomRight, rect.BottomRight);
-        yield return (AreaHandle.BottomLeft, rect.BottomLeft);
-        yield return (AreaHandle.Top, new Point(midX, rect.Y));
-        yield return (AreaHandle.Right, new Point(rect.Right, midY));
-        yield return (AreaHandle.Bottom, new Point(midX, rect.Bottom));
-        yield return (AreaHandle.Left, new Point(rect.X, midY));
-    }
+    private static IBrush Tint(IBrush brush, double opacity) => OverlayTheme.Tint(brush, opacity);
 
-    private static Cursor? CursorOf(AreaHandle handle) => handle switch
-    {
-        AreaHandle.Move => new Cursor(StandardCursorType.SizeAll),
-        AreaHandle.TopLeft => new Cursor(StandardCursorType.TopLeftCorner),
-        AreaHandle.TopRight => new Cursor(StandardCursorType.TopRightCorner),
-        AreaHandle.BottomRight => new Cursor(StandardCursorType.BottomRightCorner),
-        AreaHandle.BottomLeft => new Cursor(StandardCursorType.BottomLeftCorner),
-        AreaHandle.Top or AreaHandle.Bottom => new Cursor(StandardCursorType.SizeNorthSouth),
-        AreaHandle.Left or AreaHandle.Right => new Cursor(StandardCursorType.SizeWestEast),
-        _ => null,
-    };
+    private IBrush Brush(string key) => new OverlayTheme(this).Brush(key);
 
-    internal static Rect Fit(Size space, double aspect)
-    {
-        if (space.Width <= 0 || space.Height <= 0)
-        {
-            return default;
-        }
+    private double Number(string key, double fallback) => new OverlayTheme(this).Number(key, fallback);
 
-        var width = space.Width;
-        var height = width / aspect;
-        if (height > space.Height)
-        {
-            height = space.Height;
-            width = height * aspect;
-        }
-
-        return new Rect((space.Width - width) / 2, (space.Height - height) / 2, width, height);
-    }
-
-    private static Rect ToRect(RelativeBox box, Rect picture) =>
-        new(picture.X + (box.X * picture.Width), picture.Y + (box.Y * picture.Height), box.Width * picture.Width, box.Height * picture.Height);
-
-    private static IBrush Tint(IBrush brush, double opacity) =>
-        brush is ISolidColorBrush solid ? new SolidColorBrush(solid.Color, opacity) : brush;
-
-    private object? Find(string key) => this.TryFindResource(key, ActualThemeVariant, out var value) ? value : null;
-
-    private IBrush Brush(string key) => Find(key) as IBrush ?? Brushes.Gray;
-
-    private double Number(string key, double fallback) => Find(key) is double value ? value : fallback;
-
-    private Typeface Font(string key) => new(Find(key) as FontFamily ?? FontFamily.Default);
+    private Typeface Font(string key) => new OverlayTheme(this).Font(key);
 
     /// <summary>A move or resize in progress: the area, what moves, where it started (relative) and the box now.</summary>
     private sealed class EditDrag(AreaViewModel area, AreaHandle handle, Point start, RelativeBox startBox)

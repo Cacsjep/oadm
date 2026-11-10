@@ -478,6 +478,9 @@ internal static class Samples
         Resolutions = [new(2688, 1512), new(1920, 1080), new(1280, 720)],
     };
 
+    /// <summary>The camera's video sources as the shared Stream settings dialog lists them.</summary>
+    public static IReadOnlyList<StreamSource> StreamSources => [.. CameraOptions.VideoSources.Select(s => new StreamSource(s.Number, s.Name))];
+
     /// <summary>The fake server: the list, each reader, its reading, the engine and the camera.</summary>
     public static FakePageContext Context(byte[]? picture = null)
     {

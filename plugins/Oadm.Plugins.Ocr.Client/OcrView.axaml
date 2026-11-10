@@ -3,6 +3,7 @@
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:vm="using:Oadm.Plugins.Ocr.Client"
              xmlns:api="using:Oadm.Plugins.Ocr.Api"
+             xmlns:shared="using:Oadm.Plugins.Shared.Vision.Client"
              x:Class="Oadm.Plugins.Ocr.Client.OcrView"
              x:DataType="vm:OcrViewModel"
              ui:PageHeader.Subtitle="{x:Static api:OcrInfo.Description}">
@@ -96,26 +97,11 @@
                                  HeldPicture="{Binding HeldPicture}" Version="{Binding OverlayVersion}" />
               <!-- Pause and Resume in the picture's bottom left corner, the one thing over the areas (decision 2026-11-04): only the
                    button's own rectangle is covered. It never takes the focus, so Esc and the arrow keys stay with the picture. -->
-              <vm:PicturePlace x:Name="PicturePlace" PictureSize="{Binding PictureSize}" IsVisible="{Binding MayPause}">
-                <StackPanel x:Name="PauseBar" Classes="videoCorner" Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Bottom">
-                  <Border Classes="videoOverlay">
-                    <Button x:Name="PauseButton" Classes="toolbar iconOnly" Focusable="False" Command="{Binding TogglePauseCommand}"
-                            ToolTip.Tip="{Binding PauseTip}" ToolTip.ShowOnDisabled="True">
-                      <Panel>
-                        <ui:OadmIcon Data="{StaticResource Icon.pause}" IsVisible="{Binding !IsPaused}" />
-                        <ui:OadmIcon Data="{StaticResource Icon.start}" IsVisible="{Binding IsPaused}" />
-                      </Panel>
-                    </Button>
-                  </Border>
-                  <Border Classes="videoOverlay" IsVisible="{Binding ShowPauseState}" VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal" Spacing="4">
-                      <ui:ProgressRing x:Name="PauseRing" Width="16" Height="16" Margin="4,0,0,0" IsVisible="{Binding IsPauseWorking}" VerticalAlignment="Center" />
-                      <ui:StatusChip x:Name="PausedChip" Text="{x:Static vm:OcrTexts.Paused}" IsWarning="True" ToolTip.Tip="{x:Static vm:OcrTexts.PausedTip}"
-                                     IsVisible="{Binding IsPaused}" />
-                    </StackPanel>
-                  </Border>
-                </StackPanel>
-              </vm:PicturePlace>
+              <shared:PicturePlace x:Name="PicturePlace" PictureSize="{Binding PictureSize}" IsVisible="{Binding MayPause}">
+                <shared:PicturePauseBar x:Name="PauseBar" Command="{Binding TogglePauseCommand}" Tip="{Binding PauseTip}" IsPaused="{Binding IsPaused}"
+                                        ShowState="{Binding ShowPauseState}" IsWorking="{Binding IsPauseWorking}"
+                                        PausedTip="{x:Static vm:OcrTexts.PausedTip}" />
+              </shared:PicturePlace>
             </Panel>
         </Border>
 

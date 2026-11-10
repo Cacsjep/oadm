@@ -1,0 +1,23 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Vision.Client"
+        x:Class="Oadm.Plugins.Vision.Client.ModelSettingsWindow"
+        x:DataType="vm:ModelSettingsViewModel"
+        Title="{x:Static vm:ModelSettingsViewModel.Title}"
+        Width="400" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- A model's Settings: one operation, no card; the errors and the server's refusals below their fields. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ModelSettingsViewModel.Title}" />
+    <Border Grid.Row="1" Classes="dialogBody">
+      <vm:ModelSettingsForm x:Name="Form" />
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="primary" Content="Save" Command="{Binding OkCommand}" ToolTip.Tip="{Binding FormError}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

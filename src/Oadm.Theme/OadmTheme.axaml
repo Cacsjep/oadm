@@ -72,6 +72,8 @@
 
       <!-- Brushes -->
       <SolidColorBrush x:Key="Oadm.WindowBackgroundBrush" Color="{StaticResource Oadm.WindowBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.CanvasBackgroundBrush" Color="{StaticResource Oadm.CanvasBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.CanvasNodeBrush" Color="{StaticResource Oadm.CanvasNodeColor}" />
       <SolidColorBrush x:Key="Oadm.CardBackgroundBrush" Color="{StaticResource Oadm.CardBackgroundColor}" />
       <SolidColorBrush x:Key="Oadm.SurfaceRaisedBrush" Color="{StaticResource Oadm.SurfaceRaisedColor}" />
       <SolidColorBrush x:Key="Oadm.SurfaceHoverBrush" Color="{StaticResource Oadm.SurfaceHoverColor}" />
@@ -1024,7 +1026,7 @@
     <Setter Property="MaxWidth" Value="480" />
   </Style>
 
-  <!-- Tree select field (the event select of the event rules, Oadm.Client EventPicker): a button that looks like a
+  <!-- Tree select field (the event select, ui:EventPicker: event rules, Vision Center): a button that looks like a
        ComboBox (Button.treeSelect, .open while its panel is open), the folders of the choice grey before its name; the panel
        below it (Border.treePopup) with the search, the tree (ListBox.eventTree, rows like the device tree) and a footer
        with the description of the event under the pointer (Border.treePopupFooter). -->
@@ -1207,6 +1209,10 @@
     <Setter Property="Foreground" Value="{StaticResource Oadm.StatusErrorBrush}" />
   </Style>
   <Style Selector="TextBox:error /template/ Border#PART_BorderElement, TextBox:error:pointerover /template/ Border#PART_BorderElement, TextBox:error:focus /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBrush}" />
+  </Style>
+  <!-- ui:NumberSlider: its number input gets the red border while the field's error shows below the whole row -->
+  <Style Selector="ui|NumberSlider.error TextBox /template/ Border#PART_BorderElement, ui|NumberSlider.error TextBox:pointerover /template/ Border#PART_BorderElement, ui|NumberSlider.error TextBox:focus /template/ Border#PART_BorderElement">
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.StatusErrorBrush}" />
   </Style>
   <Style Selector="ComboBox:error /template/ Border#Background, ComboBox:error:pointerover /template/ Border#Background">

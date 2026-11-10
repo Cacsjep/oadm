@@ -689,9 +689,11 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             return;
         }
 
+        // The shared dialog (plugins/Shared/Vision.Client) lists the sources by number and name.
+        var sources = VideoSources.Select(v => new StreamSource(v.Number, v.Name)).ToList();
         var form = new StreamSettingsViewModel(
-            VideoSources,
-            SelectedSource,
+            sources,
+            sources.FirstOrDefault(v => v.Number == SelectedSource?.Number),
             Resolutions,
             SelectedResolution,
             FpsChoices,
@@ -709,9 +711,10 @@ public sealed partial class ReaderEditorViewModel : ValidatingViewModel, IDispos
             return;
         }
 
-        if (form.SelectedSource is { } source && !Equals(source, SelectedSource))
+        if (form.SelectedSource is { } source && source.Number != SelectedSource?.Number
+            && VideoSources.FirstOrDefault(v => v.Number == source.Number) is { } chosen)
         {
-            SelectedSource = source;
+            SelectedSource = chosen;
         }
 
         SelectedResolution = form.SelectedResolution;

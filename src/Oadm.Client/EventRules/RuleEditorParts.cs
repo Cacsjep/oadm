@@ -16,10 +16,12 @@ using Oadm.Sdk.Formatting;
 
 namespace Oadm.Client.EventRules;
 
-/// <summary>An event type in the condition picker: "Device status: Device unreachable".</summary>
+/// <summary>An event type in the condition picker: "Device status: Device unreachable" (an event of the shared picker).</summary>
 public sealed record EventTypeOption(EventTypeEntry Entry)
+    : EventChoice(Entry.Id, Entry.DisplayName, FoldersOf(Entry), Entry.Available, Entry.Description)
 {
-    public string Id => Entry.Id;
+    // An older server sends no folders: its group is its folder.
+    private static IReadOnlyList<string> FoldersOf(EventTypeEntry entry) => entry.Path.Count > 0 ? [.. entry.Path] : [entry.Group];
 
     public bool Stateful => Entry.Stateful;
 
@@ -178,7 +180,7 @@ public sealed partial class DeviceSelectorViewModel : ObservableObject
 public sealed record OverviewLine(string Label, string Text);
 
 /// <summary>A day toggle of a schedule.</summary>
-public sealed partial class DayToggle(DayOfWeek day) : ObservableObject
+public sealed partial class DayToggle(DayOfWeek day) : ObservableObject, Oadm.Sdk.Client.Controls.IDayChoice
 {
     public DayOfWeek Day { get; } = day;
 

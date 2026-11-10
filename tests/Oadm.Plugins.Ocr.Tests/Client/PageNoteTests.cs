@@ -76,7 +76,7 @@ public sealed class PageNoteTests
             using var page = await OpenAsync(Samples.Context());
             var card = page.View.FindControl<Border>("VideoCard")!;
             var panel = page.View.FindControl<Panel>("VideoPanel")!;
-            var button = page.View.FindControl<Button>("PauseButton")!;
+            var button = page.View.FindControl<PicturePauseBar>("PauseBar")!.Button;
             var at = button.TranslatePoint(default, page.View)!.Value;
             var (cardHeight, panelHeight) = (card.Bounds.Height, panel.Bounds.Height);
             Assert.False(page.Editor.HasReadingNote);

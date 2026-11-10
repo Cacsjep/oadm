@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Oadm.Plugins.Vision.Client</AssemblyName>
+    <RootNamespace>Oadm.Plugins.Vision.Client</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- Same folder as the server part: artifacts/plugins/oadm.vision/. -->
+    <OadmPluginId>oadm.vision</OadmPluginId>
+    <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+    <!-- The client part of an add-on (docs/spec/add-ons.md): .NET only, no native libraries; clients get it from the server. -->
+    <OadmAddOn>true</OadmAddOn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Avalonia, CommunityToolkit.Mvvm and the SDKs are shared from the client host (PluginLoadContext.IsShared):
+         compile against them, never copy them into the plugin folder. -->
+    <PackageReference Include="Avalonia" Version="12.1.4" ExcludeAssets="runtime" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" ExcludeAssets="runtime" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" ExcludeAssets="runtime" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Client\Oadm.Sdk.Client.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <!-- Contract models are shared with the server part (same plugin folder). -->
+    <ProjectReference Include="..\Oadm.Plugins.Vision\Oadm.Plugins.Vision.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Oadm.Plugins.Vision.Tests" />
+  </ItemGroup>
+
+  <!-- The picture overlay and the Stream settings dialog shared with Text recognition (docs/spec/vision-center.md "Parts and
+       contract"): linked source, compiled into this plugin's own assembly; the picture size is this plugin's Resolution. -->
+  <ItemGroup>
+    <Compile Include="..\Shared\Vision.Client\**\*.cs" Link="Shared\Vision.Client\%(RecursiveDir)%(Filename)%(Extension)" />
+    <AvaloniaXaml Include="..\Shared\Vision.Client\**\*.axaml" Link="Shared\Vision.Client\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Using Include="Oadm.Plugins.Shared.Vision.Client" />
+    <Using Include="Oadm.Plugins.Vision.Model.Resolution" Alias="PictureResolution" />
+  </ItemGroup>
+
+  <!-- Development deployment next to the server part in artifacts/plugins/oadm.vision/. -->
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
+    <ItemGroup>
+      <_OadmPluginFiles Include="$(OutDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OadmPluginFiles)" DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Message Importance="normal" Text="OADM client plugin $(OadmPluginId) deployed to $(OadmPluginOutputDir)" />
+  </Target>
+
+</Project>

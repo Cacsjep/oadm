@@ -1,0 +1,77 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Oadm.Plugins.Vision.Server</AssemblyName>
+    <RootNamespace>Oadm.Plugins.Vision</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <!-- Folder name under artifacts/plugins/, must equal the id in plugin.json. -->
+    <OadmPluginId>oadm.vision</OadmPluginId>
+    <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+    <!-- An add-on (docs/spec/add-ons.md): never in the OADM installers or ZIPs, its own release ZIP per platform. -->
+    <OadmAddOn>true</OadmAddOn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The SDK is shared from the host: never copy it (or its dependencies) into the plugin folder. -->
+    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Inference (docs/spec/vision-center.md "Load" and "Packaging"): the same ONNX Runtime version and packages as Text
+       recognition (plugins/Oadm.Plugins.Ocr/Oadm.Plugins.Ocr.csproj), so both add-ons run side by side in one server.
+       Windows: DirectML plus the CPU; Linux x64: the GPU build with CUDA plus the CPU; everything else: the CPU build. No model. -->
+  <PropertyGroup>
+    <VisionOnnxRuntimeVersion>1.24.4</VisionOnnxRuntimeVersion>
+    <VisionRid>$(RuntimeIdentifier)</VisionRid>
+    <VisionRid Condition="'$(VisionRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</VisionRid>
+    <VisionOnnxRuntimeVersion Condition="'$(VisionRid)' == 'osx-x64'">1.23.2</VisionOnnxRuntimeVersion>
+  </PropertyGroup>
+  <ItemGroup Condition="$(VisionRid.StartsWith('win'))">
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="$(VisionOnnxRuntimeVersion)" />
+    <PackageReference Include="Microsoft.AI.DirectML" Version="1.15.4" GeneratePathProperty="true" />
+    <None Include="$(PkgMicrosoft_AI_DirectML)\bin\x64-win\DirectML.dll" Link="runtimes\win-x64\native\DirectML.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
+    <OadmNoticePackage Include="Microsoft.AI.DirectML" Version="1.15.4" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(VisionRid)' == 'linux-x64'">
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.Gpu.Linux" Version="$(VisionOnnxRuntimeVersion)" />
+  </ItemGroup>
+  <ItemGroup Condition="!$(VisionRid.StartsWith('win')) and '$(VisionRid)' != 'linux-x64'">
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="$(VisionOnnxRuntimeVersion)" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- JPEG decode, crop and scale. The version of the host's Avalonia.Skia, so one process never holds two. -->
+    <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" PrivateAssets="all" Publish="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\ContextCall.cs" Link="Common\ContextCall.cs" />
+    <Compile Include="..\Shared\Vision\**\*.cs" Link="Shared\Vision\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Oadm.Plugins.Shared.Vision" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Oadm.Plugins.Vision.Tests" />
+    <InternalsVisibleTo Include="Oadm.Plugins.Vision.Client" />
+  </ItemGroup>
+
+  <!-- Development deployment: copy the output to artifacts/plugins/oadm.vision/. -->
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
+    <ItemGroup>
+      <_OadmPluginFiles Include="$(OutDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OadmPluginFiles)" DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Message Importance="normal" Text="OADM plugin $(OadmPluginId) deployed to $(OadmPluginOutputDir)" />
+  </Target>
+
+</Project>

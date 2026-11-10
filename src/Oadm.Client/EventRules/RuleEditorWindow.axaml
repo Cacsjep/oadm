@@ -83,7 +83,7 @@
                               <ColumnDefinition Width="*" MaxWidth="{StaticResource Oadm.CheckValueWidth}" />
                               <ColumnDefinition Width="Auto" SharedSizeGroup="CheckEnd" />
                             </Grid.ColumnDefinitions>
-                            <vm:EventPicker Grid.ColumnSpan="3" Tree="{Binding Tree}" Selected="{Binding SelectedEventType}" />
+                            <ui:EventPicker Grid.ColumnSpan="3" Tree="{Binding Tree}" Selected="{Binding SelectedEventType}" />
                             <!-- The info icon, then the remove icon of an "And" (right after the select, not at the row's end) -->
                             <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2" VerticalAlignment="Top">
                               <ui:InfoIcon Text="{Binding EventDescription}" />
@@ -143,16 +143,7 @@
                         </StackPanel>
                         <!-- Schedule -->
                         <StackPanel Spacing="8" IsVisible="{Binding IsSchedule}">
-                          <ItemsControl ItemsSource="{Binding Days}">
-                            <ItemsControl.ItemsPanel>
-                              <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="4" /></ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                              <DataTemplate x:DataType="vm:DayToggle">
-                                <ToggleButton Classes="day" Content="{Binding Text}" IsChecked="{Binding IsChecked}" />
-                              </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                          </ItemsControl>
+                          <ui:DayChips ItemsSource="{Binding Days}" />
                           <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Classes="fieldLabel" Text="From" VerticalAlignment="Center" />
                             <TextBox Text="{Binding From}" Width="80" />

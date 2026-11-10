@@ -1,0 +1,107 @@
+---
+title: Speed and limits
+description: Whether the server keeps up, the graphics card, measured times, frame rates and the limits of Vision Center.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Detection models are heavy: one picture can cost a CPU core most of a second. Plan the frames per second and the model
+size with the server you have.
+
+## Does the server keep up
+
+The top right of the page shows the status, **Load** and what runs the models, such as `CPU 24 cores · RTX 5070 Ti`.
+
+| Status | Means |
+|---|---|
+| **All pipelines keep up** | Every watching pipeline runs at its frames per second |
+| **Busy: 2 pipelines run slower than set** | Those pipelines fall behind their frames per second |
+| **Busy: the models are at 82 %** | All pipelines keep up, with little room left |
+| **Overloaded: lower the frames per second or the number of pipelines** | The server has no room left |
+
+A slow pipeline turns orange in the list, for example **Watching · 15 fps (reads 11.2)**. It skips pictures and works on
+the newest, so it never falls further behind. Each node's live line shows its time per picture, such as `5 objects · 18 ms`.
+
+On **Busy** or **Overloaded**:
+
+- Lower the frames per second. Counting people needs about 5 to 8.
+- Use a smaller model, such as RF-DETR nano instead of medium.
+- Set pipelines that do not need to watch to **On action**.
+- Use a graphics card.
+
+## CPU
+
+Vision Center uses at most half of the server's CPU cores for its models, one model call per core, so the server stays
+responsive. All pipelines share these workers and one copy of each model in memory.
+
+A pipeline works on up to 4 pictures at once: while one picture is counted, the model already looks at the next ones. A
+model that needs a tenth of a second on one core still keeps up with 25 pictures a second when cores are free. OADM decodes
+each picture only as large as the model needs, so a larger stream resolution costs little more.
+
+## Graphics card
+
+**Use GPU** at the top right is on by default and counts for the whole server. With a usable card, OADM tests each model on
+the card at its first use: it runs there unless the card is clearly slower than the CPU. Meanwhile pipelines show
+**Starting**. When a card fails, the CPU takes over and the server log says why.
+
+| Server | Graphics card |
+|---|---|
+| Windows x64 | Any card (NVIDIA, AMD, Intel) through Microsoft DirectML. Nothing to install |
+| Linux x64 | NVIDIA, with the driver, CUDA 12 and cuDNN 9 installed by you. See [Linux with an NVIDIA card](../../text-recognition/speed/#linux-with-an-nvidia-card) |
+| Linux arm64, macOS | None, the CPU runs the models |
+
+Only users with all devices can change **Use GPU**. It needs no restart.
+
+<Aside>
+On Windows the graphics card is used through Microsoft DirectML, which comes under Microsoft's own license terms; they
+include collecting data. Turn off **Use GPU** and restart the server to keep DirectML from loading.
+</Aside>
+
+Text recognition and Vision Center each keep their own workers. Both on one server can fill its cores: watch both pages'
+status. Both can use the graphics card at the same time.
+
+## Measured
+
+One picture on a development PC (24 cores, NVIDIA GeForce RTX 5070 Ti on Windows), November 2026. The CPU column is one
+CPU core; a server reads up to half its cores in parallel. An empty cell was not measured on the card.
+
+| Model | Kind | One CPU core | Graphics card |
+|---|---|---|---|
+| YOLO11n classification | Classification | About 8 ms | |
+| MobileNetV2 | Classification | About 10 ms | |
+| ResNet-50 | Classification | About 76 ms | About 5 ms |
+| YOLOX nano | Detection | About 27 ms | |
+| YOLO26n | Detection | About 79 ms | About 7 ms |
+| YOLOv8n, YOLO11n | Detection | About 105 ms | About 10 ms, exported with `opset=20` or lower |
+| D-FINE S | Detection | About 460 ms | |
+| RF-DETR small | Detection | About 645 ms | |
+| DETR R50 | Detection | About 690 ms | |
+| RT-DETR v2 R18 | Detection | About 710 ms | |
+| RF-DETR medium | Detection | About 860 ms | About 15 ms |
+
+With Text recognition reading on the same card at the same time, Vision Center's times stayed the same.
+
+The nodes after the model cost little: one picture through 32 nodes with 300 objects takes about 7 ms. The model's
+tooltip in **Models** shows its time on the CPU and on the card for your server.
+
+## Limits
+
+| What | At most |
+|---|---|
+| Pipelines per server | 50 |
+| Watching pipelines per server | One per CPU core, at least 4, at most 50 |
+| Watching pipelines per [site](../../../sites/overview/) | 4 |
+| Pipelines shown live on pages at once | 8 per server, 2 per user |
+| Frames per second of a pipeline | 15 |
+| Nodes per pipeline | 32 |
+| Model nodes one after the other | 2 |
+| Objects per picture | 300 |
+| Objects classified per picture | 16 |
+| Tracked objects per Track node | 300 |
+| Cameras per **Copy to cameras** | 100 |
+| Models, see [Models](../models/#limits) | 20 |
+
+- A pipeline beyond a limit does not run and shows the reason in the list.
+- A pipeline shown on the page counts as watching while the page shows it, unless it is saved and unchanged. Saved
+  pipelines come first.
+- **On action** pipelines cost only when a rule runs them.

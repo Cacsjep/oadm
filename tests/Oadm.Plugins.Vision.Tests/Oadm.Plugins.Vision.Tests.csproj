@@ -1,0 +1,80 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- test method names use underscores -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861;CA2000;CA1849;CA1001</NoWarn>
+    <!-- Gpu/GpuChild.cs is the entry point: the Gpu tests start this assembly as a fresh process of its own. -->
+    <GenerateProgramFile>false</GenerateProgramFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.1.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
+    <!-- In-process server for the hardware test, dev-cameras.yaml loader. -->
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.13" />
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <!-- The code the vision add-ons share (plugins/Shared/Vision). -->
+    <Using Include="Oadm.Plugins.Shared.Vision" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Oadm.Client supplies the host theme (OadmTheme.axaml), the fake API and the shared runtime assemblies
+         (Avalonia, CommunityToolkit, SDK) the plugin projects compile against only; Oadm.Server the in-process server
+         (core plugin host, event hub, RTSP event streams). -->
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
+    <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
+    <ProjectReference Include="..\..\src\Oadm.Server\Oadm.Server.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Vision\Oadm.Plugins.Vision.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Vision.Client\Oadm.Plugins.Vision.Client.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shared dev-cameras.yaml loader of the core hardware tests. -->
+    <Compile Include="..\Oadm.Core.Tests\Hardware\DevCameras.cs" Link="Hardware\DevCameras.cs" />
+    <Compile Include="..\Shared\RecordingFirewall.cs" Link="Shared\RecordingFirewall.cs" />
+    <Compile Include="..\Oadm.Core.Tests\Hardware\HardwareFactAttribute.cs" Link="Hardware\HardwareFactAttribute.cs" />
+    <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The real model and photos of the RealModel tests: downloaded only with -p:OadmRealModels=true (manage test models). -->
+  <Import Project="RealModels\RealModels.targets" />
+
+  <!-- The Gpu tests' run of both vision add-ons at once (docs/spec/vision-center.md "Tests"): with -p:OadmGpuPlugins=true
+       (manage test gpu) the build output of Text recognition (with its models) and of Vision Center goes into
+       gpu-plugins/oadm.ocr and gpu-plugins/oadm.vision next to the tests, each a plugin folder as on a server. Never in
+       the unit build: Text recognition's build downloads its models. -->
+  <ItemGroup Condition="'$(OadmGpuPlugins)' == 'true'">
+    <!-- Restored and built first; nothing of it is referenced or copied (the target below copies its output). -->
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Ocr\Oadm.Plugins.Ocr.csproj" ReferenceOutputAssembly="false" Private="false" />
+  </ItemGroup>
+  <Target Name="VisionGpuPlugins" AfterTargets="Build" Condition="'$(OadmGpuPlugins)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <MSBuild Projects="..\..\plugins\Oadm.Plugins.Ocr\Oadm.Plugins.Ocr.csproj" Targets="Build">
+      <Output TaskParameter="TargetOutputs" ItemName="_VisionGpuOcr" />
+    </MSBuild>
+    <MSBuild Projects="..\..\plugins\Oadm.Plugins.Vision\Oadm.Plugins.Vision.csproj" Targets="GetTargetPath">
+      <Output TaskParameter="TargetOutputs" ItemName="_VisionGpuVision" />
+    </MSBuild>
+    <PropertyGroup>
+      <_VisionGpuOcrDir>@(_VisionGpuOcr->'%(RootDir)%(Directory)')</_VisionGpuOcrDir>
+      <_VisionGpuVisionDir>@(_VisionGpuVision->'%(RootDir)%(Directory)')</_VisionGpuVisionDir>
+    </PropertyGroup>
+    <ItemGroup>
+      <_VisionGpuOcrFiles Include="$(_VisionGpuOcrDir)**\*" />
+      <_VisionGpuVisionFiles Include="$(_VisionGpuVisionDir)**\*" />
+    </ItemGroup>
+    <RemoveDir Directories="$(OutDir)gpu-plugins" />
+    <Copy SourceFiles="@(_VisionGpuOcrFiles)" DestinationFiles="@(_VisionGpuOcrFiles->'$(OutDir)gpu-plugins\oadm.ocr\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(_VisionGpuVisionFiles)" DestinationFiles="@(_VisionGpuVisionFiles->'$(OutDir)gpu-plugins\oadm.vision\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Message Importance="high" Text="Gpu tests: plugin folders in $(OutDir)gpu-plugins" />
+  </Target>
+</Project>

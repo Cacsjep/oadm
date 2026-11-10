@@ -1,0 +1,75 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Vision.Client"
+        x:Class="Oadm.Plugins.Vision.Client.ModelImportWindow"
+        x:DataType="vm:ModelImportViewModel"
+        Title="{x:Static vm:ModelImportViewModel.Title}"
+        Width="600" Height="720"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Import model (docs/spec/vision-center.md "Import model"): a wizard of one form per step (no card). Model: the drawing
+       and the file only, the upload's progress below it. Settings: what the check found. Labels: the class names. Footer Back /
+       Next, Import on the last step. -->
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ModelImportViewModel.Title}" />
+    <ui:WizardSteps Grid.Row="1" ItemsSource="{Binding Steps}" Margin="12,0,16,4" />
+
+    <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
+      <Border Classes="dialogBody">
+        <StackPanel>
+          <!-- 1 Model: what happens, then the file -->
+          <StackPanel Spacing="20" IsVisible="{Binding IsModelStep}" Margin="0,12,0,0">
+            <vm:ModelImportDrawing x:Name="Drawing" HorizontalAlignment="Center" />
+            <TextBlock Classes="secondary" Text="{x:Static vm:ModelImportViewModel.ModelIntro}" TextWrapping="Wrap" HorizontalAlignment="Center" TextAlignment="Center" />
+            <ui:FileRow x:Name="ModelFileRow" FileName="{Binding FileName}" Details="{Binding FileDetails}" Error="{Binding FileProblem}"
+                        Command="{Binding ChooseFileCommand}" />
+            <ui:ProgressRow Value="{Binding Progress}" Text="{Binding ProgressText}" IsActive="{Binding IsWorking}" IsVisible="{Binding IsWorking}" />
+          </StackPanel>
+
+          <!-- 2 Settings: what the check found, the name and family, then each setting with its drawing -->
+          <StackPanel Spacing="16" IsVisible="{Binding IsSettingsStep}">
+            <StackPanel Spacing="4">
+              <StackPanel Orientation="Horizontal" Spacing="10">
+                <ui:StatusChip IsOk="True" Text="{x:Static vm:ModelImportViewModel.ModelChecked}" VerticalAlignment="Center" />
+                <TextBlock x:Name="FoundText" Text="{Binding Found}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+              <TextBlock Classes="secondary" Text="{x:Static vm:ModelImportViewModel.SettingsReady}" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Classes="form">
+              <ui:FormField Classes="wide" LabelAbove="True" Label="Name">
+                <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="{x:Static vm:ModelImportViewModel.MaxNameLength}" />
+              </ui:FormField>
+              <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.ModelFamily}" Hint="{Binding FamilyText}">
+                <ComboBox x:Name="FamilyBox" HorizontalAlignment="Stretch" ItemsSource="{Binding Families}" SelectedItem="{Binding Family}" />
+              </ui:FormField>
+            </StackPanel>
+            <vm:ModelSettingsForm x:Name="SettingsForm" DataContext="{Binding Settings}" />
+          </StackPanel>
+
+          <!-- 3 Labels -->
+          <StackPanel Spacing="12" IsVisible="{Binding IsLabelsStep}">
+            <TextBlock Classes="secondary" Text="{x:Static vm:ModelImportViewModel.LabelsHint}" TextWrapping="Wrap" />
+            <StackPanel Spacing="4" HorizontalAlignment="Left">
+              <Button x:Name="LoadLabelsButton" Classes="secondary" Content="{x:Static vm:VisionTexts.LoadLabels}" Command="{Binding LoadLabelsCommand}" />
+              <TextBlock Classes="fieldMessage error" Text="{Binding LabelsError}" IsVisible="{Binding LabelsError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" TextWrapping="Wrap" />
+            </StackPanel>
+            <vm:ModelClassListForm x:Name="ClassListForm" DataContext="{Binding ClassList}" />
+          </StackPanel>
+
+          <TextBlock Classes="fieldMessage error" Text="{Binding ServerError}" IsVisible="{Binding HasServerError}" TextWrapping="Wrap" Margin="0,8,0,0" />
+        </StackPanel>
+      </Border>
+    </ScrollViewer>
+
+    <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
+      <Button Classes="secondary" Content="{x:Static vm:VisionTexts.Back}" Command="{Binding BackCommand}" IsVisible="{Binding CanGoBack}" />
+      <Button x:Name="NextButton" Classes="primary" IsDefault="True" Content="{x:Static vm:VisionTexts.Next}" Command="{Binding NextCommand}" IsVisible="{Binding IsNotLastStep}"
+              ToolTip.Tip="{Binding StepProblem}" ToolTip.ShowOnDisabled="True" />
+      <Button x:Name="ImportButton" Classes="primary" IsDefault="True" Content="{x:Static vm:VisionTexts.Import}" Command="{Binding ImportCommand}" IsVisible="{Binding IsLastStep}"
+              ToolTip.Tip="{Binding StepProblem}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

@@ -1,0 +1,179 @@
+---
+title: Pipelines and the canvas
+description: Build a pipeline on the canvas, check it on the live video, pause, save and copy it to other cameras.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import detect from '../../../../assets/screens/vision-center-detect.png';
+import picker from '../../../../assets/screens/vision-center-node-picker.png';
+import errors from '../../../../assets/screens/vision-center-errors.png';
+import timers from '../../../../assets/screens/vision-center-timers.png';
+import copy from '../../../../assets/screens/vision-center-copy.png';
+
+A pipeline is one camera and the nodes that work on its pictures. The page has three columns:
+
+| Column | Holds |
+|---|---|
+| Left | **Pipelines** with their state, then **Models** and **Class lists** |
+| Middle | The canvas with the nodes of the selected pipeline |
+| Right | The live video, below it the settings and the **Live output** of the selected node |
+
+Drag the bar between the canvas and the right column to give the video more room, and the bar below the video to make it
+taller.
+
+## Create a pipeline
+
+<Steps>
+
+1. Click **New** in **Pipelines** and choose the camera. A saved pipeline keeps its camera: for another camera create
+   another pipeline or use [Copy to cameras](#copy-to-cameras).
+2. With no node selected, the right column shows the pipeline: enter a **Name** and choose the **Mode**.
+3. Select the **Camera** node and click its **Stream** button to set the video source, resolution and frames per second.
+4. Add nodes, link them and set them up (below).
+5. Click **Save** at the bottom right of the canvas.
+
+</Steps>
+
+| Mode | Runs | Good for |
+|---|---|---|
+| **Watching** | All the time, on the stream at 1, 2, 4, 8, 12, 15, 20 or 25 frames per second (8 by default) | Counting, lines, times inside an area. Tracking needs about 5 frames per second or more |
+| **On action** | On one picture each time a rule runs [Run pipeline](../events/#action-run-pipeline) | A check when something happens, such as a truck at a dock |
+
+The resolution starts at 1280x720, or the camera's largest below it. The model sees its own input size; a higher
+resolution helps only with small objects.
+
+## The canvas
+
+The pipeline runs from top to bottom: the input of a node is at the top of its card, its output at the bottom.
+
+<Image src={picker} alt="The node list opened from a node's +: a search and the nodes that fit, grouped by Models, Objects, Geometry and Output" class="screen" />
+
+| To | Do this |
+|---|---|
+| Add a node | **Add node** in the toolbar opens the node list. Type to search |
+| Add a node after another | The **+** below a node lists only the nodes that fit and links the new one |
+| Link two nodes | Drag from an output to an input. Inputs that do not fit are dimmed |
+| Delete a node or link | Click it, then press **Delete** or click **Delete** in the toolbar |
+| Move a node | Drag it |
+| Move the view | Drag the empty canvas. The mouse wheel zooms from 25 % to 200 % |
+| See everything | **Fit view** |
+| Put the nodes in order | **Tidy up** |
+| Undo, redo | **Undo** and **Redo**, or Ctrl+Z and Ctrl+Y, until you save |
+| Copy nodes | Ctrl+C and Ctrl+V, within the pipeline |
+
+Each card shows the node's name and one live line, such as `5 objects · 18 ms` or `In 12 · Out 7`. The numbers on the
+links are the objects that pass. A node a branch does not need for an Event or Count costs nothing.
+
+### Control inputs
+
+Some nodes have extra inputs on their left side, below the main input:
+
+| Input | On | Takes | Does |
+|---|---|---|---|
+| **Reset** | Count, Statistics | A pulse of a Timer | Starts the value again at 0 |
+| **Send now** | Event | A pulse of a Timer | Sends a report with the current values |
+| **Only while** | Count, Event | Yes or no, such as a Time window | Works only while it says yes |
+| **Second** | And / Or | Yes or no | The second condition, required |
+
+A ring takes a pulse, a dot takes yes or no. Each control input takes one link.
+
+<Image src={timers} alt="A Timer Midnight linked to Reset of a Count, and a Timer Every hour linked to Send now of an Event" class="screen" />
+
+### Errors
+
+A node with an error has a red border and the error directly below it, such as **A line needs a Track node before it.**
+The node and everything after it does not run; other branches do. **Save** stays off until every error is fixed; its
+tooltip says how many are left.
+
+<Image src={errors} alt="A Line node Dock entry with a red border and below it A line needs a Track node before it, the chip Not saved and Save" class="screen" />
+
+## The live video
+
+The video shows what the nodes find. The eye on a node card turns its drawing on or off (**Show on video**); the selected
+node always shows.
+
+| Node | Shows on the video |
+|---|---|
+| Detect objects | Boxes with class and score |
+| Filter | The kept boxes; the dropped ones dashed |
+| Track | Boxes with their id and a short trail |
+| Classify | The class on the box |
+| Area | The area, the objects inside lightly filled |
+| Line | The line, its In arrow and `In 12 · Out 7` |
+| Count | The number in the corner |
+
+Each node keeps one colour on the canvas and on the video.
+
+### Draw areas and lines
+
+An Area or Line node added on the canvas starts drawing at once. To draw again, select the node and click
+**Draw** next to its shape.
+
+| Shape | Draw |
+|---|---|
+| Area | Drag on the video, then drag the corners. 3 to 16 points |
+| Line | Drag from one end of the line to the other |
+| Direction | Drag the arrow the objects move along |
+
+**Esc** stops drawing. Shapes stay in place when you change the resolution.
+
+**In** is the side the arrow on the line points to. For a line drawn from left to right, walking down the picture is
+**In**. Draw the line the other way round to swap In and Out.
+
+## Live output
+
+Select a node to see its settings and below them what it finds now.
+
+<Image src={detect} alt="Detect objects selected: Model, Class list, Minimum score, Classes, and the live output with 5 objects, their class and score" class="screen" />
+
+| Node | Live output |
+|---|---|
+| Detect objects, Filter, Track, Area | The objects in this picture (Object, Class, Score, Time inside) and the time per picture |
+| Line | In and Out, and the last 20 crossings (Time, Direction, Class, Object) |
+| Count | The value |
+| Event | On or off, and the last 20 times it fired with their values |
+
+While you change a pipeline the page runs your changes as a preview: the live output shows what the draft finds before
+you save. A preview never sends an event: an Event node shows what it would send. A saved, unchanged watching pipeline
+shows its real counts.
+
+### Pause
+
+Press Pause in the bottom left corner of the video to hold the picture. While paused, every change runs again on the same
+picture, so you can tune a **Minimum score** or a filter on one picture. Press Resume to go on.
+
+<Aside>
+Pause is only for this page. Saved pipelines keep running and rules keep firing. The video and Pause need the **Live view**
+permission.
+</Aside>
+
+## Save
+
+The chip next to **Save** says **Not saved** or **Saved**. A saved watching pipeline runs at once and keeps running while
+the page is closed. A new name, moved nodes or an eye change do not restart it; other changes start it
+again.
+
+To delete a pipeline, select it and click **Delete** in the ⋯ menu of **Pipelines**. Rules that use it get no more
+events.
+
+## Copy to cameras
+
+Copy to cameras makes the same pipeline on other cameras, for example on every entrance.
+
+<Steps>
+
+1. Select a saved pipeline. Unsaved changes must be saved first.
+2. Click the copy button next to **New** (**Copy to cameras**).
+3. Choose the cameras, at most 100, and click **OK**.
+
+</Steps>
+
+<Image src={copy} alt="The Choose cameras dialog with Select all, Select none, a search and a list of cameras" class="screen fit" />
+
+- Each copy is a pipeline of its own, named after the original and the camera, such as `Gate people (entrance-2)`.
+  Change one and the others stay as they are.
+- Areas and lines keep their place in the picture. Check them on each camera.
+- A copy keeps the video source and resolution when the camera offers them, else video source 1 and 1280x720.
+- A camera that cannot take a copy is listed with the reason, such as **This is the pipeline's own camera.** The others
+  get theirs.

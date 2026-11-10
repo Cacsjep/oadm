@@ -1,0 +1,113 @@
+---
+title: Events and rules
+description: The events each Event node sends, Pipeline problem, the actions Run pipeline and Reset counter, and example rules.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+Each Event node of a saved pipeline adds events to the [event rules](../../event-rules/), in the folder **Vision Center** >
+pipeline name. The device is always the pipeline's camera. A preview on the page never sends an event.
+
+## What an Event node sends
+
+The first event has the node's name, the others add what they tell, for example `Gate: object left`. What a node sends
+follows the node before it.
+
+| Input | Event | Kind | Values |
+|---|---|---|---|
+| Objects | *Node name* | On while at least **Minimum objects** are there for **At least**, off once fewer stayed for **Off after** | **Count**, **Classes** |
+| Tracked objects | *Node name*: object entered, *Node name*: object left | Once per object | **Class**, **Object** (its id), **Time inside** (seconds) |
+| Crossings | *Node name* | Once per crossing | **Direction** (In or Out), **Class**, **Object**, **Score** (0 to 100) |
+| Number | *Node name* | When the value changes, at most once a second | **Count**, **In**, **Out** |
+| Yes or no | *Node name* | On once the input said yes for **At least**, off once it said no for **Off after** | **Count** (the number compared) |
+| Any, with a Timer at **Send now** | *Node name*: report | Once per pulse | Objects: **Count**, **Classes**. Crossings and numbers: **Count**, **In**, **Out**. Yes or no: **Count** |
+
+Tracked objects send the on and off event too. An object has left once it was gone longer than **Keep lost objects** of
+the Track node. **Time inside** is the time in the Area before it, else from first to last seen.
+
+**Classes** lists the classes there, sorted, separated by a space, for example `car person`.
+
+In an **On action** pipeline an Event node on objects sends *Node name* (**Count**, **Classes**) when the run found objects
+and *Node name*: no objects found when it found none, once per run.
+
+With **Only while** linked and saying no, the on and off events count as "not there" and nothing else is sent.
+
+### Placeholders
+
+Use the values in any text of an action: `{count}`, `{classes}`, `{class}`, `{object}`, `{timeInside}`, `{direction}`,
+`{score}`, `{in}`, `{out}`, next to OADM's own such as `{time}` and `{device}`. See
+[Placeholders](../../event-rules/#placeholders).
+
+## Event: Pipeline problem
+
+| Event | On while | Values |
+|---|---|---|
+| **Pipeline problem**, one per pipeline | The pipeline cannot run: its chip on the page is red | **Pipeline**, **Problem** (`{pipeline}`, `{problem}`) |
+| **Any pipeline problem** | At least one pipeline cannot run. For users with all devices | **Pipelines** (`{count}`), **Pipeline** with the names (`{pipeline}`) |
+
+## Action: Run pipeline
+
+**Run pipeline**, in the group **Vision Center**, runs one picture through the chosen **Pipeline** now. No devices to
+choose: the pipeline names its camera.
+
+| Pipeline | Result |
+|---|---|
+| **On action** | Runs one picture and sends the events of its Event nodes |
+| **On action**, still running | Skipped with **Already running**. Nothing is queued |
+| **Watching** | Answers with its picture of the last second. Sends no extra events |
+
+The event log lists what the run found, for example `Gate count: 14; Gate: On`.
+
+## Action: Reset counter
+
+**Reset counter** sets a Count node back to 0, with its Line. Choose the **Pipeline** and the **Counter**, shown as
+`Pipeline: Counter`.
+
+## Example rules
+
+Each rule starts with **New rule** in [Event rules](../../event-rules/).
+
+### People per hour over MQTT
+
+<Steps>
+
+1. Build Camera > Detect objects (`person`) > Track > Line > Count > Event, the Event named `Gate hourly`.
+2. Add a **Timer** with **Every** **Hour**. Link it to **Send now** of the Event and to **Reset** of the Count. The report
+   carries the hour's values, then the count starts again.
+3. Save the pipeline.
+4. Rule: **When** `Gate hourly: report`, **Then** **Publish MQTT message** to your broker's
+   [recipient](../../event-rules/#recipients), with a message such as `In {in}, Out {out}`.
+
+</Steps>
+
+### Alarm when the lobby is full during opening hours
+
+<Steps>
+
+1. Build Camera > Detect objects (`person`) > Area (the lobby) > Count > Compare (**At least** `20`) > Event, the Event
+   named `Lobby full` with **At least** `30` s.
+2. Add a **Time window**, Monday to Friday, 08:00 to 18:00, and link it to **Only while** of the Event.
+3. Save the pipeline.
+4. Rule: **When** `Lobby full`, **Then** **Set output** with **Follow the rule** for a lamp, or **Send email** with
+   `{count} people in the lobby`.
+
+</Steps>
+
+### A vehicle stopped too long
+
+<Steps>
+
+1. Build Camera > Detect objects (`car`, `truck`, `bus`) > Track > Area (the fire lane) > Stationary (**Still for**
+   `300` s) > Event, the Event named `Vehicle stopped`.
+2. Save the pipeline.
+3. Rule: **When** `Vehicle stopped: object entered`, **Then** **Send email** with
+   `A {class} stands in the fire lane`.
+
+</Steps>
+
+For a rule on each new object, set the rule's **Dead time** to 0: it counts per camera and would skip the next object.
+
+## On a dashboard
+
+The events of Vision Center work on [dashboards](../../dashboards/) like any other: in the dashboard's **Events**, drag
+one from **Vision Center** / pipeline name onto the grid and choose its value, such as **Count**.

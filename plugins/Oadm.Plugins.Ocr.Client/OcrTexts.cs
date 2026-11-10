@@ -35,28 +35,28 @@ public static class OcrTexts
     public const string MovingObjects = "Moving objects";
 
     /// <summary>The reader list's chip of a reader whose camera does not answer: the device grid's status name.</summary>
-    public static readonly string NotReachable = DeviceMessages.StatusText(DeviceStatus.Unreachable);
+    public static readonly string NotReachable = ProblemChips.NotReachable;
 
     /// <summary>The chip of a reader beyond the watching limits (of the server or of a site).</summary>
-    public const string LimitReached = "Limit reached";
+    public const string LimitReached = ProblemChips.LimitReached;
 
     /// <summary>The chip of a reader whose camera refuses the stored login: the device grid's status name.</summary>
-    public static readonly string LoginRefused = DeviceMessages.StatusText(DeviceStatus.CredentialsRequired);
+    public static readonly string LoginRefused = ProblemChips.LoginRefused;
 
     /// <summary>The chip of a reader whose camera does not give the pictures asked for (resolution, video source, no pictures).</summary>
-    public const string StreamError = "Stream error";
+    public const string StreamError = ProblemChips.StreamError;
 
     /// <summary>The chip of a reader whose camera is no longer in its device group.</summary>
-    public const string NotInDeviceGroup = "Not in device group";
+    public const string NotInDeviceGroup = ProblemChips.NotInDeviceGroup;
 
     /// <summary>The chip of a reader that waits for the graphics card's test.</summary>
-    public const string Starting = "Starting";
+    public const string Starting = ProblemChips.Starting;
 
     /// <summary>The tooltip of Use GPU during that test.</summary>
     public const string TestingGpu = "Testing the graphics card";
 
     /// <summary>The chip of a reader that cannot read because the plugin is not installed completely.</summary>
-    public const string NotInstalled = "Not installed";
+    public const string NotInstalled = ProblemChips.NotInstalled;
 
     /// <summary>The chip of a reader with a problem the page does not know (a newer server): the full text is its tooltip.</summary>
     public const string NotReading = "Not reading";
@@ -81,7 +81,7 @@ public static class OcrTexts
     public const string Resume = "Resume";
 
     /// <summary>The chip next to it while the page shows a held frame.</summary>
-    public const string Paused = "Paused";
+    public const string Paused = PicturePauseBar.PausedText;
 
     /// <summary>The chip's tooltip: pausing is about this page only.</summary>
     public const string PausedTip = "Saved readers keep reading.";
@@ -171,34 +171,16 @@ public static class OcrTexts
     /// limits, a refused login, a changed certificate, an offline site, a camera that does not answer, a stream that gives no
     /// pictures, a camera outside the device group. The device statuses keep the names of the device list.
     /// </summary>
-    public static string ProblemChip(string problem)
+    public static string ProblemChip(string problem) => ProblemChips.Of(problem, Problems);
+
+    /// <summary>Text recognition's own problem texts for the shared chips (plugins/Shared/Vision.Client).</summary>
+    private static readonly ProblemTexts Problems = new()
     {
-        ArgumentNullException.ThrowIfNull(problem);
-        if (ReaderRules.IsWatchingLimit(problem))
-        {
-            return LimitReached;
-        }
-
-        if (problem.StartsWith(SiteTexts.SiteOffline(null), StringComparison.Ordinal))
-        {
-            return SiteTexts.SiteOffline(null);
-        }
-
-        return problem switch
-        {
-            DeviceMessages.CredentialsRequired or DeviceMessages.PasswordNotSet or DeviceMessages.BasicOnlyOverHttp
-                or DeviceMessages.Unauthorized or DeviceMessages.Forbidden => LoginRefused,
-            DeviceMessages.CertificateChanged => DeviceMessages.StatusText(DeviceStatus.CertificateChanged),
-            DeviceMessages.TimedOut or DeviceMessages.NotAnswering or DeviceMessages.HostUnreachable => NotReachable,
-            FrameTexts.NoPicture or FrameTexts.NoPictures or FrameTexts.ResolutionNotOffered or FrameTexts.SourceNotOffered
-                or DeviceMessages.NotFound or DeviceMessages.BadRequest => StreamError,
-            ReaderRules.Starting => Starting,
-            ReaderRules.Off => NotInDeviceGroup,
-            ReaderRules.NotInstalled => NotInstalled,
-            _ when problem.StartsWith(DeviceMessages.Unreachable(string.Empty), StringComparison.Ordinal)
-                || problem.StartsWith("Timeout", StringComparison.Ordinal) => NotReachable,
-            _ when problem.StartsWith(DeviceMessages.ServerError(500)[..^3], StringComparison.Ordinal) => StreamError,
-            _ => NotReading,
-        };
-    }
+        IsWatchingLimit = p => ReaderRules.IsWatchingLimit(p),
+        StreamErrors = [FrameTexts.NoPicture, FrameTexts.NoPictures, FrameTexts.ResolutionNotOffered, FrameTexts.SourceNotOffered],
+        Starting = ReaderRules.Starting,
+        Off = ReaderRules.Off,
+        NotInstalled = [ReaderRules.NotInstalled],
+        Unknown = NotReading,
+    };
 }
