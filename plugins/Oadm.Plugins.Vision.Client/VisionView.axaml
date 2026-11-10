@@ -269,7 +269,7 @@
                   <TextBlock Classes="secondary" Text="{Binding KindLabel}" VerticalAlignment="Center" IsVisible="{Binding ShowKindLabel}" />
                 </StackPanel>
                 <StackPanel Classes="form" IsEnabled="{Binding $parent[UserControl].((vm:VisionViewModel)DataContext).MayChange, FallbackValue=False}">
-                  <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Name}">
+                  <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Name}" Info="{x:Static vm:VisionTexts.EventNameInfo}" IsVisible="{Binding Node.IsEvent}">
                     <TextBox x:Name="NodeName" Text="{Binding Name}" MaxLength="{x:Static vm:NodeFormViewModel.MaxNameLength}" />
                   </ui:FormField>
                   <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Stream}"
