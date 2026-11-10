@@ -26,7 +26,7 @@
                 <ui:FormField Classes="inline" Label="Cameras at once" InputWidth="80" IsVisible="False">
                   <TextBox Text="{Binding BatchSizeText}" IsEnabled="{Binding CanEditInputs}" />
                 </ui:FormField>
-                <ui:FormField Classes="inline" Label="Each phase" InputWidth="100" IsVisible="False">
+                <ui:FormField Classes="inline" Label="Each step" InputWidth="100" IsVisible="False">
                   <ComboBox ItemsSource="{x:Static vm:LoadTestViewModel.Durations}" SelectedItem="{Binding SelectedDuration}"
                             IsEnabled="{Binding CanEditInputs}" HorizontalAlignment="Stretch" />
                 </ui:FormField>

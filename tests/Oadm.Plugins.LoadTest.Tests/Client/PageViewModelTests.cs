@@ -42,7 +42,7 @@ public sealed class PageViewModelTests
         Assert.Equal((LoadTestInfo.DefaultBatchSize, LoadTestInfo.DefaultPhaseMinutes), (request.BatchSize, request.PhaseMinutes));
         Assert.True(vm.ShowPlan);
         Assert.Equal(2, vm.LeftOut.Count);
-        Assert.Equal("150 camera streams in 3 batches of at most 50, 2 min per phase.", vm.PlanText);
+        Assert.Equal("150 camera streams in 3 batches of at most 50, 2 min per step.", vm.PlanText);
         Assert.Equal("Camera streams", vm.Card1.Title);
         Assert.True(vm.StartCommand.CanExecute(null));
 

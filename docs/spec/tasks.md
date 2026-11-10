@@ -66,7 +66,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   `RunAsync` is the system runner; inside the call of a user with a group it runs only on devices of that user's view
   (backstop). History, Watch, log, cancel and delete of a user with a group show only tasks whose device is in the view
   now, filtered in the query (`ITaskStore.ListPageAsync(deviceIds, ...)`, `EfTaskStore`: one JSON parameter through
-  `json_each`); measured at 30,000 devices and 50,000 tasks: a page in under 1 s, a Watch snapshot of 10,000 in about 2 s. The Watch
+  `json_each`); measured at 100,000 devices and 50,000 tasks (Debug, 2026-11-10): a page in 0.4 s, a group's Watch snapshot of 10,000 in 1.8 s. The Watch
   follows devices that leave (their tasks Removed at once) and enter (their tasks Added, like the snapshot) through tag,
   site and rule changes.
 - **Page tasks**: a task hidden from the menus (`ShowInMenus` false) without permissions of its own starts only through

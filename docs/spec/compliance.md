@@ -54,13 +54,14 @@ Built-in feature (not a plugin): which devices need attention at first glance. C
   unique on the server. Compliance on / off stays with users with all devices.
 - Scale (the device limit x 50 checks): scope and failing devices as sets per check, events as single changes, one
   `ComplianceInvocation` per check version (a configuration file is serialized and parsed once), results written in key
-  order 5,000 per transaction, the client keeps ids and repeated texts once. Measured at 30,000 devices: server enable 5.4 s, results written in 19.5 s,
-  1,000 device changes 0.6 s (`ComplianceScaleTests`); client 1.5 million results applied in 0.8 s, filter, tab, card and
-  search 27 ms (`ComplianceTests`, Perf); read checks of 30,000 devices at 32 parallel take about 16 minutes a round.
+  order 5,000 per transaction, the client keeps ids and repeated texts once. Measured at 100,000 devices (Debug, 2026-11-10): server enable 12.8 s, 2.65
+  million results written in 64 s, 1,000 device changes 0.7 s (`ComplianceScaleTests`); client 5 million results applied
+  in 2.1 s (749 MB), filter, tab, card and search 108 ms (`ComplianceTests`, Perf); read checks of 30,000 real devices at
+  32 parallel take about 16 minutes a round.
 - Developer guide: website Developers > Compliance checks (`website/src/content/docs/dev/compliance-checks.md`).
 - Tests: `tests/Oadm.Core.Tests/Compliance` (+ Perf `ComplianceScaleTests` the device limit x 50 checks; `ComplianceOwnerTests`
-  and Perf `ComplianceOwnerScaleTests`: the device limit, a group of half of it with 10 checks; measured at 30,000 devices: the group user's list 0.1 ms, the
-  results snapshot filtered in 7 ms, a change of the group's rules moves 150,000 results in about 30 s),
+  and Perf `ComplianceOwnerScaleTests`: the device limit, a group of half of it with 10 checks; measured at 100,000 devices: the group user's list 0.4 ms, the
+  results snapshot filtered in 19 ms, a change of the group's rules in 5.5 s),
   `tests/Oadm.Server.Tests/ComplianceServiceTests`, `tests/Oadm.Server.Tests/DeviceGroups/SharedCore/ComplianceScopeTests`, the check types in their plugins' tests,
   `tests/Oadm.Client.Tests/ComplianceTests` (+ Perf the device limit x 50 checks, screenshots). Fake mode:
   `FakeOadmApi.Compliance.cs`.

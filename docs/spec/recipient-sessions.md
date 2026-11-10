@@ -164,8 +164,8 @@ works with the fewest fields, and security is there when it is needed.
 - MQTTnet: the fix of its TLS check (#2254) is not in 5.2.0, the newest release. OADM sets its own certificate check, so both versions behave
   the same. The fix is marked a breaking change: read it when updating.
 - `Oadm.Notices` lists a license file that names itself by that name (the OPC UA packages: OPC Foundation MIT License 1.00).
-- Their Microsoft.Extensions packages must fit the host: the plugin resolves 10.0.14, the host ships 10.0.13 (both assembly version
-  10.0.0.0), and the plugin load context uses the host's; what the host does not have (Http.Resilience, Polly) comes from the plugin folder.
+- Their Microsoft.Extensions packages must fit the host: the plugin's 10.0.12 are older than the host's 10.0.13, which the plugin load context
+  uses (the logging and DI abstractions come in through the SDK, pinned to 10.0.13 like every Microsoft package); what the host does not have (Http.Resilience, Polly) comes from the plugin folder.
 - Opc.Ua.Client.dll is named like a client part. The client loader takes only a `*.Client.dll` that references the client SDK.
 
 ## Tests

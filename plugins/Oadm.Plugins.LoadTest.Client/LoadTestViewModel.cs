@@ -785,7 +785,7 @@ public sealed partial class LoadTestViewModel : ValidatingViewModel, IDisposable
         {
             PlanText = plan.Streams == 0 ? CheckTexts.NoStreams
                 : string.Create(CultureInfo.CurrentCulture,
-                    $"{CheckTexts.Count(plan.Streams, "camera stream", "camera streams")} in {CheckTexts.Count(plan.Batches, "batch", "batches")} of at most {BatchSize ?? 0:N0}, {SelectedDuration.Minutes} min per phase.");
+                    $"{CheckTexts.Count(plan.Streams, "camera stream", "camera streams")} in {CheckTexts.Count(plan.Batches, "batch", "batches")} of at most {BatchSize ?? 0:N0}, {SelectedDuration.Minutes} min per step.");
             Card1 = new CardValue("Camera streams", plan.Streams.ToString("N0", CultureInfo.CurrentCulture), CheckTexts.Count(plan.Batches, "batch", "batches"));
             Card2 = new CardValue("Time", CheckTexts.Duration(plan.Duration), "plus connect times");
             Card3 = new CardValue("Expected peak", CheckTexts.MbpsWhole(plan.PeakMbps), "largest batch, Normal");
