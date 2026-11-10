@@ -102,9 +102,14 @@ public sealed partial class NodeOutputViewModel : ObservableObject
     public partial bool HasRows { get; private set; }
 
     /// <summary>Shows <paramref name="node"/>'s part of <paramref name="preview"/> (null: no frame yet).</summary>
+    /// <summary>The card shows: not for the Camera, whose only line (its stream size) the Stream field already shows.</summary>
+    [ObservableProperty]
+    public partial bool IsShown { get; private set; } = true;
+
     public void Apply(NodeViewModel node, PreviewEvent? preview)
     {
         ArgumentNullException.ThrowIfNull(node);
+        IsShown = !node.IsCamera;
         if (node.HasError)
         {
             Note(VisionTexts.FixErrorFirst);

@@ -428,7 +428,7 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
   sees** (decided 2026-11-10), and its **live output**, the feedback the user asked for. The cards use the column's width
   (`ui:FlowColumns`, decided 2026-11-10): side by side once each gets 380 px (`PageLayout.NodeCardMinWidth`, at most 3,
   each into the shortest column), one below the other in a narrow column; the fields in the settings card flow into
-  columns of at least 260 px instead of growing. Nothing selected: the pipeline's settings in one card.
+  columns of at least 260 px instead of growing. Nothing selected: the pipeline's settings in one card The fields keep the spacing of every form; each field of a node has an info icon with one short sentence (`NodeFieldInfo.Info`, decided 2026-11-10; a test keeps every field covered), Mode too. The Camera has no live output card (its stream size is its Stream field).
   - What the model sees: the model's input of the preview's latest (or held) frame as the server draws it for the model
     call (`getModelView`, `IInference.ModelView`, the same `Preprocess.Draw` as the tensor, the frame decoded with the
     pipeline's `PictureNeed`), before the values are scaled; a caption "576x576 · Letterbox" and Refresh. Classify on

@@ -96,6 +96,9 @@ public sealed record NodeFieldInfo
     /// <summary>One short hint below the field; null: none.</summary>
     public string? Hint { get; init; }
 
+    /// <summary>What the field does, in its info icon right of the input (one short sentence); null: none.</summary>
+    public string? Info { get; init; }
+
     /// <summary>For a <see cref="NodeFieldType.Number"/> with <see cref="Min"/> and <see cref="Max"/>: a slider with the number beside it.</summary>
     public bool Slider { get; init; }
 
@@ -246,12 +249,12 @@ public static class NodeKinds
 
     private static NodeFieldInfo MinScore(string def) => new()
     {
-        Key = MinScoreKey, Label = "Minimum score", Type = NodeFieldType.Number, Default = def, Min = 1, Max = 99, Unit = "%", Slider = true,
+        Key = MinScoreKey, Label = "Minimum score", Info = "Objects the model is less sure of are left out.", Type = NodeFieldType.Number, Default = def, Min = 1, Max = 99, Unit = "%", Slider = true,
     };
 
     private static NodeFieldInfo Classes(string label = "Classes") => new()
     {
-        Key = ClassesKey, Label = label, Type = NodeFieldType.Classes, Default = "[]", Optional = true,
+        Key = ClassesKey, Label = label, Info = "Only these classes go on. None: every class.", Type = NodeFieldType.Classes, Default = "[]", Optional = true,
     };
 
     public static readonly NodeKindInfo CameraKind = new()
@@ -265,7 +268,7 @@ public static class NodeKinds
         Accepts = [PortKind.Picture], Output = _ => PortKind.Objects, RunsModel = true,
         Fields =
         [
-            new() { Key = ModelKey, Label = "Model", Type = NodeFieldType.Model, ModelKind = Model.ModelKind.Detection },
+            new() { Key = ModelKey, Label = "Model", Type = NodeFieldType.Model, ModelKind = Model.ModelKind.Detection, Info = "The detection model that finds the objects." },
             MinScore("50"),
             Classes(),
         ],
@@ -277,10 +280,10 @@ public static class NodeKinds
         Accepts = [PortKind.Picture, .. ObjectKinds], Output = Same, RunsModel = true,
         Fields =
         [
-            new() { Key = ModelKey, Label = "Model", Type = NodeFieldType.Model, ModelKind = Model.ModelKind.Classification },
+            new() { Key = ModelKey, Label = "Model", Type = NodeFieldType.Model, ModelKind = Model.ModelKind.Classification, Info = "The model that names the class of each object." },
             new()
             {
-                Key = PointsKey, Label = "Area", Type = NodeFieldType.Shape, Optional = true, MinPoints = 3, MaxPoints = 16,
+                Key = PointsKey, Label = "Area", Type = NodeFieldType.Shape, Optional = true, Info = "Classifies only this part of the picture.", MinPoints = 3, MaxPoints = 16,
                 OnlyForInput = [PortKind.Picture], Hint = "None: the whole picture.",
             },
         ],
@@ -294,9 +297,9 @@ public static class NodeKinds
         [
             Classes(),
             MinScore("50"),
-            new() { Key = MinSizeKey, Label = "Minimum size", Type = NodeFieldType.Number, Optional = true, Min = 0, Max = 100, Unit = "%", Slider = true, Hint = "The object's height as a share of the picture's. Live output shows the sizes." },
-            new() { Key = MaxSizeKey, Label = "Maximum size", Type = NodeFieldType.Number, Optional = true, Min = 0, Max = 100, Unit = "%", Slider = true },
-            new() { Key = LabelKey, Label = "Class of Classify", Type = NodeFieldType.Text, Optional = true },
+            new() { Key = MinSizeKey, Label = "Minimum size", Info = "Smaller objects are left out.", Type = NodeFieldType.Number, Optional = true, Min = 0, Max = 100, Unit = "%", Slider = true, Hint = "The object's height as a share of the picture's. Live output shows the sizes." },
+            new() { Key = MaxSizeKey, Label = "Maximum size", Info = "Larger objects are left out.", Type = NodeFieldType.Number, Optional = true, Min = 0, Max = 100, Unit = "%", Slider = true },
+            new() { Key = LabelKey, Label = "Class of Classify", Info = "Keeps the objects Classify gave this class.", Type = NodeFieldType.Text, Optional = true },
         ],
     };
 
@@ -306,8 +309,8 @@ public static class NodeKinds
         Accepts = ObjectKinds, Output = _ => PortKind.TrackedObjects, NeedsStream = true,
         Fields =
         [
-            new() { Key = ConfirmKey, Label = "Confirm after", Type = NodeFieldType.Number, Default = "3", Min = 1, Max = 30, Unit = "frames", Slider = true },
-            new() { Key = KeepLostKey, Label = "Keep lost objects", Type = NodeFieldType.Number, Default = "1", Min = 0, Max = 30, Unit = "s", Slider = true },
+            new() { Key = ConfirmKey, Label = "Confirm after", Info = "Frames an object must be seen before it counts.", Type = NodeFieldType.Number, Default = "3", Min = 1, Max = 30, Unit = "frames", Slider = true },
+            new() { Key = KeepLostKey, Label = "Keep lost objects", Info = "How long a hidden object keeps its id.", Type = NodeFieldType.Number, Default = "1", Min = 0, Max = 30, Unit = "s", Slider = true },
         ],
     };
 
@@ -317,10 +320,10 @@ public static class NodeKinds
         Accepts = ObjectKinds, Output = Same,
         Fields =
         [
-            new() { Key = PointsKey, Label = "Area", Type = NodeFieldType.Shape, MinPoints = 3, MaxPoints = 16, Hint = "Drag the corners on the video." },
+            new() { Key = PointsKey, Label = "Area", Type = NodeFieldType.Shape, MinPoints = 3, MaxPoints = 16, Hint = "Drag the corners on the video.", Info = "Objects inside this area go on." },
             new()
             {
-                Key = AnchorKey, Label = "Inside by", Type = NodeFieldType.Choice, Default = "\"bottom\"",
+                Key = AnchorKey, Label = "Inside by", Info = "Which point of the box must be inside.", Type = NodeFieldType.Choice, Default = "\"bottom\"",
                 Choices = [new(AnchorBottom, "Bottom centre"), new(AnchorCentre, "Centre"), new(AnchorOverlap, "Any overlap")],
             },
         ],
@@ -332,10 +335,10 @@ public static class NodeKinds
         Accepts = ObjectKinds, Output = _ => PortKind.Crossings, NeedsStream = true,
         Fields =
         [
-            new() { Key = PointsKey, Label = "Line", Type = NodeFieldType.Shape, MinPoints = 2, MaxPoints = 8, Hint = "Drag the ends on the video." },
+            new() { Key = PointsKey, Label = "Line", Info = "Objects that cross this line are counted.", Type = NodeFieldType.Shape, MinPoints = 2, MaxPoints = 8, Hint = "Drag the ends on the video." },
             new()
             {
-                Key = DirectionsKey, Label = "Count", Type = NodeFieldType.Choice, Default = "\"both\"",
+                Key = DirectionsKey, Label = "Count", Info = "Which crossing directions count.", Type = NodeFieldType.Choice, Default = "\"both\"",
                 Choices = [new(DirectionsBoth, "In and Out"), new(DirectionsIn, "In only"), new(DirectionsOut, "Out only")],
             },
         ],
@@ -356,12 +359,12 @@ public static class NodeKinds
         [
             new()
             {
-                Key = EveryKey, Label = "Every", Type = NodeFieldType.Choice, Default = "\"day\"",
+                Key = EveryKey, Label = "Every", Info = "How often the timer sends its pulse.", Type = NodeFieldType.Choice, Default = "\"day\"",
                 Choices = [new(EveryMinutes, "Few minutes"), new(EveryHour, "Hour"), new(EveryDay, "Day"), new(EveryWeek, "Week")],
             },
-            new() { Key = MinutesKey, Label = "Minutes", Type = NodeFieldType.Number, Default = "15", Min = 1, Max = 59, Unit = "min", Slider = true, VisibleWhenKey = EveryKey, VisibleWhenValues = [EveryMinutes] },
-            new() { Key = AtKey, Label = "At", Type = NodeFieldType.TimeOfDay, Default = "\"00:00\"", VisibleWhenKey = EveryKey, VisibleWhenValues = [EveryDay, EveryWeek] },
-            new() { Key = DayKey, Label = "Day", Type = NodeFieldType.Choice, Default = "\"mon\"", Choices = [new("mon", "Monday"), new("tue", "Tuesday"), new("wed", "Wednesday"), new("thu", "Thursday"), new("fri", "Friday"), new("sat", "Saturday"), new("sun", "Sunday")], VisibleWhenKey = EveryKey, VisibleWhenValues = [EveryWeek] },
+            new() { Key = MinutesKey, Label = "Minutes", Info = "The minutes between two pulses.", Type = NodeFieldType.Number, Default = "15", Min = 1, Max = 59, Unit = "min", Slider = true, VisibleWhenKey = EveryKey, VisibleWhenValues = [EveryMinutes] },
+            new() { Key = AtKey, Label = "At", Info = "The time of day, server time.", Type = NodeFieldType.TimeOfDay, Default = "\"00:00\"", VisibleWhenKey = EveryKey, VisibleWhenValues = [EveryDay, EveryWeek] },
+            new() { Key = DayKey, Label = "Day", Info = "The day of the week of the pulse.", Type = NodeFieldType.Choice, Default = "\"mon\"", Choices = [new("mon", "Monday"), new("tue", "Tuesday"), new("wed", "Wednesday"), new("thu", "Thursday"), new("fri", "Friday"), new("sat", "Saturday"), new("sun", "Sunday")], VisibleWhenKey = EveryKey, VisibleWhenValues = [EveryWeek] },
         ],
     };
 
@@ -371,7 +374,7 @@ public static class NodeKinds
         Accepts = [PortKind.TrackedObjects], Output = _ => PortKind.TrackedObjects, NeedsStream = true,
         Fields =
         [
-            new() { Key = MinSecondsKey, Label = "Longer than", Type = NodeFieldType.Number, Default = "30", Min = 1, Max = 3600, Unit = "s" },
+            new() { Key = MinSecondsKey, Label = "Longer than", Info = "Objects inside longer than this go on.", Type = NodeFieldType.Number, Default = "30", Min = 1, Max = 3600, Unit = "s" },
         ],
     };
 
@@ -381,8 +384,8 @@ public static class NodeKinds
         Accepts = [PortKind.TrackedObjects], Output = _ => PortKind.TrackedObjects, NeedsStream = true,
         Fields =
         [
-            new() { Key = StillSecondsKey, Label = "Still for", Type = NodeFieldType.Number, Default = "60", Min = 5, Max = 3600, Unit = "s" },
-            new() { Key = ToleranceKey, Label = "Movement allowed", Type = NodeFieldType.Number, Default = "3", Min = 1, Max = 20, Unit = "%", Slider = true },
+            new() { Key = StillSecondsKey, Label = "Still for", Info = "Objects still for this long go on.", Type = NodeFieldType.Number, Default = "60", Min = 5, Max = 3600, Unit = "s" },
+            new() { Key = ToleranceKey, Label = "Movement allowed", Info = "Movement that still counts as standing still.", Type = NodeFieldType.Number, Default = "3", Min = 1, Max = 20, Unit = "%", Slider = true },
         ],
     };
 
@@ -392,9 +395,9 @@ public static class NodeKinds
         Accepts = [PortKind.TrackedObjects], Output = _ => PortKind.TrackedObjects, NeedsStream = true,
         Fields =
         [
-            new() { Key = PointsKey, Label = "Direction", Type = NodeFieldType.Shape, MinPoints = 2, MaxPoints = 2, Hint = "Drag the arrow on the video." },
-            new() { Key = AngleKey, Label = "Tolerance", Type = NodeFieldType.Number, Default = "45", Min = 10, Max = 90, Unit = "°", Slider = true },
-            new() { Key = MinMoveKey, Label = "Minimum movement", Type = NodeFieldType.Number, Default = "5", Min = 1, Max = 50, Unit = "%", Slider = true },
+            new() { Key = PointsKey, Label = "Direction", Info = "Objects moving along this arrow go on.", Type = NodeFieldType.Shape, MinPoints = 2, MaxPoints = 2, Hint = "Drag the arrow on the video." },
+            new() { Key = AngleKey, Label = "Tolerance", Info = "How far off the arrow a movement may be.", Type = NodeFieldType.Number, Default = "45", Min = 10, Max = 90, Unit = "°", Slider = true },
+            new() { Key = MinMoveKey, Label = "Minimum movement", Info = "Shorter movements are ignored.", Type = NodeFieldType.Number, Default = "5", Min = 1, Max = 50, Unit = "%", Slider = true },
         ],
     };
 
@@ -404,9 +407,9 @@ public static class NodeKinds
         Accepts = [], Output = _ => PortKind.Condition, Draws = false,
         Fields =
         [
-            new() { Key = DaysKey, Label = "Days", Type = NodeFieldType.Days, Default = "[]", Optional = true, Hint = "None: every day." },
-            new() { Key = FromKey, Label = "From", Type = NodeFieldType.TimeOfDay, Default = "\"08:00\"" },
-            new() { Key = ToKey, Label = "To", Type = NodeFieldType.TimeOfDay, Default = "\"18:00\"" },
+            new() { Key = DaysKey, Label = "Days", Info = "The days the window is open.", Type = NodeFieldType.Days, Default = "[]", Optional = true, Hint = "None: every day." },
+            new() { Key = FromKey, Label = "From", Info = "The start, server time.", Type = NodeFieldType.TimeOfDay, Default = "\"08:00\"" },
+            new() { Key = ToKey, Label = "To", Info = "The end, server time.", Type = NodeFieldType.TimeOfDay, Default = "\"18:00\"" },
         ],
     };
 
@@ -416,7 +419,7 @@ public static class NodeKinds
         Accepts = [], Output = _ => PortKind.Condition, Draws = false,
         Fields =
         [
-            new() { Key = EventKey, Label = "Event", Type = NodeFieldType.EventType },
+            new() { Key = EventKey, Label = "Event", Info = "The camera's event that turns this on.", Type = NodeFieldType.EventType },
         ],
     };
 
@@ -426,8 +429,8 @@ public static class NodeKinds
         Accepts = [PortKind.Condition], Output = _ => PortKind.Condition, Draws = false,
         Fields =
         [
-            new() { Key = OnAfterKey, Label = "Yes after", Type = NodeFieldType.Number, Default = "5", Min = 0, Max = 3600, Unit = "s" },
-            new() { Key = OffAfterKey, Label = "No after", Type = NodeFieldType.Number, Default = "5", Min = 0, Max = 3600, Unit = "s" },
+            new() { Key = OnAfterKey, Label = "Yes after", Info = "Yes must last this long before it passes.", Type = NodeFieldType.Number, Default = "5", Min = 0, Max = 3600, Unit = "s" },
+            new() { Key = OffAfterKey, Label = "No after", Info = "No must last this long before it passes.", Type = NodeFieldType.Number, Default = "5", Min = 0, Max = 3600, Unit = "s" },
         ],
     };
 
@@ -437,7 +440,7 @@ public static class NodeKinds
         Accepts = [PortKind.Crossings, PortKind.Pulse], Output = input => input, Draws = false,
         Fields =
         [
-            new() { Key = EveryNSecondsKey, Label = "At most one per", Type = NodeFieldType.Number, Default = "60", Min = 1, Max = 3600, Unit = "s" },
+            new() { Key = EveryNSecondsKey, Label = "At most one per", Info = "Pulses closer together are dropped.", Type = NodeFieldType.Number, Default = "60", Min = 1, Max = 3600, Unit = "s" },
         ],
     };
 
@@ -450,7 +453,7 @@ public static class NodeKinds
         [
             new()
             {
-                Key = FunctionKey, Label = "Value", Type = NodeFieldType.Choice, Default = "\"max\"",
+                Key = FunctionKey, Label = "Value", Info = "Which number of the inputs it gives.", Type = NodeFieldType.Choice, Default = "\"max\"",
                 Choices = [new(FnMax, "Highest"), new(FnMin, "Lowest"), new(FnAverage, "Average"), new(FnSum, "Sum")],
             },
         ],
@@ -463,7 +466,7 @@ public static class NodeKinds
         ControlInputs = [new(SecondPort, "Second") { Accepts = PortKind.Condition, Required = true }],
         Fields =
         [
-            new() { Key = OperatorKey, Label = "Both or either", Type = NodeFieldType.Choice, Default = "\"and\"", Choices = [new(OpAnd, "Both (and)"), new(OpOr, "Either (or)")] },
+            new() { Key = OperatorKey, Label = "Both or either", Info = "Yes when both inputs are, or either one.", Type = NodeFieldType.Choice, Default = "\"and\"", Choices = [new(OpAnd, "Both (and)"), new(OpOr, "Either (or)")] },
         ],
     };
 
@@ -475,11 +478,11 @@ public static class NodeKinds
         [
             new()
             {
-                Key = OperatorKey, Label = "Condition", Type = NodeFieldType.Choice, Default = "\"greater\"",
+                Key = OperatorKey, Label = "Condition", Info = "How the number is compared.", Type = NodeFieldType.Choice, Default = "\"greater\"",
                 Choices = [new(OpGreater, "Greater than"), new(OpAtLeast, "At least"), new(OpEqual, "Equal to"), new(OpAtMost, "At most"), new(OpLess, "Less than"), new(OpBetween, "Between")],
             },
-            new() { Key = ValueKey, Label = "Value", Type = NodeFieldType.Number, Default = "10", Min = -1_000_000, Max = 1_000_000 },
-            new() { Key = Value2Key, Label = "And", Type = NodeFieldType.Number, Default = "20", Min = -1_000_000, Max = 1_000_000, VisibleWhenKey = OperatorKey, VisibleWhenValues = [OpBetween] },
+            new() { Key = ValueKey, Label = "Value", Info = "The number it is compared with.", Type = NodeFieldType.Number, Default = "10", Min = -1_000_000, Max = 1_000_000 },
+            new() { Key = Value2Key, Label = "And", Info = "The upper number of Between.", Type = NodeFieldType.Number, Default = "20", Min = -1_000_000, Max = 1_000_000, VisibleWhenKey = OperatorKey, VisibleWhenValues = [OpBetween] },
         ],
     };
 
@@ -490,9 +493,9 @@ public static class NodeKinds
         Accepts = [.. ObjectKinds, PortKind.Crossings, PortKind.Number, PortKind.Condition], Output = _ => null, Draws = false,
         Fields =
         [
-            new() { Key = MinObjectsKey, Label = "Minimum objects", Type = NodeFieldType.Number, Default = "1", Min = 1, Max = 300, OnlyForInput = ObjectKinds },
-            new() { Key = AtLeastKey, Label = "At least", Type = NodeFieldType.Number, Default = "1", Min = 0, Max = 3600, Unit = "s", OnlyForInput = [.. ObjectKinds, PortKind.Condition] },
-            new() { Key = OffAfterKey, Label = "Off after", Type = NodeFieldType.Number, Default = "2", Min = 0, Max = 3600, Unit = "s", OnlyForInput = [.. ObjectKinds, PortKind.Condition] },
+            new() { Key = MinObjectsKey, Label = "Minimum objects", Info = "Fewer objects keep the event off.", Type = NodeFieldType.Number, Default = "1", Min = 1, Max = 300, OnlyForInput = ObjectKinds },
+            new() { Key = AtLeastKey, Label = "At least", Info = "How long before the event turns on.", Type = NodeFieldType.Number, Default = "1", Min = 0, Max = 3600, Unit = "s", OnlyForInput = [.. ObjectKinds, PortKind.Condition] },
+            new() { Key = OffAfterKey, Label = "Off after", Info = "How long after the end it turns off.", Type = NodeFieldType.Number, Default = "2", Min = 0, Max = 3600, Unit = "s", OnlyForInput = [.. ObjectKinds, PortKind.Condition] },
         ],
     };
 

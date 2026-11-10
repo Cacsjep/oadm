@@ -171,6 +171,9 @@ public abstract partial class FieldViewModel : ValidatingViewModel
 
     public string? Hint => Field.Hint;
 
+    /// <summary>What the field does, in its info icon.</summary>
+    public string? Info => Field.Info;
+
     public string? Unit => Field.Unit;
 
     public bool HasUnit => !string.IsNullOrEmpty(Field.Unit);

@@ -210,6 +210,11 @@ public sealed class PageViewModelTests
         Assert.True(editor.Output.IsObjects);
         Assert.Equal(5, editor.Output.Objects.Count);
         Assert.Equal("5 in this picture · 3 below 50 % · 18 ms per picture", editor.Output.Summary);
+        Assert.True(editor.Output.IsShown);
+
+        // The Camera has no live output card: its stream size is in its Stream field.
+        editor.Canvas.SelectedNode = editor.Canvas.Find("a");
+        Assert.False(editor.Output.IsShown);
 
         editor.Canvas.SelectedNode = editor.Canvas.Find("e");
         Assert.True(editor.Output.IsCrossings);

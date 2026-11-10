@@ -14,6 +14,18 @@ public sealed class SkeletonTests
         }
     }
 
+    // Every field says what it does in its info icon: one short sentence, never the label again.
+    [Fact]
+    public void Every_node_field_has_a_short_info()
+    {
+        foreach (var field in NodeKinds.All.SelectMany(k => k.Fields))
+        {
+            Assert.False(string.IsNullOrWhiteSpace(field.Info), $"{field.Key} has no info");
+            Assert.True(field.Info!.Split(' ').Length <= 10, $"{field.Key}: {field.Info}");
+            Assert.NotEqual(field.Label, field.Info.TrimEnd('.'));
+        }
+    }
+
     [Fact]
     public void Limits_follow_the_cores()
     {

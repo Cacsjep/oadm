@@ -41,6 +41,7 @@ public static class VisionTexts
     // The right column.
     public const string LiveOutput = "Live output";
     public const string WhatTheModelSees = "What the model sees";
+    public const string ModeInfo = "Watching runs all the time. On action: when a rule runs it.";
     public const string RefreshModelView = "Refresh";
 
     /// <summary>Below "What the model sees": "576x576 · Stretch".</summary>

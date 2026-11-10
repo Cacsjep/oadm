@@ -243,17 +243,17 @@
             <Border Classes="card" IsVisible="{Binding ShowPipelineForm}">
             <StackPanel x:Name="PipelineForm" Spacing="10">
               <TextBlock Classes="cardTitle" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-              <StackPanel Spacing="8" IsEnabled="{Binding MayChange}">
-                <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Name}">
+              <ui:FlowColumns x:Name="PipelineFields" Classes="form" MinColumnWidth="{x:Static vm:PageLayout.FieldMinWidth}">
+                <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Name}" IsEnabled="{Binding MayChange}">
                   <TextBox x:Name="PipelineName" Text="{Binding Name}" MaxLength="{x:Static vm:PipelineEditorViewModel.MaxNameLength}" />
                 </ui:FormField>
-                <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Mode}">
+                <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Mode}" Info="{x:Static vm:VisionTexts.ModeInfo}" IsEnabled="{Binding MayChange}">
                   <ComboBox x:Name="ModeBox" HorizontalAlignment="Stretch" ItemsSource="{x:Static vm:PipelineEditorViewModel.ModeChoices}" SelectedItem="{Binding ModeChoice}" />
                 </ui:FormField>
-              </StackPanel>
-              <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Camera}">
-                <TextBlock Text="{Binding CameraText}" TextTrimming="CharacterEllipsis" />
-              </ui:FormField>
+                <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Camera}">
+                  <TextBlock Text="{Binding CameraText}" TextTrimming="CharacterEllipsis" />
+                </ui:FormField>
+              </ui:FlowColumns>
               <TextBlock Classes="secondary" Text="{Binding SelectionNote}" TextWrapping="Wrap" />
             </StackPanel>
             </Border>
@@ -268,7 +268,7 @@
                   <TextBlock Classes="cardTitle" Text="{Binding Node.Name}" TextTrimming="CharacterEllipsis" MaxWidth="250" VerticalAlignment="Center" />
                   <TextBlock Classes="secondary" Text="{Binding KindLabel}" VerticalAlignment="Center" IsVisible="{Binding ShowKindLabel}" />
                 </StackPanel>
-                <StackPanel Spacing="8" IsEnabled="{Binding $parent[UserControl].((vm:VisionViewModel)DataContext).MayChange, FallbackValue=False}">
+                <StackPanel Classes="form" IsEnabled="{Binding $parent[UserControl].((vm:VisionViewModel)DataContext).MayChange, FallbackValue=False}">
                   <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:VisionTexts.Name}">
                     <TextBox x:Name="NodeName" Text="{Binding Name}" MaxLength="{x:Static vm:NodeFormViewModel.MaxNameLength}" />
                   </ui:FormField>
@@ -282,7 +282,7 @@
                   <ItemsControl x:Name="Fields" ItemsSource="{Binding Fields}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
-                        <ui:FlowColumns MinColumnWidth="{x:Static vm:PageLayout.FieldMinWidth}" RowSpacing="8" />
+                        <ui:FlowColumns Classes="form" MinColumnWidth="{x:Static vm:PageLayout.FieldMinWidth}" />
                       </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <!-- A field another field hides (VisibleWhen) takes no room. -->
@@ -294,14 +294,14 @@
                     <ItemsControl.DataTemplates>
                       <DataTemplate x:DataType="vm:NumberFieldViewModel">
                         <Panel>
-                          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}" IsVisible="{Binding IsPlain}">
+                          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Info="{Binding Info}" Hint="{Binding Hint}" IsVisible="{Binding IsPlain}">
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                               <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" />
                               <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding Unit}" VerticalAlignment="Center" IsVisible="{Binding HasUnit}" />
                             </Grid>
                           </ui:FormField>
                           <!-- A tuned number: the shared slider row, its error below the whole row. -->
-                          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}" Error="{Binding TextError}"
+                          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Info="{Binding Info}" Hint="{Binding Hint}" Error="{Binding TextError}"
                                         IsVisible="{Binding IsSlider}">
                             <ui:NumberSlider Text="{Binding Text}" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" Unit="{Binding Unit}"
                                              Placeholder="{Binding Placeholder}" HasError="{Binding HasTextError}" />
@@ -309,7 +309,7 @@
                         </Panel>
                       </DataTemplate>
                       <DataTemplate x:DataType="vm:ChoiceFieldViewModel">
-                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Info="{Binding Info}" Hint="{Binding Hint}">
                           <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Choices}" SelectedItem="{Binding Selected}">
                             <ComboBox.ItemTemplate>
                               <DataTemplate x:DataType="model:NodeChoice">
@@ -321,7 +321,7 @@
                       </DataTemplate>
                       <DataTemplate x:DataType="vm:ModelFieldViewModel">
                         <StackPanel Spacing="4">
-                          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Info="{Binding Info}" Hint="{Binding Hint}">
                             <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Models}" SelectedItem="{Binding Selected}"
                                       PlaceholderText="{x:Static vm:ModelFieldViewModel.ChoosePlaceholder}">
                               <ComboBox.ItemTemplate>
@@ -334,12 +334,12 @@
                         </StackPanel>
                       </DataTemplate>
                       <DataTemplate x:DataType="vm:ClassesFieldViewModel">
-                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Info="{Binding Info}" Hint="{Binding Hint}">
                           <ComboBox Classes="multiSelect" HorizontalAlignment="Stretch" ItemsSource="{Binding Choices.Entries}" PlaceholderText="{Binding Summary}" />
                         </ui:FormField>
                       </DataTemplate>
                       <DataTemplate x:DataType="vm:ShapeFieldViewModel">
-                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Info="{Binding Info}">
                           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                             <TextBlock Classes="secondary" Text="{Binding ShapeText}" TextWrapping="Wrap" VerticalAlignment="Center" />
                             <Button Grid.Column="1" Classes="secondary" Content="{x:Static vm:VisionTexts.Draw}" Command="{Binding DrawCommand}" />
@@ -347,17 +347,17 @@
                         </ui:FormField>
                       </DataTemplate>
                       <DataTemplate x:DataType="vm:TimeFieldViewModel">
-                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Info="{Binding Info}" Hint="{Binding Hint}">
                           <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" />
                         </ui:FormField>
                       </DataTemplate>
                       <DataTemplate x:DataType="vm:DaysFieldViewModel">
-                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Info="{Binding Info}" Hint="{Binding Hint}">
                           <ui:DayChips x:Name="DayChips" ItemsSource="{Binding Days}" />
                         </ui:FormField>
                       </DataTemplate>
                       <DataTemplate x:DataType="vm:EventTypeFieldViewModel">
-                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}" Error="{Binding ValueError}">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Info="{Binding Info}" Hint="{Binding Hint}" Error="{Binding ValueError}">
                           <Button x:Name="ChooseEventButton" Classes="secondary" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
                                   Command="{Binding ChooseCommand}">
                             <ui:IconLabel Icon="{DynamicResource Icon.bell}" Text="{Binding Text}" />
@@ -368,7 +368,7 @@
                         <CheckBox Content="{Binding Label}" IsChecked="{Binding Value}" />
                       </DataTemplate>
                       <DataTemplate x:DataType="vm:TextFieldViewModel">
-                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                        <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Info="{Binding Info}" Hint="{Binding Hint}">
                           <TextBox Text="{Binding Value}" PlaceholderText="{Binding Placeholder}" />
                         </ui:FormField>
                       </DataTemplate>
@@ -387,7 +387,6 @@
                   <ui:ToolbarButton x:Name="RefreshModelViewButton" Grid.Column="1" Icon="{DynamicResource Icon.refresh}" Text="{x:Static vm:ModelViewViewModel.RefreshTip}"
                                     Command="{Binding RefreshCommand}" />
                 </Grid>
-                <TextBlock Classes="secondary" Text="{Binding Caption}" IsVisible="{Binding Caption, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 <TextBlock Classes="secondary" Text="{Binding Problem}" IsVisible="{Binding HasProblem}" TextWrapping="Wrap" />
                 <ui:ProgressRing Width="16" Height="16" IsVisible="{Binding IsLoading}" HorizontalAlignment="Left" />
                 <Border x:Name="ModelViewPicture" Classes="modelPicture" HorizontalAlignment="Left" IsVisible="{Binding HasPicture}">
@@ -408,12 +407,13 @@
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                <TextBlock Classes="secondary" Text="{Binding Caption}" IsVisible="{Binding Caption, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
               </StackPanel>
 
               </Border>
 
               <!-- The live output of the selected node. -->
-              <Border x:Name="OutputCard" Classes="card">
+              <Border x:Name="OutputCard" Classes="card" IsVisible="{Binding Output.IsShown}">
               <StackPanel x:Name="OutputPanel" Spacing="8" DataContext="{Binding Output}" x:DataType="vm:NodeOutputViewModel">
                 <TextBlock Classes="cardTitle" Text="{x:Static vm:VisionTexts.LiveOutput}" />
                 <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsEvent}">
