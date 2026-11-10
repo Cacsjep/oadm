@@ -714,8 +714,6 @@ the selected node. Page header: the description, "Runs on" with Use GPU and the 
 - macOS and Linux runs of the add-on.
 - One worker budget for both vision add-ons instead of one each: Text recognition's CPU pool and its card memory budget
   are not shared.
-- A detection below 50 % never starts a track, it only keeps one: with a Minimum score below 50 % such objects are
-  never tracked.
 - YOLO26n as onnx-community exports it for Transformers.js is read as RT-DETR since the blank call tells a "no object"
   class apart (2026-11-08, "Output formats"). A sigmoid model with one or two classes can still look like DETR to that
   rule; the model's Settings choose the format.
