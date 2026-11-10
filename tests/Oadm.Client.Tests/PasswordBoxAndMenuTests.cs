@@ -80,6 +80,7 @@ public sealed class PasswordBoxAndMenuTests
             password.Paste();
             await Oadm.Sdk.Testing.Eventually.TrueAsync(() => { Dispatcher.UIThread.RunJobs(); return password.Text == "newpass"; }, "the second paste");
             window.Close();
+            return true;
         }, CancellationToken.None);
     }
 
