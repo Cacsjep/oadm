@@ -1,0 +1,69 @@
+---
+title: Examples
+description: Whole pipelines with the settings that matter and their rules, such as a long wait or people per hour.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+Each example is a pipeline in **Watching** mode on a model trained on COCO, such as RF-DETR or YOLO (see
+[Models](../models/)), and a rule made with **New rule** in [Event rules](../../event-rules/). Check each one with
+[Check and tune](../tuning/) before you rely on it.
+
+## People who wait longer than 2 minutes
+
+<Steps>
+
+1. Build Camera > Detect objects (`person`) > Track > Area (the counter) > Dwell > Event, the Event named `Long wait`.
+2. Set **Longer than** of Dwell to `120` s.
+3. Save the pipeline.
+4. Rule: **When** `Long wait`, **Then** **Send email** with `{count} people wait at the counter`.
+
+</Steps>
+
+Leave **Inside by** of the Area on **Bottom centre**, so a person counts where they stand.
+
+## People per hour over MQTT
+
+<Steps>
+
+1. Build Camera > Detect objects (`person`) > Track > Line > Count > Event, the Event named `Gate hourly`.
+2. Add a **Timer** with **Every** **Hour**. Link it to **Send now** of the Event and to **Reset** of the Count. The report
+   carries the hour's values, then the count starts again.
+3. Save the pipeline.
+4. Rule: **When** `Gate hourly: report`, **Then** **Publish MQTT message** to your broker's
+   [recipient](../../event-rules/#recipients), with a message such as `In {in}, Out {out}`.
+
+</Steps>
+
+Draw the line across the whole path. **In** is the side its arrow points to.
+
+## Alarm when the lobby is full during opening hours
+
+<Steps>
+
+1. Build Camera > Detect objects (`person`) > Area (the lobby) > Count > Compare (**At least** `20`) > Event, the Event
+   named `Lobby full` with **At least** `30` s.
+2. Add a **Time window**, Monday to Friday, 08:00 to 18:00, and link it to **Only while** of the Event.
+3. Save the pipeline.
+4. Rule: **When** `Lobby full`, **Then** **Set output** with **Follow the rule** for a lamp, or **Send email** with
+   `{count} people in the lobby`.
+
+</Steps>
+
+No Track node: Count on objects counts the people in the area now. **At least** keeps a group that walks through from
+setting off the alarm.
+
+## A vehicle stopped too long
+
+<Steps>
+
+1. Build Camera > Detect objects (`car`, `truck`, `bus`) > Track > Area (the fire lane) > Stationary > Event, the Event
+   named `Vehicle stopped`.
+2. Set **Still for** of Stationary to `300` s. Raise **Movement allowed** (default 3 %) if a parked vehicle never counts as
+   still.
+3. Save the pipeline.
+4. Rule: **When** `Vehicle stopped: object entered`, **Then** **Send email** with `A {class} stands in the fire lane`.
+
+</Steps>
+
+For a rule on each new object, set the rule's **Dead time** to 0: it counts per camera and would skip the next object.

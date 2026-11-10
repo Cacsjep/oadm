@@ -15,7 +15,11 @@ const apiSidebar = existsSync(apiSidebarFile) ? JSON.parse(readFileSync(apiSideb
 export default defineConfig({
 	site: 'https://oadm.app',
 	// Pages that moved: the old addresses keep working.
-	redirects: { '/admin/sites': '/sites/overview/', ...offlineRedirects },
+	redirects: {
+		'/admin/sites': '/sites/overview/',
+		'/tools/vision-center/nodes': '/tools/vision-center/objects/',
+		...offlineRedirects,
+	},
 	// The developer tutorials show the sample plugins of samples/ (outside website/) as they are: allow reading them.
 	vite: { server: { fs: { allow: ['..'] } } },
 	integrations: [
@@ -185,9 +189,13 @@ export default defineConfig({
 							items: [
 								{ label: 'Overview', slug: 'tools/vision-center' },
 								{ label: 'Models', slug: 'tools/vision-center/models' },
+								{ label: 'Export your own model', slug: 'tools/vision-center/export' },
 								{ label: 'Pipelines and the canvas', slug: 'tools/vision-center/pipelines' },
-								{ label: 'Nodes', slug: 'tools/vision-center/nodes' },
+								{ label: 'Objects and geometry', slug: 'tools/vision-center/objects' },
+								{ label: 'Logic, time and output', slug: 'tools/vision-center/logic' },
 								{ label: 'Events and rules', slug: 'tools/vision-center/events' },
+								{ label: 'Check and tune', slug: 'tools/vision-center/tuning' },
+								{ label: 'Examples', slug: 'tools/vision-center/examples' },
 								{ label: 'Speed and limits', slug: 'tools/vision-center/speed' },
 								{ label: 'Troubleshooting', slug: 'tools/vision-center/troubleshooting' },
 							],
