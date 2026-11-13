@@ -31,10 +31,14 @@ const portable = (title: string, rid: string): Group => ({
 // the OADM files of each system tab. Hidden while the latest release has none.
 const optional = (rid: string): Group => ({
 	title: 'Optional plugins',
-	rows: [{ name: 'Text recognition', pattern: `^oadm-addon-oadm\\.ocr-.*-${rid}\\.zip$` }],
+	rows: [
+		{ name: 'Text recognition', pattern: `^oadm-addon-oadm\\.ocr-.*-${rid}\\.zip$` },
+		{ name: 'Vision Center', pattern: `^oadm-addon-oadm\\.vision-.*-${rid}\\.zip$` },
+	],
 	note: "Download the ZIP of your server's version and system, then install it on the Plugins page of OADM.",
 	links: [
 		{ label: 'Text recognition', href: `${base}tools/text-recognition/` },
+		{ label: 'Vision Center', href: `${base}tools/vision-center/` },
 		{ label: 'Optional plugins', href: `${base}admin/plugins/#optional-plugins` },
 	],
 });

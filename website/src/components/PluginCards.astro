@@ -25,6 +25,7 @@ import edgeStorage from '../assets/screens/edge-storage-page.png';
 import est from '../assets/screens/est-page.png';
 import radius from '../assets/screens/radius-page.png';
 import textRecognition from '../assets/screens/text-recognition-page.png';
+import visionCenter from '../assets/screens/vision-center-page.png';
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
@@ -49,6 +50,7 @@ const plugins = [
 	{ name: 'Edge storage', page: 'edge-storage', image: edgeStorage, text: 'The SD card of every camera: full, worn or broken. Format, check or encrypt many at once.' },
 	{ name: 'Web View', page: 'web-view', image: webView, text: 'The web interface of every device in tabs, already logged in. Set up apps like Object Analytics on many cameras, one tab after the other.' },
 	{ name: 'Text recognition', page: 'text-recognition', image: textRecognition, text: 'Container numbers, labels and other text read from the live video.' },
+	{ name: 'Vision Center', page: 'vision-center', image: visionCenter, text: 'Your own detection models on the cameras: count objects in areas or over lines for the event rules.' },
 ];
 
 const large = await Promise.all(plugins.map(async (p) => (await getImage({ src: p.image, width: 1600, format: 'webp' })).src));
