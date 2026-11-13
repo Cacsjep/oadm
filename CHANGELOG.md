@@ -5,7 +5,7 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 version and date, and the release workflow copies it into the GitHub release (the client's new version notice shows it).
 Each entry is one short line in plain words (what the user gets, not how); no nested lists, no bold, no code.
 
-## [Unreleased]
+## [5.0.0] - 2026-11-13
 
 ### Added
 
