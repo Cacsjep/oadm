@@ -55,9 +55,19 @@ public sealed class SiteSessionRulesTests
         proxy.Pause(); // the link stays open, nothing gets through
         time.Advance(TimeSpan.FromSeconds(25));
         Assert.True(server.Manager.IsOnline(id));
-        time.Advance(TimeSpan.FromSeconds(6));
 
-        Assert.False(server.Manager.IsOnline(id)); // the tick of second 30 ended the session and set the site offline
+        // An answer already on its way when the link paused can still arrive (a slow machine): the 30 s count from the
+        // last answer the server got, so the clock moves on a second at a time until the tick ends the session.
+        await Eventually.TrueAsync(() =>
+        {
+            if (server.Manager.IsOnline(id))
+            {
+                time.Advance(TimeSpan.FromSeconds(1));
+            }
+
+            return !server.Manager.IsOnline(id);
+        }, "the site offline 30 s after the last answer");
+        Assert.InRange(server.Manager.AnswerAge(id), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(31));
         Assert.False(server.Manager.HasSession(id));
         await Eventually.TrueAsync(async () => (await server.AuditActionsAsync()).Contains(SiteAudit.Offline), "the offline edge audited");
     }
