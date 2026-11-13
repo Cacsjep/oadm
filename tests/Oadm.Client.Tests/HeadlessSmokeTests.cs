@@ -361,7 +361,11 @@ public sealed class HeadlessSmokeTests
         }
     }
 
-    private static async Task PumpUntilAsync(Func<bool> condition, int timeoutMs = 30_000)
+    // The fake server works in real time (a scan step every 250 ms, the live video at 10 fps), and a busy CI runner is
+    // several times slower than a developer machine: the limit only proves that nothing hung (CLAUDE.md "Tests that never
+    // flake"), and the message names the condition that did not come true.
+    private static async Task PumpUntilAsync(Func<bool> condition, int timeoutMs = 120_000,
+        [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(condition))] string what = "")
     {
         DateTime end = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         do
@@ -372,7 +376,7 @@ public sealed class HeadlessSmokeTests
         }
         while (!condition() && DateTime.UtcNow < end);
 
-        Assert.True(condition(), "UI condition not met in time");
+        Assert.True(condition(), "UI condition not met in time: " + what);
     }
 
     private static void Capture(Window window, string? outDir, string name)
