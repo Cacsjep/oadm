@@ -73,6 +73,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # TEMPORARY: the pull request's own config, to try the job once; the next commit reads it from the target branch.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/dependency-review-config.yml
+          sparse-checkout-cone-mode: false
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           config-file: ./.github/dependency-review-config.yml
