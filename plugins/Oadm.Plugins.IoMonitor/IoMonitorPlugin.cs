@@ -303,7 +303,8 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
             }
 
             // checked again with the insert: two starts must not pass the limit together
-            if (!_pollers.TryGetValue(key, out var poller))
+            var isNew = !_pollers.TryGetValue(key, out var poller);
+            if (isNew)
             {
                 if (_pollers.Count >= _options.MaxStreams)
                 {
@@ -313,11 +314,17 @@ public sealed partial class IoMonitorPlugin : ICorePlugin, IAsyncDisposable
 
                 poller = new DevicePoller(deviceId, events, _options, _time, Gone);
                 _pollers[key] = poller;
-                poller.Start();
             }
 
             _streams[stream.Id] = stream;
-            poller.Add(stream.Id, job.Owner);
+            poller!.Add(stream.Id, job.Owner);
+
+            // Started only once it has its stream: the first read reads through that stream's call. Started before, the
+            // read found no stream and pushed no ports with a timeout to the page.
+            if (isNew)
+            {
+                poller.Start();
+            }
         }
 
         registered.SetResult(true);
