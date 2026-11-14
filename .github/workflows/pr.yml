@@ -73,9 +73,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      # TEMPORARY: the pull request's own config, to try the job once; the next commit reads it from the target branch.
+      # The settings of the target branch, never the pull request's own: a pull request cannot widen its own check.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
           persist-credentials: false
           sparse-checkout: .github/dependency-review-config.yml
           sparse-checkout-cone-mode: false
