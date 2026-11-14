@@ -63,3 +63,16 @@ jobs:
           path: tests/**/TestResults/**
           if-no-files-found: ignore
           retention-days: 14
+
+  # New or changed packages: a known vulnerability or a license outside the list fails the pull request
+  # (.github/dependency-review-config.yml). Vulnerable NuGet packages, also indirect ones, already fail the build above
+  # (NuGet audit, all packages, warnings are errors).
+  dependency-review:
+    name: dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          config-file: ./.github/dependency-review-config.yml

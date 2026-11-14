@@ -236,6 +236,12 @@ Plugin SDK packaging: `docs/spec/plugins.md` "Loading and packaging" and `websit
   NuGet packages (ignored: JsonSchema.Net 9+ and WixToolset 7+, whose license moved to the OSMF EULA; PDFsharp-MigraDoc
   6.3+, which needs a license file to write a PDF) and the website's npm packages (ignored: mermaid 12+, astro-mermaid
   takes 10 or 11); other updates are done by hand.
+- Dependency review (`pr.yml` job "dependency review", `actions/dependency-review-action`, settings in
+  `.github/dependency-review-config.yml`): a pull request that adds or changes a package with a known vulnerability (any
+  severity) or a license outside the allow list fails (the result in the job's summary, no comment); a package without a
+  known license is only reported. LGPL-3.0 is not allowed (only the website's image tool sharp is accepted by name, never
+  shipped); a new exception is the maintainer's decision. NuGet packages are seen only as the projects name them; vulnerable ones, also indirect ones,
+  already fail every build (NuGet audit of all packages, warnings are errors).
 - Vulnerable transitive npm packages of the website are pinned with `overrides` entries in `website/package.json`
   (postcss-selector-parser 7.1.6; katex 0.18.9 under mermaid 11) until their parents update; npm versions are pinned
   exactly.

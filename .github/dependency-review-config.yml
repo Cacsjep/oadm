@@ -1,0 +1,57 @@
+# Dependency review of every pull request (pr.yml, job "dependency-review"): a new or changed package with a known
+# vulnerability or a license outside this list fails the pull request. A package GitHub knows no license for is only
+# reported. Spec: docs/spec/packaging.md "Supply chain and security".
+fail-on-severity: low
+fail-on-scopes: [runtime, development, unknown]
+# No comment on the pull request: a fork's pull request gets a read-only token; the job's summary shows the result.
+comment-summary-in-pr: never
+
+# The licenses OADM, its plugins, the website and the workflows use today (GitHub's dependency graph, 2026-11-14).
+# LGPL-2.1 is FFmpeg's (LGPL builds only). LGPL-3.0 is not on the list: a new package under it is decided by hand.
+allow-licenses:
+  - MIT
+  - Apache-2.0
+  - BSD-2-Clause
+  - BSD-3-Clause
+  - ISC
+  - 0BSD
+  - BlueOak-1.0.0
+  - CC0-1.0
+  - Unlicense
+  - LicenseRef-scancode-public-domain
+  - Python-2.0
+  - OFL-1.1
+  - MPL-2.0
+  - LGPL-2.1-only
+  - LGPL-2.1-or-later
+
+# Accepted by hand. sharp (libvips, LGPL-3.0) makes the website's images at build; it is never shipped with OADM.
+# DirectML carries Microsoft's DirectX redistribution terms beside MIT (Text recognition and Vision Center on Windows).
+allow-dependencies-licenses:
+  - pkg:nuget/Microsoft.AI.DirectML
+  - pkg:npm/@img/sharp-darwin-arm64
+  - pkg:npm/@img/sharp-darwin-x64
+  - pkg:npm/@img/sharp-freebsd-wasm32
+  - pkg:npm/@img/sharp-libvips-darwin-arm64
+  - pkg:npm/@img/sharp-libvips-darwin-x64
+  - pkg:npm/@img/sharp-libvips-linux-arm
+  - pkg:npm/@img/sharp-libvips-linux-arm64
+  - pkg:npm/@img/sharp-libvips-linuxmusl-arm64
+  - pkg:npm/@img/sharp-libvips-linuxmusl-x64
+  - pkg:npm/@img/sharp-libvips-linux-ppc64
+  - pkg:npm/@img/sharp-libvips-linux-riscv64
+  - pkg:npm/@img/sharp-libvips-linux-s390x
+  - pkg:npm/@img/sharp-libvips-linux-x64
+  - pkg:npm/@img/sharp-linux-arm
+  - pkg:npm/@img/sharp-linux-arm64
+  - pkg:npm/@img/sharp-linuxmusl-arm64
+  - pkg:npm/@img/sharp-linuxmusl-x64
+  - pkg:npm/@img/sharp-linux-ppc64
+  - pkg:npm/@img/sharp-linux-riscv64
+  - pkg:npm/@img/sharp-linux-s390x
+  - pkg:npm/@img/sharp-linux-x64
+  - pkg:npm/@img/sharp-wasm32
+  - pkg:npm/@img/sharp-webcontainers-wasm32
+  - pkg:npm/@img/sharp-win32-arm64
+  - pkg:npm/@img/sharp-win32-ia32
+  - pkg:npm/@img/sharp-win32-x64
