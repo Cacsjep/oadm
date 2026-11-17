@@ -1,6 +1,7 @@
 using Grpc.Core;
 
 using Oadm.Core.Auth;
+using Oadm.Core.Devices;
 using Oadm.Core.Plugins;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Testing;
@@ -67,10 +68,80 @@ public sealed class PluginCallAuditTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DeviceDispatchRequiresCurrentAuthorizationAfterPreparation(bool revokePermission)
+    {
+        var (host, plugin) = await StartAsync();
+        await using (host)
+        {
+            var device = await host.Get<DeviceRepository>().AddAsync(
+                new Device { Serial = FakeSerials.Make(4123), Address = "192.0.2.14" }, CancellationToken.None);
+            var request = new Proto.InvokeRequest { PluginId = PluginId, Method = "dispatch", PayloadJson = device.Id.ToString() };
+            plugin.ContinueDispatch.TrySetResult();
+            var allowed = await host.Plugins.InvokeAsync(request);
+            Assert.Equal("dispatched", allowed.PayloadJson);
+        }
+
+        var (revokedHost, revokedPlugin) = await StartAsync();
+        await using (revokedHost)
+        {
+            var device = await revokedHost.Get<DeviceRepository>().AddAsync(
+                new Device { Serial = FakeSerials.Make(4124), Address = "192.0.2.15" }, CancellationToken.None);
+            var request = new Proto.InvokeRequest { PluginId = PluginId, Method = "dispatch", PayloadJson = device.Id.ToString() };
+            var invoker = revokePermission
+                ? await revokedHost.InvokerForRoleAsync("operator", BuiltInRoles.OperatorId)
+                : revokedHost.Invoker;
+            var plugins = new Proto.PluginService.PluginServiceClient(invoker);
+            using var call = plugins.InvokeAsync(request, deadline: DateTime.UtcNow.AddSeconds(30));
+            await revokedPlugin.Waiting.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            try
+            {
+                if (revokePermission)
+                {
+                    var roles = revokedHost.Get<RoleStore>();
+                    var role = (await roles.ListAsync(CancellationToken.None)).Single(r => r.Id == BuiltInRoles.OperatorId);
+                    Assert.True(role.Permissions.Has(HostPermissionKeys.DevicesRefresh));
+                    await roles.SaveAsync([new(role.Id, role.Name, role.Description, [], role.Version)], CancellationToken.None);
+                }
+                else
+                {
+                    await revokedHost.Auth.LogoutAsync(new Proto.Empty());
+                }
+            }
+            finally
+            {
+                revokedPlugin.ContinueDispatch.TrySetResult();
+            }
+            var denied = await Assert.ThrowsAsync<RpcException>(async () => await call);
+            Assert.Equal(StatusCode.PermissionDenied, denied.StatusCode);
+            Assert.Equal(0, revokedPlugin.Dispatches);
+        }
+    }
+
     /// <summary>"save" works, "break" throws after its work began, "wait" works until the call is cancelled; "read" is not audited.</summary>
     private sealed class OutcomePlugin : ICorePlugin
     {
         public TaskCompletionSource Waiting { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource ContinueDispatch { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int Dispatches { get; private set; }
+
+        public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
+        {
+            if (method != "dispatch")
+            {
+                return await InvokeAsync(method, payloadJson, ct);
+            }
+
+            Waiting.TrySetResult();
+            await ContinueDispatch.Task.WaitAsync(ct);
+            await caller.RequireCurrentDeviceAccessAsync(HostPermissionKeys.DevicesRefresh, Guid.Parse(payloadJson!), ct);
+            Dispatches++;
+            return "dispatched";
+        }
 
         public string Id => PluginId;
 
@@ -84,7 +155,7 @@ public sealed class PluginCallAuditTests
 
         public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
 
-        public UserRole RequiredRole(string method) => method == "read" ? UserRole.Operator : UserRole.Admin;
+        public UserRole RequiredRole(string method) => method is "read" or "dispatch" ? UserRole.Operator : UserRole.Admin;
 
         public string? AuditDetail(string method, string? payloadJson) => method == "break" ? "Changed the gate" : null;
 

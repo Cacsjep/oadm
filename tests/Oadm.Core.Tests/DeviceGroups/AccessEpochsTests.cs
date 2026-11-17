@@ -6,6 +6,19 @@ namespace Oadm.Core.Tests.DeviceGroups;
 public sealed class AccessEpochsTests
 {
     [Fact]
+    public void RolePermissionChangesAreRecordedWithoutAnyRegisteredJobs()
+    {
+        var epochs = new AccessEpochs();
+        var role = Guid.NewGuid();
+        var admitted = epochs.Capture();
+        epochs.RolePermissionsChanged(role);
+
+        Assert.True(epochs.RolePermissionsChangedSince(admitted, role));
+        Assert.False(epochs.RolePermissionsChangedSince(admitted, Guid.NewGuid()));
+        Assert.False(epochs.RolePermissionsChangedSince(epochs.Capture(), role));
+    }
+
+    [Fact]
     public void EndedSessionsKeepTheEntriesBoundedAndACallFromBeforeADroppedChangeIsStillRefused()
     {
         var epochs = new AccessEpochs();

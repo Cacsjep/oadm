@@ -23,7 +23,7 @@ namespace Oadm.Server.Plugins;
 /// built for the call context, never the methods a plugin keeps for users with all devices, and receives only the events
 /// whose audience covers the user. The add-on methods (docs/spec/add-ons.md) are in src/Oadm.Server/AddOns.
 /// </summary>
-public sealed partial class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation, RoleStore roles, PluginLicenses licenses, DeviceViewFactory views, AddOns.IAddOnInstaller addOns, Backup.IServerRestart restart, Core.Tasks.TaskEngine tasks, Updates.UpdateGate updateGate, Core.Uploads.UploadStore uploads) : Proto.PluginService.PluginServiceBase
+public sealed partial class PluginGrpcService(PluginRegistry registry, CorePluginHost host, AuditLog audit, PluginActivation activation, RoleStore roles, PluginLicenses licenses, DeviceViewFactory views, AddOns.IAddOnInstaller addOns, Backup.IServerRestart restart, Core.Tasks.TaskEngine tasks, Updates.UpdateGate updateGate, Core.Uploads.UploadStore uploads, AuthTokenStore tokens, AccessEpochs epochs) : Proto.PluginService.PluginServiceBase
 {
     /// <summary>The add-on installer (the add-on methods: src/Oadm.Server/AddOns/PluginGrpcService.AddOns.cs).</summary>
     private readonly AddOns.IAddOnInstaller _addOns = addOns;
@@ -387,8 +387,43 @@ public sealed partial class PluginGrpcService(PluginRegistry registry, CorePlugi
         KeyNotFoundException => GrpcGuard.NotFound(ex.Message),
         InvalidOperationException => GrpcGuard.FailedPrecondition(ex.Message),
         ArgumentException => GrpcGuard.InvalidArgument(ex.Message),
+        UnauthorizedAccessException => new RpcException(new Status(StatusCode.PermissionDenied, ex.Message)),
         _ => new RpcException(new Status(StatusCode.Internal, $"Plugin {pluginId} failed: {ex.Message}")),
     };
+
+    private async Task RequireCurrentDeviceAccessAsync(PluginCaller admitted, string permission, Guid deviceId, CancellationToken ct)
+    {
+        var original = admitted.Caller;
+        if (original.IsAccessKey || await tokens.ValidateHashAsync(original.TokenHash, ct).ConfigureAwait(false) is not { } session
+            || session.UserId != original.UserId || session.RoleId != original.RoleId)
+        {
+            throw new UnauthorizedAccessException("The original interactive session is no longer authorized.");
+        }
+
+        var permissions = await roles.PermissionsOfAsync(session.RoleId, ct).ConfigureAwait(false);
+        var devices = await views.CallerDevicesAsync(session.DeviceAccess, ct).ConfigureAwait(false);
+        if (!permissions.Has(permission) || devices != original.Devices)
+        {
+            throw new UnauthorizedAccessException("Device access changed. Start a new request.");
+        }
+
+        var membershipVersion = views.MembershipVersion;
+        if (membershipVersion is null)
+        {
+            throw new UnauthorizedAccessException("Current device membership is unavailable.");
+        }
+        if (await admitted.View.FindAsync(deviceId, ct).ConfigureAwait(false) is null)
+        {
+            throw new DevicesNotAvailableException();
+        }
+        ct.ThrowIfCancellationRequested();
+        if (views.MembershipVersion != membershipVersion
+            || epochs.ChangedSince(original.AccessEpoch, original.UserId, original.SessionId, admitted.View.ScopeKey)
+            || epochs.RolePermissionsChangedSince(original.AccessEpoch, original.RoleId))
+        {
+            throw new UnauthorizedAccessException("Device access changed. Start a new request.");
+        }
+    }
 
     public override async Task<Proto.InvokeReply> Invoke(Proto.InvokeRequest request, ServerCallContext context)
     {
@@ -398,7 +433,26 @@ public sealed partial class PluginGrpcService(PluginRegistry registry, CorePlugi
         }
 
         var access = Authorize(request);
-        var caller = await CallerAsync(context).ConfigureAwait(false);
+        var admitted = await CallerAsync(context).ConfigureAwait(false);
+        var active = 1;
+        var callCancellation = context.CancellationToken;
+        async Task RequireWhileActiveAsync(string permission, Guid deviceId, CancellationToken ct)
+        {
+            if (Volatile.Read(ref active) != 1)
+            {
+                throw new UnauthorizedAccessException("The plugin call ended.");
+            }
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(callCancellation, ct);
+            await RequireCurrentDeviceAccessAsync(admitted, permission, deviceId, linked.Token).ConfigureAwait(false);
+            if (Volatile.Read(ref active) != 1)
+            {
+                throw new UnauthorizedAccessException("The plugin call ended.");
+            }
+        }
+        var caller = new PluginCaller(admitted.Caller, admitted.View)
+        {
+            RequireCurrentDeviceAccess = RequireWhileActiveAsync,
+        };
         var payload = string.IsNullOrEmpty(request.PayloadJson) ? null : request.PayloadJson;
         var done = false;
         try
@@ -418,6 +472,7 @@ public sealed partial class PluginGrpcService(PluginRegistry registry, CorePlugi
         }
         finally
         {
+            Volatile.Write(ref active, 0);
             if (access is { Audited: true })
             {
                 var detail = host.AuditDetailOf(request.PluginId, request.Method, payload); // the plugin's words, else the method

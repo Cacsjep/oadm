@@ -58,6 +58,11 @@ public sealed class AccessEpochs
         || (scopeKey is not null && After(epoch, "g:" + scopeKey))
         || epoch < Interlocked.Read(ref _floor);
 
+    public void RolePermissionsChanged(Guid roleId) => Record("r:" + roleId);
+
+    public bool RolePermissionsChangedSince(long epoch, Guid roleId) =>
+        After(epoch, "r:" + roleId) || epoch < Interlocked.Read(ref _floor);
+
     private bool After(long epoch, string key) => _changed.TryGetValue(key, out var at) && at > epoch;
 
     private void Record(string key)

@@ -58,6 +58,9 @@ public sealed class DeviceViewFactory
     /// <summary>The tag and site catalog the filters resolve against.</summary>
     public DeviceScopeCatalog Catalog => _catalog;
 
+    /// <summary>The device membership revision, when the host tracks membership changes.</summary>
+    public long? MembershipVersion => (_feed as DeviceChangeFeed)?.MembershipVersion;
+
     /// <summary>The caller's view. Throws <see cref="InvalidOperationException"/> without a caller: a scoped getter never allows everything.</summary>
     public async Task<DeviceView> ForAsync(AuthenticatedCaller? caller, CancellationToken ct)
     {

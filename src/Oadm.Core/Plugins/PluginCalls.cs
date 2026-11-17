@@ -59,6 +59,8 @@ public sealed class PluginCaller
 
     public DeviceView View { get; }
 
+    public Func<string, Guid, CancellationToken, Task>? RequireCurrentDeviceAccess { get; init; }
+
     public bool HasAllDevices => Caller.HasAllDevices;
 }
 
@@ -115,6 +117,11 @@ internal sealed class HostCallContext : ICallContext
     public IUploadedFiles Uploads { get; init; } = Oadm.Core.Uploads.NoUploadedFiles.Instance;
 
     public bool Has(string permission) => Caller.Caller.Has(permission);
+
+    public Task RequireCurrentDeviceAccessAsync(string permission, Guid deviceId, CancellationToken ct) =>
+        Has(permission) && Caller.RequireCurrentDeviceAccess is { } check
+            ? check(permission, deviceId, ct)
+            : throw new UnauthorizedAccessException("Current device authorization is unavailable.");
 
     public bool CoversRoute(Guid? siteId) => Caller.View.CoversRoute(siteId);
 
