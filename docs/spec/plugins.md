@@ -113,7 +113,10 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
 - **Device groups** (`docs/spec/device-scope.md`, `src/Oadm.Sdk/Plugins/CallContext.cs`): `ICallContext` (UserName,
   SessionId, DeviceScopeKey "all" or the group id, `Has`, `HasAllDevices`, `Devices`, `Vapix`, `Tasks`, `EventStreams`
   scoped to the user's view: outside ids answer null or throw `Oadm.Sdk.Devices.DevicesNotAvailableException` = NOT_FOUND
-  `DeviceMessages.NoLongerAvailable`, `Contains`). Overloads with the call, default members forwarding to the old ones:
+  `DeviceMessages.NoLongerAvailable`, `Contains`, `RequireCurrentDeviceAccessAsync(permission, deviceId, ct)`: opt-in, right
+  before a device write, checks again that the session is still active, the permission still granted and the device still
+  in the user's view, within what the call itself was allowed; refuses with `UnauthorizedAccessException`, also in a host
+  that cannot check (the default member); no lock, so a change after the check can still race the write). Overloads with the call, default members forwarding to the old ones:
   `ICorePlugin.InvokeAsync(caller, method, payload, ct)`, `ICorePluginDownloads.OpenDownloadAsync(caller, ...)`,
   `ITaskPluginQuery.QueryAsync(ctx, caller, device, ...)`. `ICorePlugin.RequiresAllDevices(method)` (saves of
   server-wide services; the host refuses them for group users) and `SystemAccessReason(method)` (the few methods that may

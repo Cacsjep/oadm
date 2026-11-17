@@ -51,6 +51,23 @@ on a route the user's group names: `caller.CoversRoute(device.SiteId)` (null = t
 `ITaskExecutionContext.ManagedAddressesAsync(addresses)` again before its first write and refuses an address in use
 (test with `FakeTaskContext.OtherDeviceAddresses`). Both take at most 256 addresses per call.
 
+## Check again right before a write
+
+A method that prepares for a while (reads, builds a certificate, waits for a job) can outlive the access that admitted
+it: the user logs out, loses the permission or the device leaves the group. Check again as the last step before the
+write, then send the write without another `await` in between:
+
+```csharp
+var camera = await caller.Vapix.CreateAsync(deviceId, ct);
+// ... all reads and preparation first
+await caller.RequireCurrentDeviceAccessAsync("oadm.my-plugin:write", deviceId, ct);
+await WriteSettingsAsync(camera, ct); // your write, right away
+```
+
+It throws `UnauthorizedAccessException` when the session ended, the permission was taken away or the device is no longer
+the user's, and in a host that cannot check (older hosts). It never allows more than the call itself was allowed. A change
+that comes after the check can still race the write.
+
 ## Methods for users with all devices
 
 Saves of server-wide services (NTP, DHCP, PKI and EST settings, a shared command library) stay with users who have all

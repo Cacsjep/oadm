@@ -10,6 +10,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Added
 
 - Plugin SDK: plugins can check whether the device connection uses a configured certificate pin.
+- Plugin SDK: right before a device write, a plugin can check that the user still has the session, the permission and the device.
 - VPN Fleet, a community plugin by Mo3he: see, set up, install and upgrade the VPN apps of your cameras.
 - Assistant: ask what a CVE is and it answers from OADM's CVE list, also for agents.
 

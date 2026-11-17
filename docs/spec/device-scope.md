@@ -144,6 +144,10 @@ The host side is in `docs/spec/plugins.md` "Host side of the call context".
 - Plugin methods get the user's call explicitly: `InvokeAsync`, `OpenDownloadAsync` and task `QueryAsync` have overloads
   with an `ICallContext` (default interface members): `call.UserName`, `call.Has(permission)`, `call.Devices` /
   `call.Vapix` / `call.Tasks` / `call.EventStreams` (scoped to the user's group), `call.Contains`, `call.HasAllDevices`.
+  A long preparation can outlive the access that admitted the call: `call.RequireCurrentDeviceAccessAsync(permission,
+  deviceId, ct)` right before the write checks the session, the permission and the device again (`AccessEpochs`, never
+  more than the call itself was allowed) and refuses when any changed, also when the device's group changes during the
+  check; a host that cannot check refuses. It admits the write; it does not hold off a revocation that comes after it.
   A plugin declares its methods for users with all devices (`RequiresAllDevices`: saves of NTP, DHCP, PKI, EST, the
   command library); the host refuses them for group users before the plugin runs, and the canary test reads the list.
   `ctx.*` stays the full, system view for background work (sweeps, the EST server, the trigger runtime, NTP, DHCP).
