@@ -99,11 +99,18 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
         using var cts = new CancellationTokenSource();
         var run = _polling.RunAsync(cts.Token);
 
-        // Step the clock one status pause at a time, each step only once both loops wait again, so no step is lost on a
-        // slow machine: the first full round after 10 minutes, the next one 10 minutes after that round.
+        // Step the clock one status pause at a time, each step only once both loops finished everything due so far and wait
+        // again: at time T the status loop has armed 1 + T / 60 s waits and the full loop 1 + T / 10 min. A pending timer
+        // alone is not enough (a step taken while the full round still runs would push the next round a minute late).
         while (_camera.FullRefreshTimes.Count < 2 && _time.GetUtcNow() - start < TimeSpan.FromMinutes(30))
         {
-            await Eventually.TrueAsync(() => _timers.Pending(_polling.RoundPause) > 0 && _timers.Pending(_polling.FullRefreshPause) > 0, "both loops waiting");
+            var elapsed = _time.GetUtcNow() - start;
+            int statusWaits = 1 + (int)(elapsed / _polling.RoundPause);
+            int fullWaits = 1 + (int)(elapsed / _polling.FullRefreshPause);
+            await Eventually.TrueAsync(
+                () => _timers.Created(_polling.RoundPause) == statusWaits && _timers.Pending(_polling.RoundPause) > 0
+                    && _timers.Created(_polling.FullRefreshPause) == fullWaits && _timers.Pending(_polling.FullRefreshPause) > 0,
+                $"both loops waiting at {elapsed}");
             _time.Advance(_polling.RoundPause);
         }
 
@@ -344,6 +351,7 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
     private sealed class TimerWatch(TimeProvider inner) : TimeProvider
     {
         private readonly List<Entry> _entries = [];
+        private readonly Dictionary<TimeSpan, int> _created = [];
 
         public override DateTimeOffset GetUtcNow() => inner.GetUtcNow();
 
@@ -361,6 +369,15 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
             }
         }
 
+        /// <summary>How many timers with this due time were created so far (a loop arms one per wait).</summary>
+        public int Created(TimeSpan due)
+        {
+            lock (_entries)
+            {
+                return _created.GetValueOrDefault(due);
+            }
+        }
+
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
             var entry = new Entry { Due = dueTime };
@@ -368,6 +385,7 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
             {
                 _entries.RemoveAll(e => e.Fired || e.Disposed);
                 _entries.Add(entry);
+                _created[dueTime] = _created.GetValueOrDefault(dueTime) + 1;
             }
 
             entry.Timer = inner.CreateTimer(s =>

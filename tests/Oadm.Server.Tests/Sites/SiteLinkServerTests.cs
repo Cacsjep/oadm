@@ -68,9 +68,15 @@ public sealed class SiteLinkServerTests
         Assert.Equal(SiteProblem.PortNotAllowed, error.Problem);
         Assert.DoesNotContain(node.Get<NodeStore>().Snapshot().Requested, p => p.Port == 8443);
 
-        // The next dial asks again.
-        await Assert.ThrowsAsync<SiteException>(async () =>
-            await server.Manager.OpenStreamAsync(id, "192.168.0.30", 8443, SiteDialKind.Short, Generous, CancellationToken.None));
+        // The next dial asks again. On a loaded machine that request can fail in transit too (its deadline, a link that
+        // reconnects): then it counts as not delivered and the dial after it asks again, so dial until it arrived. A request
+        // dropped for good would never arrive.
+        await Eventually.TrueAsync(async () =>
+        {
+            var again = await Assert.ThrowsAsync<SiteException>(async () =>
+                await server.Manager.OpenStreamAsync(id, "192.168.0.30", 8443, SiteDialKind.Short, Generous, CancellationToken.None));
+            return again.Problem == SiteProblem.PortNotAllowed && node.Get<NodeStore>().Snapshot().Requested.Exists(p => p.Port == 8443);
+        }, "the port request reaches the node with a later dial", TimeSpan.FromMinutes(2)); // a try may take the 30 s call deadline
         Assert.Single(node.Get<NodeStore>().Snapshot().Requested, p => p.Port == 8443);
     }
 }
