@@ -218,9 +218,11 @@ must never break.
   is the only write and always goes back.
 - **[Help](docs/spec/help.md)**: the user docs of oadm.app shipped with the client and shown in a Help window with the
   embedded browser, served on 127.0.0.1 only; never loads oadm.app; client only.
-- **[Zero-touch provisioning](docs/spec/provisioning.md)** (spec, not built; OADM PRO plugin `oadm.provisioning`): a
-  profile runs by itself on factory-new cameras only; the fixed IP is written only on Apply network and checked; the
-  DHCP server's settings are saved and always restored; Administrator only.
+- **[Zero-touch provisioning](docs/spec/provisioning.md)** (draft spec, not built; core plugin `oadm.provisioning`, free,
+  on by default): a profile is a straight flow of nodes on the Vision Center canvas, run on factory-new cameras with an
+  OADM DHCP lease only; Set password first and it stops on error, every other node continues by default; Fixed IP takes
+  the first free address of the DHCP range under a lock and moves the range start; at most 8 cameras at once;
+  Administrator only.
 - **[Application management](docs/spec/app-management.md)** (core plugin `oadm.app-management`, free, off by default):
   the chosen devices and the applications of the selected ones; every change is a task of `oadm.acap` with its checks
   and permissions; reads only on demand, kept in server memory.
