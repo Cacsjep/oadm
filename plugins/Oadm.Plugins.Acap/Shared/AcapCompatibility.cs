@@ -100,6 +100,7 @@ public static class AcapCompatibility
         CheckArchitecture(package, device, problems);
         CheckFirmware(package, device, problems, warnings);
         CheckRoot(package, device, problems, warnings);
+        CheckManifest(package, device, problems);
         if (CheckSdk(package, device, warnings) is { } sdk)
         {
             problems.Add(sdk.Sentence);
@@ -470,6 +471,19 @@ public static class AcapCompatibility
         }
 
         return null;
+    }
+
+    /// <summary>The refusal of a package without a manifest.json on AXIS OS 13 and later.</summary>
+    public const string ManifestMissing = "The package has no manifest.json, which AXIS OS 13 and later need.";
+
+    /// <summary>AXIS OS 13 no longer installs a package that has only a package.conf (AXIS OS 13.0 release notes).</summary>
+    private static void CheckManifest(EapManifest package, AcapDeviceFacts device, List<string> problems)
+    {
+        var fw = NumericPrefix(device.FirmwareVersion);
+        if (package.Source == "package.conf" && fw.Count > 0 && CompareTruncated(fw, [13]) >= 0)
+        {
+            problems.Add(ManifestMissing);
+        }
     }
 
     private static void CheckRoot(EapManifest package, AcapDeviceFacts device, List<string> problems, List<string> warnings)

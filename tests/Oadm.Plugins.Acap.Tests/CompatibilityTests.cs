@@ -115,6 +115,22 @@ public sealed class CompatibilityTests
         Assert.True(AcapCompatibility.Check(Package(schema: null), P3265 with { FirmwareVersion = null }, null, false).IsCompatible);
     }
 
+    [Theory]
+    [InlineData("13.0.114", "package.conf", false)]
+    [InlineData("14.0.1", "package.conf", false)]
+    [InlineData("12.11.147", "package.conf", true)]
+    [InlineData("13.0.114", "manifest.json", true)]
+    public void Package_without_a_manifest_is_refused_from_axis_os_13(string axisOs, string source, bool compatible)
+    {
+        var report = AcapCompatibility.Check(Package(schema: null, source: source), P3265 with { FirmwareVersion = axisOs }, null, false);
+
+        Assert.Equal(compatible, report.IsCompatible);
+        if (!compatible)
+        {
+            Assert.Equal([AcapCompatibility.ManifestMissing], report.Problems);
+        }
+    }
+
     [Fact]
     public void Legacy_package_checks_embedded_development_version()
     {
