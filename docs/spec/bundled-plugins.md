@@ -362,18 +362,24 @@ that has the app, with five count cards (Good, Detected, Pending, Detection off,
 
 `plugins/Oadm.Plugins.Provisioning`, id `oadm.provisioning`, rail page **Provisioning** (icon `workflow`), **free, on by
 default**, not at sites (`siteSupport` none). Profiles of nodes run on factory-new cameras that get an address from OADM's
-DHCP server while provisioning is started. Spec: [provisioning.md](provisioning.md); details: plugin `README.md`. Stage 1
-built (server part, nodes Set password, Add to OADM, Wait for approval, Set IP, Date and time); the page comes next.
+DHCP server while provisioning is started. Spec: [provisioning.md](provisioning.md); details: plugin `README.md`. Server
+part built with every node of the spec (each starts the existing task of its area; Autofocus uses the optics API); the
+page comes next.
 
 - Rules that must hold: a flow starts only for an Axis MAC with an OADM DHCP lease whose camera has no password yet
   (the add page's look, no password sent), any other is "Not new, left as it is" and never changed; Set password always
   stops on error; the profile holds no password (a typed one goes into the credential list, the node keeps its id); Set
   IP takes and reserves under one lock (never the same address twice) and writes through the Network task; the DHCP
   server is only read (`IDhcpServerLeases`), never changed; at most 8 cameras at once; time through `TimeProvider`.
+  Typed passwords and passphrases of other nodes and their files are kept in the plugin's vault (passwords encrypted with
+  the master key, files in its data folder) and named by id; they reach only the task's payload in memory. Upgrade AXIS
+  OS online runs as the administrator who started provisioning (their MyAxis sign-in); after a server restart it asks
+  for a new Start. Dangerous VAPIX commands and commands with a password or file are refused in a profile.
 - Rights: "show" and "manage", both off for Operator and Viewer; every method for users with all devices only; changes
   audited without the payload.
 - MCP ([mcp.md](mcp.md)): `oadm_provisioning_status`, `_profiles`, `_profile`, `_credentials`, `_cameras` and the page's
-  changes with preview and run.
+  changes with preview and run; `_secret_store` (the person enters a node's password) and `_file_store` (an uploaded
+  file) answer the ids a node's settings name.
 
 ## VPN Fleet (core plugin)
 

@@ -10,7 +10,8 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Added
 
 - DHCP server: set the lease time, from 1 hour to 30 days.
-- Plugin SDK 0.15.0: the first set up of factory-new cameras and the DHCP server's leases for other plugins.
+- Provisioning: plug factory-new cameras in and a profile sets them up by itself.
+- Plugin SDK 0.15.0: the first set up of factory-new cameras, the DHCP server's leases and a plugin's own files for its tasks.
 
 ### Fixed
 

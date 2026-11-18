@@ -4,9 +4,8 @@ Core plugin `oadm.provisioning`, rail page **Provisioning**, free, on by default
 address from OADM's DHCP server, while provisioning is started on the page. The spec is
 [`docs/spec/provisioning.md`](../../docs/spec/provisioning.md); this file holds the decisions of the code.
 
-Stage 1 (built): the server part, the nodes Set password, Add to OADM, Wait for approval, Set IP and Date and time, the
-page methods and the tools. The client page and the canvas come next (no `.Client` project yet: the host shows "not
-installed" for the page).
+Built: the server part with every node of the spec, the page methods and the tools. The client page and the canvas come
+next (no `.Client` project yet: the host shows "not installed" for the page).
 
 ## How it works
 
@@ -44,11 +43,28 @@ installed" for the page).
 | Add to OADM (fixed, second) | `IDeviceAutoAdd.AddWithLoginAsync` with the same entry and the tags (for all devices; the tags put it into device groups), then waits up to 2 minutes until OADM has read it (status Ok, API list) | Success; Warning when OADM has not read it yet or a tag could not be set; Error with the reason |
 | Wait for approval | Releases its place and waits for Continue on the row | "Continued by anna." |
 | Set IP | Takes the address under a lock (`TakeAddressAsync`), then the Network plugin's task "Assign IP address" (`oadm.network.assign-ip`) with a static payload | "192.168.15.12 is in use, 192.168.15.13 assigned."; "No free address left in the pool."; on failure both addresses |
-| Date and time | The Date and time task (`oadm.datetime`), mode NTP, the servers or the ones DHCP gives | "Time zone Europe/Vienna, NTP 10.0.0.17." or the task's message |
+| Date and time | The Date and time task (`oadm.datetime`), mode NTP, the servers or the ones DHCP gives; with OADM's NTP server then the NTP server plugin's "Use OADM NTP server" (`oadm.ntp-server.use`), which fills in OADM's address towards the camera | "Time zone Europe/Vienna, NTP 10.0.0.17.", "Time zone Europe/Vienna, OADM's NTP server.", "Time zone ... set. OADM's NTP server was not set: ..." or the task's message |
+| Upgrade AXIS OS online | Upgrade AXIS OS (`oadm.firmware`) with `"latest":{"target"}` (own track, latest LTS, latest active; the task picks the version on axis.com for the camera's model), started with the tasks of the administrator who started provisioning (`INodeHost.StarterTasks`: their MyAxis sign-in; null after a restart). Only if older than: the device's version first, no task | "AXIS OS from axis.com installed.", "Already 12.6.95.", Error "Sign in to MyAxis." (no or expired sign-in), "Stop and start provisioning again: ..." |
+| Upgrade AXIS OS from files | Upgrade AXIS OS with every file of the node as an upload (`files`), the task takes the file whose product is the camera's model; Allow downgrade passed on (AXIS OS refuses a downgrade that keeps the settings: the task's Error) | "AXIS OS 12.6.95 installed.", "Already 12.6.95.", Warning "No file for this model.", Error "The file is no longer on the server. Choose it again." |
+| Network settings | Network settings (`oadm.network`): the host name per device (`{model}`, `{serial}`, `{mac}`, `{n}` = start number + the camera's number of the session, `INodeHost.NumberAsync`, kept until Stop), DNS servers and search domain (none: the camera keeps its domains) | "Host name P3265-LVE-10, DNS 10.0.0.1, search domain site.local." or the task's message |
+| Configuration | Import configuration (`oadm.device-config.import`) of the file, or of the template camera's export read now (`GET /config/rest/$export`, read only, uploaded for the task, never kept); the areas `param.v2`, `action-rules.v2`, `event-schedules.v2`; the task leaves out device-specific values | "Parameters and action rules applied.", Warning with the task's list of settings the camera lacks, Not needed "this is the template camera.", Error "The template camera ... is not in OADM." |
+| Users | One Users task (`oadm.users`, mode add) per account, the password from the vault in the payload; the task protects OADM's account | "Added op1 and view1.", Warning or Error per account ("op1: ...") |
+| Certificate | PKI's "Enable HTTPS" (`oadm.pki.https-enable`) with the policy (none: the first HTTPS certificate policy), or "Set up EST" (`oadm.est.setup`); the clock is never confirmed (a clock that is behind refuses) | "Certificate installed, HTTPS on.", "EST enrollment set up.", Error "OADM PRO is not active. Nothing was changed." |
+| 802.1X | PKI's "Enable IEEE 802.1X" (`oadm.pki.dot1x-enable`) with PKI's 802.1X policy | "802.1X on." or the task's message |
+| SD card | Edge storage's task (`oadm.edge-storage.task`): `encryptionOn` with the passphrase from the vault (formats too) or `format`, then `retention` with the days | "SD card encrypted and formatted, recordings kept 30 days.", Not needed "no SD card." (the first task's "No SD card"), Error with the task's text |
+| Autofocus | No task: the optics API of the live view (`optics-control` in a fresh API list, `getCapabilities` with focus, `performAutofocus`, which answers when done) within `AutofocusTimeout` (2 minutes) | "Focus found.", Not needed "no remote focus.", Error "The camera could not find focus. Set focus by hand." or "The autofocus did not end within 2 minutes." |
+| VAPIX commands | The VAPIX Commander's task (`oadm.vapix-commander.run`) with the commands of the library copied into this plugin (`Library/`, sources linked) and their values (`FieldValues.Resolve` in the check), confirmed; commands the fresh API list lacks are left out | "Ran Set overlay text.", Warning "Ran ... Not on this camera: Run autofocus.", Error with the task's message |
 
 **Set password secrets.** The profile never holds a password. A typed password (`saveProfile` with `password`, the tool's
 secret) is added to the credential list as root (`IDeviceAutoAdd.AddCredentialAsync`, encrypted with the master key) and
 the node keeps the entry's id. It is never logged, audited or sent back.
+
+**Secrets and files** (`Engine/NodeVault.cs`). A node names a typed password or passphrase by `secretId` and a file by
+`fileId`, never the value: the page's `storeSecret` (encrypted with `ctx.Secrets`, setting `secrets`) and `storeFile`
+(a file of the caller's own uploads, copied into `ctx.DataDirectory/files`, setting `files`) answer the ids. When a node
+runs, a file goes to its task as a system upload (`ctx.Uploads`, SDK 0.15.0), added again when the server deleted the
+last one after a day. What no profile and no session names is deleted a day after it was stored (`PruneAsync` at start,
+save and delete). A plugin never reads a password of the credential list, so Users and SD card take typed ones only.
 
 **Set IP addresses.** Under one lock per server: the camera's own reservation of this session, else the first address of
 the pool that is not reserved in this session, no OADM device has (one read of the device list per take) and that answers
@@ -88,7 +104,10 @@ validation before the first write), the node maps its outcome.
    ```
 
    The default `Map` turns Done into Success (`Done`), Done with warnings into Warning and Failed or Cancelled into Error,
-   each with the task's message; override it for more. A node that is not a task implements `IProvisioningNode` itself
+   each with the task's message; override it for more. `PayloadAsync` builds a payload that needs a read (a file as an
+   upload; an `InvalidOperationException` is the node's Error), `TaskFor` picks another task by the settings, `RunnerFor`
+   another runner (`StarterTasks`), `AfterAsync` runs a second task. A node with several tasks or with VAPIX itself
+   derives from `DeviceNode<TSettings>` (`RunOnAsync`). A node that is not a task implements `IProvisioningNode` itself
    (`RunAsync` never throws for a device problem, it returns a `NodeResult`). `NeedsDevice` (default true) makes the
    engine refuse the node before Add to OADM gave the camera its device.
 3. Register it in `NodeRegistry.Default`.
@@ -103,7 +122,8 @@ The engine is the node's `INodeHost`: `AutoAdd`, `Tasks`, `Devices`, `Time`, `Op
 
 `ProvisioningContract.cs`: `getStatus`, `listProfiles`, `getProfile`, `checkProfile`, `nodeKinds`, `credentials` (ids and
 user names only), `saveProfile`, `deleteProfile`, `activateProfile`, `start`, `stop`, `listCameras` (paged), `getCamera`,
-`runFailedAgain`, `continue`, `removeCameras`. Events `status` (after Start, Stop and profile changes) and `cameras`
+`runFailedAgain`, `continue`, `removeCameras`, `storeSecret` (the id only comes back), `storeFile` (an upload id of the
+caller). Events `status` (after Start, Stop and profile changes) and `cameras`
 (batched). Nothing grows with the device count.
 
 ## Rights
@@ -114,11 +134,14 @@ Every method only for users with all devices (`RequiresAllDevices`); changes are
 ## Tools
 
 `oadm_provisioning_status`, `_profiles`, `_profile`, `_credentials`, `_cameras` (paged); changes with preview and run:
-`_profile_save` (secret `password` when `new_password`), `_profile_delete`, `_profile_activate`, `_start`, `_stop`,
-`_cameras_run_failed_again`, `_cameras_continue`, `_cameras_remove`.
+`_profile_save` (secret `password` when `new_password`), `_secret_store` (secret `secret`: a node's password or
+passphrase), `_file_store` (`upload_id`), `_profile_delete`, `_profile_activate`, `_start`, `_stop`,
+`_cameras_run_failed_again`, `_cameras_continue`, `_cameras_remove`. A node's settings are snake_case at any depth (the
+values of a VAPIX command keep its field names); `NodeArgs.SettingsHelp` lists them per kind.
 
 ## Tests
 
 `tests/Oadm.Plugins.Provisioning.Tests`: fakes for the add pipeline, the DHCP view and the address probe, a fake clock,
-gates for the 8 places and the address lock; the Perf test takes addresses with 100,000 devices and pages 2,000 rows.
+gates for the 8 places and the address lock; every node with its task's outcomes (`Harness.Outcomes`, `Decide` per run),
+scripted VAPIX for Autofocus and the template camera, the vault with a marking fake protector (`VaultTests`); the Perf test takes addresses with 100,000 devices and pages 2,000 rows.
 No hardware test yet.

@@ -1,8 +1,10 @@
 # Zero-touch provisioning
 
-Status: **draft spec; stage 1 built** (the server part with the nodes Set password, Add to OADM, Wait for approval, Set IP
-and Date and time, the page methods and tools; the page and the canvas are next). Flow design of 2026-11-18; replaces the
-step list of 2026-10-27.
+Status: **draft spec; server part built** (every node below, the page methods and tools; the page and the canvas are
+next). Flow design of 2026-11-18; replaces the step list of 2026-10-27. Open (ask the maintainer): Users and SD card take
+a typed password only (a plugin never reads a password of the credential list); SD card formats with the camera's own
+file system and sets only the maximum age (Edge storage has no file system choice and no cleanup level); Configuration
+applies parameters, action rules and schedules (a configuration file has no stream profiles).
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
@@ -64,8 +66,8 @@ Set password).
    master key, added to the credential list, never shown again).
 2. **Add to OADM** (fixed, second): adds the camera with that login; optional **tags**, so it lands in the right device
    group. OADM has no names of its own: a device shows its host name or address.
-3. **Upgrade AXIS OS online**: AXIS OS from axis.com with the MyAxis sign-in of the administrator who turned the profile
-   on (expired sign-in: Error "Sign in to MyAxis"). Target: the latest of the camera's current track, the latest LTS, or
+3. **Upgrade AXIS OS online**: AXIS OS from axis.com with the MyAxis sign-in of the administrator who started
+   provisioning (expired or no sign-in: Error "Sign in to MyAxis."; after a server restart Start again). Target: the latest of the camera's current track, the latest LTS, or
    the latest active track; optional **only if older than** a version (else Success "Already 12.6.95."). The Upgrade
    AXIS OS task's checks apply.
 4. **Upgrade AXIS OS from files**: several uploaded AXIS OS files; each camera gets the file for its model. No file for
