@@ -358,6 +358,23 @@ that has the app, with five count cards (Good, Detected, Pending, Detection off,
   are refused whole (NOT_FOUND).
 - Page actions as tools (decision 2026-11-15, [mcp.md](mcp.md) "Page actions"), with the page's rights: `oadm_image_health_check` (Check now, one tool).
 
+## Provisioning (core plugin)
+
+`plugins/Oadm.Plugins.Provisioning`, id `oadm.provisioning`, rail page **Provisioning** (icon `workflow`), **free, on by
+default**, not at sites (`siteSupport` none). Profiles of nodes run on factory-new cameras that get an address from OADM's
+DHCP server while provisioning is started. Spec: [provisioning.md](provisioning.md); details: plugin `README.md`. Stage 1
+built (server part, nodes Set password, Add to OADM, Wait for approval, Set IP, Date and time); the page comes next.
+
+- Rules that must hold: a flow starts only for an Axis MAC with an OADM DHCP lease whose camera has no password yet
+  (the add page's look, no password sent), any other is "Not new, left as it is" and never changed; Set password always
+  stops on error; the profile holds no password (a typed one goes into the credential list, the node keeps its id); Set
+  IP takes and reserves under one lock (never the same address twice) and writes through the Network task; the DHCP
+  server is only read (`IDhcpServerLeases`), never changed; at most 8 cameras at once; time through `TimeProvider`.
+- Rights: "show" and "manage", both off for Operator and Viewer; every method for users with all devices only; changes
+  audited without the payload.
+- MCP ([mcp.md](mcp.md)): `oadm_provisioning_status`, `_profiles`, `_profile`, `_credentials`, `_cameras` and the page's
+  changes with preview and run.
+
 ## VPN Fleet (core plugin)
 
 `plugins/Oadm.Plugins.VpnFleet` (+ `.Client`), id `oadm.vpn-fleet`, rail page **VPN Fleet** (group Security, icon

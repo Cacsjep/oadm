@@ -1,0 +1,245 @@
+using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
+
+using Oadm.Plugins.Provisioning.Engine;
+using Oadm.Plugins.Provisioning.Model;
+using Oadm.Sdk.Plugins;
+
+namespace Oadm.Plugins.Provisioning.Tools;
+
+/// <summary>
+/// The page's reads and changes as tools (docs/spec/mcp.md "Plugins"): the status, the profiles, the camera table (paged),
+/// the credential list's names; saving, deleting and activating a profile, Start and Stop, Run failed again, Continue and
+/// removing rows, each a preview with the page's checks and a run through the page's own code. The rights of the page
+/// methods: Administrator by default, users with all devices only. A typed password is a secret of the person, never an argument.
+/// </summary>
+internal static class ProvisioningTools
+{
+    private static readonly PluginToolSecret Password = new("password", "root password of Set password");
+
+    public static PluginPageTools<ProvisioningPlugin> Set { get; } = new PluginPageTools<ProvisioningPlugin>()
+        .Read<NoArgs, StatusAnswer>(
+            new("status", "Provisioning status", "Whether provisioning is started, the active profile, the DHCP server, the camera counts and the warnings."),
+            ProvisioningMethods.GetStatus,
+            async (plugin, _, _, ct) => StatusAnswer.Of(await plugin.StatusAsync(ct).ConfigureAwait(false)))
+        .Read<NoArgs, ProfilesAnswer>(
+            new("profiles", "Provisioning profiles", "The profiles: id, name, number of nodes, whether active and whether without errors."),
+            ProvisioningMethods.ListProfiles,
+            (plugin, _, _, _) => Task.FromResult(ProfilesAnswer.Of(plugin.ListProfiles())))
+        .Read<IdArgs, ProfileAnswer>(
+            new("profile", "Provisioning profile", "One profile with its nodes in order, their settings and the errors and warnings of each node."),
+            ProvisioningMethods.GetProfile,
+            async (plugin, _, input, ct) => ProfileAnswer.Of(await plugin.GetProfileAsync(input.Args.Id, ct).ConfigureAwait(false)))
+        .Read<NoArgs, CredentialsAnswer>(
+            new("credentials", "Credential list names", "The credential list entries (id and user name, never a password) Set password can use."),
+            ProvisioningMethods.Credentials,
+            async (plugin, _, _, ct) => new CredentialsAnswer([.. (await plugin.CredentialsAsync(ct).ConfigureAwait(false)).Select(c => new CredentialRow(c.Id, c.UserName))]))
+        .Read<NoArgs, CamerasAnswer>(
+            new("cameras", "Provisioning cameras", "The cameras of the session by MAC address: model, address, state, the node it is on and its message.") { Paged = true },
+            ProvisioningMethods.ListCameras,
+            (plugin, _, input, _) => Task.FromResult(CamerasAnswer.Of(plugin, input.Page)))
+        .Change<SaveArgs, SavePlan, SavedAnswer>(
+            new("profile_save", "Save provisioning profile", "Adds a profile, or changes the one with id. Nodes in order, Set password and Add to OADM first. With new_password the person enters the root password of Set password.")
+            {
+                Secrets = [Password],
+            },
+            ProvisioningMethods.SaveProfile,
+            async (plugin, _, input, ct) =>
+            {
+                var request = input.Args.Request(input.Secret(Password.Name));
+                var (profile, check) = await plugin.CheckSaveAsync(request, ct).ConfigureAwait(false);
+                return new SavePlan(profile.Name, check.NodeErrors.Count, check.NodeWarnings.Count) { SecretsNeeded = input.Args.NewPassword ? null : [] };
+            },
+            async (plugin, _, input, _, ct) =>
+            {
+                var reply = await plugin.SaveProfileAsync(input.Args.Request(input.Secret(Password.Name)), ct).ConfigureAwait(false);
+                return new SavedAnswer(reply.Profile.Id, reply.Check.IsValid);
+            })
+        .Change<IdArgs, ProfilePlan, DoneAnswer>(
+            new("profile_delete", "Delete provisioning profile", "Deletes a profile. A running session keeps its own copy.") { Destructive = true },
+            ProvisioningMethods.DeleteProfile,
+            (plugin, _, input, _) => Task.FromResult(new ProfilePlan((plugin.RunningProfiles.Find(input.Args.Id) ?? throw new KeyNotFoundException(ProvisioningPlugin.ProfileGone)).Name)),
+            async (plugin, _, input, _, ct) =>
+            {
+                await plugin.DeleteProfileAsync(input.Args.Id, ct).ConfigureAwait(false);
+                return new DoneAnswer("Deleted.");
+            })
+        .Change<IdArgs, ProfilePlan, DoneAnswer>(
+            new("profile_activate", "Activate provisioning profile", "Makes a profile without errors the active one; the next Start runs it."),
+            ProvisioningMethods.ActivateProfile,
+            async (plugin, _, input, ct) => new ProfilePlan((await plugin.CheckActivateAsync(input.Args.Id, ct).ConfigureAwait(false)).Name),
+            async (plugin, _, input, _, ct) =>
+            {
+                await plugin.ActivateAsync(input.Args.Id, ct).ConfigureAwait(false);
+                return new DoneAnswer("Active.");
+            })
+        .Change<NoArgs, StartPlan, DoneAnswer>(
+            new("start", "Start provisioning", "Starts provisioning with the active profile: every factory-new camera that gets an address from OADM's DHCP server runs it."),
+            ProvisioningMethods.Start,
+            async (plugin, _, _, ct) =>
+            {
+                var profile = await plugin.CheckStartAsync(ct).ConfigureAwait(false);
+                return new StartPlan(profile.Name, (await plugin.StatusAsync(ct).ConfigureAwait(false)).Warnings);
+            },
+            async (plugin, caller, _, _, ct) =>
+            {
+                await plugin.StartSessionAsync(caller.UserName, ct).ConfigureAwait(false);
+                return new DoneAnswer("Provisioning started.");
+            })
+        .Change<NoArgs, StopPlan, DoneAnswer>(
+            new("stop", "Stop provisioning", "Stops provisioning: running flows stop waiting, the reserved addresses are free again."),
+            ProvisioningMethods.Stop,
+            (plugin, _, _, _) => Task.FromResult(plugin.RunningEngine.Session is null ? throw new InvalidOperationException(ProvisioningEngine.NotStarted) : new StopPlan(plugin.RunningEngine.Counts().Running)),
+            async (plugin, _, _, _, ct) =>
+            {
+                await plugin.StopSessionAsync(ct).ConfigureAwait(false);
+                return new DoneAnswer("Provisioning stopped.");
+            })
+        .Change<MacsArgs, CamerasPlan, CountAnswer>(
+            new("cameras_run_failed_again", "Run failed nodes again", "Runs the red nodes of failed cameras again, in flow order."),
+            ProvisioningMethods.RunFailedAgain,
+            (plugin, _, input, _) => Task.FromResult(Plan(plugin, input.Args, r => r.State == CameraState.Failed)),
+            (plugin, _, input, _, _) => Task.FromResult(new CountAnswer(plugin.RunningEngine.RunFailedAgain(input.Args.Macs))))
+        .Change<MacsArgs, CamerasPlan, CountAnswer>(
+            new("cameras_continue", "Continue cameras", "Presses Continue for cameras that wait for approval."),
+            ProvisioningMethods.Continue,
+            (plugin, _, input, _) => Task.FromResult(Plan(plugin, input.Args, r => r.WaitingForApproval)),
+            (plugin, caller, input, _, _) => Task.FromResult(new CountAnswer(plugin.RunningEngine.Continue(input.Args.Macs, caller.UserName))))
+        .Change<MacsArgs, CamerasPlan, CountAnswer>(
+            new("cameras_remove", "Remove camera rows", "Removes rows from the camera table; the cameras stay in OADM.") { Destructive = true },
+            ProvisioningMethods.RemoveCameras,
+            (plugin, _, input, _) => Task.FromResult(Plan(plugin, input.Args, r => r.State is not (CameraState.Queued or CameraState.Running))),
+            (plugin, _, input, _, _) => Task.FromResult(new CountAnswer(plugin.RunningEngine.Remove(input.Args.Macs))));
+
+    /// <summary>The rows of the given MAC addresses that the change applies to; none is a refusal.</summary>
+    private static CamerasPlan Plan(ProvisioningPlugin plugin, MacsArgs args, Func<CameraRow, bool> applies)
+    {
+        var rows = (args.Macs ?? []).Select(plugin.RunningEngine.Find).OfType<CameraRow>().Where(applies).ToList();
+        return rows.Count == 0
+            ? throw new PluginToolInputException("macs", "None of these cameras can do this now.")
+            : new CamerasPlan([.. rows.Select(r => r.Mac)]);
+    }
+}
+
+[Description("No arguments.")]
+internal sealed record NoArgs;
+
+internal sealed record IdArgs([property: Description("The profile id.")] Guid Id);
+
+internal sealed record MacsArgs(
+    [property: Description("MAC addresses of cameras in the table, e.g. AC:CC:8E:01:02:03."), MaxLength(1_000)] IReadOnlyList<string> Macs);
+
+internal sealed record NodeArgs(
+    [property: Description("The node's id in the profile: letters, digits and hyphens."), MaxLength(32)] string Id,
+    [property: Description("set_password, add_to_oadm, wait_for_approval, set_ip or date_time.")] NodeKind Kind,
+    [property: Description("Settings of the kind. set_password: credential_id. add_to_oadm: tags. set_ip: first, last, subnet_mask, gateway, dns_servers. date_time: time_zone, ntp_servers (none: from DHCP), nts.")] JsonElement? Settings = null,
+    [property: Description("Go on with the next node after an error (ignored for set_password, which always stops).")] bool ContinueOnError = true);
+
+internal sealed record SaveArgs(
+    [property: Description("The profile name."), MaxLength(64)] string Name,
+    [property: Description("The nodes in order."), MaxLength(ProfileCheck.MaxNodes)] IReadOnlyList<NodeArgs> Nodes,
+    [property: Description("The profile id to change; leave out for a new profile.")] Guid? Id = null,
+    [property: Description("The person enters a new root password for Set password (it goes into the credential list).")] bool NewPassword = false)
+{
+    public SaveProfileRequest Request(string? password) => new(
+        new Profile
+        {
+            Id = Id ?? Guid.Empty,
+            Name = Name,
+            Nodes = [.. (Nodes ?? []).Select(n => new FlowNode { Id = n.Id, Kind = n.Kind, ContinueOnError = n.ContinueOnError, Settings = Snake(n.Settings) })],
+        },
+        NewPassword ? password : null);
+
+    /// <summary>The settings of a tool (snake_case) as the page writes them (camelCase).</summary>
+    private static JsonElement? Snake(JsonElement? settings)
+    {
+        if (settings is not { ValueKind: JsonValueKind.Object } element)
+        {
+            return settings;
+        }
+
+        var map = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        foreach (var property in element.EnumerateObject())
+        {
+            var parts = property.Name.Split('_');
+            var name = parts[0] + string.Concat(parts.Skip(1).Select(p => p.Length == 0 ? p : char.ToUpperInvariant(p[0]) + p[1..]));
+            map[name] = property.Value;
+        }
+
+        return JsonSerializer.SerializeToElement(map);
+    }
+}
+
+internal sealed record SavePlan(
+    [property: Description("The profile name.")] string Name,
+    [property: Description("Nodes with an error (the profile cannot be active until they are fixed).")] int NodesWithErrors,
+    [property: Description("Nodes with a warning.")] int NodesWithWarnings) : PluginToolPlan(1, "profile");
+
+internal sealed record ProfilePlan([property: Description("The profile name.")] string Name) : PluginToolPlan(1, "profile");
+
+internal sealed record StartPlan(
+    [property: Description("The profile that runs.")] string Profile,
+    [property: Description("Warnings; Start still works.")] IReadOnlyList<string> Warnings) : PluginToolPlan(1, "session");
+
+internal sealed record StopPlan([property: Description("Cameras whose flow runs now.")] int Running) : PluginToolPlan(1, "session");
+
+internal sealed record CamerasPlan([property: Description("The cameras the run changes.")] IReadOnlyList<string> Macs) : PluginToolPlan(Macs.Count, "camera");
+
+internal sealed record SavedAnswer([property: Description("The profile id.")] Guid Id, [property: Description("The profile has no errors.")] bool IsValid);
+
+internal sealed record DoneAnswer([property: Description("What happened.")] string Message);
+
+internal sealed record CountAnswer([property: Description("How many cameras.")] int Count);
+
+internal sealed record CredentialRow(Guid Id, string UserName);
+
+internal sealed record CredentialsAnswer(IReadOnlyList<CredentialRow> Credentials);
+
+internal sealed record StatusAnswer(
+    bool Started,
+    DateTimeOffset? StartedAt,
+    string? StartedBy,
+    string? ActiveProfile,
+    string? SessionProfile,
+    bool DhcpRunning,
+    string? DhcpStatus,
+    CameraCounts Counts,
+    IReadOnlyList<string> Warnings)
+{
+    public static StatusAnswer Of(StatusReply s) =>
+        new(s.Started, s.StartedAt, s.StartedBy, s.ActiveProfileName, s.SessionProfileName, s.Dhcp?.IsRunning == true, s.Dhcp?.StatusText, s.Counts, s.Warnings);
+}
+
+internal sealed record ProfileRow(Guid Id, string Name, int Nodes, bool IsActive, bool IsValid);
+
+internal sealed record ProfilesAnswer(IReadOnlyList<ProfileRow> Profiles)
+{
+    public static ProfilesAnswer Of(ProfilesReply reply) => new([.. reply.Profiles.Select(p => new ProfileRow(p.Id, p.Name, p.Nodes, p.IsActive, p.IsValid))]);
+}
+
+internal sealed record NodeRow(string Id, NodeKind Kind, bool ContinueOnError, JsonElement? Settings, string? Error, string? Warning);
+
+internal sealed record ProfileAnswer(Guid Id, string Name, IReadOnlyList<NodeRow> Nodes, IReadOnlyList<string> ProfileErrors)
+{
+    public static ProfileAnswer Of(ProfileReply reply) => new(
+        reply.Profile.Id,
+        reply.Profile.Name,
+        [.. reply.Profile.Nodes.Select(n => new NodeRow(n.Id, n.Kind, n.ContinueOnError, n.Settings, reply.Check.NodeErrors.GetValueOrDefault(n.Id), reply.Check.NodeWarnings.GetValueOrDefault(n.Id)))],
+        reply.Check.ProfileErrors);
+}
+
+internal sealed record CameraToolRow(string Mac, string? Model, string Address, CameraState State, string? Node, bool WaitingForApproval, string? Message);
+
+internal sealed record CamerasAnswer(int Total, IReadOnlyList<CameraToolRow> Rows, string? Next)
+{
+    public static CamerasAnswer Of(ProvisioningPlugin plugin, PluginToolPage page)
+    {
+        var engine = plugin.RunningEngine;
+        var all = engine.Page(page.After, 1_000);
+        var rows = all.Rows.Select(r => new CameraToolRow(r.Mac, r.Model, r.Address, r.State, r.NodeName, r.WaitingForApproval,
+            r.Message ?? (r.NodeIndex >= 0 && r.NodeIndex < r.Results.Count ? r.Results[r.NodeIndex]?.Message : null)));
+        var (taken, more) = page.Take(rows, ProvisioningTools.Set.Json);
+        return new CamerasAnswer(all.Total, taken, more || all.Next is not null ? taken[^1].Mac : null);
+    }
+}

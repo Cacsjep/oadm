@@ -70,6 +70,8 @@ plugins/               folders, build and tests of a bundled plugin: plugins/REA
   Oadm.Plugins.Pki(.Client)/    also holds the core plugins EST server (Est/) and 802.1X server (Radius/)
   Oadm.Plugins.Ocr(.Client)/    optional plugin (add-on, not in the installers): Text recognition (docs/spec/ocr.md)
   Oadm.Plugins.Vision(.Client)/ optional plugin (add-on, not in the installers): Vision Center (docs/spec/vision-center.md)
+  Oadm.Plugins.Provisioning/    Provisioning (docs/spec/provisioning.md): profiles of nodes for factory-new cameras of
+                                OADM's DHCP server; nodes in Nodes/ ("Adding a node" in its README)
   Oadm.Plugins.VpnFleet(.Client)/ community plugin VPN Fleet (docs/spec/vpn-fleet.md); GitHubHttp.cs is its only HTTP
                                 outside the host: the apps' releases on github.com
   Shared/                       source linked into several plugins (CachedApiCheck, ContextCall, DeviceSweep, SweepRows,
@@ -218,7 +220,7 @@ must never break.
   is the only write and always goes back.
 - **[Help](docs/spec/help.md)**: the user docs of oadm.app shipped with the client and shown in a Help window with the
   embedded browser, served on 127.0.0.1 only; never loads oadm.app; client only.
-- **[Zero-touch provisioning](docs/spec/provisioning.md)** (draft spec, not built; core plugin `oadm.provisioning`, free,
+- **[Zero-touch provisioning](docs/spec/provisioning.md)** (draft spec, server part built; core plugin `oadm.provisioning`, free,
   on by default): a profile is a straight flow of nodes on the Vision Center canvas, run on factory-new cameras with an
   OADM DHCP lease only, while provisioning is started; Set password first and it stops on error, every other node
   continues by default; Set IP gives the next free address of its own pool (never the same twice, the DHCP server is
