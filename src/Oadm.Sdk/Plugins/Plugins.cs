@@ -566,6 +566,12 @@ public interface ICorePluginContext
     IDeviceAutoAdd? AutoAdd => null;
 
     /// <summary>
+    /// SDK 0.15.0: the plugin's own files as uploads for the tasks it starts (<see cref="IPluginUploads"/>). Null on older
+    /// hosts and hosts without uploads.
+    /// </summary>
+    IPluginUploads? Uploads => null;
+
+    /// <summary>
     /// The license of the plugin's package (plugin.json <c>license</c>), live: <see cref="IPluginLicense.Changed"/> fires
     /// when an administrator enters or removes a license and when it or the trial runs out. OADM only checks; the plugin
     /// decides what runs without a valid license. Null on hosts without licenses.

@@ -213,6 +213,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     ProtectedTags = _protectedTags?.For(registered.Id),
                     // Devices of the caller's own group only in a group user's call (no call member: the plugin uses the context).
                     StreamProbes = guard.StreamProbes(SiteSupportGuard.Guard(_streamProbes, _devices, siteSupport), _deviceScopes),
+                    Uploads = UploadStore is { } uploads ? new Oadm.Core.Uploads.PluginUploads(uploads) : null,
                 };
                 try
                 {
@@ -732,6 +733,8 @@ internal sealed class CorePluginContext(
     public IProtectedTags? ProtectedTags { get; init; }
 
     public IDeviceStreamProbes? StreamProbes { get; init; }
+
+    public IPluginUploads? Uploads { get; init; }
 
     /// <summary>Created on first use, so plugins that never ask leave no empty folder behind.</summary>
     public string? DataDirectory => _dataDirectory.Value;

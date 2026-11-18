@@ -359,6 +359,12 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     /// <summary>The server's automatic add (<see cref="ICorePluginContext.AutoAdd"/>); null by default. Tests set a fake.</summary>
     public IDeviceAutoAdd? AutoAdd { get; init; }
 
+    /// <summary>The plugin's own files as uploads (<see cref="ICorePluginContext.Uploads"/>, SDK 0.15.0): in memory; the tasks the plugin starts find them in <see cref="FakeUploads"/>.</summary>
+    public FakeUploadedFiles FakeUploads { get; } = new();
+
+    /// <inheritdoc />
+    public IPluginUploads? Uploads => FakeUploads;
+
     /// <summary>
     /// The event rules the plugin publishes to; null (the default) like a host without event rules. Set a
     /// <see cref="FakeEventPublisher"/> (<c>new FakeCoreContext { EventPublisher = new FakeEventPublisher() }</c>).

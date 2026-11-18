@@ -28,6 +28,11 @@ await ctx.Records.SetManyAsync("leases",
 `GetAsync(collection, key, ct)` reads one record, `ClearAsync` empties a collection. `SetManyAsync` writes its records
 in one transaction. In tests use `MemoryPluginRecords` (`FakeCoreContext.PluginRecords`).
 
+- **Files of the plugin's own** (a profile's AXIS OS files) live in `ctx.DataDirectory`. A task reads files only by an
+  upload id, and uploads go after a day: hand the file to the task with `ctx.Uploads.AddAsync(name, stream, size, ct)`
+  (SDK 0.15.0, `IPluginUploads`) and add it again when `FindAsync` no longer finds the last id. In tests:
+  `FakeCoreContext.FakeUploads`.
+
 ## The server's network interfaces
 
 `Oadm.Sdk.Network.SystemNetworkInterfaces.Instance.List()` returns the server's network cards as

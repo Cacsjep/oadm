@@ -75,6 +75,25 @@ public interface IUploadedFiles
     Task<Stream> OpenReadAsync(string fileId, CancellationToken ct);
 }
 
+/// <summary>
+/// SDK 0.15.0: files a core plugin keeps itself (in its <see cref="ICorePluginContext.DataDirectory"/>) handed to the tasks it
+/// starts as uploads (<see cref="ICorePluginContext.Uploads"/>): a task reads files only by an upload id, and uploads are
+/// deleted after a day, so the plugin adds its file again when <see cref="FindAsync"/> no longer finds the last id. The
+/// uploads belong to the system: tasks the plugin starts with <see cref="ICorePluginContext.Tasks"/> read them.
+/// </summary>
+public interface IPluginUploads
+{
+    /// <summary>
+    /// Adds <paramref name="size"/> bytes of <paramref name="content"/> as an upload named <paramref name="fileName"/> and
+    /// answers it. Throws <see cref="InvalidOperationException"/> with the reason for the user when the server refuses it
+    /// (over the upload limit, the disk full).
+    /// </summary>
+    Task<UploadedFile> AddAsync(string fileName, Stream content, long size, CancellationToken ct);
+
+    /// <summary>The upload with this id; null when it is gone.</summary>
+    Task<UploadedFile?> FindAsync(string fileId, CancellationToken ct);
+}
+
 /// <summary>An uploaded file. <see cref="Sha256"/> is upper-case hex.</summary>
 /// <param name="Id">The id to put into the payload.</param>
 /// <param name="Name">The file name as the user chose it.</param>

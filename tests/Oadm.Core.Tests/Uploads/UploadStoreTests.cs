@@ -45,6 +45,21 @@ public sealed class UploadStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task APluginsOwnFileBecomesASystemUploadItsTasksRead()
+    {
+        var content = RandomNumberGenerator.GetBytes(200_000);
+        var uploads = new PluginUploads(_store);
+
+        var file = await uploads.AddAsync("P3265-LVE_12_6_95.bin", new MemoryStream(content), content.Length, CancellationToken.None);
+
+        Assert.Equal(Convert.ToHexString(SHA256.HashData(content)), file.Sha256);
+        Assert.Equal(file, await uploads.FindAsync(file.Id, CancellationToken.None));
+        Assert.Equal(file, await _store.FindAsync(file.Id, CancellationToken.None)); // a task the system started reads it
+        Assert.Null(await _store.For(new UploadOwner(Guid.NewGuid(), "s1")).FindAsync(file.Id, CancellationToken.None)); // no user's session does
+        await Assert.ThrowsAsync<InvalidOperationException>(() => uploads.AddAsync("short.bin", new MemoryStream([1, 2]), 3, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task NamesAreReducedToTheFileName()
     {
         var file = await UploadAsync("../../etc/C:\\temp\\AXIS_app.eap", [1, 2, 3]);
