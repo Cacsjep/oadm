@@ -264,13 +264,15 @@ public sealed class AssistantChatUxTests
 
             using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5), seedSampleData: false);
             var panel = await PanelAsync(api);
+            var pastes = Directory.CreateDirectory(Path.Combine(folder, "pastes")).FullName;
+            panel.PasteRoot = pastes; // this panel's own paste folders, never another program's in the temp folder
             await panel.AttachFilesAsync([files[0], folder, files[1]]); // a folder is skipped
             Assert.Equal(["file1.bin", "file2.bin"], panel.Attachments.Select(a => a.Name));
 
             await panel.AttachPastedImageAsync(Jpeg(), CancellationToken.None);
             await panel.AttachPastedImageAsync(Jpeg(), CancellationToken.None);
             Assert.Equal(["Pasted image 1.png", "Pasted image 2.png"], panel.Attachments.Skip(2).Select(a => a.Name));
-            Assert.All(Directory.GetDirectories(Path.GetTempPath(), "oadm-paste-*"), d => Assert.Empty(Directory.GetFiles(d, "Pasted image *")));
+            Assert.Empty(Directory.GetFileSystemEntries(pastes)); // the local copy and its folder are gone
 
             await panel.AttachFilesAsync(files.Skip(2));
             Assert.Equal(AssistantTexts.MaxAttachments, panel.Attachments.Count);

@@ -172,7 +172,9 @@ each app.
   `docs/spec/security.md` "Service: firewall and folders": folder checks (`FolderGuard`), netsh firewall rules for
   plugins, no development plugin folder. Services set `DOTNET_BUNDLE_EXTRACT_BASE_DIR` to a folder only the service
   account can write (`%ProgramData%\OADM\runtime`, `/var/cache/oadm`, `/Library/Application Support/OADM/runtime`), never
-  a shared temp folder.
+  a shared temp folder. The MSIs write it into the service's own registry key from a component of its own with
+  `Permanent="yes"`: Windows deletes the key with the service, and removing a value of a key already marked for
+  deletion fails the uninstall (Error 1409, system error 1018).
 - **Icons:** the app icon is `icon/oadm-app-icon-<size>.png` (16-1024); `packaging/icons/make-icons.py` builds `oadm.ico`
   (client exe, MSI, shortcuts), `oadm.icns` (macOS), `oadm.png` / `oadm-256.png` (Linux, window icon of every client
   window) from it.
@@ -203,7 +205,9 @@ when the jobs it needs passed:
   `packaging/windows/smoke.ps1`, which prints the time on every line and a heartbeat with free memory and the busiest
   processes while a program runs. Its own job because the Windows runner sometimes stops answering there, so a re-run
   repeats only this job; removals run with Restart Manager off, so they never close a program of the runner, and a failed
-  one prints the failed MSI action. `smoke-windows-node` (needs installers, 15 min): the site node MSI the same way
+  one prints the failed MSI action. Before a removal it waits until the service's program has exited (handles released),
+  after it until the service is gone, and it retries a removal once on Error 1409; the first server start may take 180 s
+  (also on Linux). `smoke-windows-node` (needs installers, 15 min): the site node MSI the same way
   (`smoke.ps1 -Mode SiteNode`) on a runner of its own.
 - `nuget-pack` (needs tests): `manage package nuget` with the tag's version, every template created, built and tested
   against only these packages (`packageSourceMapping` `Oadm.*` to the local folder), uploaded as the artifact

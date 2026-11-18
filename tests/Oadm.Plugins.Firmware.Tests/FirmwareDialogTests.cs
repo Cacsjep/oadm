@@ -558,8 +558,7 @@ public sealed class FirmwareDialogHeadlessTests
 
             // Keep the settings: 11.11.160 -> 12.11.77 leaves the LTS track, the Details say to be on its latest first.
             vm.SelectedMode = vm.Modes[0];
-            await PumpAsync();
-            Assert.Contains("Major upgrade", vm.Devices[0].Message, StringComparison.Ordinal);
+            await PumpUntilAsync(() => vm.Devices[0].Message.Contains("Major upgrade", StringComparison.Ordinal));
             Capture(window, outDir, "firmware-dialog-path.png");
 
             vm.IsUploading = true;
@@ -576,15 +575,30 @@ public sealed class FirmwareDialogHeadlessTests
 
             // AXIS OS 13: 11.11.160 jumps over 12.11 (Not recommended) and the line with the Axis guide.
             await vm.SelectFileAsync("C:\\Downloads\\P3265-V_13_0_88.bin", CancellationToken.None);
-            await PumpAsync();
-            Assert.True(vm.HasPathWarning);
-            Assert.True(vm.HasBreakingChanges);
+            await PumpUntilAsync(() => vm.HasPathWarning && vm.HasBreakingChanges);
             Capture(window, outDir, "firmware-dialog-os13.png");
             window.Close();
             return vm.Devices.Count;
         }, CancellationToken.None);
 
         Assert.Equal(4, rows);
+    }
+
+    /// <summary>Runs the UI jobs until <paramref name="condition"/> holds; a slow machine only takes more rounds.</summary>
+    internal static async Task PumpUntilAsync(Func<bool> condition, [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(condition))] string what = "")
+    {
+        var until = DateTime.UtcNow + Oadm.Sdk.Testing.Eventually.DefaultTimeout;
+        while (true)
+        {
+            Dispatcher.UIThread.RunJobs();
+            if (condition())
+            {
+                return;
+            }
+
+            Assert.True(DateTime.UtcNow < until, $"Timed out waiting for {what}.");
+            await Task.Delay(10);
+        }
     }
 
     private static async Task PumpAsync()

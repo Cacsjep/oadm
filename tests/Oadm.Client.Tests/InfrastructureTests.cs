@@ -343,7 +343,8 @@ public sealed class ServerConnectionTests : IDisposable
         api.SetOnline(false);
         var devices = new DeviceStore();
         var tasks = new TaskStore(devices);
-        using var connection = new ServerConnection(api, devices, tasks, _ui, NullLogger<ServerConnection>.Instance);
+        var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        using var connection = new ServerConnection(api, devices, tasks, _ui, NullLogger<ServerConnection>.Instance, time: time);
         int connectedEvents = 0;
         connection.Connected += (_, _) => connectedEvents++;
 
@@ -353,8 +354,12 @@ public sealed class ServerConnectionTests : IDisposable
         Assert.Empty(devices.Devices);
 
         api.SetOnline(true);
-        // Longer than the 15 s maximum reconnect delay, so a retry that just backed off still lands.
-        await TestSupport.WaitUntilAsync(() => connection.IsConnected && devices.Devices.Count == 15 && tasks.Tasks.Count > 0, 60_000);
+        // The reconnect back-off runs on the fake clock: each look moves it past the 15 s maximum delay.
+        await TestSupport.WaitUntilAsync(() =>
+        {
+            time.Advance(TimeSpan.FromSeconds(16));
+            return connection.IsConnected && devices.Devices.Count == 15 && tasks.Tasks.Count > 0;
+        }, what: "the connection is back with devices and tasks");
         Assert.Equal(1, connectedEvents);
 
         // live update through the watch stream

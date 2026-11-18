@@ -33,23 +33,19 @@ public sealed class FakeModeTests : IDisposable
         Assert.True(vm.IsRunning);
         await Wait.UntilAsync(() => vm.StatusText.StartsWith("Live", StringComparison.Ordinal));
 
-        // Stop first: without a UI thread the events arrive on the thread pool, so read the list once it is final.
+        // Stop first: without a UI thread the events arrive on the thread pool, so read the list once it is final: the
+        // stream's last event (state Stopped, with the count it sent) was handled.
         await vm.StartStopCommand.ExecuteAsync(null);
         await Wait.UntilAsync(() => vm.StatusText.StartsWith("Stopped", StringComparison.Ordinal));
-        await Oadm.Sdk.Testing.Eventually.TrueAsync(
-            async () =>
-            {
-                var count = vm.Messages.Count;
-                await Task.Delay(100); // a batch already under way when Stop was sent may still arrive
-                return vm.Messages.Count == count;
-            },
-            "the list to be final");
-        Assert.Equal(64, vm.Messages.Count(m => m.Topic == "Device/IO/VirtualInput" && m.Operation == "Initialized"));
-        Assert.Contains(vm.Messages, m => m.Topic == "Storage/Alert" && m.Info.StartsWith("[INIT] disk_id = SD_DISK;", StringComparison.Ordinal));
-        Assert.Contains(vm.Messages, m => m.Topic == "Device/Status/Temperature/Inside");
-        Assert.Contains(vm.Messages, m => m.Operation == "Changed" && m.Info.StartsWith("[CHANGED] port = ", StringComparison.Ordinal));
-        Assert.Equal(Enumerable.Range(1, vm.Messages.Count).Select(i => (long)i), vm.Messages.Select(m => m.Seq));
-        Assert.All(vm.Messages, m => Assert.StartsWith("<wsnt:NotificationMessage", m.Xml, StringComparison.Ordinal));
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => ctx.StoppedWithCount is not null, "the stream's end to be handled");
+        var messages = vm.Messages.ToList();
+        Assert.Equal(ctx.StoppedWithCount, messages.Count);
+        Assert.Equal(64, messages.Count(m => m.Topic == "Device/IO/VirtualInput" && m.Operation == "Initialized"));
+        Assert.Contains(messages, m => m.Topic == "Storage/Alert" && m.Info.StartsWith("[INIT] disk_id = SD_DISK;", StringComparison.Ordinal));
+        Assert.Contains(messages, m => m.Topic == "Device/Status/Temperature/Inside");
+        Assert.Contains(messages, m => m.Operation == "Changed" && m.Info.StartsWith("[CHANGED] port = ", StringComparison.Ordinal));
+        Assert.Equal(Enumerable.Range(1, messages.Count).Select(i => (long)i), messages.Select(m => m.Seq));
+        Assert.All(messages, m => Assert.StartsWith("<wsnt:NotificationMessage", m.Xml, StringComparison.Ordinal));
 
         vm.Deactivate();
     }
@@ -74,6 +70,11 @@ public sealed class FakeModeTests : IDisposable
         /// <summary>True once the watch is subscribed to the fake backend.</summary>
         public bool Subscribed { get; private set; }
 
+        /// <summary>The message count of the stream's Stopped state, set once the page handled that event (its last).</summary>
+        public int? StoppedWithCount => Volatile.Read(ref _stoppedWithCount) is var count and >= 0 ? count : null;
+
+        private int _stoppedWithCount = -1;
+
         public async IAsyncEnumerable<PluginEvent> WatchEventsAsync([EnumeratorCancellation] CancellationToken ct)
         {
             await using var items = api.WatchCorePluginAsync(MetadataMonitorPluginInfo.PluginId, ct).GetAsyncEnumerator(ct);
@@ -81,7 +82,17 @@ public sealed class FakeModeTests : IDisposable
             Subscribed = true;
             while (await next)
             {
-                yield return new PluginEvent(items.Current.Topic, items.Current.PayloadJson);
+                var item = items.Current;
+                yield return new PluginEvent(item.Topic, item.PayloadJson);
+
+                // Asked for the next event: the page handled this one (the watch handles one event at a time).
+                if (item.Topic == MetadataMethods.StateTopic
+                    && System.Text.Json.Nodes.JsonNode.Parse(item.PayloadJson) is { } state
+                    && (string?)state["state"] == MonitorStates.Stopped)
+                {
+                    Volatile.Write(ref _stoppedWithCount, (int)state["messages"]!);
+                }
+
                 next = items.MoveNextAsync();
             }
         }

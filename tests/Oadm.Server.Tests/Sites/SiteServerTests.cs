@@ -636,24 +636,21 @@ public sealed class SiteServerTests
         var folder = Support.TestServerHost.NewDataDirectory();
         try
         {
-            int port;
-            using (var probe = new TcpListener(IPAddress.Loopback, 0))
-            {
-                probe.Start();
-                port = ((IPEndPoint)probe.LocalEndpoint).Port;
-            }
-
-            var options = new SiteOptions { ListenUrl = "127.0.0.1:" + port, WorkerWait = TimeSpan.FromSeconds(30), CallTimeout = TimeSpan.FromSeconds(30) };
+            var options = new SiteOptions { ListenUrl = "127.0.0.1:0", WorkerWait = TimeSpan.FromSeconds(30), CallTimeout = TimeSpan.FromSeconds(30) };
             await using (var first = await SiteServer.StartAsync(dataDirectory: folder, options: options))
             {
                 first.Host.KeepDataDirectory = true; // Accept site nodes is stored on
             }
 
-            var other = new TcpListener(IPAddress.Loopback, port);
+            // The other program holds a port from the start (never a free port looked up and bound again later), on the
+            // loopback address no other site test uses: nothing else takes the port once it is free.
+            var loopback = SiteListenerLimitTests.PrivateLoopback();
+            using var other = new TcpListener(loopback, 0);
             other.Start();
+            var port = ((IPEndPoint)other.LocalEndpoint).Port;
             var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
             await using var restarted = await SiteServer.StartAsync(accept: false, dataDirectory: folder, time: time,
-                options: new SiteOptions { ListenUrl = "127.0.0.1:" + port, Time = time, WorkerWait = TimeSpan.FromSeconds(30), CallTimeout = TimeSpan.FromSeconds(30) });
+                options: new SiteOptions { ListenUrl = new IPEndPoint(loopback, port).ToString(), Time = time, WorkerWait = TimeSpan.FromSeconds(30), CallTimeout = TimeSpan.FromSeconds(30) });
 
             // The server runs; site nodes cannot connect until the port is free.
             Assert.Equal(0, restarted.Manager.ListenPort);

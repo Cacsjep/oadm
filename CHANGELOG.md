@@ -13,6 +13,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ### Fixed
 
+- Windows: removing the server or the site node no longer fails now and then with error 1409.
 - Settings: a click on the arrow of a card opens and closes it.
 
 ## [5.2.0] - 2026-11-18
