@@ -64,7 +64,8 @@ if [ -d "$APP/Contents/MacOS/docs" ]; then
   mv "$APP/Contents/MacOS/docs" "$APP/Contents/Resources/docs"
 fi
 # License texts are resources, not code (the client's About page also looks in Contents/Resources).
-for f in LICENSE.txt NOTICE.txt THIRD-PARTY-NOTICES.txt LGPL-2.1.txt TERMS.md; do
+# The desktop extension OADM.mcpb (a ZIP) too: codesign refuses any file in Contents/MacOS that is not signed code.
+for f in LICENSE.txt NOTICE.txt THIRD-PARTY-NOTICES.txt LGPL-2.1.txt TERMS.md OADM.mcpb; do
   if [ -f "$APP/Contents/MacOS/$f" ]; then mv "$APP/Contents/MacOS/$f" "$APP/Contents/Resources/$f"; fi
 done
 cp "$HERE/uninstall-oadm.sh" "$APP/Contents/Resources/uninstall-oadm.sh"

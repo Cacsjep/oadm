@@ -164,7 +164,7 @@ public sealed partial class AiAgentsViewModel : ValidatingViewModel
     }
 
     /// <summary>Copy of Connect an agent: the command or the file text of the chosen configuration.</summary>
-    public bool CanSetUpDesktopApp => Running && File.Exists(Path.Combine(AppContext.BaseDirectory, "OADM.mcpb"));
+    public bool CanSetUpDesktopApp => Running && DesktopExtensionFile.Find(AppContext.BaseDirectory) is not null;
 
     [RelayCommand]
     private Task SetUpDesktopAppAsync() => IsAdmin && CanSetUpDesktopApp
