@@ -11,8 +11,9 @@ result: every node green, yellow or red with its message.
 
 Core plugin `plugins/Oadm.Plugins.Provisioning` (+ `.Client`), id `oadm.provisioning`, rail page **Provisioning** (group
 Devices), **free, on by default**. On by default changes nothing by itself: a camera starts a flow only while
-provisioning is On on the page and a profile is active. Every node uses the existing task of its area (with that task's
-checks); provisioning adds the order, the per-camera result and the address pool.
+provisioning is started on the page and a profile is active. Every node uses the existing task of its area (with that task's
+checks); provisioning adds the order, the per-camera result and the fixed address pool. It never changes the DHCP
+server's settings.
 
 ## Rules that never break
 
@@ -21,21 +22,23 @@ checks); provisioning adds the order, the per-camera result and the address pool
    left as it is" and never changed. No Discovery fallback.
 2. **Set password first, and it stops.** Every profile starts with the fixed nodes Set password and Add to OADM. If Set
    password fails, nothing after it runs for that camera. Every other node continues on error by default.
-3. **One camera at a time in the Fixed IP node.** The node holds a lock while it picks the address, writes it and moves the
-   DHCP range start; other cameras run their other nodes in parallel.
+3. **Never the same address twice.** The Set IP node takes and reserves the next free address of its pool under a short
+   lock (taking only, not the write), so two cameras never get the same address; the writes run in parallel.
 4. **No lock-out.** The fixed IP must answer within 2 minutes, else the node is red with both addresses and OADM keeps the
    camera at the address that answers. OADM's own account on the camera is never removed or demoted.
 5. **Device safety** of task plugins for every node (CLAUDE.md): APIs checked first, input validated before the first
    write, secrets only in the master-key store, never logged.
-6. **Administrator only** for profiles and On/Off (provisioning writes to every new camera and moves the DHCP range). The
+6. **Administrator only** for profiles and Start/Stop (provisioning writes to every new camera). The
    device group rules apply to the devices it adds.
 
 ## The page
 
-- **DHCP card** (top): the DHCP server's state, interface, range and the addresses left in the pool, with Turn on / Edit
-  opening the DHCP server's own form. Provisioning uses the DHCP server as it is: no staging range, nothing saved and
-  restored. Without a running DHCP server, provisioning cannot be turned on ("Turn on the DHCP server first.").
-- **Provisioning On/Off** and the **active profile** (several profiles, one active).
+- **DHCP card** (top): the DHCP server's state, interface and range, with Turn on / Edit opening the DHCP server's own
+  form. Provisioning never changes the DHCP server; without a running DHCP server it cannot start ("Turn on the DHCP
+  server first.").
+- **Start provisioning / Stop provisioning** and the **active profile** (several profiles, one active). While started,
+  the page says "Provisioning started" with the start time; a session lasts until Stop, also across a server restart.
+  Start warns (Start stays possible) when the Set IP pool overlaps the DHCP range.
 - **Cameras**: virtualized table, one row per camera that started a flow: MAC, model, serial, address, profile, state
   (Queued, Running node, Done, Done with warnings, Failed), the node it is on. Clicking a row opens the profile's canvas
   with that camera's result per node. **Run failed again** re-runs only the red nodes of the chosen cameras, in flow
@@ -85,11 +88,14 @@ Set password).
     command the model lacks: Warning.
 14. **Wait for approval**: the camera waits here until a person presses Continue on its row (for example before the fixed
     IP).
-15. **Fixed IP address**: under the lock (rule 3): takes the **first free address of the DHCP range** (no lease of
-    another MAC, no OADM device, no answer to ping and TCP 80/443), writes it as the camera's fixed IP with the range's
-    mask, gateway and DNS, waits until the camera answers there (OADM follows the moved device), then moves the DHCP range
-    start past it. The range is a pool that shrinks from the bottom; the DHCP card shows what is left. Pool empty: Error
-    "No address left in the DHCP range."
+15. **Set IP**: an address **pool** of its own (first and last address, for example 192.168.15.10 to 192.168.15.50),
+    subnet mask, gateway and DNS servers; it should not overlap the DHCP range (a warning in the node and at Start,
+    never an error). Under the lock (rule 3) it takes the next address of the pool, starting at the first, that is free:
+    not reserved in this session, no OADM device has it, no answer to ping and TCP 80/443. A taken address is skipped and
+    the node says so ("192.168.15.12 is in use, 192.168.15.13 assigned."). It writes the fixed IP, mask, gateway and DNS,
+    waits until the camera answers there (OADM follows the moved device). The session's reserved addresses are kept
+    until Stop; a new session starts at the first address again (the addresses given before are OADM devices by then and
+    skipped). Pool used up: Error "No free address left in the pool."
 
 Left out on purpose (2026-11-18): install applications, action rules (the Configuration node copies them), hardening
 check, VPN, restart, snapshot, notify, capture mode / rotation.
@@ -103,8 +109,9 @@ Not at sites in the first version: the DHCP server and the flows run on the serv
 - Only Password not set cameras with an OADM DHCP lease start a flow; a configured camera is never changed.
 - Set password failing stops the flow; any other failing node continues unless Continue on error is off; Warning always
   continues; Run failed again runs only the red nodes, in order.
-- Fixed IP: the lock lets one camera at a time pick an address; the first free address skips leases of other MACs, OADM
-  devices and answering addresses; the range start moves past it; an empty pool is an Error; no answer at the new
+- Set IP: parallel cameras never get the same address (gates); the next free address skips session reservations, OADM
+  devices and answering addresses and says which it skipped; reservations survive a restart until Stop; the DHCP
+  server's settings never change; overlap with the DHCP range is a warning; a used-up pool is an Error; no answer at the new
   address within 2 minutes is an Error and the camera stays reachable.
 - At most 8 cameras run at once (gates, no timing); more are Queued.
 - Every node with its task's fake device: Success, Warning, Error and Not needed with their messages.
