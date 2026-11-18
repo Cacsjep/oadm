@@ -1300,6 +1300,20 @@
   <Style Selector="Button.toolbar.danger:disabled ui|OadmIcon">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
   </Style>
+  <!-- A card or list header row with a title (TextBlock.sectionTitle or .cardTitle), command buttons and a count (class
+       titleRow on the row's panel): the buttons' text and icon and the count sit on the title's baseline. The larger title
+       font puts its baseline 2 px below the centred body text (measured on Leases, Enrollments, Profiles, Sessions, Tasks).
+       Only the content moves (its padding 2 px lower, the side padding kept): the row keeps its height, search boxes and
+       icon-only buttons stay centred. After the danger styles, as Button.danger sets its own padding (14,7). -->
+  <Style Selector=":is(Panel).titleRow Button.toolbar:not(.iconOnly)">
+    <Setter Property="Padding" Value="10,8,10,4" />
+  </Style>
+  <Style Selector=":is(Panel).titleRow Button.toolbar.danger:not(.iconOnly)">
+    <Setter Property="Padding" Value="14,9,14,5" />
+  </Style>
+  <Style Selector=":is(Panel).titleRow > TextBlock.secondary">
+    <Setter Property="Padding" Value="0,4,0,0" />
+  </Style>
   <!-- A red icon alone (Remove condition, Remove action, a trash icon in a row): as small as every icon button; the
        danger button's wide padding above must not apply to it -->
   <Style Selector="Button.iconOnly.danger">
