@@ -52,7 +52,8 @@ public sealed partial class AccessKeyFormViewModel : ValidatingViewModel
         ? "Install the OADM extension in Claude Desktop, then paste this key into its access key field."
         : AccessKeyWords.CopyNow;
 
-    private static string DesktopExtensionPath => Path.Combine(AppContext.BaseDirectory, "OADM.mcpb");
+    private static string DesktopExtensionPath =>
+        DesktopExtensionFile.Find(AppContext.BaseDirectory) ?? Path.Combine(AppContext.BaseDirectory, DesktopExtensionFile.Name);
 
     [RelayCommand]
     private async Task CopyExtensionPathAsync()

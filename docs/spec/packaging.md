@@ -143,7 +143,7 @@ each app.
   Each has `/usr/share/doc/<package>/{copyright,THIRD-PARTY-NOTICES.txt,LGPL-2.1.txt}`. Pre-release versions are written
   `1.2.0~rc.1`. No .rpm.
 - **macOS .pkg** (`pkgbuild` + `productbuild`, `packaging/macos/build-pkg.sh`, x64 (Intel) only, built on macOS only):
-  `/Applications/OADM.app` (Info.plist, icns, license texts and plugins in `Contents/Resources`), server in
+  `/Applications/OADM.app` (Info.plist, icns, license texts, plugins and the desktop extension `OADM.mcpb` in `Contents/Resources`), server in
   `/Library/Application Support/OADM/server`, LaunchDaemon `com.oadm.server` (root, `OADM_DATA_DIR=/Library/Application
   Support/OADM`, `OADM_SERVICE=launchd`, folder 0700), `uninstall-oadm.sh` next to the server and in the app's Resources.
   Choices (`customize="allow"`): `com.oadm.choice.client` "OADM client" (always) and `com.oadm.choice.server` "OADM
