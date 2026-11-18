@@ -73,7 +73,8 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
         };
         Validation
             .Rule(nameof(RangeStart), () => RangeErrors().Start)
-            .Rule(nameof(RangeEnd), () => RangeErrors().End);
+            .Rule(nameof(RangeEnd), () => RangeErrors().End)
+            .Rule(nameof(LeaseHours), () => DhcpValidation.LeaseHours(LeaseHours));
         Validation.Validate();
     }
 
@@ -98,6 +99,15 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
 
     [ObservableProperty]
     public partial string RangeEnd { get; set; } = string.Empty;
+
+    /// <summary>The limits of "Lease time (hours)" for the input.</summary>
+    public static decimal MinLeaseHours => DhcpValidation.MinLeaseHours;
+
+    public static decimal MaxLeaseHours => DhcpValidation.MaxLeaseHours;
+
+    /// <summary>"Lease time (hours)", 1 to 720.</summary>
+    [ObservableProperty]
+    public partial decimal? LeaseHours { get; set; } = DhcpValidation.DefaultLeaseHours;
 
     /// <summary>Server answer about the interface (shown under the select).</summary>
     [ObservableProperty]
@@ -137,7 +147,7 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
 
     public DhcpNetworkInfo? SelectedNetwork => Listen.SelectedId is { } id && _networks.TryGetValue(id, out var n) ? n : null;
 
-    /// <summary>"Clients get mask 255.255.255.0, router 10.0.0.138, DNS 10.0.0.138, lease 24 h".</summary>
+    /// <summary>"Clients get mask 255.255.255.0, router 10.0.0.138, DNS 10.0.0.138".</summary>
     public string? ClientsGetText => SelectedNetwork?.ClientsGet;
 
     public bool HasRows => Rows.Count > 0;
@@ -303,7 +313,7 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
             IReadOnlyList<string>? confirmed = null;
             while (true)
             {
-                var request = new DhcpSaveRequest(IsEnabled, Listen.SelectedId, RangeStart.Trim(), RangeEnd.Trim(), confirmed, AutoAddAxisDevices);
+                var request = new DhcpSaveRequest(IsEnabled, Listen.SelectedId, RangeStart.Trim(), RangeEnd.Trim(), confirmed, AutoAddAxisDevices, (int)LeaseHours!.Value);
                 var json = await _ctx.InvokeAsync(DhcpServerMethods.Save, DhcpJson.Serialize(request), CancellationToken.None).ConfigureAwait(true);
                 var reply = DhcpJson.Deserialize<DhcpSaveReply>(json);
                 if (reply.OtherServers is { Count: > 0 } others && !reply.Saved)
@@ -485,6 +495,7 @@ public sealed partial class DhcpServerViewModel : ValidatingViewModel, IDisposab
         AutoAddAxisDevices = config.AutoAddAxisDevices;
         RangeStart = config.RangeStart ?? string.Empty;
         RangeEnd = config.RangeEnd ?? string.Empty;
+        LeaseHours = config.LeaseHours;
         InterfaceError = null;
         if (config.InterfaceId is not null)
         {

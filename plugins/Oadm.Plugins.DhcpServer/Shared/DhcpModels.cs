@@ -15,8 +15,8 @@ public static class DhcpServerPluginInfo
     public const string DisplayName = "DHCP server";
     public const string IconKey = "network";
 
-    /// <summary>Lease time handed to clients (24 h); renewal at 50 %, rebinding at 87.5 %.</summary>
-    public static readonly TimeSpan LeaseTime = TimeSpan.FromHours(24);
+    /// <summary>Lease time handed to clients when none was saved (24 h); renewal at 50 %, rebinding at 87.5 %.</summary>
+    public static readonly TimeSpan LeaseTime = TimeSpan.FromHours(DhcpValidation.DefaultLeaseHours);
 }
 
 /// <summary>Page backend methods (<c>InvokeAsync</c>) and live event topics.</summary>
@@ -72,6 +72,16 @@ public sealed record DhcpConfig
     /// the server adds the device like the add page (Axis check, factory default check, login with the credential list).
     /// </summary>
     public bool AutoAddAxisDevices { get; init; }
+
+    /// <summary>
+    /// "Lease time (hours)" handed to new offers and acks (a renewal gets it too; a lease keeps its end until then). Settings
+    /// saved before it existed read as 24 h.
+    /// </summary>
+    public int LeaseHours { get; init; } = DhcpValidation.DefaultLeaseHours;
+
+    /// <summary><see cref="LeaseHours"/> as a time; outside the limits (a hand-edited setting) the default.</summary>
+    [JsonIgnore]
+    public TimeSpan LeaseTime => DhcpValidation.LeaseHours(LeaseHours) is null ? TimeSpan.FromHours(LeaseHours) : DhcpServerPluginInfo.LeaseTime;
 }
 
 /// <summary>What clients get on an interface (everything derived, nothing asked).</summary>
@@ -97,7 +107,7 @@ public sealed record DhcpNetworkInfo(string InterfaceId, string Name, string Add
     [JsonIgnore]
     public string Subnet => string.Create(CultureInfo.InvariantCulture, $"{Ipv4.Format(NetworkAddress)}/{PrefixLength}");
 
-    /// <summary>"Clients get mask 255.255.255.0, router 10.0.0.138, DNS 10.0.0.138, lease 24 h".</summary>
+    /// <summary>"Clients get mask 255.255.255.0, router 10.0.0.138, DNS 10.0.0.138" (the lease time is a field of its own).</summary>
     [JsonIgnore]
     public string ClientsGet
     {
@@ -106,8 +116,7 @@ public sealed record DhcpNetworkInfo(string InterfaceId, string Name, string Add
             var text = $"Clients get mask {Ipv4.MaskText(PrefixLength)}, "
                 + (Router is null ? "no router" : "router " + Router) + ", "
                 + (Dns.Count == 0 ? "no DNS" : "DNS " + string.Join(", ", Dns))
-                + (Domain is null ? string.Empty : ", domain " + Domain)
-                + string.Create(CultureInfo.InvariantCulture, $", lease {DhcpServerPluginInfo.LeaseTime.TotalHours:0} h");
+                + (Domain is null ? string.Empty : ", domain " + Domain);
             return text;
         }
     }
@@ -169,10 +178,11 @@ public sealed record DhcpState
 /// <param name="RangeEnd">Last address.</param>
 /// <param name="ConfirmedOtherServers">The user confirmed enabling although these servers answer (from the popup).</param>
 /// <param name="AutoAddAxisDevices">Automatically add Axis devices that get an address.</param>
-public sealed record DhcpSaveRequest(bool Enabled, string? InterfaceId, string? RangeStart, string? RangeEnd, IReadOnlyList<string>? ConfirmedOtherServers = null, bool AutoAddAxisDevices = false);
+/// <param name="LeaseHours">Lease time in hours; null keeps the saved one.</param>
+public sealed record DhcpSaveRequest(bool Enabled, string? InterfaceId, string? RangeStart, string? RangeEnd, IReadOnlyList<string>? ConfirmedOtherServers = null, bool AutoAddAxisDevices = false, int? LeaseHours = null);
 
 /// <param name="Saved">False: nothing changed (field errors, or another server answers and needs a confirmation).</param>
-/// <param name="FieldErrors">Property ("RangeStart", "RangeEnd", "Interface") -> message, shown under the field.</param>
+/// <param name="FieldErrors">Property ("RangeStart", "RangeEnd", "Interface", "LeaseHours") -> message, shown under the field.</param>
 /// <param name="OtherServers">Other DHCP servers that answer: the page asks before saving again with them confirmed.</param>
 /// <param name="State">The state after saving (no leases).</param>
 public sealed record DhcpSaveReply(bool Saved, IReadOnlyDictionary<string, string>? FieldErrors, IReadOnlyList<string>? OtherServers, DhcpState State);

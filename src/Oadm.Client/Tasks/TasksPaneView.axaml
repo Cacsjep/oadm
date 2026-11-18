@@ -7,7 +7,7 @@
   <!-- Collapsible, resizable tasks card below the device grid (height set by the splitter above it) -->
   <Border Classes="card" Padding="16,12,16,12">
     <Grid RowDefinitions="Auto,*">
-      <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
+      <Grid Grid.Row="0" Classes="titleRow" ColumnDefinitions="Auto,*,Auto">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" Margin="4,0,0,0" VerticalAlignment="Center">
           <TextBlock Classes="sectionTitle" Text="Tasks" VerticalAlignment="Center" />
           <Border Classes="badge" IsVisible="{Binding HasActive}" ToolTip.Tip="Running tasks">

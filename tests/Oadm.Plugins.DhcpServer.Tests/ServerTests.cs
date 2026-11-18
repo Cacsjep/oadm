@@ -35,8 +35,8 @@ public sealed class ServerTests : IAsyncLifetime
         Assert.Equal("Ethernet - 10.0.0.17/24 (Intel(R) Ethernet Connection I219-LM)", state.Interfaces[0].Label);
         var eth = state.Networks[0];
         Assert.Equal("10.0.0.0/24", eth.Subnet);
-        Assert.Equal("Clients get mask 255.255.255.0, router 10.0.0.138, DNS 10.0.0.138, domain example.local, lease 24 h", eth.ClientsGet);
-        Assert.Equal("Clients get mask 255.255.255.0, no router, no DNS, lease 24 h", state.Networks[1].ClientsGet);
+        Assert.Equal("Clients get mask 255.255.255.0, router 10.0.0.138, DNS 10.0.0.138, domain example.local", eth.ClientsGet);
+        Assert.Equal("Clients get mask 255.255.255.0, no router, no DNS", state.Networks[1].ClientsGet);
         Assert.Empty(state.Leases!);
         Assert.Equal(0, _network.OpenSockets(67));
     }
@@ -146,6 +146,50 @@ public sealed class ServerTests : IAsyncLifetime
         // The same device gets the same address after the restart.
         await using var again = new TestClient(_network, Mac.Of("AC:CC:8E:5F:60:71"));
         Assert.Equal(Ip.Of("10.0.0.100"), await again.AcquireAsync());
+    }
+
+    [Fact]
+    public async Task The_saved_lease_time_is_handed_out_and_survives_a_restart()
+    {
+        Assert.Equal(24, Service.Config.LeaseHours); // default
+        Assert.True((await Save(Options.Enable() with { LeaseHours = 6 })).Saved);
+        await using (var client = new TestClient(_network, Mac.Of("AC:CC:8E:5F:60:71")))
+        {
+            var offer = await client.DiscoverAsync();
+            Assert.Equal((21_600u, 10_800u, 18_900u), (offer!.LeaseTime, offer.RenewalTime, offer.RebindingTime));
+        }
+
+        // Another save without a lease time (a tool that leaves it out) keeps it.
+        Assert.True((await Save(Options.Enable())).Saved);
+        Assert.Equal(6, Service.Config.LeaseHours);
+
+        await _plugin.DisposeAsync();
+        _plugin = await StartAsync();
+        Assert.Equal(6, Service.Config.LeaseHours);
+        await using var again = new TestClient(_network, Mac.Of("B8:A4:4F:63:13:39"));
+        Assert.Equal(21_600u, (await again.DiscoverAsync())!.LeaseTime);
+    }
+
+    [Fact]
+    public async Task Settings_saved_before_the_lease_time_existed_hand_out_24_hours()
+    {
+        await _plugin.DisposeAsync();
+        await _settingsProvider.GetSettings(DhcpServerPluginInfo.PluginId).SetAsync("config",
+            """{"enabled":true,"interfaceId":"eth-id","interfaceName":"Ethernet","rangeStart":"10.0.0.100","rangeEnd":"10.0.0.199","acceptedOtherServers":[],"autoAddAxisDevices":false}""", default);
+        _plugin = await StartAsync();
+
+        Assert.Equal(24, Service.Config.LeaseHours);
+        await using var client = new TestClient(_network, Mac.Of("AC:CC:8E:5F:60:71"));
+        Assert.Equal(86_400u, (await client.DiscoverAsync())!.LeaseTime);
+    }
+
+    [Fact]
+    public async Task Save_refuses_a_lease_time_outside_the_limits_under_its_field()
+    {
+        var reply = await Save(Options.Enable() with { LeaseHours = 721 });
+        Assert.False(reply.Saved);
+        Assert.Equal("Enter 1 to 720 hours.", reply.FieldErrors!["LeaseHours"]);
+        Assert.False(Service.Config.Enabled);
     }
 
     [Fact]

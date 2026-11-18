@@ -24,11 +24,19 @@
         </ComboBox>
       </ui:FormField>
 
-      <ui:FormField Label="Start address">
-        <TextBox Text="{Binding RangeStart}" PlaceholderText="e.g. 10.0.0.100" IsReadOnly="{Binding !MayManage}" />
+      <!-- Start and end in one row as wide as Listen on; each box shows its own error directly below it -->
+      <ui:FormField Label="Address range" InputWidth="460">
+        <Grid Classes="inputRow" ColumnDefinitions="*,Auto,*" ColumnSpacing="10">
+          <TextBox Grid.Column="0" Text="{Binding RangeStart}" PlaceholderText="e.g. 10.0.0.100" IsReadOnly="{Binding !MayManage}" />
+          <Panel Grid.Column="1" Classes="inputSeparator">
+            <TextBlock Text="to" />
+          </Panel>
+          <TextBox Grid.Column="2" Text="{Binding RangeEnd}" PlaceholderText="e.g. 10.0.0.199" IsReadOnly="{Binding !MayManage}" />
+        </Grid>
       </ui:FormField>
-      <ui:FormField Label="End address">
-        <TextBox Text="{Binding RangeEnd}" PlaceholderText="e.g. 10.0.0.199" IsReadOnly="{Binding !MayManage}" />
+      <ui:FormField Label="Lease time (hours)">
+        <NumericUpDown Minimum="{x:Static vm:DhcpServerViewModel.MinLeaseHours}" Maximum="{x:Static vm:DhcpServerViewModel.MaxLeaseHours}" Increment="1"
+                       FormatString="0" ParsingNumberStyle="Integer" Value="{Binding LeaseHours}" IsReadOnly="{Binding !MayManage}" />
       </ui:FormField>
 
       <!-- What the clients of this range get, directly under the range; then the auto-add option, aligned with the inputs -->
@@ -54,7 +62,7 @@
     </StackPanel>
 
     <!-- The title, the action (left, like the device toolbar), the summary, the search on the right. -->
-    <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,*,Auto" Margin="{DynamicResource Oadm.GapTop}">
+    <Grid Grid.Row="1" Classes="titleRow" ColumnDefinitions="Auto,Auto,*,Auto" Margin="{DynamicResource Oadm.GapTop}">
       <TextBlock Grid.Column="0" Classes="sectionTitle" Text="Leases" VerticalAlignment="Center" />
       <ui:ToolbarButton Grid.Column="1" IconKey="add" Text="Static lease" Command="{Binding AddStaticCommand}" IsVisible="{Binding MayManage}" Margin="12,0,0,0"
                         ToolTip.Tip="Reserve an IP address for a device (by its MAC address)" />

@@ -29,7 +29,7 @@ internal static class DhcpPageTools
 
     public static PluginPageTools<DhcpServerPlugin> Set { get; } = new PluginPageTools<DhcpServerPlugin>(DhcpTools.Json)
         .Change<SettingsArgs, SettingsPlan, SettingsAnswer>(
-            new("settings_save", "Save DHCP server settings", "Turns the DHCP server on or off and sets its interface, address range and the automatic add of Axis devices. Fields left out keep their value."),
+            new("settings_save", "Save DHCP server settings", "Turns the DHCP server on or off and sets its interface, address range, lease time and the automatic add of Axis devices. Fields left out keep their value."),
             DhcpServerMethods.Save,
             (plugin, _, input, _) => Task.FromResult(CheckSettings(plugin.RunningService, input.Args)),
             async (plugin, _, input, plan, ct) =>
@@ -110,7 +110,8 @@ internal static class DhcpPageTools
             args.RangeStart ?? config.RangeStart,
             args.RangeEnd ?? config.RangeEnd,
             args.ConfirmOtherServers is { Count: > 0 } confirmed ? [.. confirmed.Select(s => s.Trim())] : null,
-            args.AutoAddAxisDevices ?? config.AutoAddAxisDevices);
+            args.AutoAddAxisDevices ?? config.AutoAddAxisDevices,
+            args.LeaseHours ?? config.LeaseHours);
     }
 
     private static SettingsPlan CheckSettings(DhcpServerService service, SettingsArgs args)
@@ -152,16 +153,18 @@ internal static class DhcpPageTools
             request.RangeStart?.Trim(),
             request.RangeEnd?.Trim(),
             request.AutoAddAxisDevices,
+            request.LeaseHours ?? config.LeaseHours,
             warnings);
     }
 
-    /// <summary>The page's fields ("Interface", "RangeStart", "RangeEnd") in the tool's names.</summary>
+    /// <summary>The page's fields ("Interface", "RangeStart", "RangeEnd", "LeaseHours") in the tool's names.</summary>
     private static IEnumerable<KeyValuePair<string, string>> SettingsFieldsOf(IReadOnlyDictionary<string, string> errors) =>
         errors.Select(e => new KeyValuePair<string, string>(e.Key switch
         {
             "Interface" => "interface",
             "RangeStart" => "range_start",
             "RangeEnd" => "range_end",
+            "LeaseHours" => "lease_hours",
             _ => string.Empty,
         }, e.Value));
 
@@ -218,6 +221,7 @@ internal static class DhcpPageTools
         [property: Description("The first address of the range, e.g. 10.0.0.100."), MaxLength(15)] string? RangeStart = null,
         [property: Description("The last address of the range, e.g. 10.0.0.199."), MaxLength(15)] string? RangeEnd = null,
         [property: Description("Add Axis devices that get an address to OADM.")] bool? AutoAddAxisDevices = null,
+        [property: Description("The lease time in hours, 1 to 720. Existing leases keep theirs until they renew.")] int? LeaseHours = null,
         [property: Description("Other DHCP servers the user accepts on this network, by address. Only after the user said so."), MaxLength(8)] IReadOnlyList<string>? ConfirmOtherServers = null);
 
     internal sealed record SettingsPlan(
@@ -227,6 +231,7 @@ internal static class DhcpPageTools
         string? RangeStart,
         string? RangeEnd,
         bool AutoAddAxisDevices,
+        [property: Description("The lease time in hours.")] int LeaseHours,
         [property: Description("What the user must know before the run.")] IReadOnlyList<string> Warnings) : PluginToolPlan(1, "DHCP server");
 
     internal sealed record SettingsAnswer(bool Enabled, [property: Description("The status as the page shows it.")] string Status);

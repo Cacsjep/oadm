@@ -76,7 +76,8 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   buttons and status pills. Secondary accent teal `#7FC8D0`.
 - Buttons follow Fluent (CLAUDE.md "buttons follow Fluent"): command buttons of toolbars and card
   or list header rows are flat, icon in the lighter accent `#7D6EF0` and neutral text (`Button.toolbar` with
-  `ui:IconLabel` / `ui:ToolbarButton`; actions left, search right); icon-only buttons in the text colour, the accent on
+  `ui:IconLabel` / `ui:ToolbarButton`; actions left, search right; in a header row with a title, the panel has the class
+  `titleRow`, which puts the buttons' text and a count on the title's baseline); icon-only buttons in the text colour, the accent on
   hover; disabled buttons dimmed; one filled accent button only for the main action of a dialog or form; filled red only
   for the confirming button of a destructive dialog, flat red text elsewhere. Red in use: `Button.danger` for Remove
   users, Delete certificates, a confirmation's Delete; `Button.toolbar.danger` for Delete all, Delete tag, a credential's
