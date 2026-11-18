@@ -8,18 +8,18 @@ that SDK is compatible with. This page says what OADM checks, what it promises t
 
 ## The SDK version
 
-The SDK has its own version, `SdkInfo.Version` in `src/Oadm.Sdk/Plugins/Plugins.cs` (today `0.13.0`), separate from the
+The SDK has its own version, `SdkInfo.Version` in `src/Oadm.Sdk/Plugins/Plugins.cs` (today `0.14.0`), separate from the
 OADM version. Your `plugin.json` names the SDK it needs (the project SDK writes the version you build with):
 
 ```json
-"minSdkVersion": "0.13.0"
+"minSdkVersion": "0.14.0"
 ```
 
 When the server starts, it compares the two. A plugin that needs a newer SDK than the server has is not loaded; the
 server log says why:
 
 ```text
-Plugin problem in plugins/acme.hello: Plugin acme.hello requires SDK 0.14.0, host has 0.13.0.
+Plugin problem in plugins/acme.hello: Plugin acme.hello requires SDK 0.15.0, host has 0.14.0.
 ```
 
 `minSdkVersion` also decides who may use the plugin. Users limited to a device group get only plugins with 0.4.0 or
@@ -78,6 +78,7 @@ in a context of its own, so two plugins can use different versions of the same l
 
 | SDK | OADM | What changed |
 |---|---|---|
+| 0.14.0 | 5.2 | The device access check right before a write: `ICallContext.RequireCurrentDeviceAccessAsync` (session, permission and device checked again; hosts without it refuse). `IVapixClient.UsesConfiguredCertificatePin` (the connection uses a configured certificate pin). Client: `DialogTitleBar.Subtitle`, `ProgressRow.Detail`, `SideSubtitle.Align`. |
 | 0.13.0 | 5.1 | The certificates of the servers the host runs, picked by a PKI server policy: `IServerCertificates`, `HostServerCertificate`, `HostServers.Mcp` (PKI offers it, only the host reads it). Tasks for AI agents: `ITaskPlugin.PayloadType`, `PayloadJsonOptions`, `ValidatePayload` (also checked by every run), `PlanAsync`, `PagePermissions` (a page task agents may start); `PayloadError`, `TaskPlan` (with `Files`, `Errors` and `Details`), `TaskPlanDevice`, `SecretAttribute` (`Label`), the secrets a person enters for a run (`ITaskPlugin.SecretsOf`, `TaskSecret`, `TaskSecrets`). Tools of a core plugin for AI agents and other programs: `ICorePlugin.Tools`, `ToolArea`, `PluginTool`, `PluginToolPage`, `PluginToolErrors`; a tool on the devices of a filter (`PluginTool.DeviceFilter`, `PluginToolDevices`) and one that follows the permissions of a task of its package (`PluginTool.TaskPlugin`). The page's own actions as tools, with the page's checks and rights: `PluginPageTools`, `PluginToolInput`, `PluginToolInputException`, `PluginToolPlan`; the secrets of a change (`PluginTool.Secrets`, `PluginToolSecret`, `PluginToolSecrets`, `PluginToolPlan.SecretsNeeded`, `PluginToolInput.Secret`, `IsRun`), a file the answer hands out (`PluginTool.ReturnsFile`, `PluginToolFile`), the caller's own uploads (`ICallContext.Uploads`) and one tool's own area (`PluginTool.Area`). |
 | 0.12.0 | 5.0 | Persistent recipients, one open connection many rules share: `RecipientType.Sessions`, `IRecipientSessionFactory`, `IRecipientSession`, `IActionContext.SessionAsync<T>`. Certificates of PKI in a recipient: `ActionField.ClientCertificate`, `ActionField.TrustedCertificate`, `RecipientSessionRequest.CertificatesOf`, `IRecipientCertificates`, `IRecipientCertificateUse`. The passwords of such a recipient reach only the session. `ActionFieldFormat.OpcEndpoint`. A field that shows on either of two conditions: `ActionField.AlsoVisibleWhenKey`, `AlsoVisibleWhenValue`. `ActionPlaceholders.FirstUnknown`, `PlaceholderEscape.SingleLine`, `RecipientSessionTexts`. A plugin's own check at a release: `ICorePlugin.SelfCheck`. Testing: `FakeActionContext.Sessions`. Client: a page reads and watches with one call, `ctx.RunAsync(read, handle, options, ct)` (`PluginEventWatch`, `PluginEventWatchOptions`: the waits, `Failed`, a `TimeProvider`); a server call that returns the text to show instead of throwing: `GuardedRun.RunAsync` (`GuardedCancel`). The one text of a number of bytes: `ByteSize.Text` ("412 KB", "87.0 MB") and `ByteSize.Progress` ("37.0 of 82.4 MB") in `Oadm.Sdk.Formatting`; `FileSizeText.Format` of the client SDK gives the same text and stays for older plugins. Client: `EmbeddedBrowserLinks.Leaves`, `FlowColumns` (`FlowPacking`), the `LeadingIcon` classes `found` and `changed`. The one JSON helper of page calls, events, payloads and stored settings: `PluginJson` (`CreateOptions` with `PluginJsonEnums`, `Serialize`, `Parse`, `ParseOrEmpty`, `TryParse`, `EmptyRequest`, `UnreadableRequest`); broken JSON from a caller is an `ArgumentException` with a plain text, which the server answers as a refusal. |
 | 0.11.0 | 5.0 | Recipients, shared targets of event rule actions: `ActionField.Recipient`, `ActionFieldType.Recipient`, `RecipientType`, `IActionPlugin.RecipientTypes`, `RecipientType.Target`, `ActionInvocation.RecipientIds`, `ActionField.EmptyText`, `ActionField.Format` (`ActionFieldFormat`, `ActionFormats`). The host merges the chosen recipient's fields into the settings before a run. |
@@ -92,8 +93,8 @@ in a context of its own, so two plugins can use different versions of the same l
 | 0.2.0 | 4.0 | Devices at a site: `DeviceStatus.SiteOffline`, `IDeviceInfo.SiteId` / `SiteName`, `IDeviceNetwork` (`ITaskExecutionContext.Network`, `ITaskQueryContext.Network`), `ICorePluginContext.Network` and `Sites` (relays), `siteSupport` / `sitePorts` in `plugin.json` (the project SDK writes `full` by default), `ITaskPlugin.SiteSupport`, `IComplianceCheckType.SiteSupport`, `IRelay.ReleaseAsync`, `{site}` placeholder, `DeviceMessages.Refusal(IDeviceInfo)` / `TaskSupportReasons.ForStatus(IDeviceInfo)` (they say "Site offline: <site>") and `TaskSupportReasons.ForSiteSupport`, `HostPages.Sites`, `HostPermissionKeys.SitesView`. Client: `ICorePluginClientContext.OpenDeviceRequested`, `CheckChoice` / `ICheckChoice` / `CheckChoiceList` (`ComboBox Classes="multiSelect"`), `PageTab.Count` and fixed tabs (no `CloseCommand`), `DeviceTexts.OpenNotAllowed`. Testing: `FakeDevice.SiteId` / `SiteName`, `FakeDeviceNetwork`, `FakeSites`, `FakePluginNetwork`, `InMemoryUdpRelay` / `InMemoryTcpRelay`. The project SDK adds the banned-API analyzer (warning RS0030 for own sockets). See [Sites](../sites/) |
 | 0.1.0 | 3.x | The first SDK on NuGet |
 
-A plugin needs at least the OADM release of its SDK in the table: built with the 5.1 packages (SDK 0.13.0), it needs
-OADM 5.1 or later. A plugin built with SDK 0.1.0 still loads, but its `plugin.json` has no `siteSupport`: OADM keeps
+A plugin needs at least the OADM release of its SDK in the table: built with the 5.2 packages (SDK 0.14.0), it needs
+OADM 5.2 or later. A plugin built with SDK 0.1.0 still loads, but its `plugin.json` has no `siteSupport`: OADM keeps
 it away from devices at a site until you rebuild it with a newer project SDK (or add `"siteSupport": "full"` to your
 own `plugin.json`).
 
