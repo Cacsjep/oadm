@@ -107,6 +107,9 @@ internal sealed class FakeVapix : IVapixClientFactory
 {
     public System.Collections.Concurrent.ConcurrentDictionary<Guid, Func<HttpResponseMessage>> Answers { get; } = new();
 
+    /// <summary>Answers that wait (e.g. on a gate the test holds); checked before <see cref="Answers"/>.</summary>
+    public System.Collections.Concurrent.ConcurrentDictionary<Guid, Func<CancellationToken, Task<HttpResponseMessage>>> WaitingAnswers { get; } = new();
+
     public int Requests;
 
     public Task<IVapixClient> CreateAsync(Guid deviceId, CancellationToken ct) => Task.FromResult<IVapixClient>(new Client(this, deviceId));
@@ -132,6 +135,11 @@ internal sealed class FakeVapix : IVapixClientFactory
             Interlocked.Increment(ref owner.Requests);
             Assert.Equal(HttpMethod.Get, request.Method); // read-only
             Assert.Equal(ImageHealthPluginInfo.StatusPath, request.RequestUri!.OriginalString);
+            if (owner.WaitingAnswers.TryGetValue(deviceId, out var waiting))
+            {
+                return waiting(ct);
+            }
+
             return owner.Answers.TryGetValue(deviceId, out var answer)
                 ? Task.FromResult(answer())
                 : Task.FromResult(Status(System.Net.HttpStatusCode.NotFound));

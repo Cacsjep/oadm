@@ -179,7 +179,7 @@ public sealed partial class FakeOadmApi
 
             var virtualInputs = new bool[65];
             var round = 0;
-            while (!ct.IsCancellationRequested)
+            while (true) // ends only by the cancelled wait, so "Stopped" is always the last event
             {
                 await Task.Delay(MetadataChangeInterval, ct).ConfigureAwait(false);
                 round++;

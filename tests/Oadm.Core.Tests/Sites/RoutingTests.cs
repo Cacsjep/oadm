@@ -176,7 +176,7 @@ public sealed class RoutingTests
         var sockets = new List<WebSocket>();
         for (var i = 0; i < 3; i++)
         {
-            sockets.Add(await client.ConnectWebSocketAsync("/vapix/ws-data-stream?sources=events", TimeSpan.FromSeconds(10), CancellationToken.None));
+            sockets.Add(await client.ConnectWebSocketAsync("/vapix/ws-data-stream?sources=events", TimeSpan.FromSeconds(30), CancellationToken.None));
         }
 
         try

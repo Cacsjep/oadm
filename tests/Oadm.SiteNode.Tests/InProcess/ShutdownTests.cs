@@ -13,14 +13,19 @@ namespace Oadm.SiteNode.Tests.InProcess;
 /// <summary>The node stops at once and cleanly after Reset, with and without a server (run like Program runs it).</summary>
 public sealed class ShutdownTests
 {
-    // A stop takes well under a second; below the host's 30 s shutdown timeout, so a stop that waits for it fails.
-    private static readonly TimeSpan StopCeiling = TimeSpan.FromSeconds(20);
+    // A stop takes well under a second. The tests take the host's shutdown timeout away, so a stop that would only end by
+    // that timeout never ends; this bound only proves "it did not hang", whatever the machine's speed.
+    private static readonly TimeSpan HangLimit = TimeSpan.FromMinutes(2);
+
+    private static void WithoutShutdownTimeout(Microsoft.AspNetCore.Builder.WebApplication app) =>
+        app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Microsoft.Extensions.Hosting.HostOptions>>().Value.ShutdownTimeout = Timeout.InfiniteTimeSpan;
 
     [Fact]
     public async Task AfterResetWithoutAServerTheNodeStopsCleanly()
     {
         using var folder = new TempFolder();
         var (app, _) = TestNode.Build(folder, c => c.ServerAddress = "127.0.0.1:1"); // nothing listens on port 1
+        WithoutShutdownTimeout(app);
         using var stop = new CancellationTokenSource();
         var run = NodeHost.RunAsync(app, stop.Token);
         var connection = app.Services.GetRequiredService<ConnectionState>();
@@ -31,7 +36,7 @@ public sealed class ShutdownTests
         Assert.True((await handler.HandleAsync(AdminRequest.Of(AdminCommands.Reset), isAdmin: true, CancellationToken.None)).Ok);
         await stop.CancelAsync();
 
-        Assert.Same(run, await Task.WhenAny(run, Task.Delay(StopCeiling)));
+        Assert.Same(run, await Task.WhenAny(run, Task.Delay(HangLimit)));
         Assert.Equal(0, await run);
     }
 
@@ -41,6 +46,7 @@ public sealed class ShutdownTests
         await using var server = new TestServer();
         using var folder = new TempFolder();
         var (app, _) = TestNode.Build(folder, c => c.ServerAddress = server.Address);
+        WithoutShutdownTimeout(app);
         using var stop = new CancellationTokenSource();
         var run = NodeHost.RunAsync(app, stop.Token);
         var binding = app.Services.GetRequiredService<BindingState>();
@@ -52,7 +58,7 @@ public sealed class ShutdownTests
         await using var unbound = await server.NextWorkingLinkAsync(); // the new identity connects
         await stop.CancelAsync();
 
-        Assert.Same(run, await Task.WhenAny(run, Task.Delay(StopCeiling)));
+        Assert.Same(run, await Task.WhenAny(run, Task.Delay(HangLimit)));
         Assert.Equal(0, await run);
     }
 
@@ -62,6 +68,7 @@ public sealed class ShutdownTests
         await using var server = new TestServer();
         using var folder = new TempFolder();
         var (app, _) = TestNode.Build(folder, c => c.ServerAddress = server.Address);
+        WithoutShutdownTimeout(app);
         using var stop = new CancellationTokenSource();
         var run = NodeHost.RunAsync(app, stop.Token);
         await using var link = await server.NextLinkAsync();
@@ -72,7 +79,7 @@ public sealed class ShutdownTests
 
         await stop.CancelAsync();
 
-        Assert.Same(run, await Task.WhenAny(run, Task.Delay(StopCeiling)));
+        Assert.Same(run, await Task.WhenAny(run, Task.Delay(HangLimit)));
         Assert.Equal(0, await run);
     }
 }

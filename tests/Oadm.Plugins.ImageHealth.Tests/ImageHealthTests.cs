@@ -189,26 +189,41 @@ public sealed class MonitorTests
     [Fact]
     public async Task Twenty_four_cameras_are_asked_at_the_same_time()
     {
-        await using var rig = await new Rig().StartAsync();
+        // The answers wait on a gate the test holds (no overlapping sleeps): 24 requests in flight, never a 25th.
+        var options = new ImageHealthOptions { PublishInterval = TimeSpan.FromMilliseconds(20), RequestTimeout = TimeSpan.FromMinutes(5) };
+        await using var rig = await new Rig(options).StartAsync();
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var running = 0;
         var most = 0;
         for (var i = 0; i < 200; i++)
         {
             var device = new TestDevice($"10.0.1.{i}", "P3265-V");
             rig.Devices.Items.Add(device);
-            rig.Vapix.Answers[device.Id] = () =>
+            rig.Vapix.WaitingAnswers[device.Id] = async token =>
             {
                 var now = Interlocked.Increment(ref running);
                 InterlockedMax(ref most, now);
-                Thread.Sleep(20);
-                Interlocked.Decrement(ref running);
+                try
+                {
+                    await gate.Task.WaitAsync(token);
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref running);
+                }
+
                 return FakeVapix.Json(Recorded.Normal);
             };
         }
 
-        await CheckAsync(rig);
+        await rig.Plugin.InvokeAsync(ImageHealthMethods.Check, null, CancellationToken.None);
+        await Wait.UntilAsync(() => Volatile.Read(ref running) == 24);
+        await Oadm.Sdk.Testing.Eventually.StaysTrueAsync(() => Volatile.Read(ref running) <= 24, "no 25th request", TimeSpan.FromMilliseconds(200));
+        gate.SetResult();
+        await rig.Plugin.Monitor!.CurrentCheck;
+
         Assert.Equal(200, rig.Plugin.Monitor!.Snapshot(false).Running);
-        Assert.InRange(most, 2, 24);
+        Assert.Equal(24, Volatile.Read(ref most));
     }
 
     private static void InterlockedMax(ref int target, int value)

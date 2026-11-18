@@ -212,6 +212,9 @@ public sealed partial class AssistantPanelViewModel : ObservableObject
 
     private int _pastedImages;
 
+    /// <summary>The folder that holds the own folder of each pasted picture: the system's temp folder; tests use their own.</summary>
+    internal string PasteRoot { get; set; } = Path.GetTempPath();
+
     /// <summary>Try again under the end of the last answer, Edit on the last message of the user; nothing while an answer streams.</summary>
     private void UpdateLastActions()
     {
@@ -1289,7 +1292,7 @@ public sealed partial class AssistantPanelViewModel : ObservableObject
             return;
         }
 
-        var folder = Path.Combine(Path.GetTempPath(), "oadm-paste-" + Guid.NewGuid().ToString("N"));
+        var folder = Path.Combine(PasteRoot, "oadm-paste-" + Guid.NewGuid().ToString("N"));
         try
         {
             Directory.CreateDirectory(folder);
