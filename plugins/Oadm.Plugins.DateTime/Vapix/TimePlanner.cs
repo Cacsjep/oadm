@@ -153,6 +153,9 @@ public static class TimePlanner
         };
     }
 
+    /// <summary>The refusal of a device that has neither the Time API nor the old time zone parameters.</summary>
+    public const string NoTimeZoneSetting = "This device has no time zone setting OADM can change. Nothing was changed.";
+
     private static (PlannedSection Section, ExpectedState State) PlanTimeZone(
         string zone, bool dst, IReadOnlyList<DeviceApi> apis, CurrentTimeSettings current, string? timeVersion, int year)
     {
@@ -182,6 +185,12 @@ public static class TimePlanner
         }
 
         apis.Require(TimeApis.ParamCgi, TimeApis.ParamCgiBase);
+        if (current.PosixTimeZone is null)
+        {
+            // AXIS OS 13 removed Time.POSIXTimeZone and Time.DST.Enabled: without the Time API there is nothing to write to.
+            throw new DeviceNotCompatibleException(NoTimeZoneSetting);
+        }
+
         return (new(SectionKind.TimeZone, StepSetTimeZone, description,
             [ParamUpdateRequest.Of(("Time.POSIXTimeZone", posix), ("Time.DST.Enabled", dst ? "yes" : "no"))]), expected);
     }

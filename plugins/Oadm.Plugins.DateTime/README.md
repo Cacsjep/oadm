@@ -33,7 +33,9 @@ and the time zone list.
   argument is unverified. **Not used**: devices without the Time API cannot take a date and time from OADM.
 - **Device-config REST** `/config/rest/time/v2` and `/config/rest/network-time-sync/v1`: listed only in
   `/config/discover`, not in `apidiscovery.cgi`, so `CanRun` cannot see them. Not used yet; the successor when time.cgi
-  goes away (AXIS OS 13). Recorded in the fixtures for reference.
+  goes away: Axis announced its removal for AXIS OS 14 (planned September 2028, AXIS OS lifecycle guide "Changes in
+  AXIS OS 14"). Until OADM uses it, a device without `time-service` and without `Time.POSIXTimeZone` (removed in AXIS OS
+  13.0) is refused in Validate settings: "This device has no time zone setting OADM can change. Nothing was changed." Recorded in the fixtures for reference.
 
 ### What the development camera reports (AXIS P3265-V, AXIS OS 12.11.77, read-only)
 
@@ -65,6 +67,7 @@ and the time zone list.
 | NTP off (server time, manual; always one of the two NTP rows) | `ntp` 1.0+ | `setNTPClientConfiguration {enabled:false, ...current}` | param.cgi `Time.SyncSource=None` |
 | Date and time (server time, manual) | `time-service` 1.0+ | `setDateTime {dateTime: UTC}` | refused (`DeviceNotCompatibleException`), nothing changed |
 | anything | only a different major (e.g. 2.x) or nothing | none | `DeviceNotCompatibleException` at Check compatibility |
+| Time zone | no `time-service`, `param-cgi` 1.0 but no `Time.POSIXTimeZone` on the device (AXIS OS 13+) | none | `DeviceNotCompatibleException` in Validate settings (`TimePlanner.NoTimeZoneSetting`), nothing changed |
 
 `CanRun` needs status Ok/Unknown and `time-service` 1.0 or `param-cgi` 1.0 in the cached list. NTS needs 1.5, the
 version verified with NTS fields (no history is published). All `Require(...)` calls run in the Validate step, before

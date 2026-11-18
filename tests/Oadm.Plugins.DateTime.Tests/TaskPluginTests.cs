@@ -220,6 +220,22 @@ public sealed class TaskPluginTests
     }
 
     [Fact]
+    public async Task Device_without_the_time_api_and_the_old_time_zone_parameters_is_refused_before_any_write()
+    {
+        // AXIS OS 13 removed Time.POSIXTimeZone and Time.DST.Enabled; AXIS OS 14 is announced without time.cgi.
+        _vapix.ApiList = Fixture.LegacyOnly;
+        _vapix.Parameters.Remove("Time.POSIXTimeZone");
+        _vapix.Parameters.Remove("Time.DST.Enabled");
+
+        var ex = await Assert.ThrowsAsync<DeviceNotCompatibleException>(() =>
+            RunAsync(new DateTimePayload("Europe/London", TimeMode.Ntp, new NtpSettings(NtpSource.Dhcp, [])), new FakeDevice(Guid.NewGuid()) { Apis = Fixture.LegacyOnly }));
+
+        Assert.Equal("This device has no time zone setting OADM can change. Nothing was changed.", ex.Message);
+        Assert.Equal("Validate settings: Failed", Lines[3]);
+        Assert.Empty(_vapix.Writes);
+    }
+
+    [Fact]
     public async Task Invalid_payload_fails_before_any_request()
     {
         var ex = await Assert.ThrowsAsync<ArgumentException>(() => RunAsync(new DateTimePayload("Europe/Vienna", TimeMode.Ntp, new NtpSettings(NtpSource.Static, ["bad host!"]))));
