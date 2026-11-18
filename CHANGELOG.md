@@ -27,6 +27,9 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 - Assistant: Look up online can be clicked, and Anthropic no longer answers with an error after the offer, during the lookup or after many steps.
 - Assistant: a page Look up online cannot read no longer says the server may have no internet.
+- Install applications: a package without a manifest is refused on AXIS OS 13 and later before anything is sent.
+- Date and time: a device on AXIS OS 13 without a time zone setting OADM can change is refused before anything is written.
+- VAPIX Commander: storage cleanup, file system and image rotation no longer fail on devices without them.
 
 ## [5.1.0] - 2026-11-16
 
