@@ -96,6 +96,7 @@ public sealed class NodeChainCanvas : Control
     private readonly List<Rect> _cards = [];
     private Rect _content;
     private int _fittedCount = -1;
+    private IReadOnlyList<NodeChainNode>? _laidOut;
     private int _fittedRequest = -1;
     private bool _panning;
     private bool _moved;
@@ -134,20 +135,49 @@ public sealed class NodeChainCanvas : Control
             }
 
             _fittedCount = -1;
-            InvalidateVisual();
+            Relayout();
         }
         else if (change.Property == BoundsProperty)
         {
             _fittedCount = -1;
+            Relayout();
+        }
+    }
+
+    private void OnChainChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(NodeChain.Nodes) or nameof(NodeChain.FitRequest))
+        {
+            Relayout();
+        }
+        else
+        {
             InvalidateVisual();
         }
     }
 
-    private void OnChainChanged(object? sender, PropertyChangedEventArgs e) => InvalidateVisual();
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        Relayout();
+    }
+
+    /// <summary>Places the cards (outside the render pass: a fit changes the view) and draws again.</summary>
+    private void Relayout()
+    {
+        if (Chain is { } chain)
+        {
+            Layout(new CanvasTheme(this), chain.Nodes);
+            FitIfNeeded(chain);
+        }
+
+        InvalidateVisual();
+    }
 
     /// <summary>The cards from top to bottom, centred on x = 0; each card's message below it moves the next one down.</summary>
     private void Layout(CanvasTheme theme, IReadOnlyList<NodeChainNode> nodes)
     {
+        _laidOut = nodes;
         _cards.Clear();
         var y = 0.0;
         foreach (var node in nodes)
@@ -187,8 +217,11 @@ public sealed class NodeChainCanvas : Control
         }
 
         var nodes = chain.Nodes;
-        Layout(theme, nodes);
-        FitIfNeeded(chain);
+        if (!ReferenceEquals(_laidOut, nodes))
+        {
+            Layout(theme, nodes);
+        }
+
         var view = chain.View;
         NodeCanvasPainter.DrawBackground(context, theme, bounds, view);
         using (context.PushTransform(NodeCanvasPainter.Transform(view)))
