@@ -1300,6 +1300,20 @@
   <Style Selector="Button.toolbar.danger:disabled ui|OadmIcon">
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextDisabledBrush}" />
   </Style>
+  <!-- A card or list header row with a title (TextBlock.sectionTitle or .cardTitle), command buttons and a count (class
+       titleRow on the row's panel): the buttons' text and icon and the count sit on the title's baseline. The larger title
+       font puts its baseline 2 px below the centred body text (measured on Leases, Enrollments, Profiles, Sessions, Tasks).
+       Only the content moves (its padding 2 px lower, the side padding kept): the row keeps its height, search boxes and
+       icon-only buttons stay centred. After the danger styles, as Button.danger sets its own padding (14,7). -->
+  <Style Selector=":is(Panel).titleRow Button.toolbar:not(.iconOnly)">
+    <Setter Property="Padding" Value="10,8,10,4" />
+  </Style>
+  <Style Selector=":is(Panel).titleRow Button.toolbar.danger:not(.iconOnly)">
+    <Setter Property="Padding" Value="14,9,14,5" />
+  </Style>
+  <Style Selector=":is(Panel).titleRow > TextBlock.secondary">
+    <Setter Property="Padding" Value="0,4,0,0" />
+  </Style>
   <!-- A red icon alone (Remove condition, Remove action, a trash icon in a row): as small as every icon button; the
        danger button's wide padding above must not apply to it -->
   <Style Selector="Button.iconOnly.danger">
@@ -2878,6 +2892,15 @@
     <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
   </Style>
+  <!-- The word between two inputs of one row (address range "from to"): level with the inputs' text, like a label -->
+  <Style Selector="Panel.inputSeparator">
+    <Setter Property="Height" Value="{StaticResource Oadm.ControlHeight}" />
+  </Style>
+  <Style Selector="Panel.inputSeparator > TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Padding" Value="0,3,0,0" />
+  </Style>
   <!-- Several inputs in one form field (e.g. API and version): the field's row spacing applies, not the row margin -->
   <Style Selector="ui|FormField StackPanel.inputRow">
     <Setter Property="Margin" Value="0" />
@@ -3021,6 +3044,11 @@
   </Style>
   <Style Selector="ToggleButton.sectionExpander:checked /template/ ui|OadmIcon#PART_Chevron">
     <Setter Property="Data" Value="{StaticResource Icon.chevronDown}" />
+  </Style>
+  <!-- No press shrink: on a wide header (ui CollapsibleCard) Fluent's scale moves the chevron out from under the pointer, so
+       the release missed the button and a click on the arrow did nothing -->
+  <Style Selector="ToggleButton.sectionExpander:pressed">
+    <Setter Property="RenderTransform" Value="none" />
   </Style>
   <!-- Parts of a list row that line up with the row's input (check box, name, hint): the height of an input, centered -->
   <Style Selector=":is(Control).inputHeight">

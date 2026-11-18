@@ -66,7 +66,7 @@
           <!-- ========== Switches ========== -->
           <Border x:Name="SwitchesCard" Grid.Row="2" Classes="card" VerticalAlignment="Stretch" DataContext="{Binding Switches}" x:DataType="vm:SwitchesViewModel">
             <Grid RowDefinitions="Auto,*" RowSpacing="12">
-              <WrapPanel Grid.Row="0" Orientation="Horizontal" ItemSpacing="4" LineSpacing="8">
+              <WrapPanel Grid.Row="0" Classes="titleRow" Orientation="Horizontal" ItemSpacing="4" LineSpacing="8">
                 <TextBlock Classes="cardTitle" Text="Switches" VerticalAlignment="Center" Margin="0,0,12,0" />
                 <!-- A flat toolbar button like the device toolbar; the page's accent button is Save. -->
                 <ui:ToolbarButton Text="Add switch" IconKey="add" Command="{Binding AddCommand}" IsVisible="{Binding MayManage}"
@@ -120,7 +120,7 @@
       <!-- One table (decision 2026-10-25): the authentications in progress on top, then the log's page, newest first. -->
       <Border x:Name="SessionsCard" Grid.Row="0" Grid.Column="2" Classes="card">
         <Grid RowDefinitions="Auto,Auto,*,Auto">
-          <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+          <Grid Grid.Row="0" Classes="titleRow" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
               <TextBlock Classes="cardTitle" Text="Sessions" VerticalAlignment="Center" Margin="0,0,8,0" />
               <Button Classes="toolbar" Command="{Binding Log.ViewCertificateCommand}" ToolTip.Tip="Also a double click on a row">

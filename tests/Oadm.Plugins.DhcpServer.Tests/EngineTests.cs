@@ -87,6 +87,55 @@ public sealed class EngineTests : IDisposable
     }
 
     [Fact]
+    public async Task The_configured_lease_time_goes_to_offers_acks_and_renewals_and_a_lease_keeps_its_end_until_it_renews()
+    {
+        // 24 h (the default) for the first lease.
+        var offer = (await Handle(Msg(A, DhcpMessageType.Discover)))!.Message;
+        await Handle(Msg(A, DhcpMessageType.Request, m => { m.ServerId = offer.ServerId; m.RequestedAddress = offer.YourAddress; }));
+        var firstEnd = _time.GetUtcNow().UtcDateTime.AddHours(24);
+        Assert.Equal(firstEnd, _store.Find(A)!.ExpiresUtc);
+
+        // The user saves 2 h: the next offer says so, with renewal at 50 % and rebinding at 87.5 %.
+        _engine.Scope = DhcpScope.Create(Network, Ip.Of("10.0.0.100"), Ip.Of("10.0.0.199"), TimeSpan.FromHours(2));
+        var second = (await Handle(Msg(B, DhcpMessageType.Discover)))!.Message;
+        Assert.Equal((7_200u, 3_600u, 6_300u), (second.LeaseTime, second.RenewalTime, second.RebindingTime));
+        var ack = (await Handle(Msg(B, DhcpMessageType.Request, m => { m.ServerId = second.ServerId; m.RequestedAddress = second.YourAddress; })))!.Message;
+        Assert.Equal(7_200u, ack.LeaseTime);
+        Assert.Equal(_time.GetUtcNow().UtcDateTime.AddHours(2), _store.Find(B)!.ExpiresUtc);
+
+        // The first lease keeps its end until it renews, then gets the new time.
+        _time.Advance(TimeSpan.FromHours(3));
+        Assert.Equal(firstEnd, _store.Find(A)!.ExpiresUtc);
+        Assert.Equal(LeaseInfo.Active, _store.Find(A)!.State);
+        var renew = (await Handle(Msg(A, DhcpMessageType.Request, m => m.ClientAddress = offer.YourAddress)))!.Message;
+        Assert.Equal((DhcpMessageType.Ack, 7_200u), (renew.MessageType, renew.LeaseTime));
+        Assert.Equal(_time.GetUtcNow().UtcDateTime.AddHours(2), _store.Find(A)!.ExpiresUtc);
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("0", false)]
+    [InlineData("1", true)]
+    [InlineData("24", true)]
+    [InlineData("720", true)]
+    [InlineData("721", false)]
+    [InlineData("1.5", false)]
+    public void Lease_time_is_1_to_720_whole_hours(string? hours, bool valid)
+    {
+        var error = DhcpValidation.LeaseHours(hours is null ? null : decimal.Parse(hours, System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal(valid ? null : "Enter 1 to 720 hours.", error);
+    }
+
+    [Fact]
+    public void A_stored_lease_time_outside_the_limits_reads_as_24_hours()
+    {
+        Assert.Equal(TimeSpan.FromHours(24), new DhcpConfig().LeaseTime);
+        Assert.Equal(TimeSpan.FromHours(48), new DhcpConfig { LeaseHours = 48 }.LeaseTime);
+        Assert.Equal(TimeSpan.FromHours(24), new DhcpConfig { LeaseHours = 0 }.LeaseTime);
+        Assert.Equal(24, DhcpJson.Deserialize<DhcpConfig>("""{"enabled":true,"rangeStart":"10.0.0.100"}""").LeaseHours);
+    }
+
+    [Fact]
     public async Task Selecting_another_server_withdraws_our_offer_silently()
     {
         var offer = (await Handle(Msg(A, DhcpMessageType.Discover)))!.Message;

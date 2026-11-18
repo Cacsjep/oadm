@@ -192,7 +192,8 @@ devices that get an address. Per-OS setup and the manual test plan: plugin `READ
   needs an explicit "Enable anyway"; abuse protection per MAC and overall, pending offers capped at half the pool; a
   DECLINE counts only from the MAC that holds the address (bound or offered; dynamic ones inside the pool), any other is
   ignored (debug log), so a forged one never moves a lease; mask, router, DNS and domain come from the interface, never
-  asked; leases survive restarts; the automatic add uses the add page's pipeline on the server (Axis MAC blocks only, the
+  asked; the lease time is the one setting of what clients get (1 to 720 hours, 24 by default and for settings saved
+  before it existed), a bound lease keeps its end until it renews; leases survive restarts; the automatic add uses the add page's pipeline on the server (Axis MAC blocks only, the
   Axis check before any credential, the credential list only) and follows managed devices to their new address also when
   it is off; tests never send DHCP on a real interface.
 - Roles: `save`, `saveStatic`, `deleteStatic`, `makeStatic`, `release` are Admin and audited. The Windows service opens
