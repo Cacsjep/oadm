@@ -96,10 +96,10 @@ PKI sets every CA with its key and the previous CAs, each with its chain, on sta
 |---|---|---|
 | `AddAsync(address, expectedSerial, source, ct)` | Adds an Axis device through the add page's checks: the Axis check without a login, the factory default check, a login with the credential list | `DeviceAutoAddOutcome` with `Added`, `AddedCredentialsRequired`, `AddedPasswordNotSet`, `AlreadyManaged`, `NotAxis`, `SerialMismatch`, `Unreachable` or `LimitReached`, the device id and a plain message |
 | `FollowAsync(serial, address, source, ct)` | Moves a managed device's record to an address your plugin saw it at, once the server found it there | `Moved`, `Unchanged`, `NotManaged`, `KeptHostName` or `NotVerified` |
-| `LookAsync(address, expectedSerial, ct)` | SDK 0.14.0: what answers there without a password: the probe and the Axis check, or the record of a managed device | `DeviceLook` with `FactoryNew`, `HasPassword`, `NotAxis`, `SerialMismatch` or `Unreachable` |
-| `SetFirstPasswordAsync(address, expectedSerial, credentialId, source, ct)` | SDK 0.14.0: the first root password of a factory-new device from a credential list entry of root, like the add page (serial and "no password yet" checked right before writing) | `DeviceFirstPasswordOutcome` |
-| `AddWithLoginAsync(address, expectedSerial, credentialId, tags, source, ct)` | SDK 0.14.0: adds the device logged in with that entry and gives it the tags; a managed device gets the tags | `DeviceAutoAddOutcome`, `AlreadyManaged` with the device id |
-| `ListCredentialsAsync(ct)`, `AddCredentialAsync(userName, password, ct)` | SDK 0.14.0: the credential list's ids and user names; a typed password added to it (encrypted, never shown again) | `DeviceCredentialName` |
+| `LookAsync(address, expectedSerial, ct)` | SDK 0.15.0: what answers there without a password: the probe and the Axis check, or the record of a managed device | `DeviceLook` with `FactoryNew`, `HasPassword`, `NotAxis`, `SerialMismatch` or `Unreachable` |
+| `SetFirstPasswordAsync(address, expectedSerial, credentialId, source, ct)` | SDK 0.15.0: the first root password of a factory-new device from a credential list entry of root, like the add page (serial and "no password yet" checked right before writing) | `DeviceFirstPasswordOutcome` |
+| `AddWithLoginAsync(address, expectedSerial, credentialId, tags, source, ct)` | SDK 0.15.0: adds the device logged in with that entry and gives it the tags; a managed device gets the tags | `DeviceAutoAddOutcome`, `AlreadyManaged` with the device id |
+| `ListCredentialsAsync(ct)`, `AddCredentialAsync(userName, password, ct)` | SDK 0.15.0: the credential list's ids and user names; a typed password added to it (encrypted, never shown again) | `DeviceCredentialName` |
 
 Passwords never reach your plugin, and the server writes the audit entries. Both calls contact the device: run them
 from a queue with a few workers, never on the path that answers your clients.
@@ -124,7 +124,7 @@ if (ca is not { IsReady: true })
   the result.
 
 PKI offers `Oadm.Sdk.Certificates.IDeviceCertificateAuthority` (sign a device's certificate request, the list of issued
-certificates); the EST server and the 802.1X server use it. The DHCP server offers `Oadm.Sdk.Network.IDhcpServerLeases` (SDK 0.14.0, read only: its
+certificates); the EST server and the 802.1X server use it. The DHCP server offers `Oadm.Sdk.Network.IDhcpServerLeases` (SDK 0.15.0, read only: its
 state, the acknowledged leases with sequence numbers, the active leases); Provisioning reads it. In tests: `FakePluginServices`
 (`FakeCoreContext.FakeServices`).
 

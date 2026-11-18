@@ -82,7 +82,7 @@ public interface IDeviceAutoAdd
     Task<DeviceFollowResult> FollowAsync(string serial, string address, string source, CancellationToken ct);
 
     /// <summary>
-    /// SDK 0.14.0: what answers at <paramref name="address"/>, without a password: the add page's anonymous probe and Axis
+    /// SDK 0.15.0: what answers at <paramref name="address"/>, without a password: the add page's anonymous probe and Axis
     /// check, and whether it is factory-new (no password yet). A managed device is answered from its record (Password not
     /// set is factory-new) without a request. Never throws for device errors. Older hosts: <see cref="NotSupportedException"/>.
     /// </summary>
@@ -93,7 +93,7 @@ public interface IDeviceAutoAdd
         throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
 
     /// <summary>
-    /// SDK 0.14.0: sets the first root password of a factory-new device, exactly like the add page and the context menu's
+    /// SDK 0.15.0: sets the first root password of a factory-new device, exactly like the add page and the context menu's
     /// "Set password" (HTTPS when the device offers it, POST body only). Right before writing, the device at the address must
     /// answer with <paramref name="expectedSerial"/> and still need its first password; otherwise nothing is sent. A managed
     /// device keeps the password as its login. The password comes from the credential list (never through the plugin).
@@ -108,7 +108,7 @@ public interface IDeviceAutoAdd
         throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
 
     /// <summary>
-    /// SDK 0.14.0: adds the device at <paramref name="address"/> like <see cref="AddAsync(string, string, string, CancellationToken)"/>
+    /// SDK 0.15.0: adds the device at <paramref name="address"/> like <see cref="AddAsync(string, string, string, CancellationToken)"/>
     /// (Axis check first), logged in with one credential list entry instead of trying the list, with <paramref name="tags"/>
     /// for all devices (so it lands in the device groups of those tags). A device OADM manages already keeps its record and
     /// gets the tags (<see cref="DeviceAutoAddResult.AlreadyManaged"/> with its id). Never throws for device errors. Older
@@ -123,13 +123,13 @@ public interface IDeviceAutoAdd
     Task<DeviceAutoAddOutcome> AddWithLoginAsync(string address, string expectedSerial, Guid credentialId, IReadOnlyList<string> tags, string source, CancellationToken ct) =>
         throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
 
-    /// <summary>SDK 0.14.0: the entries of the credential list, without passwords, in the order they are tried.</summary>
+    /// <summary>SDK 0.15.0: the entries of the credential list, without passwords, in the order they are tried.</summary>
     /// <param name="ct">Cancels the read.</param>
     Task<IReadOnlyList<DeviceCredentialName>> ListCredentialsAsync(CancellationToken ct) =>
         throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
 
     /// <summary>
-    /// SDK 0.14.0: adds a user name and password to the credential list (encrypted with the server's key; an equal entry is
+    /// SDK 0.15.0: adds a user name and password to the credential list (encrypted with the server's key; an equal entry is
     /// reused) and returns its entry. The password is never logged. <see cref="ArgumentException"/> for a password the
     /// devices do not take, <see cref="InvalidOperationException"/> when the list is full.
     /// </summary>
@@ -140,7 +140,7 @@ public interface IDeviceAutoAdd
         throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
 }
 
-/// <summary>What answers at an address, without a password (<see cref="IDeviceAutoAdd.LookAsync"/>, SDK 0.14.0).</summary>
+/// <summary>What answers at an address, without a password (<see cref="IDeviceAutoAdd.LookAsync"/>, SDK 0.15.0).</summary>
 public enum DeviceLookResult
 {
     /// <summary>An Axis device with the expected serial number that has no password yet (factory default).</summary>
@@ -159,24 +159,24 @@ public enum DeviceLookResult
     Unreachable = 4,
 }
 
-/// <summary>The answer of <see cref="IDeviceAutoAdd.LookAsync"/> (SDK 0.14.0).</summary>
+/// <summary>The answer of <see cref="IDeviceAutoAdd.LookAsync"/> (SDK 0.15.0).</summary>
 /// <param name="Result">What answered.</param>
 /// <param name="DeviceId">The managed device with this serial number; null when OADM does not manage it.</param>
 /// <param name="Model">The product number the device reported ("P3265-LVE"), when known.</param>
 /// <param name="Message">Plain-language text for pages and logs.</param>
 public sealed record DeviceLook(DeviceLookResult Result, Guid? DeviceId, string? Model, string Message);
 
-/// <summary>The answer of <see cref="IDeviceAutoAdd.SetFirstPasswordAsync"/> (SDK 0.14.0).</summary>
+/// <summary>The answer of <see cref="IDeviceAutoAdd.SetFirstPasswordAsync"/> (SDK 0.15.0).</summary>
 /// <param name="Ok">The device took the password.</param>
 /// <param name="Message">Plain-language text: what was done, or why nothing was changed. Never the password.</param>
 public sealed record DeviceFirstPasswordOutcome(bool Ok, string Message);
 
-/// <summary>A credential list entry without its password (SDK 0.14.0).</summary>
+/// <summary>A credential list entry without its password (SDK 0.15.0).</summary>
 /// <param name="Id">The entry's id.</param>
 /// <param name="UserName">Its user name.</param>
 public sealed record DeviceCredentialName(Guid Id, string UserName);
 
-/// <summary>The texts of the first set up of a device (SDK 0.14.0).</summary>
+/// <summary>The texts of the first set up of a device (SDK 0.15.0).</summary>
 public static class DeviceFirstSetupTexts
 {
     /// <summary>A host without the first set up of devices.</summary>

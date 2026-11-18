@@ -19,7 +19,7 @@ installed" for the page).
   to the profile apply at the next Start. Start is refused without a running DHCP server ("Turn on the DHCP server
   first."), clears the rows of the last session and takes the cameras that hold an active lease right away. The session
   (profile, reserved Set IP addresses by MAC, the last DHCP acknowledgement read) is stored until Stop.
-- **Leases**: the DHCP server offers `IDhcpServerLeases` (SDK 0.14.0, read only). The engine reads the acknowledgements
+- **Leases**: the DHCP server offers `IDhcpServerLeases` (SDK 0.15.0, read only). The engine reads the acknowledgements
   every 2 s by sequence number; a DHCP server that started again starts its numbers again, the engine notices. Only Axis
   MAC blocks (`AxisOui`, linked from the DHCP server) get a row. Provisioning never changes the DHCP server.
 - **Rows** (records collection `cameras`, one per MAC): Queued, Running (or waiting for approval), Done, Done with

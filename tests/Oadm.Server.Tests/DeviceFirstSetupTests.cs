@@ -10,7 +10,7 @@ using SdkDeviceStatus = Oadm.Sdk.Devices.DeviceStatus;
 namespace Oadm.Server.Tests;
 
 /// <summary>
-/// The first set up of a device for core plugins (SDK 0.14.0, Provisioning): the look without a password, the first password
+/// The first set up of a device for core plugins (SDK 0.15.0, Provisioning): the look without a password, the first password
 /// from a credential list entry with the add page's checks, the add with one entry and tags, the credential list's names.
 /// </summary>
 public sealed class DeviceFirstSetupTests

@@ -1,7 +1,7 @@
 namespace Oadm.Sdk.Network;
 
 /// <summary>
-/// The DHCP server's state and the addresses it hands out, read only (SDK 0.14.0). The DHCP server plugin offers it through
+/// The DHCP server's state and the addresses it hands out, read only (SDK 0.15.0). The DHCP server plugin offers it through
 /// <see cref="Plugins.ICorePluginContext.Services"/> while it runs; Provisioning reads it to start a flow on a new camera.
 /// Ask with <c>Find</c> each time and never keep it. Nothing here changes the DHCP server. Thread-safe.
 /// </summary>
@@ -25,7 +25,7 @@ public interface IDhcpServerLeases
     IReadOnlyList<DhcpAck> ActiveLeases(IReadOnlyCollection<uint> ouiBlocks, int max);
 }
 
-/// <summary>The DHCP server's state (<see cref="IDhcpServerLeases.Summary"/>, SDK 0.14.0).</summary>
+/// <summary>The DHCP server's state (<see cref="IDhcpServerLeases.Summary"/>, SDK 0.15.0).</summary>
 /// <param name="IsRunning">The server hands out addresses.</param>
 /// <param name="StatusText">The status as the DHCP server page shows it ("Running", "Stopped").</param>
 /// <param name="InterfaceName">The network interface it serves ("Ethernet 2"), when set.</param>
@@ -42,14 +42,14 @@ public sealed record DhcpServerSummary(
     string? RangeStart,
     string? RangeEnd);
 
-/// <summary>One acknowledged lease (SDK 0.14.0).</summary>
+/// <summary>One acknowledged lease (SDK 0.15.0).</summary>
 /// <param name="Sequence">Its number, rising by one per acknowledgement (0 in <see cref="IDhcpServerLeases.ActiveLeases"/>).</param>
 /// <param name="Mac">The device's MAC address, "AC:CC:8E:01:02:03".</param>
 /// <param name="Address">The IPv4 address it got.</param>
 /// <param name="At">When the server acknowledged it.</param>
 public sealed record DhcpAck(long Sequence, string Mac, string Address, DateTimeOffset At);
 
-/// <summary>The answer of <see cref="IDhcpServerLeases.AcksSince"/> (SDK 0.14.0).</summary>
+/// <summary>The answer of <see cref="IDhcpServerLeases.AcksSince"/> (SDK 0.15.0).</summary>
 /// <param name="Acks">The acknowledgements, oldest first.</param>
 /// <param name="Next">The sequence number to read after next time.</param>
 /// <param name="Missed">Acknowledgements after the given number were dropped before they were read.</param>

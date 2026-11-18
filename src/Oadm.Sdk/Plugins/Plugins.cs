@@ -841,7 +841,7 @@ public static class TaskPluginNames
 public static class SdkInfo
 {
     /// <summary>The SDK version; a plugin whose <c>minSdkVersion</c> is newer is not loaded.</summary>
-    public const string Version = "0.14.0";
+    public const string Version = "0.15.0";
 
     /// <summary>
     /// The first SDK with the call context (<see cref="ICallContext"/>, OADM 4.5). Users with a device group may call only
