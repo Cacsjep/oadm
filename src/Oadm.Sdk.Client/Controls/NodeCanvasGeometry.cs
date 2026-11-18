@@ -1,14 +1,15 @@
 using Avalonia;
 
-namespace Oadm.Plugins.Vision.Client;
+namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
-/// Where the parts of the canvas are, in canvas units (docs/spec/vision-center.md "Page"): node cards of one size, the graph
-/// drawn from top to bottom: the input dot at the top centre of a card, the output dot at its bottom centre, the + below the
-/// output (below the error when the node has one), the eye top right; links as vertical curves from an output down to an
-/// input. The canvas control draws with these and its view model finds what a press hit with them.
+/// Where the parts of a node canvas are, in canvas units (Vision Center's pipelines, Provisioning's profiles): node cards of
+/// one size, the graph drawn from top to bottom: the input dot at the top centre of a card, the output dot at its bottom
+/// centre, the + below the output (below the error when the node has one), the eye top right; links as vertical curves from
+/// an output down to an input; the view (zoom and pan). The canvas controls draw with these (<see cref="NodeCanvasPainter"/>)
+/// and their view models find what a press hit with them.
 /// </summary>
-public static class CanvasGeometry
+public static class NodeCanvasGeometry
 {
     public const double NodeWidth = 200;
 
@@ -120,7 +121,7 @@ public static class CanvasGeometry
         for (var i = 1; i <= Steps; i++)
         {
             var next = OnCurve(from, to, (double)i / Steps, intoSide);
-            best = Math.Min(best, Oadm.Plugins.Shared.Vision.Client.ShapeGeometry.DistanceToSegment(point, previous, next));
+            best = Math.Min(best, DistanceToSegment(point, previous, next));
             previous = next;
         }
 
@@ -128,4 +129,54 @@ public static class CanvasGeometry
     }
 
     public static double Distance(Point a, Point b) => Math.Sqrt(((a.X - b.X) * (a.X - b.X)) + ((a.Y - b.Y) * (a.Y - b.Y)));
+
+    /// <summary>The distance from <paramref name="point"/> to the segment <paramref name="a"/>-<paramref name="b"/>.</summary>
+    public static double DistanceToSegment(Point point, Point a, Point b)
+    {
+        var dx = b.X - a.X;
+        var dy = b.Y - a.Y;
+        var length = (dx * dx) + (dy * dy);
+        var t = length <= 0 ? 0 : Math.Clamp((((point.X - a.X) * dx) + ((point.Y - a.Y) * dy)) / length, 0, 1);
+        var x = a.X + (t * dx) - point.X;
+        var y = a.Y + (t * dy) - point.Y;
+        return Math.Sqrt((x * x) + (y * y));
+    }
+
+    /// <summary>
+    /// Fit view: <paramref name="content"/> (canvas units) in the view, at most <paramref name="maxZoom"/>, centred across and
+    /// at most <paramref name="topRoom"/> screen pixels below the top (the graph grows downwards).
+    /// </summary>
+    public static CanvasView Fit(Rect content, Size viewport, double topRoom, double maxZoom = 1)
+    {
+        var zoom = Math.Clamp(Math.Min(viewport.Width / content.Width, viewport.Height / content.Height), MinZoom, maxZoom);
+        return new CanvasView(
+            zoom,
+            ((viewport.Width - (content.Width * zoom)) / 2) - (content.X * zoom),
+            Math.Min(topRoom, (viewport.Height - (content.Height * zoom)) / 2) - (content.Y * zoom));
+    }
+
+    /// <summary>
+    /// The wheel: zoom by <paramref name="factor"/> around <paramref name="screen"/> (it stays under the pointer), 25 % to
+    /// 200 %; null when the zoom stays.
+    /// </summary>
+    public static CanvasView? ZoomAround(CanvasView view, Point screen, double factor)
+    {
+        var zoom = Math.Clamp(view.Zoom * factor, MinZoom, MaxZoom);
+        if (zoom == view.Zoom)
+        {
+            return null;
+        }
+
+        return new CanvasView(zoom, screen.X - ((screen.X - view.PanX) * zoom / view.Zoom), screen.Y - ((screen.Y - view.PanY) * zoom / view.Zoom));
+    }
+}
+
+/// <summary>The view of a node canvas: screen = canvas units * <see cref="Zoom"/> + pan.</summary>
+public readonly record struct CanvasView(double Zoom, double PanX, double PanY)
+{
+    /// <summary>A screen point in canvas units.</summary>
+    public Point ToWorld(Point screen) => new((screen.X - PanX) / Zoom, (screen.Y - PanY) / Zoom);
+
+    /// <summary>A point in canvas units on the screen.</summary>
+    public Point ToScreen(Point world) => new((world.X * Zoom) + PanX, (world.Y * Zoom) + PanY);
 }

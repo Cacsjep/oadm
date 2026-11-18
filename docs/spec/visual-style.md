@@ -194,6 +194,12 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   `Oadm.CheckOperatorWidth`, `Oadm.CheckValueWidth` (the event select above the checks spans the three, its info icon and
   the checks' remove icon share the last column, `SharedSizeGroup` CheckEnd), so the row keeps those widths and shrinks
   on a narrow window; each input is a label-less `ui:FormField` (`wide inline`) so leaving it shows its error.
+- Node canvases: `NodeCanvasPainter` and `NodeCanvasGeometry` are the one look of every node canvas (dotted background,
+  vertical links, cards with a colour stripe, icon, name and a line, ports, the + below an output, the error directly
+  below a red-bordered card) and its view (`CanvasView`: fit, wheel zoom around the pointer); `CanvasTheme` gives drawn
+  code the theme. `NodeChainCanvas` over a `NodeChain` (`NodeChainNode`): a straight chain top to bottom with a status
+  icon and a message below each card, pan, zoom and a click that selects (Provisioning's profile editor and a camera's
+  flow). Vision Center's `PipelineCanvas` draws with the painter and adds its eye, control inputs and counts.
 - `PageHeader`: a plugin page's content for the host page header (`Subtitle`, `Trailing`; `IsHidden` leaves the header
   row out, Live View).
 - For dialogs: `DialogTitleBar`, `CardHeader`, `DialogFooter`.

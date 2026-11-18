@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Plugins.Vision.Model;
+using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Vision.Client;
 
@@ -207,7 +208,7 @@ public sealed partial class CanvasViewModel : ObservableObject
             return;
         }
 
-        var plus = CanvasGeometry.ControlPlusRect(into.X, into.Y, index);
+        var plus = NodeCanvasGeometry.ControlPlusRect(into.X, into.Y, index);
         Picker.OpenInto(into, port, inputs[index].Accepts, Math.Max(8, (plus.X * Zoom) + PanX - PickerWidth - 8), (plus.Top * Zoom) + PanY - 10);
     }
 
@@ -239,14 +240,14 @@ public sealed partial class CanvasViewModel : ObservableObject
         }
 
         Record();
-        var at = into.ControlPortAt(port) ?? CanvasGeometry.InputPort(into.X, into.Y);
+        var at = into.ControlPortAt(port) ?? NodeCanvasGeometry.InputPort(into.X, into.Y);
         var node = AddViewModel(new PipelineNode
         {
             Id = NewId(),
             Kind = kind.Id,
             Name = FreeName(kind.Label),
-            X = Math.Round(into.X - CanvasGeometry.ColumnStep),
-            Y = Math.Round(at.Y - CanvasGeometry.NodeHeight - CanvasGeometry.RowGap),
+            X = Math.Round(into.X - NodeCanvasGeometry.ColumnStep),
+            Y = Math.Round(at.Y - NodeCanvasGeometry.NodeHeight - NodeCanvasGeometry.RowGap),
         });
         Check(); // the new node's output kind
         if (TryPort(node, into, out var chosen, port) && chosen == port)
@@ -282,13 +283,13 @@ public sealed partial class CanvasViewModel : ObservableObject
         if (from is not null)
         {
             // Below its parent; a second child beside the first.
-            x = from.X + (OutputsOf(from).Count() * CanvasGeometry.ColumnStep);
-            y = from.Y + from.Height + CanvasGeometry.RowGap;
+            x = from.X + (OutputsOf(from).Count() * NodeCanvasGeometry.ColumnStep);
+            y = from.Y + from.Height + NodeCanvasGeometry.RowGap;
         }
         else
         {
-            x = ((ViewportSize.Width / 2) - PanX) / Zoom - (CanvasGeometry.NodeWidth / 2);
-            y = ((ViewportSize.Height / 2) - PanY) / Zoom - (CanvasGeometry.NodeHeight / 2);
+            x = ((ViewportSize.Width / 2) - PanX) / Zoom - (NodeCanvasGeometry.NodeWidth / 2);
+            y = ((ViewportSize.Height / 2) - PanY) / Zoom - (NodeCanvasGeometry.NodeHeight / 2);
         }
 
         var draws = kind.Id is NodeKinds.Area or NodeKinds.Line or NodeKinds.Direction;
@@ -401,7 +402,7 @@ public sealed partial class CanvasViewModel : ObservableObject
     public static string? ControlPortAt(NodeViewModel node, Point world)
     {
         ArgumentNullException.ThrowIfNull(node);
-        return node.ControlInputs.FirstOrDefault(c => node.ControlPortAt(c.Port) is { } at && CanvasGeometry.Distance(world, at) <= CanvasGeometry.PortReach)?.Port;
+        return node.ControlInputs.FirstOrDefault(c => node.ControlPortAt(c.Port) is { } at && NodeCanvasGeometry.Distance(world, at) <= NodeCanvasGeometry.PortReach)?.Port;
     }
 
     /// <summary>
@@ -722,8 +723,8 @@ public sealed partial class CanvasViewModel : ObservableObject
 
     /// <summary>
     /// Tidy up: from top to bottom by depth from the camera, the branches side by side with one gap between the cards
-    /// (<see cref="CanvasGeometry.ColumnGap"/>), a parent centred above its children; each row as high as its tallest card and
-    /// one gap (<see cref="CanvasGeometry.RowGap"/>) below it, room for a link and its count. The nodes without an input that feed
+    /// (<see cref="NodeCanvasGeometry.ColumnGap"/>), a parent centred above its children; each row as high as its tallest card and
+    /// one gap (<see cref="NodeCanvasGeometry.RowGap"/>) below it, room for a link and its count. The nodes without an input that feed
     /// a control input (Timer, Time window, Device event) go left of the node they feed, top-aligned with it, further left while
     /// a card is in the way; one that feeds a data input heads its own chain, top to bottom like the camera's. One undo step;
     /// the view fits afterwards.
@@ -753,7 +754,7 @@ public sealed partial class CanvasViewModel : ObservableObject
             var children = OutputsOf(node).Where(l => !l.IsControl).Select(l => l.To).Where(c => !depthOf.ContainsKey(c)).ToList();
             if (children.Count == 0)
             {
-                node.X = CanvasGeometry.Margin + (column++ * CanvasGeometry.ColumnStep);
+                node.X = NodeCanvasGeometry.Margin + (column++ * NodeCanvasGeometry.ColumnStep);
                 return node.X;
             }
 
@@ -780,11 +781,11 @@ public sealed partial class CanvasViewModel : ObservableObject
         // Rows by the real card heights.
         var rows = depthOf.Count == 0 ? 0 : depthOf.Values.Max() + 1;
         var top = new double[rows];
-        var y = CanvasGeometry.Margin;
+        var y = NodeCanvasGeometry.Margin;
         for (var d = 0; d < rows; d++)
         {
             top[d] = y;
-            y += depthOf.Where(e => e.Value == d).Select(e => e.Key.Height).DefaultIfEmpty(CanvasGeometry.NodeHeight).Max() + CanvasGeometry.RowGap;
+            y += depthOf.Where(e => e.Value == d).Select(e => e.Key.Height).DefaultIfEmpty(NodeCanvasGeometry.NodeHeight).Max() + NodeCanvasGeometry.RowGap;
         }
 
         foreach (var (node, depth) in depthOf)
@@ -794,16 +795,16 @@ public sealed partial class CanvasViewModel : ObservableObject
 
         // The starts left of the node they feed, top-aligned with it.
         var placed = depthOf.Keys.ToList();
-        bool Free(Rect rect) => !placed.Any(p => p.Rect.Inflate(CanvasGeometry.ColumnGap / 2).Intersects(rect));
+        bool Free(Rect rect) => !placed.Any(p => p.Rect.Inflate(NodeCanvasGeometry.ColumnGap / 2).Intersects(rect));
         foreach (var start in Nodes.Where(n => IsStart(n) && !placed.Contains(n)).ToList())
         {
             var target = OutputsOf(start).Select(l => l.To).FirstOrDefault(placed.Contains);
             var slot = target is not null && startsOf.TryGetValue(target, out var starts) ? starts.IndexOf(start) + 1 : 1;
-            var x = target?.X - (slot * CanvasGeometry.ColumnStep) ?? CanvasGeometry.Margin + (column++ * CanvasGeometry.ColumnStep);
-            var startY = target?.Y ?? CanvasGeometry.Margin;
-            while (target is not null && !Free(CanvasGeometry.NodeRect(x, startY, start.Height)))
+            var x = target?.X - (slot * NodeCanvasGeometry.ColumnStep) ?? NodeCanvasGeometry.Margin + (column++ * NodeCanvasGeometry.ColumnStep);
+            var startY = target?.Y ?? NodeCanvasGeometry.Margin;
+            while (target is not null && !Free(NodeCanvasGeometry.NodeRect(x, startY, start.Height)))
             {
-                x -= CanvasGeometry.ColumnStep;
+                x -= NodeCanvasGeometry.ColumnStep;
             }
 
             start.X = x;
@@ -813,8 +814,8 @@ public sealed partial class CanvasViewModel : ObservableObject
 
         foreach (var node in Nodes.Where(n => !placed.Contains(n)))
         {
-            node.X = CanvasGeometry.Margin + (column++ * CanvasGeometry.ColumnStep);
-            node.Y = CanvasGeometry.Margin;
+            node.X = NodeCanvasGeometry.Margin + (column++ * NodeCanvasGeometry.ColumnStep);
+            node.Y = NodeCanvasGeometry.Margin;
         }
 
         AfterChange();
@@ -832,12 +833,12 @@ public sealed partial class CanvasViewModel : ObservableObject
 
         var x0 = Nodes.Min(n => n.X) - 30;
         var y0 = Nodes.Min(n => n.Y) - 30;
-        var x1 = Nodes.Max(n => n.X) + CanvasGeometry.NodeWidth + 30;
-        var y1 = Nodes.Max(n => n.Y + n.Height) + CanvasGeometry.PlusGap + CanvasGeometry.PlusSize + 30; // the + below the lowest node
-        var zoom = Math.Clamp(Math.Min(ViewportSize.Width / (x1 - x0), ViewportSize.Height / (y1 - y0)), CanvasGeometry.MinZoom, 1);
-        Zoom = zoom;
-        PanX = ((ViewportSize.Width - ((x1 - x0) * zoom)) / 2) - (x0 * zoom);
-        PanY = Math.Min(TopRoom, (ViewportSize.Height - ((y1 - y0) * zoom)) / 2) - (y0 * zoom);
+        var x1 = Nodes.Max(n => n.X) + NodeCanvasGeometry.NodeWidth + 30;
+        var y1 = Nodes.Max(n => n.Y + n.Height) + NodeCanvasGeometry.PlusGap + NodeCanvasGeometry.PlusSize + 30; // the + below the lowest node
+        var view = NodeCanvasGeometry.Fit(new Rect(x0, y0, x1 - x0, y1 - y0), ViewportSize, TopRoom);
+        Zoom = view.Zoom;
+        PanX = view.PanX;
+        PanY = view.PanY;
         Bump();
     }
 
@@ -847,15 +848,14 @@ public sealed partial class CanvasViewModel : ObservableObject
     /// <summary>The wheel: zoom by <paramref name="factor"/> around <paramref name="screen"/> (it stays under the pointer), 25 % to 200 %.</summary>
     public void ZoomAt(Point screen, double factor)
     {
-        var zoom = Math.Clamp(Zoom * factor, CanvasGeometry.MinZoom, CanvasGeometry.MaxZoom);
-        if (zoom == Zoom)
+        if (NodeCanvasGeometry.ZoomAround(View, screen, factor) is not { } view)
         {
             return;
         }
 
-        PanX = screen.X - ((screen.X - PanX) * zoom / Zoom);
-        PanY = screen.Y - ((screen.Y - PanY) * zoom / Zoom);
-        Zoom = zoom;
+        PanX = view.PanX;
+        PanY = view.PanY;
+        Zoom = view.Zoom;
         Picker.Close();
         Bump();
     }
@@ -867,9 +867,12 @@ public sealed partial class CanvasViewModel : ObservableObject
         Bump();
     }
 
-    public Point ToWorld(Point screen) => new((screen.X - PanX) / Zoom, (screen.Y - PanY) / Zoom);
+    /// <summary>The view as the shared canvas geometry takes it.</summary>
+    public CanvasView View => new(Zoom, PanX, PanY);
 
-    public Point ToScreen(Point world) => new((world.X * Zoom) + PanX, (world.Y * Zoom) + PanY);
+    public Point ToWorld(Point screen) => View.ToWorld(screen);
+
+    public Point ToScreen(Point world) => View.ToScreen(world);
 
     // ---- Hit tests (canvas units) ----
 
@@ -878,7 +881,7 @@ public sealed partial class CanvasViewModel : ObservableObject
         Nodes.LastOrDefault(n => n.Rect.Contains(world));
 
     public NodeViewModel? OutputPortAt(Point world) =>
-        Nodes.LastOrDefault(n => n.HasOutputPort && CanvasGeometry.Distance(world, n.OutputPoint) <= CanvasGeometry.PortReach / Math.Min(1, Zoom));
+        Nodes.LastOrDefault(n => n.HasOutputPort && NodeCanvasGeometry.Distance(world, n.OutputPoint) <= NodeCanvasGeometry.PortReach / Math.Min(1, Zoom));
 
     /// <summary>The + shows on a node with an output that leads nowhere yet, or on the selected node.</summary>
     public bool ShowsPlus(NodeViewModel node)
@@ -891,7 +894,7 @@ public sealed partial class CanvasViewModel : ObservableObject
     public Rect PlusOf(NodeViewModel node)
     {
         ArgumentNullException.ThrowIfNull(node);
-        return CanvasGeometry.PlusRect(node.X, node.Y, node.HasError, OutputsOf(node).Any(), node.Height);
+        return NodeCanvasGeometry.PlusRect(node.X, node.Y, node.HasError, OutputsOf(node).Any(), node.Height);
     }
 
     public NodeViewModel? PlusAt(Point world) =>
@@ -919,9 +922,9 @@ public sealed partial class CanvasViewModel : ObservableObject
                     continue;
                 }
 
-                var dot = CanvasGeometry.ControlPort(node.X, node.Y, i);
-                if (CanvasGeometry.Distance(world, dot) <= CanvasGeometry.PortReach
-                    || (ShowsControlPlus(node) && CanvasGeometry.ControlPlusRect(node.X, node.Y, i).Inflate(2).Contains(world)))
+                var dot = NodeCanvasGeometry.ControlPort(node.X, node.Y, i);
+                if (NodeCanvasGeometry.Distance(world, dot) <= NodeCanvasGeometry.PortReach
+                    || (ShowsControlPlus(node) && NodeCanvasGeometry.ControlPlusRect(node.X, node.Y, i).Inflate(2).Contains(world)))
                 {
                     return (node, inputs[i].Port);
                 }
@@ -939,10 +942,10 @@ public sealed partial class CanvasViewModel : ObservableObject
     }
 
     public NodeViewModel? EyeAt(Point world) =>
-        Nodes.LastOrDefault(n => n.CanShowOnVideo && CanvasGeometry.EyeRect(n.X, n.Y).Contains(world));
+        Nodes.LastOrDefault(n => n.CanShowOnVideo && NodeCanvasGeometry.EyeRect(n.X, n.Y).Contains(world));
 
     public LinkViewModel? LinkAt(Point world) => Links.LastOrDefault(l =>
-        CanvasGeometry.DistanceToCurve(world, l.Start, l.End, l.IsControl) <= CanvasGeometry.LinkReach / Zoom);
+        NodeCanvasGeometry.DistanceToCurve(world, l.Start, l.End, l.IsControl) <= NodeCanvasGeometry.LinkReach / Zoom);
 
     /// <summary>
     /// The pointer over the canvas: the hand over everything a click acts on (the +, the eye, a node, a link), the crosshair

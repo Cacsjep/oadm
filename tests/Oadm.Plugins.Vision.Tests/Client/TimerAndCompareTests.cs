@@ -75,9 +75,9 @@ public sealed class TimerAndCompareTests
         var count = canvas.Find("d")!;
         var link = canvas.ControlLinkOf(count, NodeKinds.ResetPort)!;
         Assert.Equal(count.X, link.End.X);
-        Assert.Equal(CanvasGeometry.ControlPort(count.X, count.Y, 0), link.End); // Reset: the first row below the live line
-        Assert.True(link.End.Y > count.Y + CanvasGeometry.NodeHeight - 4 && link.End.Y < count.Y + count.Height);
-        Assert.Same(link, canvas.LinkAt(CanvasGeometry.OnCurve(link.Start, link.End, 0.5, intoSide: true)));
+        Assert.Equal(NodeCanvasGeometry.ControlPort(count.X, count.Y, 0), link.End); // Reset: the first row below the live line
+        Assert.True(link.End.Y > count.Y + NodeCanvasGeometry.NodeHeight - 4 && link.End.Y < count.Y + count.Height);
+        Assert.Same(link, canvas.LinkAt(NodeCanvasGeometry.OnCurve(link.Start, link.End, 0.5, intoSide: true)));
         canvas.SelectedLink = link;
         canvas.DeleteSelectedCommand.Execute(null);
         Assert.Null(canvas.ControlLinkOf(count, NodeKinds.ResetPort));
@@ -92,7 +92,7 @@ public sealed class TimerAndCompareTests
         var midnight = canvas.Find("t1")!;
         var count = canvas.Find("d")!;
         Assert.Equal(count.Y, midnight.Y); // top-aligned with the Count it resets, left of it
-        Assert.Equal(count.X - CanvasGeometry.ColumnStep, midnight.X);
+        Assert.Equal(count.X - NodeCanvasGeometry.ColumnStep, midnight.X);
         foreach (var node in canvas.Nodes) // no card on another
         {
             Assert.DoesNotContain(canvas.Nodes, other => !ReferenceEquals(other, node) && other.Rect.Intersects(node.Rect));
@@ -165,7 +165,7 @@ public sealed class TimerAndCompareTests
         Assert.Equal(PortKind.Condition, door.OutputKind);
         Assert.Same(door, canvas.ControlLinkOf(both, NodeKinds.SecondPort)!.From);
         Assert.Same(hours, canvas.ControlLinkOf(alert, NodeKinds.WhilePort)!.From);
-        Assert.Equal(CanvasGeometry.HeightFor(2), alert.Height); // Send now and Only while
+        Assert.Equal(NodeCanvasGeometry.HeightFor(2), alert.Height); // Send now and Only while
 
         // A pulse fits Reset and Send now, never Only while or Second.
         Assert.True(canvas.FitsPort(midnight, alert, NodeKinds.SendPort));
@@ -320,11 +320,11 @@ public sealed class TimerAndCompareTests
         canvas.TidyUpCommand.Execute(null);
         var count = canvas.Find("e")!; // two control rows: a taller card
         var below = canvas.Find("f")!;
-        Assert.Equal(count.Y + count.Height + CanvasGeometry.RowGap, below.Y);
+        Assert.Equal(count.Y + count.Height + NodeCanvasGeometry.RowGap, below.Y);
         var line = canvas.Find("d")!;
         var going = canvas.Find("k")!;
         Assert.Equal(line.Y, going.Y);
-        Assert.True(Math.Abs(going.X - line.X) >= CanvasGeometry.NodeWidth + CanvasGeometry.ColumnGap); // side by side, one gap at least (its subtree may be wider)
+        Assert.True(Math.Abs(going.X - line.X) >= NodeCanvasGeometry.NodeWidth + NodeCanvasGeometry.ColumnGap); // side by side, one gap at least (its subtree may be wider)
         foreach (var node in canvas.Nodes)
         {
             Assert.DoesNotContain(canvas.Nodes, other => !ReferenceEquals(other, node) && other.Rect.Intersects(node.Rect));
@@ -334,7 +334,7 @@ public sealed class TimerAndCompareTests
         foreach (var link in canvas.Links.Where(l => l.IsControl))
         {
             Assert.Equal(link.To.Y, link.From.Y);
-            Assert.True(link.To.X - link.From.X >= CanvasGeometry.ColumnStep);
+            Assert.True(link.To.X - link.From.X >= NodeCanvasGeometry.ColumnStep);
             Assert.DoesNotContain(canvas.Nodes, n => n.Y == link.To.Y && n.X > link.From.X && n.X < link.To.X); // nothing in between
         }
 

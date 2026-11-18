@@ -867,7 +867,7 @@ public sealed partial class VisionViewModel : ObservableObject, IDisposable
         {
             Name = VisionTexts.NewPipelineName(number),
             DeviceId = camera,
-            Nodes = [new PipelineNode { Id = "n1", Kind = NodeKinds.Camera, Name = NodeKinds.CameraKind.Label, X = CanvasGeometry.Margin, Y = CanvasGeometry.Margin }],
+            Nodes = [new PipelineNode { Id = "n1", Kind = NodeKinds.Camera, Name = NodeKinds.CameraKind.Label, X = NodeCanvasGeometry.Margin, Y = NodeCanvasGeometry.Margin }],
         };
         var editor = ShowEditor(pipeline, isNew: true);
         SetSelected(null);
