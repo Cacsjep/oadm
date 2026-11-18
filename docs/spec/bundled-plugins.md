@@ -362,8 +362,8 @@ that has the app, with five count cards (Good, Detected, Pending, Detection off,
 
 `plugins/Oadm.Plugins.Provisioning`, id `oadm.provisioning`, rail page **Provisioning** (icon `workflow`), **free, on by
 default**, not at sites (`siteSupport` none). Profiles of nodes run on factory-new cameras that get an address from OADM's
-DHCP server while provisioning is started. Spec: [provisioning.md](provisioning.md); details: plugin `README.md`. Stage 1
-built (server part, nodes Set password, Add to OADM, Wait for approval, Set IP, Date and time); the page comes next.
+DHCP server while provisioning is started. Spec: [provisioning.md](provisioning.md); details: plugin `README.md`. Stages 1
+and 2 built (server part, nodes Set password, Add to OADM, Wait for approval, Set IP, Date and time; the page).
 
 - Rules that must hold: a flow starts only for an Axis MAC with an OADM DHCP lease whose camera has no password yet
   (the add page's look, no password sent), any other is "Not new, left as it is" and never changed; Set password always

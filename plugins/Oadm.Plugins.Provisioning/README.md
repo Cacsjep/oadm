@@ -4,9 +4,8 @@ Core plugin `oadm.provisioning`, rail page **Provisioning**, free, on by default
 address from OADM's DHCP server, while provisioning is started on the page. The spec is
 [`docs/spec/provisioning.md`](../../docs/spec/provisioning.md); this file holds the decisions of the code.
 
-Stage 1 (built): the server part, the nodes Set password, Add to OADM, Wait for approval, Set IP and Date and time, the
-page methods and the tools. The client page and the canvas come next (no `.Client` project yet: the host shows "not
-installed" for the page).
+Built: the server part, the nodes Set password, Add to OADM, Wait for approval, Set IP and Date and time, the page
+methods and the tools (stage 1); the page `Oadm.Plugins.Provisioning.Client` (stage 2, "The page" below).
 
 ## How it works
 
@@ -99,12 +98,37 @@ The engine is the node's `INodeHost`: `AutoAdd`, `Tasks`, `Devices`, `Time`, `Op
 `WaitForApprovalAsync`, `DeviceAdded`, `AddressChanged`. `TaskRuns.RunTaskAsync` starts a task and waits for its end
 (every 2 s, at most 30 minutes by default) for nodes that need more than one task.
 
+## The page
+
+`Oadm.Plugins.Provisioning.Client` (own cards, `ProvisioningView`):
+
+- **DHCP card**: the DHCP server's state, interface and range from `status.dhcp`; Turn on / Edit open the DHCP server's
+  own page (`OpenAsync("plugin:oadm.dhcp-server")`), never a copy of its form; the pool overlap warning below.
+- **Toolbar**: Start provisioning (disabled with the reason as tooltip: no DHCP server, no active profile, profile with
+  errors), Stop provisioning (confirmed), the state chip beside them, the active profile (choosing one calls
+  `activateProfile`, a refusal goes back), New profile, Edit profile, Delete profile (red, confirmed with Delete).
+- **Cameras**: `listCameras` in pages of 1,000, then the batched `cameras` events applied by MAC address (a row's older
+  version never overwrites a newer one); `RangeObservableCollection`, one reset per search or batch; Run failed again,
+  Continue and Remove on the selected rows. The empty line says what to do first.
+- **A camera's flow**: the row clicked last opens a card right of the table with the session's profile
+  (`status.sessionProfile`) on the shared node canvas (`NodeChainCanvas` of the client SDK, the look of Vision Center's
+  canvas): green (Success, Not needed), yellow, red with the message below, violet while it runs, grey when not run.
+- **Profile editor** (`ProfileEditorWindow`): the same canvas, Add node (the kinds of `nodeKinds` that are not fixed),
+  Move up, Move down, Remove (never the fixed two). The side panel shows the selected node's fields (`NodeForms`: a form per
+  kind; a kind without one gets a field per key of its default settings), errors below the fields; `checkProfile` after
+  every change (one at a time), its error on the node, its warning below it in amber. Save stays off with the reason as
+  tooltip while any error shows. A typed root password goes with Save only (`SaveProfileRequest.Password`) and is
+  forgotten after it.
+
+A new node kind gets an entry in `NodeForms` (its fields and their rules) and `NodeLook` (icon and colour).
+
 ## Page methods and events
 
 `ProvisioningContract.cs`: `getStatus`, `listProfiles`, `getProfile`, `checkProfile`, `nodeKinds`, `credentials` (ids and
 user names only), `saveProfile`, `deleteProfile`, `activateProfile`, `start`, `stop`, `listCameras` (paged), `getCamera`,
 `runFailedAgain`, `continue`, `removeCameras`. Events `status` (after Start, Stop and profile changes) and `cameras`
-(batched). Nothing grows with the device count.
+(batched). `getStatus` and `status` carry the profile the session runs (`sessionProfile`: the page draws a camera's flow
+with it). Nothing grows with the device count.
 
 ## Rights
 
@@ -121,4 +145,6 @@ Every method only for users with all devices (`RequiresAllDevices`); changes are
 
 `tests/Oadm.Plugins.Provisioning.Tests`: fakes for the add pipeline, the DHCP view and the address probe, a fake clock,
 gates for the 8 places and the address lock; the Perf test takes addresses with 100,000 devices and pages 2,000 rows.
-No hardware test yet.
+The page (`Client/`): the view models against canned answers and the server's own profile check (no Avalonia), the
+table at 100,000 cameras (Perf, with a 1,000-row twin), headless screenshots of the page, a camera's flow, the editor and
+the empty page (`OADM_SCREENSHOT_DIR`). No hardware test yet.

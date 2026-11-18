@@ -1,8 +1,8 @@
 # Zero-touch provisioning
 
-Status: **draft spec; stage 1 built** (the server part with the nodes Set password, Add to OADM, Wait for approval, Set IP
-and Date and time, the page methods and tools; the page and the canvas are next). Flow design of 2026-11-18; replaces the
-step list of 2026-10-27.
+Status: **draft spec; stages 1 and 2 built** (the server part with the nodes Set password, Add to OADM, Wait for
+approval, Set IP and Date and time, the page methods and tools; the page with the canvas and the profile
+editor). Flow design of 2026-11-18; replaces the step list of 2026-10-27.
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 

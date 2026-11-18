@@ -10,6 +10,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Added
 
 - DHCP server: set the lease time, from 1 hour to 30 days.
+- Provisioning: factory-new cameras on the DHCP server get their password, address and time by a profile you build as a flow.
 
 ### Fixed
 
