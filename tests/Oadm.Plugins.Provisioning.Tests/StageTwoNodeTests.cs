@@ -1,0 +1,493 @@
+using System.Net;
+using System.Text;
+using System.Text.Json;
+
+using Oadm.Plugins.Provisioning.Engine;
+using Oadm.Plugins.Provisioning.Model;
+using Oadm.Plugins.Provisioning.Nodes;
+using Oadm.Plugins.VapixCommander;
+using Oadm.Sdk.Devices;
+using Oadm.Sdk.Plugins;
+using Oadm.Sdk.Tasks;
+using Oadm.Sdk.Testing;
+using Oadm.Sdk.Vapix;
+
+namespace Oadm.Plugins.Provisioning.Tests;
+
+/// <summary>The nodes 3 to 13 of the spec with fake tasks and cameras: Success, Warning, Error and Not needed with their messages, the payloads and the checks.</summary>
+public sealed class StageTwoNodeTests
+{
+    private static FakeDevice Device(Harness h, string model = "P3265-LVE", string firmware = "11.11.160", int i = 1)
+    {
+        var device = new FakeDevice { Serial = Harness.Serial(i), Address = $"192.168.15.{100 + i}", Model = model, FirmwareVersion = firmware, Status = DeviceStatus.Ok };
+        h.Devices.Add(device);
+        return device;
+    }
+
+    private static CameraRow Camera(FakeDevice device, int i = 1) =>
+        new() { Mac = Harness.Mac(i), Serial = device.Serial, Address = device.Address, DeviceId = device.Id, Model = device.Model };
+
+    private static async Task<NodeResult> RunAsync(Harness h, IProvisioningNode node, object settings, CameraRow camera)
+    {
+        var flow = Harness.Node("n", node.Kind, settings);
+        var run = node.RunAsync(new NodeRun(h.Engine, camera, h.Profile(flow), flow), CancellationToken.None);
+        await h.RunUntilAsync(() => run.IsCompleted, node.Name + " ended");
+        return await run;
+    }
+
+    private static async Task<Harness> StartedAsync(bool withStarter = true)
+    {
+        var h = new Harness();
+        if (withStarter)
+        {
+            h.StarterTasks = h.Ctx;
+        }
+
+        await h.StartAsync(h.Profile());
+        return h;
+    }
+
+    private static JsonElement Payload(FakeTaskRun run) => JsonDocument.Parse(run.PayloadJson!).RootElement;
+
+    private static ProfileCheckContext Kept(Harness h) => ProfileCheckContext.Empty with { Files = h.Vault.Files, Secrets = h.Vault.SecretIds };
+
+    // ---- Upgrade AXIS OS online ----
+
+    [Fact]
+    public async Task Upgrade_online_asks_for_the_latest_version_as_the_user_who_started_and_maps_the_end()
+    {
+        await using var h = await StartedAsync();
+        var camera = Camera(Device(h));
+        var node = new UpgradeOnlineNode();
+
+        Assert.Equal(NodeResult.Success("AXIS OS from axis.com installed."), await RunAsync(h, node, new UpgradeOnlineSettings(OsTarget.LatestLts), camera));
+        var run = Assert.Single(h.Ctx.TaskRuns);
+        Assert.Equal("oadm.firmware", run.PluginId);
+        Assert.Equal("latestLts", Payload(run).GetProperty("latest").GetProperty("target").GetString());
+
+        h.Outcomes["oadm.firmware"] = (TaskEndState.DoneWithWarnings, "Already up to date: the device runs 12.11.147. Nothing was installed.");
+        Assert.Equal(NodeResult.Success("Already 12.11.147."), await RunAsync(h, node, new UpgradeOnlineSettings(), camera));
+
+        h.Outcomes["oadm.firmware"] = (TaskEndState.Failed, "Sign in to MyAxis to download from axis.com. Nothing was changed.");
+        Assert.Equal(NodeResult.Error("Sign in to MyAxis."), await RunAsync(h, node, new UpgradeOnlineSettings(), camera));
+
+        h.Outcomes["oadm.firmware"] = (TaskEndState.Failed, AxisDownloadTexts.Expired);
+        Assert.Equal(NodeResult.Error("Sign in to MyAxis."), await RunAsync(h, node, new UpgradeOnlineSettings(), camera));
+
+        h.Outcomes["oadm.firmware"] = (TaskEndState.Failed, "axis.com could not be reached. Nothing was changed.");
+        Assert.Equal(NodeResult.Error("axis.com could not be reached. Nothing was changed."), await RunAsync(h, node, new UpgradeOnlineSettings(), camera));
+    }
+
+    [Fact]
+    public async Task Upgrade_online_skips_a_camera_that_is_not_older_and_needs_the_starter_after_a_restart()
+    {
+        await using var h = await StartedAsync(withStarter: false);
+        var camera = Camera(Device(h, firmware: "12.6.95"));
+        var node = new UpgradeOnlineNode();
+
+        Assert.Equal(NodeResult.Success("Already 12.6.95."), await RunAsync(h, node, new UpgradeOnlineSettings(OnlyIfOlderThan: "12.6.95"), camera));
+        Assert.Equal(NodeResult.Error(NodeTexts.StartAgain), await RunAsync(h, node, new UpgradeOnlineSettings(OnlyIfOlderThan: "12.11"), camera));
+        Assert.Empty(h.Ctx.TaskRuns);
+
+        Assert.Equal("Enter a version like 12.6.95.", node.Check(Harness.Json(new UpgradeOnlineSettings(OnlyIfOlderThan: "twelve")), ProfileCheckContext.Empty));
+        Assert.Null(node.Check(Harness.Json(new UpgradeOnlineSettings(OsTarget.LatestActive, "12.6")), ProfileCheckContext.Empty));
+    }
+
+    // ---- Upgrade AXIS OS from files ----
+
+    [Fact]
+    public async Task Upgrade_from_files_hands_the_kept_files_to_the_task_and_says_what_was_installed()
+    {
+        await using var h = await StartedAsync();
+        var camera = Camera(Device(h));
+        var p3265 = await h.FileAsync("P3265-LVE_12_6_95.bin", [1, 2, 3]);
+        var m3086 = await h.FileAsync("M3086-V_11_11_160.bin", [4, 5]);
+        var settings = new UpgradeFilesSettings([new OsFile(p3265.Id, p3265.Name), new OsFile(m3086.Id, m3086.Name)], AllowDowngrade: true);
+        var node = new UpgradeFilesNode();
+        Assert.Null(node.Check(Harness.Json(settings), Kept(h)));
+
+        Assert.Equal(NodeResult.Success("AXIS OS 12.6.95 installed."), await RunAsync(h, node, settings, camera));
+        var payload = Payload(Assert.Single(h.Ctx.TaskRuns));
+        Assert.True(payload.GetProperty("allowDowngrade").GetBoolean());
+        var files = payload.GetProperty("files").EnumerateArray().ToList();
+        Assert.Equal(["P3265-LVE_12_6_95.bin", "M3086-V_11_11_160.bin"], files.Select(f => f.GetProperty("fileName").GetString()));
+        var upload = await h.Ctx.FakeUploads.FindAsync(files[0].GetProperty("fileId").GetString()!, CancellationToken.None);
+        Assert.Equal(p3265.Sha256, upload!.Sha256);
+
+        // The server deleted the upload after a day: the file is added again.
+        h.Ctx.FakeUploads.Remove(upload.Id);
+        h.Outcomes["oadm.firmware"] = (TaskEndState.DoneWithWarnings, "No file for this model. Nothing was installed.");
+        Assert.Equal(NodeResult.Warning("No file for this model."), await RunAsync(h, node, settings, camera));
+        Assert.NotEqual(upload.Id, Payload(h.Ctx.TaskRuns[1]).GetProperty("files")[0].GetProperty("fileId").GetString());
+
+        h.Outcomes["oadm.firmware"] = (TaskEndState.Failed, "Downgrade 12.6.95 → 11.11.160 is not allowed. Turn on \"Allow downgrade\". Nothing was changed.");
+        Assert.Equal(NodeState.Error, (await RunAsync(h, node, settings, camera)).State);
+    }
+
+    [Fact]
+    public async Task Upgrade_from_files_without_its_file_starts_nothing_and_checks_the_files()
+    {
+        await using var h = await StartedAsync();
+        var camera = Camera(Device(h));
+        var node = new UpgradeFilesNode();
+        var gone = new UpgradeFilesSettings([new OsFile(Guid.NewGuid(), "P3265-LVE_12_6_95.bin")]);
+
+        Assert.Equal(NodeResult.Error(NodeVault.FileGone), await RunAsync(h, node, gone, camera));
+        Assert.Empty(h.Ctx.TaskRuns);
+
+        Assert.Equal("P3265-LVE_12_6_95.bin is no longer on the server. Choose it again.", node.Check(Harness.Json(gone), Kept(h)));
+        Assert.Equal("Choose the AXIS OS files.", node.Check(Harness.Json(new UpgradeFilesSettings([])), ProfileCheckContext.Empty));
+        var a = await h.FileAsync("readme.txt", [1]);
+        Assert.Equal("readme.txt is not an AXIS OS file (e.g. P3265-LVE_12_6_95.bin).", node.Check(Harness.Json(new UpgradeFilesSettings([new OsFile(a.Id)])), Kept(h)));
+        var b = await h.FileAsync("P3265-LVE_12_6_95.bin", [1]);
+        var c = await h.FileAsync("P3265-LVE_12_11_77.bin", [2]);
+        Assert.Equal("Two files are for P3265-LVE.", node.Check(Harness.Json(new UpgradeFilesSettings([new OsFile(b.Id), new OsFile(c.Id)])), Kept(h)));
+    }
+
+    // ---- Network settings ----
+
+    [Fact]
+    public async Task Network_settings_numbers_the_cameras_in_order_and_writes_name_and_dns()
+    {
+        await using var h = await StartedAsync();
+        var first = Camera(Device(h, i: 1), 1);
+        var second = Camera(Device(h, model: "AXIS M3086-V", i: 2), 2);
+        var settings = new NetworkSettingsSettings("{model}-{n}", 10, ["10.0.0.1"], "site.local");
+        var node = new NetworkSettingsNode();
+
+        Assert.Equal(NodeResult.Success("Host name P3265-LVE-10, DNS 10.0.0.1, search domain site.local."), await RunAsync(h, node, settings, first));
+        Assert.Equal(NodeResult.Success("Host name M3086-V-11, DNS 10.0.0.1, search domain site.local."), await RunAsync(h, node, settings, second));
+        Assert.Equal("Host name P3265-LVE-10, DNS 10.0.0.1, search domain site.local.", (await RunAsync(h, node, settings, first)).Message); // its number stays
+
+        var payload = Payload(h.Ctx.TaskRuns[0]);
+        Assert.Equal("oadm.network", h.Ctx.TaskRuns[0].PluginId);
+        Assert.False(payload.GetProperty("hostName").GetProperty("useDhcp").GetBoolean());
+        Assert.Equal("P3265-LVE-10", payload.GetProperty("devices").GetProperty(first.DeviceId!.Value.ToString()).GetProperty("hostName").GetString());
+        Assert.Equal("site.local", payload.GetProperty("dns").GetProperty("searchDomains")[0].GetString());
+
+        h.Outcomes["oadm.network"] = (TaskEndState.Failed, "DNS: enter at least one DNS server or use DNS from DHCP. Nothing was changed.");
+        Assert.Equal(NodeResult.Error("DNS: enter at least one DNS server or use DNS from DHCP. Nothing was changed."), await RunAsync(h, node, settings, first));
+    }
+
+    [Theory]
+    [InlineData("camera", null, null, "Use {n}, {serial} or {mac} in the host name, else every camera gets the same name.")]
+    [InlineData("cam_{n}", null, null, "Use letters, digits, hyphens and {model}, {serial}, {mac}, {n}: at most 63 characters.")]
+    [InlineData("cam-{n}", null, "site.local", "Enter the DNS servers for the search domain.")]
+    [InlineData("", null, null, "Enter a host name or DNS servers.")]
+    [InlineData("", "10.0.0.300", null, "10.0.0.300 is not an IPv4 address.")]
+    [InlineData("{model}-{serial}", "10.0.0.1", "site.local", null)]
+    public void Network_settings_checks_the_pattern_and_dns(string pattern, string? dns, string? domain, string? error) =>
+        Assert.Equal(error, new NetworkSettingsNode().Check(Harness.Json(new NetworkSettingsSettings(pattern, 1, dns is null ? [] : [dns], domain)), ProfileCheckContext.Empty));
+
+    // ---- Configuration ----
+
+    [Fact]
+    public async Task Configuration_imports_the_kept_file_with_the_chosen_areas()
+    {
+        await using var h = await StartedAsync();
+        var camera = Camera(Device(h));
+        var file = await h.FileAsync("lobby.json", Encoding.UTF8.GetBytes("""{"data":{}}"""));
+        var settings = new ConfigurationSettings(ConfigSource.File, file.Id, Parameters: true, ActionRules: true);
+        var node = new ConfigurationNode();
+
+        Assert.Equal(NodeResult.Success("Parameters and action rules applied."), await RunAsync(h, node, settings, camera));
+        var run = Assert.Single(h.Ctx.TaskRuns);
+        Assert.Equal("oadm.device-config.import", run.PluginId);
+        var payload = Payload(run);
+        Assert.Equal(["param.v2", "action-rules.v2"], payload.GetProperty("sections").EnumerateArray().Select(s => s.GetString()));
+        Assert.Equal("lobby.json", payload.GetProperty("fileName").GetString());
+        Assert.NotNull(await h.Ctx.FakeUploads.FindAsync(payload.GetProperty("fileId").GetString()!, CancellationToken.None));
+
+        h.Outcomes["oadm.device-config.import"] = (TaskEndState.DoneWithWarnings, "Parameters: 2 not on this device: Image.I0.Appearance.Mirror, PTZ.Limit");
+        Assert.Equal(NodeResult.Warning("Parameters: 2 not on this device: Image.I0.Appearance.Mirror, PTZ.Limit."), await RunAsync(h, node, settings, camera));
+
+        h.Outcomes["oadm.device-config.import"] = (TaskEndState.Failed, "The file is for AXIS M3086-V; this device is AXIS P3265-LVE. Nothing was changed.");
+        Assert.Equal(NodeResult.Error("The file is for AXIS M3086-V; this device is AXIS P3265-LVE. Nothing was changed."), await RunAsync(h, node, settings, camera));
+    }
+
+    [Fact]
+    public async Task Configuration_reads_the_template_camera_when_it_runs()
+    {
+        await using var h = await StartedAsync();
+        var camera = Camera(Device(h, i: 1), 1);
+        var template = Device(h, i: 9);
+        const string export = """{"data":{"param.v2":{"Image":{"I0":{"Text":{"String":"Lobby"}}}}}}""";
+        var client = h.Vapix.For(template.Id);
+        client.Handler = (request, _, _) => Task.FromResult(request.RequestUri!.OriginalString == ConfigurationNode.ExportPath
+            ? ScriptedVapix.Json(export)
+            : new HttpResponseMessage(HttpStatusCode.NotFound));
+        var settings = new ConfigurationSettings(ConfigSource.TemplateCamera, TemplateSerial: template.Serial);
+        var node = new ConfigurationNode();
+
+        Assert.Equal(NodeResult.Success("Parameters of the template camera applied."), await RunAsync(h, node, settings, camera));
+        Assert.Equal(("GET", ConfigurationNode.ExportPath), client.Requests.Select(r => (r.Method, r.Path)).Single());
+        var uploadId = Payload(Assert.Single(h.Ctx.TaskRuns)).GetProperty("fileId").GetString()!;
+        await using (var read = await h.Ctx.FakeUploads.OpenReadAsync(uploadId, CancellationToken.None))
+        {
+            Assert.Equal(export, await new StreamReader(read).ReadToEndAsync());
+        }
+
+        // The template itself and a template OADM does not have.
+        Assert.Equal(NodeResult.NotNeeded("this is the template camera."), await RunAsync(h, node, settings, Camera(template, 9)));
+        Assert.Equal(NodeResult.Error("The template camera ACCC8E0000FF is not in OADM."),
+            await RunAsync(h, node, settings with { TemplateSerial = "ACCC8E0000FF" }, camera));
+        Assert.Single(h.Ctx.TaskRuns);
+
+        Assert.Equal("Choose what to apply.", node.Check(Harness.Json(settings with { Parameters = false }), ProfileCheckContext.Empty));
+        Assert.Equal("Choose the template camera.", node.Check(Harness.Json(new ConfigurationSettings(ConfigSource.TemplateCamera)), ProfileCheckContext.Empty));
+        Assert.Equal("Choose a configuration file.", node.Check(Harness.Json(new ConfigurationSettings()), ProfileCheckContext.Empty));
+    }
+
+    // ---- Users ----
+
+    [Fact]
+    public async Task Users_adds_each_account_with_its_kept_password_and_never_stores_it_plainly()
+    {
+        await using var h = await StartedAsync();
+        var camera = Camera(Device(h));
+        var op = await h.SecretAsync("Op-Pass-77");
+        var viewer = await h.SecretAsync("View-Pass-88");
+        var settings = new UsersSettings([new UserAccount("op1", CameraRole.Operator, Ptz: true, SecretId: op), new UserAccount("view1", SecretId: viewer)]);
+        var node = new UsersNode();
+        Assert.Null(node.Check(Harness.Json(settings), Kept(h)));
+
+        Assert.Equal(NodeResult.Success("Added op1 and view1."), await RunAsync(h, node, settings, camera));
+        Assert.Equal(2, h.Ctx.TaskRuns.Count);
+        var first = Payload(h.Ctx.TaskRuns[0]);
+        Assert.Equal(("add", "op1", "Op-Pass-77", "operator", true),
+            (first.GetProperty("mode").GetString(), first.GetProperty("userName").GetString(), first.GetProperty("password").GetString(), first.GetProperty("role").GetString(), first.GetProperty("ptz").GetBoolean()));
+        Assert.Equal("viewer", Payload(h.Ctx.TaskRuns[1]).GetProperty("role").GetString());
+        Assert.All(h.Ctx.PluginSettings.Values.Values, v => Assert.DoesNotContain("Op-Pass-77", v, StringComparison.Ordinal));
+        Assert.DoesNotContain("Op-Pass-77", Harness.Json(settings).GetRawText(), StringComparison.Ordinal);
+
+        h.Decide = run => run.PayloadJson!.Contains("\"op1\"", StringComparison.Ordinal)
+            ? (TaskEndState.Failed, "op1 is the account OADM uses for this device and must stay Administrator. Nothing was changed.")
+            : (TaskEndState.DoneWithWarnings, "User view1 already exists (Viewer); nothing was changed. Use Change to update it.");
+        Assert.Equal(
+            NodeResult.Error("view1: User view1 already exists (Viewer); nothing was changed. Use Change to update it. op1: op1 is the account OADM uses for this device and must stay Administrator. Nothing was changed."),
+            await RunAsync(h, node, settings, camera));
+    }
+
+    [Fact]
+    public async Task Users_checks_the_accounts_and_a_gone_password()
+    {
+        await using var h = await StartedAsync();
+        var node = new UsersNode();
+        var secret = await h.SecretAsync("x1");
+        Assert.Equal("Add an account.", node.Check(Harness.Json(new UsersSettings([])), Kept(h)));
+        Assert.Equal("root is the account of Set password.", node.Check(Harness.Json(new UsersSettings([new UserAccount("root", SecretId: secret)])), Kept(h)));
+        Assert.Equal("op_1: use 1 to 14 letters and digits.", node.Check(Harness.Json(new UsersSettings([new UserAccount("op_1", SecretId: secret)])), Kept(h)));
+        Assert.Equal("The account OP1 is there twice.", node.Check(Harness.Json(new UsersSettings([new UserAccount("op1", SecretId: secret), new UserAccount("OP1", SecretId: secret)])), Kept(h)));
+        Assert.Equal("Type the password of op1.", node.Check(Harness.Json(new UsersSettings([new UserAccount("op1")])), Kept(h)));
+        var gone = new UsersSettings([new UserAccount("op1", SecretId: Guid.NewGuid())]);
+        Assert.Equal("The password of op1 is no longer on the server. Type it again.", node.Check(Harness.Json(gone), Kept(h)));
+
+        Assert.Equal(NodeResult.Error("op1: " + NodeVault.SecretGone), await RunAsync(h, node, gone, Camera(Device(h))));
+        Assert.Empty(h.Ctx.TaskRuns);
+    }
+
+    // ---- Certificate and 802.1X ----
+
+    [Fact]
+    public async Task Certificate_installs_by_policy_or_sets_up_est_with_its_pro_refusal()
+    {
+        await using var h = await StartedAsync();
+        var camera = Camera(Device(h));
+        var policy = Guid.NewGuid();
+        var node = new CertificateNode();
+
+        Assert.Equal(NodeResult.Success("Certificate installed, HTTPS on."), await RunAsync(h, node, new CertificateSettings(CertificateMode.Policy, policy), camera));
+        Assert.Equal("oadm.pki.https-enable", h.Ctx.TaskRuns[0].PluginId);
+        var payload = Payload(h.Ctx.TaskRuns[0]);
+        Assert.Equal(policy.ToString(), payload.GetProperty("policyId").GetString());
+        Assert.False(payload.GetProperty("clockConfirmed").GetBoolean()); // a clock that is behind refuses; the flow never confirms it
+
+        h.Outcomes["oadm.est.setup"] = (TaskEndState.Failed, "OADM PRO is not active. Nothing was changed.");
+        Assert.Equal(NodeResult.Error("OADM PRO is not active. Nothing was changed."), await RunAsync(h, node, new CertificateSettings(CertificateMode.Est), camera));
+        Assert.Equal("oadm.est.setup", h.Ctx.TaskRuns[1].PluginId);
+        Assert.Equal("Setup", Payload(h.Ctx.TaskRuns[1]).GetProperty("action").GetString());
+
+        h.Outcomes.Clear();
+        Assert.Equal(NodeResult.Success("EST enrollment set up."), await RunAsync(h, node, new CertificateSettings(CertificateMode.Est), camera));
+
+        h.Outcomes["oadm.pki.https-enable"] = (TaskEndState.Failed, "The device's time is 2 hours behind. The certificate becomes valid on the device only in 2 hours. Set the device to use NTP. Nothing was changed.");
+        Assert.Equal(NodeState.Error, (await RunAsync(h, node, new CertificateSettings(), camera)).State);
+        Assert.Equal("Choose a PKI policy.", node.Check(Harness.Json(new CertificateSettings(CertificateMode.Policy, Guid.Empty)), ProfileCheckContext.Empty));
+    }
+
+    [Fact]
+    public async Task Dot1x_turns_on_802_1x_with_pkis_policy()
+    {
+        await using var h = await StartedAsync();
+        var camera = Camera(Device(h));
+
+        Assert.Equal(NodeResult.Success("802.1X on."), await RunAsync(h, new Dot1xNode(), new Dot1xSettings(), camera));
+        Assert.Equal("oadm.pki.dot1x-enable", Assert.Single(h.Ctx.TaskRuns).PluginId);
+
+        h.Outcomes["oadm.pki.dot1x-enable"] = (TaskEndState.Failed, "There is no 802.1X certificate policy. Add one on the PKI page. Nothing was changed.");
+        Assert.Equal(NodeResult.Error("There is no 802.1X certificate policy. Add one on the PKI page. Nothing was changed."), await RunAsync(h, new Dot1xNode(), new Dot1xSettings(), camera));
+    }
+
+    // ---- SD card ----
+
+    [Fact]
+    public async Task Sd_card_encrypts_with_the_kept_passphrase_and_sets_the_age()
+    {
+        await using var h = await StartedAsync();
+        var camera = Camera(Device(h));
+        var passphrase = await h.SecretAsync("card secret");
+        var settings = new SdCardSettings(Format: true, Encrypt: true, SecretId: passphrase, MaxAgeDays: 30);
+        var node = new SdCardNode();
+
+        Assert.Equal(NodeResult.Success("SD card encrypted and formatted, recordings kept 30 days."), await RunAsync(h, node, settings, camera));
+        Assert.Equal(["encryptionOn", "retention"], h.Ctx.TaskRuns.Select(r => Payload(r).GetProperty("action").GetString()));
+        Assert.Equal("card secret", Payload(h.Ctx.TaskRuns[0]).GetProperty("passphrase").GetString());
+        Assert.Equal(30, Payload(h.Ctx.TaskRuns[1]).GetProperty("retentionDays").GetInt32());
+
+        h.Outcomes["oadm.edge-storage.task"] = (TaskEndState.Failed, "No SD card. Nothing was changed.");
+        Assert.Equal(NodeResult.NotNeeded("no SD card."), await RunAsync(h, node, new SdCardSettings(), camera));
+
+        h.Outcomes["oadm.edge-storage.task"] = (TaskEndState.Failed, "The SD card is encrypted already. Nothing was changed.");
+        Assert.Equal(NodeResult.Error("The SD card is encrypted already. Nothing was changed."), await RunAsync(h, node, settings, camera));
+
+        Assert.Equal("Choose what to do with the SD card.", node.Check(Harness.Json(new SdCardSettings(Format: false)), ProfileCheckContext.Empty));
+        Assert.Equal("Type the passphrase.", node.Check(Harness.Json(new SdCardSettings(Encrypt: true)), ProfileCheckContext.Empty));
+        Assert.Equal("Keep recordings 1 to 7000 days.", node.Check(Harness.Json(new SdCardSettings(MaxAgeDays: 0)), ProfileCheckContext.Empty));
+    }
+
+    // ---- Autofocus ----
+
+    private const string Capabilities = """{"apiVersion": "1.3", "method": "getCapabilities", "data": {"numberOfOptics": 1,"optics": [{"opticsId": "0", "maxMagnification": 2.7057, "capabilities": ["zoom", "focus"]}]}}""";
+
+    [Fact]
+    public async Task Autofocus_runs_on_a_camera_with_remote_focus_and_is_not_needed_without()
+    {
+        await using var h = await StartedAsync();
+        var device = Device(h);
+        var camera = Camera(device);
+        var client = h.Vapix.For(device.Id);
+        var node = new AutofocusNode();
+
+        Assert.Equal(NodeResult.NotNeeded("no remote focus."), await RunAsync(h, node, new AutofocusSettings(), camera));
+        Assert.Empty(client.Requests); // no optics API: nothing is sent
+
+        client.Apis = [new DeviceApi("optics-control", "1.3")];
+        client.Handler = (_, _, _) => Task.FromResult(ScriptedVapix.Json("""{"apiVersion": "1.3", "method": "getCapabilities", "data": {"numberOfOptics": 1,"optics": [{"opticsId": "0", "capabilities": ["irCutFilter"]}]}}"""));
+        Assert.Equal(NodeResult.NotNeeded("no remote focus."), await RunAsync(h, node, new AutofocusSettings(), camera));
+
+        client.Handler = (_, body, _) => Task.FromResult(ScriptedVapix.Json(body!.Contains("getCapabilities", StringComparison.Ordinal) ? Capabilities : """{"apiVersion":"1.3","method":"performAutofocus","data":{}}"""));
+        Assert.Equal(NodeResult.Success("Focus found."), await RunAsync(h, node, new AutofocusSettings(), camera));
+        Assert.Contains(client.Requests, r => r.Body!.Contains("\"performAutofocus\"", StringComparison.Ordinal) && r.Body.Contains("\"opticsId\":\"0\"", StringComparison.Ordinal));
+
+        client.Handler = (_, body, _) => Task.FromResult(ScriptedVapix.Json(body!.Contains("getCapabilities", StringComparison.Ordinal) ? Capabilities : """{"apiVersion":"1.3","method":"performAutofocus","error":{"code":1300,"message":"Focus not found"}}"""));
+        Assert.Equal(NodeResult.Error("The camera could not find focus. Set focus by hand."), await RunAsync(h, node, new AutofocusSettings(), camera));
+        Assert.Empty(h.Ctx.TaskRuns);
+    }
+
+    [Fact]
+    public async Task Autofocus_that_never_answers_ends_after_two_minutes()
+    {
+        await using var h = await StartedAsync();
+        var device = Device(h);
+        var client = h.Vapix.For(device.Id);
+        client.Apis = [new DeviceApi("optics-control", "1.3")];
+        client.Handler = async (_, body, ct) =>
+        {
+            if (body!.Contains("getCapabilities", StringComparison.Ordinal))
+            {
+                return ScriptedVapix.Json(Capabilities);
+            }
+
+            await Task.Delay(Timeout.Infinite, ct); // the camera searches until the node gives up
+            return ScriptedVapix.Json("{}");
+        };
+
+        var result = await RunAsync(h, new AutofocusNode(), new AutofocusSettings(), Camera(device));
+
+        Assert.Equal(NodeResult.Error("The autofocus did not end within 2 minutes."), result);
+    }
+
+    // ---- VAPIX commands ----
+
+    private static CommandLibrary Library() => CommandLibrary.Load([("test.json", () => """
+        {
+          "formatVersion": 1,
+          "category": "Image",
+          "commands": [
+            { "id": "image.text.set", "version": 1, "name": "Set overlay text", "category": "Image",
+              "requires": [ { "api": "param-cgi", "minVersion": "1.0" } ], "writes": true,
+              "fields": [ { "name": "text", "label": "Text", "type": "string", "pattern": "^[A-Za-z ]{1,20}$" } ],
+              "request": { "method": "GET", "path": "/axis-cgi/param.cgi", "query": { "action": "update", "Image.I0.Text.String": "{{text}}" }, "headers": {}, "bodyType": "none", "body": null, "timeoutSeconds": 15 },
+              "response": { "kind": "param-cgi" } },
+            { "id": "image.optics.autofocus", "version": 1, "name": "Run autofocus", "category": "Image",
+              "requires": [ { "api": "optics-control", "minVersion": "1.0" } ], "writes": true,
+              "fields": [],
+              "request": { "method": "POST", "path": "/axis-cgi/opticscontrol.cgi", "query": {}, "headers": {}, "bodyType": "json", "body": { "apiVersion": "1.0", "method": "performAutofocus" }, "timeoutSeconds": 60 },
+              "response": { "kind": "json-rpc" } },
+            { "id": "image.users.set", "version": 1, "name": "Set a password", "category": "Image",
+              "requires": [ { "api": "param-cgi", "minVersion": "1.0" } ], "writes": true,
+              "fields": [ { "name": "pwd", "label": "Password", "type": "password" } ],
+              "request": { "method": "GET", "path": "/axis-cgi/param.cgi", "query": { "action": "update", "x": "{{pwd}}" }, "headers": {}, "bodyType": "none", "body": null, "timeoutSeconds": 15 },
+              "response": { "kind": "param-cgi" } }
+          ]
+        }
+        """)]);
+
+    private static VapixCommandStep Step(string id, string? text = null) =>
+        new(id, text is null ? null : new Dictionary<string, JsonElement> { ["text"] = JsonSerializer.SerializeToElement(text) });
+
+    [Fact]
+    public async Task Vapix_commands_run_what_the_camera_has_and_warn_about_the_rest()
+    {
+        var library = Library();
+        Assert.Empty(library.Problems);
+        await using var h = await StartedAsync();
+        var device = Device(h);
+        var camera = Camera(device);
+        h.Vapix.For(device.Id).Apis = [new DeviceApi("param-cgi", "1.0")];
+        var node = new VapixCommandsNode(library);
+        var settings = new VapixCommandsSettings([Step("image.text.set", "Lobby"), Step("image.optics.autofocus")]);
+        Assert.Null(node.Check(Harness.Json(settings), ProfileCheckContext.Empty));
+
+        Assert.Equal(NodeResult.Warning("Ran Set overlay text. Not on this camera: Run autofocus."), await RunAsync(h, node, settings, camera));
+        var run = Assert.Single(h.Ctx.TaskRuns);
+        Assert.Equal("oadm.vapix-commander.run", run.PluginId);
+        var payload = Payload(run);
+        Assert.True(payload.GetProperty("confirmed").GetBoolean());
+        Assert.False(payload.GetProperty("confirmedDangerous").GetBoolean());
+        var command = Assert.Single(payload.GetProperty("commands").EnumerateArray());
+        Assert.Equal("image.text.set", command.GetProperty("command").GetProperty("id").GetString());
+        Assert.Equal("Lobby", command.GetProperty("values").GetProperty("text").GetString());
+
+        Assert.Equal(NodeResult.Warning("Not on this camera: Run autofocus."), await RunAsync(h, node, new VapixCommandsSettings([Step("image.optics.autofocus")]), camera));
+        Assert.Single(h.Ctx.TaskRuns); // nothing to run: no task
+
+        h.Outcomes["oadm.vapix-commander.run"] = (TaskEndState.Failed, "Set overlay text: HTTP 400 Bad Request");
+        Assert.Equal(NodeResult.Error("Set overlay text: HTTP 400 Bad Request."), await RunAsync(h, node, new VapixCommandsSettings([Step("image.text.set", "Lobby")]), camera));
+    }
+
+    [Fact]
+    public void Vapix_commands_check_the_library_values_and_refuse_passwords()
+    {
+        var node = new VapixCommandsNode(Library());
+        Assert.Equal("Add a command.", node.Check(Harness.Json(new VapixCommandsSettings([])), ProfileCheckContext.Empty));
+        Assert.Equal("image.nothing is not in the VAPIX Commander library.", node.Check(Harness.Json(new VapixCommandsSettings([Step("image.nothing")])), ProfileCheckContext.Empty));
+        Assert.Equal("Set a password needs a password or a file; it cannot run in a profile.", node.Check(Harness.Json(new VapixCommandsSettings([Step("image.users.set")])), ProfileCheckContext.Empty));
+        Assert.StartsWith("Set overlay text: Text", node.Check(Harness.Json(new VapixCommandsSettings([Step("image.text.set", "Lobby 1!")])), ProfileCheckContext.Empty), StringComparison.Ordinal);
+        Assert.StartsWith("Set overlay text: Text is required", node.Check(Harness.Json(new VapixCommandsSettings([Step("image.text.set")])), ProfileCheckContext.Empty), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Every_node_kind_is_registered_once_with_valid_defaults_except_what_must_be_chosen()
+    {
+        var registry = NodeRegistry.Default;
+        Assert.Equal(Enum.GetValues<NodeKind>().Length, registry.All.Count);
+        Assert.Equal(registry.All.Count, registry.All.Select(n => n.Kind).Distinct().Count());
+        foreach (var node in registry.All)
+        {
+            // The defaults are readable settings; their error (if any) is what the person must choose first.
+            var error = node.Check(NodeSettings.Write(node.DefaultSettings), ProfileCheckContext.Empty);
+            Assert.True(error is null || !error.Contains("cannot be read", StringComparison.Ordinal), node.Name + ": " + error);
+        }
+    }
+}

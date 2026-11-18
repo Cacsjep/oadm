@@ -115,6 +115,9 @@ public sealed record NodeRun(INodeHost Host, CameraRow Camera, Profile Profile, 
     public T? SettingsAs<T>()
         where T : class => NodeSettings.Read<T>(Node.Settings);
 
+    /// <summary>A value the node keeps between building its payload and its message (the host name it wrote).</summary>
+    public string? Detail { get; set; }
+
     /// <summary>The credential list entry of the profile's Set password node.</summary>
     public Guid? CredentialId =>
         Profile.Nodes.FirstOrDefault(n => n.Kind == NodeKind.SetPassword) is { } node ? NodeSettings.Read<SetPasswordSettings>(node.Settings)?.CredentialId : null;

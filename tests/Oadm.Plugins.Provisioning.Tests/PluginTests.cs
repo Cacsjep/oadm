@@ -26,13 +26,22 @@ public sealed class PluginTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _autoAdd = new FakeAutoAdd(_devices);
-        _ctx = new FakeCoreContext { AutoAdd = _autoAdd };
+        _ctx = new FakeCoreContext { AutoAdd = _autoAdd, Secrets = new FakeSecrets(), DataDirectory = _data };
         _plugin = new ProvisioningPlugin(new ProvisioningOptions(), new FakeTimeProvider(), new FakeProbe());
         await _plugin.StartAsync(_ctx, CancellationToken.None);
         _admin = _ctx.CallAsAllDevices();
     }
 
-    public async Task DisposeAsync() => await _plugin.DisposeAsync();
+    public async Task DisposeAsync()
+    {
+        await _plugin.DisposeAsync();
+        if (Directory.Exists(_data))
+        {
+            Directory.Delete(_data, recursive: true);
+        }
+    }
+
+    private readonly string _data = Path.Combine(Path.GetTempPath(), "oadm-prov-tests", Guid.NewGuid().ToString("N"));
 
     private async Task<T> CallAsync<T>(string method, object? payload = null) =>
         PluginJson.Parse<T>(await _ctx.InvokeAsync(_plugin, _admin, method, payload is null ? null : JsonSerializer.Serialize(payload, ProvisioningJson.Options)), ProvisioningJson.Options);
@@ -55,6 +64,30 @@ public sealed class PluginTests : IAsyncLifetime
         Assert.All(_ctx.PluginSettings.Values.Values, v => Assert.DoesNotContain(Password, v, StringComparison.Ordinal));
         Assert.DoesNotContain(Password, _plugin.AuditDetail(ProvisioningMethods.SaveProfile, JsonSerializer.Serialize(new SaveProfileRequest(NewProfile(), Password))) ?? string.Empty, StringComparison.Ordinal);
         Assert.Single((await CallAsync<ProfilesReply>(ProvisioningMethods.ListProfiles)).Profiles);
+    }
+
+    [Fact]
+    public async Task A_node_password_and_file_are_kept_by_id_and_checked_in_the_profile()
+    {
+        var secret = await CallAsync<SecretReply>(ProvisioningMethods.StoreSecret, new SecretRequest("Op-Pass-77"));
+        var upload = ((FakeUploadedFiles)_admin.Uploads).Add("P3265-LVE_12_6_95.bin", [1, 2, 3]);
+        var file = await CallAsync<StoredFile>(ProvisioningMethods.StoreFile, new FileRequest(upload.Id));
+        Assert.Equal(("P3265-LVE_12_6_95.bin", 3L, upload.Sha256), (file.Name, file.Size, file.Sha256));
+
+        var profile = NewProfile(
+            Harness.Node("users", NodeKind.Users, new UsersSettings([new UserAccount("op1", CameraRole.Operator, SecretId: secret.Id)])),
+            Harness.Node("os", NodeKind.UpgradeFiles, new UpgradeFilesSettings([new OsFile(file.Id, file.Name)])),
+            Harness.Node("gone", NodeKind.SdCard, new SdCardSettings(Encrypt: true, SecretId: Guid.NewGuid())));
+        var saved = await CallAsync<ProfileReply>(ProvisioningMethods.SaveProfile, new SaveProfileRequest(profile, Password));
+
+        Assert.Equal(["gone"], saved.Check.NodeErrors.Keys);
+        Assert.Equal("The passphrase is no longer on the server. Type it again.", saved.Check.NodeErrors["gone"]);
+        Assert.All(_ctx.PluginSettings.Values.Values, v => Assert.DoesNotContain("Op-Pass-77", v, StringComparison.Ordinal));
+        Assert.True(File.Exists(Path.Combine(_data, "files", file.Id.ToString("N") + ".bin")));
+        Assert.Equal("Stored a password for a profile", _plugin.AuditDetail(ProvisioningMethods.StoreSecret, """{"value":"Op-Pass-77"}"""));
+
+        var refused = await Assert.ThrowsAsync<KeyNotFoundException>(() => CallAsync<StoredFile>(ProvisioningMethods.StoreFile, new FileRequest("0123456789abcdef0123456789abcdef")));
+        Assert.Equal("The uploaded file is no longer on the server. Upload it again.", refused.Message);
     }
 
     [Fact]
@@ -114,7 +147,9 @@ public sealed class PluginTests : IAsyncLifetime
             .AllDevicesOnly(ProvisioningMethods.GetCamera, """{"mac":"AC:CC:8E:00:00:01"}""")
             .AllDevicesOnly(ProvisioningMethods.RunFailedAgain, """{"macs":["AC:CC:8E:00:00:01"]}""")
             .AllDevicesOnly(ProvisioningMethods.Continue, """{"macs":["AC:CC:8E:00:00:01"]}""")
-            .AllDevicesOnly(ProvisioningMethods.RemoveCameras, """{"macs":["AC:CC:8E:00:00:01"]}""");
+            .AllDevicesOnly(ProvisioningMethods.RemoveCameras, """{"macs":["AC:CC:8E:00:00:01"]}""")
+            .AllDevicesOnly(ProvisioningMethods.StoreSecret, """{"value":"x"}""")
+            .AllDevicesOnly(ProvisioningMethods.StoreFile, """{"uploadId":"0123456789abcdef0123456789abcdef"}""");
         await canary.RunAsync();
 
         Assert.All(_plugin.Permissions, p => Assert.False(p.OperatorDefault));
@@ -129,7 +164,7 @@ public sealed class PluginTests : IAsyncLifetime
     public async Task The_tools_cover_the_page_and_a_preview_changes_nothing()
     {
         var names = _plugin.Tools.Select(t => t.Name).ToList();
-        Assert.Equal(["status", "profiles", "profile", "credentials", "cameras", "profile_save", "profile_delete", "profile_activate", "start", "stop", "cameras_run_failed_again", "cameras_continue", "cameras_remove"], names);
+        Assert.Equal(["status", "profiles", "profile", "credentials", "cameras", "profile_save", "secret_store", "file_store", "profile_delete", "profile_activate", "start", "stop", "cameras_run_failed_again", "cameras_continue", "cameras_remove"], names);
         Assert.All(_plugin.Tools, t => Assert.True(t.Name.Length <= PluginTool.MaxNameLength));
 
         var saved = await CallAsync<ProfileReply>(ProvisioningMethods.SaveProfile, new SaveProfileRequest(NewProfile(), Password));

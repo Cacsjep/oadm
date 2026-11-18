@@ -18,6 +18,8 @@ internal static class ProvisioningTools
 {
     private static readonly PluginToolSecret Password = new("password", "root password of Set password");
 
+    private static readonly PluginToolSecret NodeSecret = new("secret", "password or passphrase of a node");
+
     public static PluginPageTools<ProvisioningPlugin> Set { get; } = new PluginPageTools<ProvisioningPlugin>()
         .Read<NoArgs, StatusAnswer>(
             new("status", "Provisioning status", "Whether provisioning is started, the active profile, the DHCP server, the camera counts and the warnings."),
@@ -55,6 +57,35 @@ internal static class ProvisioningTools
             {
                 var reply = await plugin.SaveProfileAsync(input.Args.Request(input.Secret(Password.Name)), ct).ConfigureAwait(false);
                 return new SavedAnswer(reply.Profile.Id, reply.Check.IsValid);
+            })
+        .Change<NoArgs, SecretPlan, SecretAnswer>(
+            new("secret_store", "Keep a node password", "The person enters a password of a Users account or the SD card passphrase; the answer is its secret_id for the node's settings. The password never comes back.")
+            {
+                Secrets = [NodeSecret],
+            },
+            ProvisioningMethods.StoreSecret,
+            (_, _, input, _) =>
+            {
+                if (input.IsRun && input.Secret(NodeSecret.Name) is { } value && (value.Length is < 1 or > NodeVault.MaxSecretLength || value.Any(char.IsControl)))
+                {
+                    throw new PluginToolInputException("secrets.secret", $"Type 1 to {NodeVault.MaxSecretLength} characters, no line breaks.");
+                }
+
+                return Task.FromResult(new SecretPlan());
+            },
+            async (plugin, _, input, _, ct) =>
+                new SecretAnswer((await plugin.StoreSecretAsync(new SecretRequest(input.Secret(NodeSecret.Name)), ct).ConfigureAwait(false)).Id))
+        .Change<FileArgs, FilePlan, FileAnswer>(
+            new("file_store", "Keep a node file", "Keeps a file the caller uploaded (an AXIS OS file, a configuration file of Export configuration) for a node; the answer is its file_id for the node's settings."),
+            ProvisioningMethods.StoreFile,
+            async (_, caller, input, ct) =>
+                await caller.Uploads.FindAsync(input.Args.UploadId?.Trim() ?? string.Empty, ct).ConfigureAwait(false) is { } upload
+                    ? new FilePlan(upload.Name)
+                    : throw new PluginToolInputException("upload_id", "No uploaded file has this id. Upload it again."),
+            async (plugin, caller, input, _, ct) =>
+            {
+                var file = await plugin.StoreFileAsync(caller, input.Args.UploadId.Trim(), ct).ConfigureAwait(false);
+                return new FileAnswer(file.Id, file.Name, file.Size);
             })
         .Change<IdArgs, ProfilePlan, DoneAnswer>(
             new("profile_delete", "Delete provisioning profile", "Deletes a profile. A running session keeps its own copy.") { Destructive = true },
@@ -132,9 +163,24 @@ internal sealed record MacsArgs(
 
 internal sealed record NodeArgs(
     [property: Description("The node's id in the profile: letters, digits and hyphens."), MaxLength(32)] string Id,
-    [property: Description("set_password, add_to_oadm, wait_for_approval, set_ip or date_time.")] NodeKind Kind,
-    [property: Description("Settings of the kind. set_password: credential_id. add_to_oadm: tags. set_ip: first, last, subnet_mask, gateway, dns_servers. date_time: time_zone, ntp_servers (none: from DHCP), nts.")] JsonElement? Settings = null,
-    [property: Description("Go on with the next node after an error (ignored for set_password, which always stops).")] bool ContinueOnError = true);
+    [property: Description("set_password, add_to_oadm, wait_for_approval, upgrade_online, upgrade_files, network_settings, date_time, configuration, users, certificate, dot1x, sd_card, autofocus, vapix_commands or set_ip.")] NodeKind Kind,
+    [property: Description(NodeArgs.SettingsHelp)] JsonElement? Settings = null,
+    [property: Description("Go on with the next node after an error (ignored for set_password, which always stops).")] bool ContinueOnError = true)
+{
+    /// <summary>The settings of every kind, for agents (the secrets and files by the ids of secret_store and file_store).</summary>
+    public const string SettingsHelp =
+        "Settings of the kind. set_password: credential_id. add_to_oadm: tags. "
+        + "upgrade_online: target (ownTrack, latestLts, latestActive), only_if_older_than (e.g. 12.6.95). "
+        + "upgrade_files: files [{file_id, name}] (one AXIS OS file per model), allow_downgrade. "
+        + "network_settings: host_name ({model}, {serial}, {mac}, {n}), start_number, dns_servers, search_domain. "
+        + "date_time: time_zone, ntp_servers (none: from DHCP), nts, oadm_ntp (OADM's NTP server). "
+        + "configuration: source (file, templateCamera), file_id or template_serial, parameters, action_rules, schedules. "
+        + "users: accounts [{name, role (viewer, operator, administrator), ptz, secret_id}]. "
+        + "certificate: mode (policy, est), policy_id (none: the first HTTPS certificate policy). dot1x: none. "
+        + "sd_card: format, encrypt, secret_id (the passphrase), max_age_days. autofocus: none. "
+        + "vapix_commands: commands [{command_id, values}] of the VAPIX Commander library. "
+        + "set_ip: first, last, subnet_mask, gateway, dns_servers.";
+}
 
 internal sealed record SaveArgs(
     [property: Description("The profile name."), MaxLength(64)] string Name,
@@ -151,25 +197,43 @@ internal sealed record SaveArgs(
         },
         NewPassword ? password : null);
 
-    /// <summary>The settings of a tool (snake_case) as the page writes them (camelCase).</summary>
-    private static JsonElement? Snake(JsonElement? settings)
+    /// <summary>
+    /// The settings of a tool (snake_case) as the page writes them (camelCase), at any depth (the accounts of Users); the
+    /// values of a VAPIX command keep the names of its fields.
+    /// </summary>
+    private static JsonElement? Snake(JsonElement? settings) => settings is { } element ? Camel(element) : null;
+
+    private static JsonElement Camel(JsonElement element)
     {
-        if (settings is not { ValueKind: JsonValueKind.Object } element)
+        switch (element.ValueKind)
         {
-            return settings;
-        }
+            case JsonValueKind.Object:
+                var map = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+                foreach (var property in element.EnumerateObject())
+                {
+                    var parts = property.Name.Split('_');
+                    var name = parts[0] + string.Concat(parts.Skip(1).Select(p => p.Length == 0 ? p : char.ToUpperInvariant(p[0]) + p[1..]));
+                    map[name] = name == "values" ? property.Value : Camel(property.Value);
+                }
 
-        var map = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
-        foreach (var property in element.EnumerateObject())
-        {
-            var parts = property.Name.Split('_');
-            var name = parts[0] + string.Concat(parts.Skip(1).Select(p => p.Length == 0 ? p : char.ToUpperInvariant(p[0]) + p[1..]));
-            map[name] = property.Value;
+                return JsonSerializer.SerializeToElement(map);
+            case JsonValueKind.Array:
+                return JsonSerializer.SerializeToElement(element.EnumerateArray().Select(Camel).ToList());
+            default:
+                return element;
         }
-
-        return JsonSerializer.SerializeToElement(map);
     }
 }
+
+internal sealed record FileArgs([property: Description("The id of a file the caller uploaded."), MaxLength(64)] string UploadId);
+
+internal sealed record SecretPlan() : PluginToolPlan(1, "secret");
+
+internal sealed record FilePlan([property: Description("The file name.")] string Name) : PluginToolPlan(1, "file");
+
+internal sealed record SecretAnswer([property: Description("The secret_id to put into the node's settings.")] Guid SecretId);
+
+internal sealed record FileAnswer([property: Description("The file_id to put into the node's settings.")] Guid FileId, string Name, long Size);
 
 internal sealed record SavePlan(
     [property: Description("The profile name.")] string Name,

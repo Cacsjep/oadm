@@ -27,6 +27,18 @@
     <Compile Include="..\Oadm.Plugins.DhcpServer\Serving\AxisOui.cs" Link="Dhcp\AxisOui.cs" />
   </ItemGroup>
 
+  <!-- The VAPIX Commander library and its checks for the node VAPIX commands (the same commands, fields and requirements as
+       the Commander page); the library files are copied into this plugin's folder. -->
+  <ItemGroup>
+    <Compile Include="..\Oadm.Plugins.VapixCommander\CommandModels.cs" Link="Commander\CommandModels.cs" />
+    <Compile Include="..\Oadm.Plugins.VapixCommander\CommandLibrary.cs" Link="Commander\CommandLibrary.cs" />
+    <Compile Include="..\Oadm.Plugins.VapixCommander\CommandValidator.cs" Link="Commander\CommandValidator.cs" />
+    <Compile Include="..\Oadm.Plugins.VapixCommander\FieldValues.cs" Link="Commander\FieldValues.cs" />
+    <Compile Include="..\Oadm.Plugins.VapixCommander\CommandJson.cs" Link="Commander\CommandJson.cs" />
+    <Compile Include="..\Oadm.Plugins.VapixCommander\Compatibility.cs" Link="Commander\Compatibility.cs" />
+    <None Include="..\Oadm.Plugins.VapixCommander\Library\*.json" Link="Library\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

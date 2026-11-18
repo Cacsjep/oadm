@@ -1,4 +1,5 @@
 using Oadm.Plugins.Provisioning.Model;
+using Oadm.Plugins.VapixCommander;
 
 namespace Oadm.Plugins.Provisioning.Nodes;
 
@@ -15,13 +16,26 @@ public sealed class NodeRegistry
     }
 
     /// <summary>The nodes of this version.</summary>
-    public static NodeRegistry Default { get; } = new(
+    public static NodeRegistry Default { get; } = Create(CommandLibrary.Empty);
+
+    /// <summary>Every node of this version, VAPIX commands with <paramref name="commands"/> (the plugin's copy of the Commander library).</summary>
+    public static NodeRegistry Create(CommandLibrary commands) => new(
     [
         new SetPasswordNode(),
         new AddToOadmNode(),
         new WaitForApprovalNode(),
-        new SetIpNode(),
+        new UpgradeOnlineNode(),
+        new UpgradeFilesNode(),
+        new NetworkSettingsNode(),
         new DateTimeNode(),
+        new ConfigurationNode(),
+        new UsersNode(),
+        new CertificateNode(),
+        new Dot1xNode(),
+        new SdCardNode(),
+        new AutofocusNode(),
+        new VapixCommandsNode(commands),
+        new SetIpNode(),
     ]);
 
     public IReadOnlyList<IProvisioningNode> All { get; }
@@ -59,6 +73,9 @@ public sealed record ProvisioningOptions
 
     /// <summary>How often Add to OADM looks whether OADM has read the device.</summary>
     public TimeSpan DevicePoll { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>Longest wait for the camera's autofocus.</summary>
+    public TimeSpan AutofocusTimeout { get; init; } = TimeSpan.FromMinutes(2);
 
     /// <summary>Changes reach the page and the database at most this often.</summary>
     public TimeSpan PublishInterval { get; init; } = TimeSpan.FromMilliseconds(500);

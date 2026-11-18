@@ -20,7 +20,8 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
     private readonly ProvisioningOptions _options;
     private readonly TimeProvider _time;
     private readonly IAddressProbe? _probe;
-    private readonly NodeRegistry _registry;
+    private readonly bool _ownRegistry;
+    private NodeRegistry _registry;
     private ICorePluginContext? _ctx;
     private volatile ProvisioningEngine? _engine;
     private volatile ProfileStore? _profiles;
@@ -41,6 +42,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _probe = probe;
         _registry = registry ?? NodeRegistry.Default;
+        _ownRegistry = registry is null;
     }
 
     public string Id => ProvisioningInfo.PluginId;
@@ -109,6 +111,12 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(ctx);
         await StopAsync(ct).ConfigureAwait(false);
         _ctx = ctx;
+        if (_ownRegistry && ctx.PluginDirectory is { } folder)
+        {
+            // The VAPIX Commander library copied into this plugin's folder (the same commands as the Commander page).
+            _registry = NodeRegistry.Create(VapixCommander.CommandLibrary.Load(Path.Combine(folder, "Library")));
+        }
+
         var profiles = new ProfileStore(ctx.Settings);
         await profiles.LoadAsync(ct).ConfigureAwait(false);
         var vault = new NodeVault(ctx.Settings, ctx.Secrets, ctx.DataDirectory, ctx.Uploads, _time);

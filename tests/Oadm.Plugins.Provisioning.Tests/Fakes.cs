@@ -9,6 +9,7 @@ using Oadm.Plugins.Provisioning.Model;
 using Oadm.Plugins.Provisioning.Nodes;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Network;
+using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
 using Oadm.Sdk.Testing;
 using Oadm.Sdk.Vapix;
@@ -239,6 +240,65 @@ internal sealed class FakeProbe : IAddressProbe
     }
 }
 
+/// <summary>Reversible "encryption" that marks its output, to prove what is stored encrypted.</summary>
+internal sealed class FakeSecrets : ISecretProtector
+{
+    public string Protect(string plaintext, string purpose) => "enc:" + purpose + ":" + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(plaintext));
+
+    public string Unprotect(string protectedValue, string purpose)
+    {
+        var prefix = "enc:" + purpose + ":";
+        if (!protectedValue.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            throw new System.Security.Cryptography.CryptographicException("Wrong purpose.");
+        }
+
+        return System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(protectedValue[prefix.Length..]));
+    }
+}
+
+/// <summary>A camera's VAPIX: its API list and a handler for every request (recorded in <see cref="Requests"/>).</summary>
+internal sealed class ScriptedVapix : IVapixClient
+{
+    public Uri BaseAddress { get; } = new("http://192.168.15.101/");
+
+    public List<DeviceApi> Apis { get; set; } = [];
+
+    public Func<HttpRequestMessage, string?, CancellationToken, Task<HttpResponseMessage>> Handler { get; set; } =
+        (_, _, _) => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+
+    public ConcurrentQueue<(string Method, string Path, string? Body)> Requests { get; } = new();
+
+    public Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct) => throw new NotSupportedException();
+
+    public Task<IReadOnlyDictionary<string, string>> ListParametersAsync(IEnumerable<string> groups, CancellationToken ct) => throw new NotSupportedException();
+
+    public Task RestartAsync(CancellationToken ct) => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<DeviceApi>> GetApiListAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<DeviceApi>>(Apis);
+
+    public async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    {
+        var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(ct);
+        Requests.Enqueue((request.Method.Method, request.RequestUri!.OriginalString, body));
+        return await Handler(request, body, ct);
+    }
+
+    public static HttpResponseMessage Json(string json) =>
+        new(System.Net.HttpStatusCode.OK) { Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json") };
+}
+
+/// <summary>VAPIX clients by device id; an unknown device has none.</summary>
+internal sealed class FakeVapixFactory : IVapixClientFactory
+{
+    public ConcurrentDictionary<Guid, ScriptedVapix> Clients { get; } = new();
+
+    public ScriptedVapix For(Guid deviceId) => Clients.GetOrAdd(deviceId, _ => new ScriptedVapix());
+
+    public Task<IVapixClient> CreateAsync(Guid deviceId, CancellationToken ct) =>
+        Clients.TryGetValue(deviceId, out var client) ? Task.FromResult<IVapixClient>(client) : throw new InvalidOperationException("The device is not reachable.");
+}
+
 /// <summary>
 /// An engine on fakes with a fake clock: <see cref="Ack"/> hands a lease to it, <see cref="EndTasks"/> ends the tasks the
 /// nodes started with the outcomes of <see cref="Outcomes"/>, <see cref="RunUntilAsync"/> moves the clock until a condition holds.
@@ -252,8 +312,27 @@ internal sealed class Harness : IAsyncDisposable
     {
         AutoAdd = new FakeAutoAdd(Devices);
         Options = options ?? new ProvisioningOptions();
+        Vault = new NodeVault(Ctx.PluginSettings, new FakeSecrets(), DataFolder, Ctx.FakeUploads, Time);
         Engine = NewEngine();
     }
+
+    /// <summary>The plugin's data folder of this harness (unique; deleted at the end).</summary>
+    public string DataFolder { get; } = Path.Combine(Path.GetTempPath(), "oadm-prov-tests", Guid.NewGuid().ToString("N"));
+
+    /// <summary>The typed secrets and kept files, with a marking fake protector and the context's uploads.</summary>
+    public NodeVault Vault { get; }
+
+    /// <summary>The cameras' VAPIX for the nodes that use it.</summary>
+    public FakeVapixFactory Vapix { get; } = new();
+
+    /// <summary>The tasks of the user who started provisioning (Upgrade AXIS OS online); null like after a restart.</summary>
+    public ITaskRunner? StarterTasks { get; set; }
+
+    /// <summary>A secret kept in the vault, as the page's storeSecret does.</summary>
+    public Task<Guid> SecretAsync(string value) => Vault.AddSecretAsync(value, CancellationToken.None);
+
+    /// <summary>A file kept in the vault, as the page's storeFile does.</summary>
+    public Task<StoredFile> FileAsync(string name, byte[] content) => Vault.AddFileAsync(name, new MemoryStream(content), CancellationToken.None);
 
     public FakeTimeProvider Time { get; } = new(new DateTimeOffset(2026, 11, 18, 8, 0, 0, TimeSpan.Zero));
 
@@ -274,9 +353,12 @@ internal sealed class Harness : IAsyncDisposable
     /// <summary>Plugin id -> how its tasks end (default Done).</summary>
     public ConcurrentDictionary<string, (TaskEndState State, string? Message)> Outcomes { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>How one task run ends, before <see cref="Outcomes"/>; null: by its plugin id.</summary>
+    public Func<FakeTaskRun, (TaskEndState State, string? Message)?>? Decide { get; set; }
+
     /// <summary>A new engine on the same stores (a server restart).</summary>
     public ProvisioningEngine NewEngine() => new(
-        new EngineServices(AutoAdd, Ctx, Devices, Ctx.PluginSettings, Ctx.PluginRecords, Ctx, () => Dhcp, Probe),
+        new EngineServices(AutoAdd, Ctx, Devices, Ctx.PluginSettings, Ctx.PluginRecords, Ctx, () => Dhcp, Probe, Vapix, Vault),
         NodeRegistry.Default,
         Options,
         Time);
@@ -314,7 +396,7 @@ internal sealed class Harness : IAsyncDisposable
 
         foreach (var run in runs)
         {
-            var (state, message) = Outcomes.GetValueOrDefault(run.PluginId, (TaskEndState.Done, null));
+            var (state, message) = Decide?.Invoke(run) ?? Outcomes.GetValueOrDefault(run.PluginId, (TaskEndState.Done, null));
             foreach (var id in run.TaskIds)
             {
                 Ctx.EndTask(id, state, message);
@@ -337,7 +419,7 @@ internal sealed class Harness : IAsyncDisposable
         }, what);
 
     /// <summary>Starts a session with <paramref name="profile"/>.</summary>
-    public Task StartAsync(Profile profile) => Engine.StartAsync(profile, "admin", CancellationToken.None);
+    public Task StartAsync(Profile profile) => Engine.StartAsync(profile, "admin", StarterTasks, CancellationToken.None);
 
     /// <summary>A profile: Set password with the root entry, Add to OADM, then <paramref name="nodes"/>.</summary>
     public Profile Profile(params FlowNode[] nodes) => new()
@@ -360,7 +442,15 @@ internal sealed class Harness : IAsyncDisposable
 
     public static DateTimeSettings Time1 { get; } = new("Europe/Vienna", ["10.0.0.17"]);
 
-    public async ValueTask DisposeAsync() => await Engine.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        await Engine.DisposeAsync();
+        Vault.Dispose();
+        if (Directory.Exists(DataFolder))
+        {
+            Directory.Delete(DataFolder, recursive: true);
+        }
+    }
 
     public static JsonElement Json(object value) => NodeSettings.Write(value);
 }
