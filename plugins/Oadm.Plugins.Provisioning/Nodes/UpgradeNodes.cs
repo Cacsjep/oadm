@@ -16,9 +16,14 @@ public static partial class FirmwareTask
     [GeneratedRegex(@"^Already up to date: the device runs (?<version>[0-9.]+)\.")]
     private static partial Regex AlreadyUpToDate();
 
+    /// <summary>The task's refusal of an older file ("Downgrade 12.6.95 → 11.11.160 is not allowed. ...").</summary>
+    [GeneratedRegex(@"^Downgrade (?<version>[0-9.]+) → ")]
+    private static partial Regex Downgrade();
+
     /// <summary>
-    /// The node's result of an ended upgrade: the version the camera runs already is Success "Already 12.6.95.", no file for
-    /// the model a Warning, any other warning a Warning and a failure an Error with the task's text.
+    /// The node's result of an ended upgrade: the version the camera runs already, or a newer one than the file (never a
+    /// downgrade), is Success "Already 12.6.95.", no file for the model a Warning, any other warning a Warning and a failure
+    /// an Error with the task's text.
     /// </summary>
     public static NodeResult Map(TaskOutcome outcome, string done)
     {
@@ -30,6 +35,7 @@ public static partial class FirmwareTask
             TaskEndState.DoneWithWarnings when AlreadyUpToDate().Match(message) is { Success: true } match =>
                 NodeResult.Success($"Already {match.Groups["version"].Value}."),
             TaskEndState.DoneWithWarnings when message.StartsWith(NoFileForModel, StringComparison.Ordinal) => NodeResult.Warning(NoFileForModel),
+            TaskEndState.Failed when Downgrade().Match(message) is { Success: true } older => NodeResult.Success($"Already {older.Groups["version"].Value}."),
             TaskEndState.DoneWithWarnings => NodeResult.Warning(message),
             _ => NodeResult.Error(message),
         };
@@ -113,8 +119,8 @@ public sealed class UpgradeOnlineNode : TaskNode<UpgradeOnlineSettings>
 
 /// <summary>
 /// Upgrade AXIS OS from files (spec node 4): the AXIS OS files of the vault, each camera the file for its model (the Upgrade
-/// AXIS OS task matches the product in the file name); no file for the model is a Warning. An older version only with Allow
-/// downgrade (and AXIS OS refuses a downgrade that keeps the settings: then the task's Error).
+/// AXIS OS task matches the product in the file name); no file for the model is a Warning. Never a downgrade: a file older
+/// than the camera's AXIS OS is skipped with Success "Already 12.6.95." (the task refuses it before any write).
 /// </summary>
 public sealed partial class UpgradeFilesNode : TaskNode<UpgradeFilesSettings>
 {
@@ -189,7 +195,7 @@ public sealed partial class UpgradeFilesNode : TaskNode<UpgradeFilesSettings>
             files.Add(new JsonObject { ["fileId"] = await run.Host.Vault.UploadIdAsync(id, ct).ConfigureAwait(false), ["fileName"] = name });
         }
 
-        return new JsonObject { ["files"] = files, ["allowDowngrade"] = settings.AllowDowngrade }.ToJsonString();
+        return new JsonObject { ["files"] = files, ["allowDowngrade"] = false }.ToJsonString();
     }
 
     protected override string Payload(UpgradeFilesSettings settings, NodeRun run) =>

@@ -131,8 +131,8 @@ public sealed record UpgradeOnlineSettings(OsTarget Target = OsTarget.OwnTrack, 
 /// <summary>An AXIS OS file of the vault (<c>fileId</c>) with its name ("P3265-LVE_12_6_95.bin").</summary>
 public sealed record OsFile(Guid? FileId = null, string? Name = null);
 
-/// <summary>Settings of Upgrade AXIS OS from files: the files (one per model) and whether an older version may go on.</summary>
-public sealed record UpgradeFilesSettings(IReadOnlyList<OsFile>? Files = null, bool AllowDowngrade = false);
+/// <summary>Settings of Upgrade AXIS OS from files: the files (one per model); an older file than the camera's is never installed.</summary>
+public sealed record UpgradeFilesSettings(IReadOnlyList<OsFile>? Files = null);
 
 /// <summary>Settings of Network settings: the host name pattern with its first number, the DNS servers and the search domain.</summary>
 public sealed record NetworkSettingsSettings(

@@ -102,13 +102,13 @@ public sealed class StageTwoNodeTests
         var camera = Camera(Device(h));
         var p3265 = await h.FileAsync("P3265-LVE_12_6_95.bin", [1, 2, 3]);
         var m3086 = await h.FileAsync("M3086-V_11_11_160.bin", [4, 5]);
-        var settings = new UpgradeFilesSettings([new OsFile(p3265.Id, p3265.Name), new OsFile(m3086.Id, m3086.Name)], AllowDowngrade: true);
+        var settings = new UpgradeFilesSettings([new OsFile(p3265.Id, p3265.Name), new OsFile(m3086.Id, m3086.Name)]);
         var node = new UpgradeFilesNode();
         Assert.Null(node.Check(Harness.Json(settings), Kept(h)));
 
         Assert.Equal(NodeResult.Success("AXIS OS 12.6.95 installed."), await RunAsync(h, node, settings, camera));
         var payload = Payload(Assert.Single(h.Ctx.TaskRuns));
-        Assert.True(payload.GetProperty("allowDowngrade").GetBoolean());
+        Assert.False(payload.GetProperty("allowDowngrade").GetBoolean()); // never a downgrade
         var files = payload.GetProperty("files").EnumerateArray().ToList();
         Assert.Equal(["P3265-LVE_12_6_95.bin", "M3086-V_11_11_160.bin"], files.Select(f => f.GetProperty("fileName").GetString()));
         var upload = await h.Ctx.FakeUploads.FindAsync(files[0].GetProperty("fileId").GetString()!, CancellationToken.None);
@@ -120,7 +120,11 @@ public sealed class StageTwoNodeTests
         Assert.Equal(NodeResult.Warning("No file for this model."), await RunAsync(h, node, settings, camera));
         Assert.NotEqual(upload.Id, Payload(h.Ctx.TaskRuns[1]).GetProperty("files")[0].GetProperty("fileId").GetString());
 
-        h.Outcomes["oadm.firmware"] = (TaskEndState.Failed, "Downgrade 12.6.95 → 11.11.160 is not allowed. Turn on \"Allow downgrade\". Nothing was changed.");
+        // A file older than the camera's AXIS OS: skipped, the camera keeps its version.
+        h.Outcomes["oadm.firmware"] = (TaskEndState.Failed, "Downgrade 12.11.147 → 12.6.95 is not allowed. Turn on \"Allow downgrade\". Nothing was changed.");
+        Assert.Equal(NodeResult.Success("Already 12.11.147."), await RunAsync(h, node, settings, camera));
+
+        h.Outcomes["oadm.firmware"] = (TaskEndState.Failed, "The file is for Q6135-LE, the device is P3265-LVE. Nothing was changed.");
         Assert.Equal(NodeState.Error, (await RunAsync(h, node, settings, camera)).State);
     }
 

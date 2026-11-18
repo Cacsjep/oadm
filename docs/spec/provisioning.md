@@ -71,7 +71,8 @@ Set password).
    the latest active track; optional **only if older than** a version (else Success "Already 12.6.95."). The Upgrade
    AXIS OS task's checks apply.
 4. **Upgrade AXIS OS from files**: several uploaded AXIS OS files; each camera gets the file for its model. No file for
-   the model: **Warning**. A downgrade only with Allow downgrade.
+   the model: **Warning**. Never a downgrade: a file older than the camera's AXIS OS is skipped with Success "Already
+   12.6.95.".
 5. **Network settings**: host name from a pattern (`{model}`, `{serial}`, `{mac}`, `{n}` with a start number), DNS
    servers and search domain.
 6. **Date and time**: NTP servers (NTS where the camera has it) or OADM's NTP server (its address filled in), and the
