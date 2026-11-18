@@ -79,8 +79,8 @@ When bound to 0.0.0.0, every OS also checks the interface each packet arrived on
 - `DhcpServerView`: subtitle in the host page header via `ui:PageHeader`, no card title; `ui:LoadingOverlay` "Reading the
   DHCP server" until the first `getState` answered, later reads update in place.
 - Form: Enable DHCP server; Listen on (`InterfaceSelection`, IPv4 interfaces only, "Ethernet - 10.0.0.17/24 (Intel
-  I219)"); Start address / End address (`ui:FormField`, errors under the fields while typing: "Must be inside the subnet
-  10.0.0.0/24.", "Must be after the start address.", network/broadcast/server address, at most 65,536 addresses); Lease
+  I219)"); Address range (one `ui:FormField` as wide as Listen on: start box, "to", end box; each box's error directly
+  below it while typing: "Must be inside the subnet 10.0.0.0/24.", "Must be after the start address.", network/broadcast/server address, at most 65,536 addresses); Lease
   time (hours) (`NumericUpDown` 1 to 720, "Enter 1 to 720 hours." under the field); the derived line directly under it
   ("Clients get mask 255.255.255.0, router 10.0.0.138, DNS 10.0.0.138", "no router" / "no DNS", ", domain x" when there
   is one); the auto-add check box below it aligned with the inputs;

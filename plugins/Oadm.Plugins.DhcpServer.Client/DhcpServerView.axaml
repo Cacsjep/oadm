@@ -24,11 +24,15 @@
         </ComboBox>
       </ui:FormField>
 
-      <ui:FormField Label="Start address">
-        <TextBox Text="{Binding RangeStart}" PlaceholderText="e.g. 10.0.0.100" IsReadOnly="{Binding !MayManage}" />
-      </ui:FormField>
-      <ui:FormField Label="End address">
-        <TextBox Text="{Binding RangeEnd}" PlaceholderText="e.g. 10.0.0.199" IsReadOnly="{Binding !MayManage}" />
+      <!-- Start and end in one row as wide as Listen on; each box shows its own error directly below it -->
+      <ui:FormField Label="Address range" InputWidth="460">
+        <Grid Classes="inputRow" ColumnDefinitions="*,Auto,*" ColumnSpacing="10">
+          <TextBox Grid.Column="0" Text="{Binding RangeStart}" PlaceholderText="e.g. 10.0.0.100" IsReadOnly="{Binding !MayManage}" />
+          <Panel Grid.Column="1" Classes="inputSeparator">
+            <TextBlock Text="to" />
+          </Panel>
+          <TextBox Grid.Column="2" Text="{Binding RangeEnd}" PlaceholderText="e.g. 10.0.0.199" IsReadOnly="{Binding !MayManage}" />
+        </Grid>
       </ui:FormField>
       <ui:FormField Label="Lease time (hours)">
         <NumericUpDown Minimum="{x:Static vm:DhcpServerViewModel.MinLeaseHours}" Maximum="{x:Static vm:DhcpServerViewModel.MaxLeaseHours}" Increment="1"

@@ -2878,6 +2878,15 @@
     <Setter Property="MinHeight" Value="{StaticResource Oadm.ControlHeight}" />
     <Setter Property="VerticalContentAlignment" Value="Center" />
   </Style>
+  <!-- The word between two inputs of one row (address range "from to"): level with the inputs' text, like a label -->
+  <Style Selector="Panel.inputSeparator">
+    <Setter Property="Height" Value="{StaticResource Oadm.ControlHeight}" />
+  </Style>
+  <Style Selector="Panel.inputSeparator > TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Padding" Value="0,3,0,0" />
+  </Style>
   <!-- Several inputs in one form field (e.g. API and version): the field's row spacing applies, not the row margin -->
   <Style Selector="ui|FormField StackPanel.inputRow">
     <Setter Property="Margin" Value="0" />
