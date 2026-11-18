@@ -1,10 +1,12 @@
 using System.Text.Json;
 
+using Oadm.Plugins.Provisioning.Engine;
 using Oadm.Plugins.Provisioning.Model;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
+using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.Provisioning.Nodes;
 
@@ -48,6 +50,12 @@ public interface IProvisioningNode
 public sealed record ProfileCheckContext(IReadOnlyDictionary<Guid, string>? Credentials, DhcpServerSummary? Dhcp)
 {
     public static ProfileCheckContext Empty { get; } = new(null, null);
+
+    /// <summary>The files the vault keeps, by id; null when the host cannot tell (a file is then checked when the node runs).</summary>
+    public IReadOnlyDictionary<Guid, StoredFile>? Files { get; init; }
+
+    /// <summary>The secrets the vault keeps; null when the host cannot tell.</summary>
+    public IReadOnlySet<Guid>? Secrets { get; init; }
 }
 
 /// <summary>What a node may use while it runs (the engine implements it).</summary>
@@ -62,6 +70,18 @@ public interface INodeHost
     /// <summary>The managed devices.</summary>
     IDeviceRepository Devices { get; }
 
+    /// <summary>VAPIX of the managed devices (Autofocus, the template camera of Configuration).</summary>
+    IVapixClientFactory Vapix { get; }
+
+    /// <summary>
+    /// The tasks of the administrator who started provisioning, with their MyAxis sign-in (Upgrade AXIS OS online); null
+    /// after a server restart until provisioning is started again.
+    /// </summary>
+    ITaskRunner? StarterTasks { get; }
+
+    /// <summary>The typed secrets and the files the nodes name by id.</summary>
+    NodeVault Vault { get; }
+
     TimeProvider Time { get; }
 
     ProvisioningOptions Options { get; }
@@ -74,6 +94,9 @@ public interface INodeHost
 
     /// <summary>Waits outside the camera's place until Continue is pressed on its row; returns who pressed it.</summary>
     Task<string> WaitForApprovalAsync(string mac, CancellationToken ct);
+
+    /// <summary>The camera's number in this session, from 0 in the order the cameras ask (the host name's {n}); kept until Stop.</summary>
+    Task<int> NumberAsync(string mac, CancellationToken ct);
 
     /// <summary>The camera is an OADM device now.</summary>
     void DeviceAdded(string mac, Guid deviceId, string? model);

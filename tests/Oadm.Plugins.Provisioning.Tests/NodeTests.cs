@@ -58,6 +58,38 @@ public sealed class NodeTests
     private const string ProvisioningJsonOwner = "Provisioning";
 
     [Fact]
+    public async Task Date_and_time_with_oadms_ntp_server_sets_the_zone_then_oadms_address()
+    {
+        await using var h = new Harness();
+        await h.StartAsync(h.Profile());
+        var settings = new DateTimeSettings("Europe/Vienna", OadmNtp: true);
+
+        Assert.Equal(NodeResult.Success("Time zone Europe/Vienna, OADM's NTP server."), await RunAloneAsync(h, new DateTimeNode(), settings));
+        Assert.Equal(["oadm.datetime", "oadm.ntp-server.use"], h.Ctx.TaskRuns.Select(r => r.PluginId));
+        Assert.Contains("\"source\":\"Dhcp\"", h.Ctx.TaskRuns[0].PayloadJson, StringComparison.Ordinal);
+
+        h.Outcomes["oadm.ntp-server.use"] = (TaskEndState.Failed, "The OADM NTP server is not running. Enable it on the NTP server page. Nothing was changed.");
+        Assert.Equal(
+            NodeResult.Error("Time zone Europe/Vienna set. OADM's NTP server was not set: The OADM NTP server is not running. Enable it on the NTP server page."),
+            await RunAloneAsync(h, new DateTimeNode(), settings));
+
+        // The zone failing: OADM's NTP server is not tried.
+        h.Outcomes["oadm.datetime"] = (TaskEndState.Failed, "The device does not support the time API. Nothing was changed.");
+        var before = h.Ctx.TaskRuns.Count;
+        Assert.Equal(NodeState.Error, (await RunAloneAsync(h, new DateTimeNode(), settings)).State);
+        Assert.Equal(before + 1, h.Ctx.TaskRuns.Count);
+    }
+
+    [Fact]
+    public void Date_and_time_takes_oadms_ntp_server_or_typed_servers()
+    {
+        var node = new DateTimeNode();
+        Assert.Null(node.Check(Harness.Json(new DateTimeSettings("UTC", OadmNtp: true)), ProfileCheckContext.Empty));
+        Assert.Equal("Choose OADM's NTP server or enter NTP servers, not both.", node.Check(Harness.Json(new DateTimeSettings("UTC", ["10.0.0.1"], OadmNtp: true)), ProfileCheckContext.Empty));
+        Assert.Equal("OADM's NTP server has no NTS.", node.Check(Harness.Json(new DateTimeSettings("UTC", [], Nts: true, OadmNtp: true)), ProfileCheckContext.Empty));
+    }
+
+    [Fact]
     public async Task A_task_node_that_does_not_apply_is_not_needed_without_a_task()
     {
         await using var h = new Harness();

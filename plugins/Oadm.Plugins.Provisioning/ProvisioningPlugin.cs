@@ -24,6 +24,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
     private ICorePluginContext? _ctx;
     private volatile ProvisioningEngine? _engine;
     private volatile ProfileStore? _profiles;
+    private volatile NodeVault? _vault;
 
     public ProvisioningPlugin()
         : this(new ProvisioningOptions(), TimeProvider.System, null)
@@ -98,6 +99,8 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         ProvisioningMethods.RunFailedAgain => "Ran failed nodes again",
         ProvisioningMethods.Continue => "Pressed Continue",
         ProvisioningMethods.RemoveCameras => "Removed camera rows",
+        ProvisioningMethods.StoreSecret => "Stored a password for a profile",
+        ProvisioningMethods.StoreFile => "Stored a file for a profile",
         _ => null,
     };
 
@@ -108,6 +111,8 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         _ctx = ctx;
         var profiles = new ProfileStore(ctx.Settings);
         await profiles.LoadAsync(ct).ConfigureAwait(false);
+        var vault = new NodeVault(ctx.Settings, ctx.Secrets, ctx.DataDirectory, ctx.Uploads, _time);
+        await vault.LoadAsync(ct).ConfigureAwait(false);
         var services = new EngineServices(
             ctx.AutoAdd ?? new NoAutoAdd(),
             ctx.Tasks,
@@ -116,11 +121,15 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
             ctx.Records ?? new MemoryPluginRecords(),
             ctx.Events,
             () => ctx.Services?.Find<IDhcpServerLeases>(),
-            _probe ?? (ctx.Network?.ForSite(null) is { } network ? new NetworkAddressProbe(network) : new NoProbe()));
+            _probe ?? (ctx.Network?.ForSite(null) is { } network ? new NetworkAddressProbe(network) : new NoProbe()),
+            ctx.Vapix,
+            vault);
         var engine = new ProvisioningEngine(services, _registry, _options, _time, ctx.Logger);
         await engine.LoadAsync(ct).ConfigureAwait(false);
         _profiles = profiles;
+        _vault = vault;
         _engine = engine;
+        await PruneAsync(ct).ConfigureAwait(false);
     }
 
     public async Task StopAsync(CancellationToken ct)
@@ -135,6 +144,12 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         {
             _profiles = null;
             profiles.Dispose();
+        }
+
+        if (_vault is { } vault)
+        {
+            _vault = null;
+            vault.Dispose();
         }
     }
 
@@ -168,7 +183,9 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
             ProvisioningMethods.SaveProfile => PluginJson.Serialize(await SaveProfileAsync(PluginJson.Parse<SaveProfileRequest>(payloadJson, json), ct).ConfigureAwait(false), json),
             ProvisioningMethods.DeleteProfile => PluginJson.Serialize(await DeleteProfileAsync(PluginJson.Parse<IdRequest>(payloadJson, json).Id, ct).ConfigureAwait(false), json),
             ProvisioningMethods.ActivateProfile => PluginJson.Serialize(await ActivateAsync(PluginJson.Parse<IdRequest>(payloadJson, json).Id, ct).ConfigureAwait(false), json),
-            ProvisioningMethods.Start => PluginJson.Serialize(await StartSessionAsync(caller.UserName, ct).ConfigureAwait(false), json),
+            ProvisioningMethods.Start => PluginJson.Serialize(await StartSessionAsync(caller, ct).ConfigureAwait(false), json),
+            ProvisioningMethods.StoreSecret => PluginJson.Serialize(await StoreSecretAsync(PluginJson.Parse<SecretRequest>(payloadJson, json), ct).ConfigureAwait(false), json),
+            ProvisioningMethods.StoreFile => PluginJson.Serialize(await StoreFileAsync(caller, PluginJson.Parse<FileRequest>(payloadJson, json).UploadId, ct).ConfigureAwait(false), json),
             ProvisioningMethods.Stop => PluginJson.Serialize(await StopSessionAsync(ct).ConfigureAwait(false), json),
             ProvisioningMethods.ListCameras => PluginJson.Serialize(Cameras(PluginJson.ParseOrEmpty<CamerasRequest>(payloadJson, json)), json),
             ProvisioningMethods.GetCamera => PluginJson.Serialize(Camera(PluginJson.Parse<MacRequest>(payloadJson, json).Mac), json),
@@ -307,6 +324,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         }
 
         await profiles.SaveAsync(profile, ct).ConfigureAwait(false);
+        await PruneAsync(ct).ConfigureAwait(false);
         await PublishStatusAsync(ct).ConfigureAwait(false);
         return new ProfileReply(profile, check);
     }
@@ -318,6 +336,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
             throw new KeyNotFoundException(ProfileGone);
         }
 
+        await PruneAsync(ct).ConfigureAwait(false);
         await PublishStatusAsync(ct).ConfigureAwait(false);
         return ListProfiles();
     }
@@ -355,11 +374,49 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         return await CheckActivateAsync(active.Id, ct).ConfigureAwait(false);
     }
 
-    internal async Task<StatusReply> StartSessionAsync(string userName, CancellationToken ct)
+    /// <summary>Starts with the caller's tasks kept for the nodes that need the caller's MyAxis sign-in.</summary>
+    internal async Task<StatusReply> StartSessionAsync(ICallContext caller, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(caller);
         var profile = await CheckStartAsync(ct).ConfigureAwait(false);
-        await RunningEngine.StartAsync(profile, userName, ct).ConfigureAwait(false);
+        await RunningEngine.StartAsync(profile, caller.UserName, caller.Tasks, ct).ConfigureAwait(false);
         return await PublishStatusAsync(ct).ConfigureAwait(false);
+    }
+
+    internal NodeVault RunningVault => _vault ?? throw new InvalidOperationException("The Provisioning plugin is not running.");
+
+    /// <summary>Keeps a typed password or passphrase for a node (encrypted with the server's key) and answers its id only.</summary>
+    internal async Task<SecretReply> StoreSecretAsync(SecretRequest request, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return new SecretReply(await RunningVault.AddSecretAsync(request.Value ?? string.Empty, ct).ConfigureAwait(false));
+    }
+
+    /// <summary>Keeps a file the caller uploaded (their own uploads only) for a node and answers it.</summary>
+    internal async Task<StoredFile> StoreFileAsync(ICallContext caller, string uploadId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+        var upload = await caller.Uploads.FindAsync(uploadId, ct).ConfigureAwait(false)
+            ?? throw new KeyNotFoundException("The uploaded file is no longer on the server. Upload it again.");
+        await using var stream = await caller.Uploads.OpenReadAsync(upload.Id, ct).ConfigureAwait(false);
+        return await RunningVault.AddFileAsync(upload.Name, stream, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>The secrets and files no profile and no session names go after a day.</summary>
+    private async Task PruneAsync(CancellationToken ct)
+    {
+        if (_vault is not { } vault || _profiles is not { } profiles)
+        {
+            return;
+        }
+
+        var named = profiles.Book.Profiles.ToList();
+        if (_engine?.Session?.Profile is { } running)
+        {
+            named.Add(running);
+        }
+
+        await vault.PruneAsync(named, ct).ConfigureAwait(false);
     }
 
     internal async Task<StatusReply> StopSessionAsync(CancellationToken ct)
@@ -394,7 +451,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
             credentials = null;
         }
 
-        return new ProfileCheckContext(credentials, Dhcp());
+        return new ProfileCheckContext(credentials, Dhcp()) { Files = _vault?.Files, Secrets = _vault?.SecretIds };
     }
 
     private async Task<StatusReply> PublishStatusAsync(CancellationToken ct)

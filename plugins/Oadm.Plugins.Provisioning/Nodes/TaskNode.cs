@@ -33,6 +33,21 @@ public abstract class TaskNode<TSettings> : IProvisioningNode
     /// <summary>The task's payload JSON for this camera (the task validates it again before it writes).</summary>
     protected abstract string Payload(TSettings settings, NodeRun run);
 
+    /// <summary>
+    /// The payload when it needs a read first (a kept file as an upload, a secret): by default <see cref="Payload"/>. An
+    /// <see cref="InvalidOperationException"/> is the node's Error with its message; nothing starts.
+    /// </summary>
+    protected virtual Task<string> PayloadAsync(TSettings settings, NodeRun run, CancellationToken ct) => Task.FromResult(Payload(settings, run));
+
+    /// <summary>The task this camera's run starts (by default <see cref="TaskPluginId"/>; Certificate starts PKI's or EST's).</summary>
+    protected virtual string TaskFor(TSettings settings) => TaskPluginId;
+
+    /// <summary>Who starts the task: the plugin (default), or the user who started provisioning (their MyAxis sign-in); null: Error <see cref="NodeTexts.StartAgain"/>.</summary>
+    protected virtual ITaskRunner? RunnerFor(NodeRun run) => run?.Host.Tasks;
+
+    /// <summary>The result after the task: <paramref name="result"/> by default; a node with a second task runs it here.</summary>
+    protected virtual Task<NodeResult> AfterAsync(TSettings settings, NodeRun run, Guid deviceId, NodeResult result, CancellationToken ct) => Task.FromResult(result);
+
     /// <summary>The message of a task that ended Done ("Time zone Europe/Vienna, NTP 10.0.0.17.").</summary>
     protected abstract string Done(TSettings settings, NodeRun run);
 
@@ -81,8 +96,24 @@ public abstract class TaskNode<TSettings> : IProvisioningNode
             return early;
         }
 
-        var outcome = await TaskRuns.RunTaskAsync(run.Host, TaskPluginId, deviceId, Payload(settings, run), ct).ConfigureAwait(false);
-        return outcome is null ? NodeResult.Error(NodeTexts.TaskLost(Name)) : Map(outcome, settings, run);
+        if (RunnerFor(run) is not { } runner)
+        {
+            return NodeResult.Error(NodeTexts.StartAgain);
+        }
+
+        string payload;
+        try
+        {
+            payload = await PayloadAsync(settings, run, ct).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NodeResult.Error(ex.Message);
+        }
+
+        var outcome = await TaskRuns.RunTaskAsync(run.Host, runner, TaskFor(settings), deviceId, payload, ct).ConfigureAwait(false);
+        var result = outcome is null ? NodeResult.Error(NodeTexts.TaskLost(Name)) : Map(outcome, settings, run);
+        return await AfterAsync(settings, run, deviceId, result, ct).ConfigureAwait(false);
     }
 }
 
@@ -93,15 +124,20 @@ public static class TaskRuns
     /// Starts <paramref name="pluginId"/> on the device and waits for its end (polling, <see cref="ProvisioningOptions.TaskPoll"/>,
     /// at most <see cref="ProvisioningOptions.TaskTimeout"/>). Null when the task ended without an outcome or did not start.
     /// </summary>
-    public static async Task<TaskOutcome?> RunTaskAsync(INodeHost host, string pluginId, Guid deviceId, string payloadJson, CancellationToken ct)
+    public static Task<TaskOutcome?> RunTaskAsync(INodeHost host, string pluginId, Guid deviceId, string payloadJson, CancellationToken ct) =>
+        RunTaskAsync(host, host?.Tasks ?? throw new ArgumentNullException(nameof(host)), pluginId, deviceId, payloadJson, ct);
+
+    /// <summary>Like <see cref="RunTaskAsync(INodeHost, string, Guid, string, CancellationToken)"/> with another runner (the user who started provisioning).</summary>
+    public static async Task<TaskOutcome?> RunTaskAsync(INodeHost host, ITaskRunner runner, string pluginId, Guid deviceId, string payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(host);
+        ArgumentNullException.ThrowIfNull(runner);
         IReadOnlyList<Guid> ids;
         try
         {
-            ids = await host.Tasks.RunAsync(pluginId, [deviceId], payloadJson, host.Owner, ct).ConfigureAwait(false);
+            ids = await runner.RunAsync(pluginId, [deviceId], payloadJson, host.Owner, ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or KeyNotFoundException)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or KeyNotFoundException or UnauthorizedAccessException or Sdk.Devices.DevicesNotAvailableException)
         {
             return new TaskOutcome(deviceId, TaskEndState.Failed, ex.Message);
         }
@@ -116,8 +152,8 @@ public static class TaskRuns
         while (true)
         {
             // Not active is read before the outcome: a task that ends between the two reads is seen with its outcome.
-            var active = host.Tasks.IsActive(taskId);
-            if (await host.Tasks.GetOutcomeAsync(taskId, ct).ConfigureAwait(false) is { } outcome)
+            var active = runner.IsActive(taskId);
+            if (await runner.GetOutcomeAsync(taskId, ct).ConfigureAwait(false) is { } outcome)
             {
                 return outcome;
             }
@@ -143,6 +179,24 @@ public static class NodeTexts
     public const string NotInOadm = "The camera is not in OADM. Add to OADM did not work.";
 
     public static string TaskLost(string node) => $"The task of {node} ended without a result.";
+
+    /// <summary>A node that needs the user who started provisioning, after a server restart.</summary>
+    public const string StartAgain = "Stop and start provisioning again: the server restarted since it was started.";
+
+    /// <summary>The message of a task's end without its " Nothing was changed." tail.</summary>
+    public static string Plain(string? message)
+    {
+        var text = message?.Trim() ?? string.Empty;
+        foreach (var tail in (string[])[" Nothing was changed.", " Nothing was sent.", " Nothing was installed."])
+        {
+            if (text.EndsWith(tail, StringComparison.Ordinal))
+            {
+                text = text[..^tail.Length].TrimEnd();
+            }
+        }
+
+        return text;
+    }
 
     public static string TaskTooLong(TimeSpan timeout) => $"The task did not end within {timeout.TotalMinutes:0} minutes.";
 }

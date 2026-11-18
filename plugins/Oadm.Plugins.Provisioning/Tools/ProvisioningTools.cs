@@ -84,7 +84,7 @@ internal static class ProvisioningTools
             },
             async (plugin, caller, _, _, ct) =>
             {
-                await plugin.StartSessionAsync(caller.UserName, ct).ConfigureAwait(false);
+                await plugin.StartSessionAsync(caller, ct).ConfigureAwait(false);
                 return new DoneAnswer("Provisioning started.");
             })
         .Change<NoArgs, StopPlan, DoneAnswer>(

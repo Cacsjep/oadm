@@ -12,6 +12,7 @@ using Oadm.Sdk.Devices;
 using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
+using Oadm.Sdk.Vapix;
 
 namespace Oadm.Plugins.Provisioning.Engine;
 
@@ -24,7 +25,9 @@ public sealed record EngineServices(
     IPluginRecords Records,
     IPluginEvents? Events,
     Func<IDhcpServerLeases?> Dhcp,
-    IAddressProbe Probe);
+    IAddressProbe Probe,
+    IVapixClientFactory? Vapix = null,
+    NodeVault? Vault = null);
 
 /// <summary>
 /// The provisioning session (docs/spec/provisioning.md): while started, every DHCP acknowledgement of an Axis MAC address
@@ -69,6 +72,7 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
     private int _peak;
     private int _holding;
     private volatile bool _disposing;
+    private ITaskRunner? _starterTasks;
     private Task? _pollLoop;
     private Task? _publishLoop;
 
@@ -80,6 +84,7 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
         Time = time ?? TimeProvider.System;
         _logger = logger ?? NullLogger.Instance;
         _slots = new SemaphoreSlim(Math.Max(1, Options.MaxParallel));
+        Vault = services.Vault ?? new NodeVault(services.Settings, null, null, null, Time);
     }
 
     public ProvisioningOptions Options { get; }
@@ -91,6 +96,12 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
     public ITaskRunner Tasks => _services.Tasks;
 
     public IDeviceRepository Devices => _services.Devices;
+
+    public IVapixClientFactory Vapix => _services.Vapix ?? NoVapix.Instance;
+
+    public ITaskRunner? StarterTasks => Volatile.Read(ref _starterTasks);
+
+    public NodeVault Vault { get; }
 
     public string Owner => OwnerName;
 
@@ -174,7 +185,13 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
     /// Starts a session with <paramref name="profile"/> (checked by the caller): refused while one runs or without a running
     /// DHCP server. The rows of the last session go; the cameras with an active lease of the DHCP server are taken at once.
     /// </summary>
-    public async Task StartAsync(Profile profile, string startedBy, CancellationToken ct)
+    public Task StartAsync(Profile profile, string startedBy, CancellationToken ct) => StartAsync(profile, startedBy, null, ct);
+
+    /// <summary>
+    /// Starts a session like <see cref="StartAsync(Profile, string, CancellationToken)"/>; <paramref name="starterTasks"/>: the
+    /// tasks of the user who started it, kept in memory for the nodes that need that user's MyAxis sign-in.
+    /// </summary>
+    public async Task StartAsync(Profile profile, string startedBy, ITaskRunner? starterTasks, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(profile);
         if (Session is not null)
@@ -216,6 +233,7 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
             _version++;
         }
 
+        Volatile.Write(ref _starterTasks, starterTasks);
         await SaveSessionAsync(ct).ConfigureAwait(false);
         LogStarted(profile.Name, startedBy);
         TakeActiveLeases();
@@ -235,6 +253,7 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
             }
 
             _session = null;
+            _starterTasks = null;
             cts = _sessionCts;
             running = [.. _flows.Values.Select(f => f.Run)];
         }
@@ -603,6 +622,25 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
         }
 
         return set;
+    }
+
+    public async Task<int> NumberAsync(string mac, CancellationToken ct)
+    {
+        int number;
+        lock (_gate)
+        {
+            var current = _session ?? throw new OperationCanceledException(StoppedText);
+            if (current.Numbers.TryGetValue(mac, out var known))
+            {
+                return known;
+            }
+
+            number = current.Numbers.Count;
+            _session = current with { Numbers = new Dictionary<string, int>(current.Numbers, StringComparer.Ordinal) { [mac] = number } };
+        }
+
+        await SaveSessionAsync(ct).ConfigureAwait(false);
+        return number;
     }
 
     public async Task<string> WaitForApprovalAsync(string mac, CancellationToken ct)
@@ -1159,3 +1197,12 @@ public sealed record CamerasPage(IReadOnlyList<CameraRow> Rows, int Total, strin
 
 /// <summary>Event <c>cameras</c>: the changed rows, the removed MAC addresses, the counts (at most every 500 ms, 500 rows per event).</summary>
 public sealed record CamerasEvent(IReadOnlyList<CameraRow> Changed, IReadOnlyList<string> Removed, CameraCounts Counts, long Version);
+
+/// <summary>A host without VAPIX for plugins: every node that needs it says so.</summary>
+internal sealed class NoVapix : IVapixClientFactory
+{
+    public static readonly NoVapix Instance = new();
+
+    public Task<IVapixClient> CreateAsync(Guid deviceId, CancellationToken ct) =>
+        throw new InvalidOperationException("OADM cannot reach the camera from this plugin.");
+}

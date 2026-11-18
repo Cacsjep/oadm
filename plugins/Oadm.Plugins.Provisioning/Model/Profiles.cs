@@ -72,8 +72,12 @@ public sealed record SetIpSettings(
     string? Gateway = null,
     IReadOnlyList<string>? DnsServers = null);
 
-/// <summary>Settings of Date and time: the time zone and the NTP servers (none: the servers DHCP gives).</summary>
+/// <summary>
+/// Settings of Date and time: the time zone and the NTP servers (none: the servers DHCP gives), or OADM's NTP server
+/// (<see cref="OadmNtp"/>: the NTP server plugin's address for the camera filled in when it runs).
+/// </summary>
 public sealed record DateTimeSettings(
     string? TimeZone = null,
     IReadOnlyList<string>? NtpServers = null,
-    bool Nts = false);
+    bool Nts = false,
+    bool OadmNtp = false);

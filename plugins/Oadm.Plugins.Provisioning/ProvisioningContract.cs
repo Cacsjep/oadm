@@ -65,6 +65,12 @@ public static class ProvisioningMethods
     /// <summary><see cref="MacsRequest"/> -> <see cref="CountReply"/>: rows removed (the cameras stay in OADM).</summary>
     public const string RemoveCameras = "removeCameras";
 
+    /// <summary><see cref="SecretRequest"/> -> <see cref="SecretReply"/>: a typed password or passphrase kept for a node (its id only comes back).</summary>
+    public const string StoreSecret = "storeSecret";
+
+    /// <summary><see cref="FileRequest"/> -> <see cref="Engine.StoredFile"/>: a file the caller uploaded, kept for a node.</summary>
+    public const string StoreFile = "storeFile";
+
     /// <summary>Event: <see cref="StatusReply"/> after Start, Stop and changes of the profiles.</summary>
     public const string StatusTopic = "status";
 
@@ -85,6 +91,18 @@ public sealed record SaveProfileRequest(Profile Profile, string? Password = null
 {
     public override string ToString() => $"SaveProfileRequest {{ Profile = {Profile.Name}, Password = {(Password is null ? "none" : "***")} }}";
 }
+
+/// <summary>A typed password or passphrase for a node; never logged.</summary>
+public sealed record SecretRequest(string? Value)
+{
+    public override string ToString() => "SecretRequest { Value = *** }";
+}
+
+/// <summary>The id a node names its secret by (<c>secretId</c>).</summary>
+public sealed record SecretReply(Guid Id);
+
+/// <summary>A file of the caller's uploads to keep for a node.</summary>
+public sealed record FileRequest(string UploadId);
 
 public sealed record CamerasRequest(string? After = null, int Limit = 200);
 
