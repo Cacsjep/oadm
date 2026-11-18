@@ -48,6 +48,26 @@ public sealed record FirmwareFile(string FileId, string? FileName, IReadOnlyList
 /// <param name="Devices">The devices it is for; null: by product and major.</param>
 public sealed record FirmwareOnline(string Source, string Product, string Version, int? FromMajor, IReadOnlyList<Guid>? Devices = null);
 
+/// <summary>Which version from axis.com <see cref="FirmwareLatest"/> takes, chosen per device when the task runs.</summary>
+public enum FirmwareTarget
+{
+    /// <summary>The newest version of the device's own track (<see cref="OnlineFirmware.Recommended"/>).</summary>
+    OwnTrack = 0,
+
+    /// <summary>The newest version of the newest LTS track (<see cref="OnlineFirmware.LatestLts"/>).</summary>
+    LatestLts = 1,
+
+    /// <summary>The newest version of the active track (<see cref="OnlineFirmware.LatestActive"/>).</summary>
+    LatestActive = 2,
+}
+
+/// <summary>
+/// The newest version from axis.com for each device, chosen when the task runs (Provisioning: the camera's model is known
+/// only then). Never with files or <see cref="FirmwarePayload.Online"/> versions.
+/// </summary>
+/// <param name="Target">Own track, latest LTS or latest active track.</param>
+public sealed record FirmwareLatest(FirmwareTarget Target);
+
 /// <summary>Payload of the "Upgrade AXIS OS" task, written by the dialog.</summary>
 public sealed record FirmwarePayload
 {
@@ -66,6 +86,9 @@ public sealed record FirmwarePayload
 
     /// <summary>Versions from axis.com, one per model and track (README "Firmware online"); null without.</summary>
     public IReadOnlyList<FirmwareOnline>? Online { get; init; }
+
+    /// <summary>The newest version from axis.com per device, chosen when the task runs; null with files or versions.</summary>
+    public FirmwareLatest? Latest { get; init; }
 
     /// <summary><see cref="Online"/>, never null.</summary>
     public IReadOnlyList<FirmwareOnline> AllOnline() => Online ?? [];
@@ -88,6 +111,11 @@ public sealed record FirmwarePayload
         var versions = AllFiles().Select(f => FirmwareImageInspector.ParseFileName(f.FileName).Version?.Text)
             .Concat(AllOnline().Select(o => AxisOsVersion.TryParse(o.Version)?.Text)).Distinct().ToList();
         var version = versions.Count == 1 ? versions[0] : null;
+        if (Latest is not null)
+        {
+            return AxisOsTexts.UpgradeTask + " from axis.com";
+        }
+
         var name = versions.Count > 1
             ? Direction == FirmwareDirection.Downgrade ? AxisOsTexts.DowngradeTask : AxisOsTexts.UpgradeTask
             : version is null
@@ -107,6 +135,7 @@ public sealed record FirmwarePayload
         {
             new JsonStringEnumConverter<FactoryDefaultMode>(JsonNamingPolicy.CamelCase),
             new JsonStringEnumConverter<FirmwareDirection>(JsonNamingPolicy.CamelCase),
+            new JsonStringEnumConverter<FirmwareTarget>(JsonNamingPolicy.CamelCase),
         },
     };
 
@@ -131,9 +160,14 @@ public sealed record FirmwarePayload
         }
 
         if (payload is null || payload.AllFiles().Any(f => string.IsNullOrWhiteSpace(f.FileId))
-            || (payload.AllFiles().Count == 0 && payload.AllOnline().Count == 0))
+            || (payload.AllFiles().Count == 0 && payload.AllOnline().Count == 0 && payload.Latest is null))
         {
             throw new ArgumentException("No AXIS OS file was selected. Nothing was changed.", nameof(json));
+        }
+
+        if (payload.Latest is { } latest && (!Enum.IsDefined(latest.Target) || payload.AllFiles().Count > 0 || payload.AllOnline().Count > 0))
+        {
+            throw new ArgumentException("The task payload is not valid. Nothing was changed.", nameof(json));
         }
 
         foreach (var online in payload.AllOnline())

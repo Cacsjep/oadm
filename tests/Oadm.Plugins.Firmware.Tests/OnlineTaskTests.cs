@@ -183,6 +183,57 @@ public sealed class OnlineTaskTests : IDisposable
         Assert.Empty(_downloads.Calls);
     }
 
+    [Theory]
+    [InlineData(FirmwareTarget.OwnTrack, "11.11.160", "P3265-V_11_11_238.bin")] // its own track stays 11.11
+    [InlineData(FirmwareTarget.LatestLts, "11.11.160", "P3265-V_12_11_147.bin")]
+    [InlineData(FirmwareTarget.LatestActive, "11.11.160", "P3265-V_12_11_147.bin")] // no active track: the newest version
+    public async Task The_latest_version_is_chosen_for_the_device_when_the_task_runs(FirmwareTarget target, string current, string expected)
+    {
+        var (ctx, device) = Setup(expected.Contains("11_11", StringComparison.Ordinal) ? "11.11.238" : "12.11.147");
+        device.Version = current;
+        _site.MakeVersionFolders = true;
+
+        await Run(ctx, new FirmwarePayload { Latest = new FirmwareLatest(target) }.ToJson());
+
+        Assert.Equal(expected, device.UploadedFileName);
+        Assert.Single(_downloads.Calls);
+    }
+
+    [Fact]
+    public async Task The_latest_version_of_a_device_that_has_it_already_installs_nothing()
+    {
+        var (ctx, device) = Setup();
+        device.Version = "12.11.147";
+
+        await Run(ctx, new FirmwarePayload { Latest = new FirmwareLatest(FirmwareTarget.LatestLts) }.ToJson());
+
+        Assert.Contains("Already up to date: the device runs 12.11.147.", ctx.Steps.Snapshot()[2].Detail, StringComparison.Ordinal);
+        Assert.Empty(_downloads.Calls);
+        Assert.DoesNotContain("upgrade", device.Methods);
+    }
+
+    [Fact]
+    public async Task The_latest_version_of_a_model_axis_com_does_not_list_is_refused()
+    {
+        var (ctx, device) = Setup();
+        device.ProdNbr = "Q9999-X";
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Run(ctx, new FirmwarePayload { Latest = new FirmwareLatest(FirmwareTarget.OwnTrack) }.ToJson()));
+
+        Assert.Equal("axis.com lists no AXIS OS for Q9999-X. Nothing was changed.", ex.Message);
+        Assert.DoesNotContain("upgrade", device.Methods);
+    }
+
+    [Fact]
+    public void The_latest_version_never_comes_with_files()
+    {
+        var both = new FirmwarePayload { Latest = new FirmwareLatest(FirmwareTarget.LatestLts), FileId = "a", FileName = "P3265-V_12_11_77.bin" }.ToJson();
+
+        Assert.Throws<ArgumentException>(() => FirmwarePayload.Parse(both));
+        Assert.Equal(FirmwareTarget.LatestActive, FirmwarePayload.Parse("""{"latest":{"target":"latestActive"}}""").Latest!.Target);
+        Assert.Equal("Upgrade AXIS OS from axis.com", FirmwarePayload.Parse("""{"latest":{"target":"ownTrack"}}""").TaskName());
+    }
+
     [Fact]
     public async Task A_device_of_another_track_or_model_has_no_file()
     {

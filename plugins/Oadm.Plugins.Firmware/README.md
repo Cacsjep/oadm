@@ -260,6 +260,11 @@ starts the run ([docs/spec/myaxis.md](../../docs/spec/myaxis.md)).
   fails with "Sign in to MyAxis to download from axis.com. Nothing was changed." when the user has no session
   (`ctx.AxisDownloads` null or `HasSession` false), checked in Validate file once its choice is known, before axis.com
   is asked and before any write; a device that installs a chosen file never needs the sign-in.
+- **Latest version** (for Provisioning, which knows the model only when the camera runs): `"latest":{"target":"ownTrack"}`
+  (or `latestLts`, `latestActive`), never with files or `online`. In Validate file the server reads the device's model on
+  axis.com (`LatestForAsync`) and takes `Recommended`, `LatestLts` or `LatestActive` of it, then the same decision table:
+  the same version is "Already up to date", a model axis.com does not list "axis.com lists no AXIS OS for Q9999-X.
+  Nothing was changed.".
 - **One run, shared work** (`FirmwareRunCache`): the device tasks of a run (the same payload text) share the parsed
   payload and its `FirmwareRunIndex` (which entry names a device, the version per product and major, the files by
   product: O(1) per device at 100,000 devices) and one read of each version's folder on axis.com (source, product,

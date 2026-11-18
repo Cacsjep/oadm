@@ -345,8 +345,17 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
             // The file for this device (README "Payload"): a version from axis.com or a chosen file, by device or by product.
             var online = run.Online;
             var onlineImages = run.OnlineImages;
+            var runIndex = run.Index;
+            if (payload.Latest is { } latest)
+            {
+                // The newest version for this device's model, chosen now (Provisioning knows the model only when it runs).
+                online = [await LatestForAsync(ctx, device, info, latest.Target, ct).ConfigureAwait(false)];
+                onlineImages = [OnlineFirmware.ImageOf(online[0], 0)];
+                runIndex = null;
+            }
+
             var (chosenOnline, index, check) = FirmwareCompatibility.ChooseFor(device.Id, info.ProdNbr, info.Version, online, onlineImages, run.Files, images,
-                payload.FactoryDefaultMode, payload.AllowDowngrade, runIndex: run.Index);
+                payload.FactoryDefaultMode, payload.AllowDowngrade, runIndex: runIndex);
             if (chosenOnline < 0 && index < 0)
             {
                 step.Warn(FirmwareCompatibility.NoFileForModel + " Nothing was installed.");
@@ -450,6 +459,45 @@ public sealed partial class FirmwareTaskPlugin : ITaskPlugin, ITaskPluginQuery
                 await downloaded.DisposeAsync().ConfigureAwait(false);
             }
         }
+    }
+
+    /// <summary>
+    /// The version of <paramref name="target"/> for the device's model as axis.com lists it now (<see cref="FirmwarePayload.Latest"/>);
+    /// refused when axis.com does not answer or lists no AXIS OS for the model.
+    /// </summary>
+    private async Task<FirmwareOnline> LatestForAsync(ITaskExecutionContext ctx, IDeviceInfo device, BasicDeviceInfo info, FirmwareTarget target, CancellationToken ct)
+    {
+        OnlineLookupResult result;
+        try
+        {
+            result = await _online.LookupAsync([info.ProdNbr], ct).ConfigureAwait(false);
+        }
+        catch (AxisSiteException ex)
+        {
+            throw new InvalidOperationException(OnlineFirmware.UnreachableText + " Nothing was changed.", ex);
+        }
+
+        var model = result.Models.Count > 0 ? result.Models[0] : null;
+        if (result.Unreachable || model is { Failed: true })
+        {
+            throw new InvalidOperationException(OnlineFirmware.UnreachableText + " Nothing was changed.");
+        }
+
+        var version = model is { IsListed: true }
+            ? target switch
+            {
+                FirmwareTarget.LatestLts => OnlineFirmware.LatestLts(model),
+                FirmwareTarget.LatestActive => OnlineFirmware.LatestActive(model),
+                _ => OnlineFirmware.Recommended(model, AxisOsVersion.TryParse(info.Version)?.Major),
+            }
+            : null;
+        if (version is null || model?.Product is not { } product || model.Source is not { } source)
+        {
+            throw new InvalidOperationException($"axis.com lists no AXIS OS for {info.ProdNbr}. Nothing was changed.");
+        }
+
+        ctx.Log(TaskLogLevel.Info, $"The newest version for {info.ProdNbr} on axis.com: {version}.");
+        return new FirmwareOnline(source, product, version, null, [device.Id]);
     }
 
     /// <summary>The file of an online entry as axis.com lists it now; refused when it is no longer there.</summary>
