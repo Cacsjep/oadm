@@ -67,12 +67,16 @@
                               ResetPeriodInDays="1" />
         </ServiceInstall>
         <ServiceControl Id="OadmSiteNode" Name="OadmSiteNode" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
-        <!-- Service environment (read by the SCM when the service starts). -->
-        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\OadmSiteNode" Name="Environment" Type="multiString">
-          <MultiStringValue Value="DOTNET_BUNDLE_EXTRACT_BASE_DIR=[CommonAppDataFolder]OADM Site Node\runtime" />
-        </RegistryValue>
         <!-- "oadm-site-node status" in any command prompt. -->
         <Environment Id="NodePath" Name="PATH" Value="[INSTALLFOLDER]" Part="last" Action="set" System="yes" Permanent="no" />
+      </Component>
+      <!-- Service environment (read by the SCM when the service starts), in the service's own key. Permanent: the uninstall
+           never removes the value itself; Windows deletes the whole key with the service first, and removing a value of a
+           key already marked for deletion fails the uninstall with error 1409 (system error 1018). -->
+      <Component Id="OadmSiteNodeEnvironment" Permanent="yes">
+        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\OadmSiteNode" Name="Environment" Type="multiString" KeyPath="yes">
+          <MultiStringValue Value="DOTNET_BUNDLE_EXTRACT_BASE_DIR=[CommonAppDataFolder]OADM Site Node\runtime" />
+        </RegistryValue>
       </Component>
       <Files Include="$(var.NodeDir)\**">
         <Exclude Files="$(var.NodeDir)\oadm-site-node.exe" />

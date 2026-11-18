@@ -77,8 +77,12 @@
                               ResetPeriodInDays="1" />
         </ServiceInstall>
         <ServiceControl Id="OadmServer" Name="OadmServer" Start="install" Stop="both" Remove="uninstall" Wait="yes" />
-        <!-- Service environment (read by the SCM when the service starts). -->
-        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\OadmServer" Name="Environment" Type="multiString">
+      </Component>
+      <!-- Service environment (read by the SCM when the service starts), in the service's own key. Permanent: the uninstall
+           never removes the value itself; Windows deletes the whole key with the service first, and removing a value of a
+           key already marked for deletion fails the uninstall with error 1409 (system error 1018). -->
+      <Component Id="OadmServerEnvironment" Permanent="yes">
+        <RegistryValue Root="HKLM" Key="SYSTEM\CurrentControlSet\Services\OadmServer" Name="Environment" Type="multiString" KeyPath="yes">
           <MultiStringValue Value="DOTNET_BUNDLE_EXTRACT_BASE_DIR=[CommonAppDataFolder]OADM\runtime" />
         </RegistryValue>
       </Component>

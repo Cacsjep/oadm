@@ -61,9 +61,41 @@ function Show-MsiFailure([string] $log) {
 # Restart Manager off: a silent removal would otherwise close every program that holds one of its files, also the
 # runner's own terminal (the runner is lost, 4.1.0-rc.4) or fail at once with 1603 when it cannot (rc.3). A file in use
 # then fails the step with 3010 instead.
+# Error 1409 (system error 1018): the service's registry key was still marked for deletion; a second run then passes.
 function Uninstall([string] $log) {
     $p = Invoke-Limited msiexec.exe "/x `"$Msi`" MSIRESTARTMANAGERCONTROL=Disable /qn /norestart /l*v $log" $log
+    if ($p.ExitCode -eq 1603 -and (Select-String -Path $log -Pattern 'Error 1409' -Quiet)) {
+        Show-MsiFailure $log
+        Say 'uninstall hit Error 1409, once more'
+        Start-Sleep 5
+        $p = Invoke-Limited msiexec.exe "/x `"$Msi`" MSIRESTARTMANAGERCONTROL=Disable /qn /norestart /l*v retry-$log" "retry-$log"
+        $log = "retry-$log"
+    }
     if ($p.ExitCode -ne 0) { Show-MsiFailure $log; throw "uninstall failed: $($p.ExitCode) (3010 = restart required)" }
+}
+
+# Stops a service and waits until its program has exited too, releasing the service handle (a handle that stays open
+# keeps the service's registry key "marked for deletion" during the uninstall).
+function Stop-OadmService([string] $name, [string] $process) {
+    Stop-Service $name -ErrorAction SilentlyContinue
+    $s = Get-Service $name
+    try { $s.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60)) } finally { $s.Dispose() }
+    $deadline = (Get-Date).AddSeconds(60)
+    while (Get-Process -Name $process -ErrorAction SilentlyContinue) {
+        if ((Get-Date) -gt $deadline) { throw "$process still running after the service stopped" }
+        Start-Sleep -Milliseconds 500
+    }
+}
+
+# After the uninstall: waits until the service is gone (sc.exe: 1060 = does not exist), at most 60 s.
+function Wait-ServiceGone([string] $name) {
+    $deadline = (Get-Date).AddSeconds(60)
+    while ($true) {
+        sc.exe query $name | Out-Null
+        if ($LASTEXITCODE -eq 1060) { return }
+        if ((Get-Date) -gt $deadline) { throw "service $name still installed" }
+        Start-Sleep -Milliseconds 500
+    }
 }
 
 function Test-Decoder {
@@ -136,10 +168,9 @@ if ($Mode -eq 'SiteNode') {
     if ((Get-NodeRule).Count -ne 0) { throw 'the node must not add a firewall rule' }
 
     Say 'stop the service'
-    Stop-Service OadmSiteNode -ErrorAction SilentlyContinue
-    (Get-Service OadmSiteNode).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60))
+    Stop-OadmService OadmSiteNode oadm-site-node
     Uninstall uninstall-node.log
-    if (Get-Service OadmSiteNode -ErrorAction SilentlyContinue) { throw 'service still installed' }
+    Wait-ServiceGone OadmSiteNode
     if (Test-Path $node) { throw 'node still installed' }
     if ((Get-NodeRule).Count -ne 0) { throw 'firewall rule left behind' }
     if (-not (Test-Path $data)) { throw 'data folder was removed' }
@@ -166,10 +197,13 @@ $p = Invoke-Limited msiexec.exe "/i `"$Msi`" /qn /norestart /l*v install.log" in
 if ($p.ExitCode -ne 0) { Get-Content install.log -Tail 80 | Write-Host; throw "install failed: $($p.ExitCode) (3010 = restart required)" }
 $svc = Get-Service OadmServer
 Say "service: $($svc.Status) $($svc.StartType)"
+$svc.Dispose()
 
+# The first start creates the database, the certificate and the master key: a busy runner may need minutes.
 Say 'wait for port 5080'
 $ok = $false
-for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
+$deadline = (Get-Date).AddSeconds(180)
+while (-not $ok -and (Get-Date) -lt $deadline) {
     try { $c = New-Object Net.Sockets.TcpClient('127.0.0.1', 5080); $c.Close(); $ok = $true } catch { Start-Sleep 1 }
 }
 if (-not $ok) { Show-ServerLog 50; throw 'port 5080 not open' }
@@ -220,10 +254,9 @@ Test-Decoder
 # Stop the service first, so its exe is not in use while the files are removed (a file in use asks for a restart;
 # /norestart turns that into exit code 3010 instead of a restart of the runner).
 Say 'stop the service'
-Stop-Service OadmServer -ErrorAction SilentlyContinue
-(Get-Service OadmServer).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60))
+Stop-OadmService OadmServer Oadm.Server
 Uninstall uninstall.log
-if (Get-Service OadmServer -ErrorAction SilentlyContinue) { throw 'service still installed' }
+Wait-ServiceGone OadmServer
 if (Get-NetFirewallRule -DisplayName 'OADM Server*' -ErrorAction SilentlyContinue) { throw 'firewall rule left behind' }
 if (-not (Test-Path C:\ProgramData\OADM\master.key)) { throw 'data folder was removed' }
 Say 'server and client: install, service, gRPC, firewall, uninstall ok'
