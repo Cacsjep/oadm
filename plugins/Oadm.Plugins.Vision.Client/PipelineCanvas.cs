@@ -6,6 +6,8 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 
+using Oadm.Sdk.Client.Controls;
+
 namespace Oadm.Plugins.Vision.Client;
 
 /// <summary>
@@ -20,9 +22,6 @@ public sealed class PipelineCanvas : Control
 {
     public static readonly StyledProperty<CanvasViewModel?> CanvasProperty =
         AvaloniaProperty.Register<PipelineCanvas, CanvasViewModel?>(nameof(Canvas));
-
-    private const double DotStep = 22;
-    private const double CornerRadius = 8;
 
     private Drag _drag;
     private CanvasViewModel? _fitted;
@@ -306,34 +305,35 @@ public sealed class PipelineCanvas : Control
         }
     }
 
-    // ---- Drawing ----
+    // ---- Drawing (the shared look: NodeCanvasPainter; the eye, the control inputs and the counts are Vision Center's own) ----
 
     public override void Render(DrawingContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         var theme = new OverlayTheme(this);
         var bounds = new Rect(Bounds.Size);
-        context.FillRectangle(theme.Brush("Oadm.CanvasBackgroundBrush"), bounds);
         if (Canvas is not { } canvas)
         {
+            context.FillRectangle(theme.Brush("Oadm.CanvasBackgroundBrush"), bounds);
             return;
         }
 
-        DrawDots(context, theme, canvas, bounds);
-        using (context.PushTransform(Matrix.CreateScale(canvas.Zoom, canvas.Zoom) * Matrix.CreateTranslation(canvas.PanX, canvas.PanY)))
+        var view = new CanvasView(canvas.Zoom, canvas.PanX, canvas.PanY);
+        NodeCanvasPainter.DrawBackground(context, theme, bounds, view);
+        using (context.PushTransform(NodeCanvasPainter.Transform(view)))
         {
-            var linkBrush = theme.Brush("Oadm.TextDisabledBrush");
             foreach (var link in canvas.Links)
             {
-                DrawLink(context, theme, link, linkBrush);
+                NodeCanvasPainter.DrawLink(context, theme, link.Start, link.End, link.IsSelected, link.IsControl);
             }
 
             if (canvas.LinkDragFrom is { } from)
             {
                 var start = from.OutputPoint;
-                context.DrawGeometry(null, new Pen(theme.Brush("Oadm.AccentBrush"), 1, new DashStyle([3, 2], 0)), Curve(start, canvas.LinkDragTo));
+                context.DrawGeometry(null, new Pen(theme.Brush("Oadm.AccentBrush"), 1, new DashStyle([3, 2], 0)), NodeCanvasPainter.Curve(start, canvas.LinkDragTo));
             }
 
+            var linkBrush = NodeCanvasPainter.LinkBrush(theme);
             foreach (var node in canvas.Nodes)
             {
                 DrawNode(context, theme, canvas, node, linkBrush);
@@ -346,47 +346,6 @@ public sealed class PipelineCanvas : Control
         }
     }
 
-    private static void DrawDots(DrawingContext context, OverlayTheme theme, CanvasViewModel canvas, Rect bounds)
-    {
-        var step = DotStep * canvas.Zoom;
-        if (step < 6)
-        {
-            return;
-        }
-
-        var dot = OverlayTheme.Tint(theme.Brush("Oadm.InputBorderBrush"), 0.9);
-        var radius = Math.Max(0.8, 1.1 * canvas.Zoom);
-        var startX = canvas.PanX % step;
-        var startY = canvas.PanY % step;
-        for (var x = startX; x < bounds.Width; x += step)
-        {
-            for (var y = startY; y < bounds.Height; y += step)
-            {
-                context.DrawEllipse(dot, null, new Point(x, y), radius, radius);
-            }
-        }
-    }
-
-    private static StreamGeometry Curve(Point from, Point to, bool intoSide = false)
-    {
-        var (c1, c2) = CanvasGeometry.Curve(from, to, intoSide);
-        var geometry = new StreamGeometry();
-        using (var ctx = geometry.Open())
-        {
-            ctx.BeginFigure(from, false);
-            ctx.CubicBezierTo(c1, c2, to);
-            ctx.EndFigure(false);
-        }
-
-        return geometry;
-    }
-
-    private static void DrawLink(DrawingContext context, OverlayTheme theme, LinkViewModel link, IBrush brush)
-    {
-        var pen = link.IsSelected ? new Pen(theme.Brush("Oadm.AccentBrush"), 2) : new Pen(brush, 1);
-        context.DrawGeometry(null, pen, Curve(link.Start, link.End, link.IsControl));
-    }
-
     private static void DrawCount(DrawingContext context, OverlayTheme theme, LinkViewModel link)
     {
         if (link.Count is not { } count)
@@ -394,7 +353,7 @@ public sealed class PipelineCanvas : Control
             return;
         }
 
-        var middle = CanvasGeometry.OnCurve(link.Start, link.End, 0.5, link.IsControl);
+        var middle = NodeCanvasGeometry.OnCurve(link.Start, link.End, 0.5, link.IsControl);
         var text = theme.Small(count, theme.Brush("Oadm.TextSecondaryBrush"));
         var box = new Rect(middle.X - (text.Width / 2) - 6, middle.Y - (text.Height / 2) - 1, text.Width + 12, text.Height + 2);
         context.DrawRectangle(theme.Brush("Oadm.CardBackgroundBrush"), new Pen(theme.Brush("Oadm.BorderBrush"), 1), box, box.Height / 2, box.Height / 2);
@@ -406,38 +365,19 @@ public sealed class PipelineCanvas : Control
         var rect = node.Rect;
         var colour = theme.Brush(node.BrushKey);
         var accent = theme.Brush("Oadm.AccentBrush");
-        var error = theme.Brush("Oadm.StatusErrorBrush");
         var fill = theme.Brush("Oadm.CanvasNodeBrush");
         using var dim = node.Fit == LinkFit.Dimmed ? context.PushOpacity(0.35) : default(DrawingContext.PushedState?);
 
-        if (node.IsSelected)
-        {
-            context.DrawRectangle(null, new Pen(OverlayTheme.Tint(accent, 0.35), 4), rect.Inflate(2), CornerRadius + 2, CornerRadius + 2);
-        }
-
-        var border = node.HasError ? new Pen(error, 1.5)
-            : node.IsSelected || node.Fit == LinkFit.Fits ? new Pen(accent, 1.5)
-            : new Pen(theme.Brush("Oadm.InputBorderBrush"), 1);
-        context.DrawRectangle(fill, border, rect, CornerRadius, CornerRadius);
-
-        // The kind's colour: a stripe along the left edge, inside the rounded corners.
-        using (context.PushClip(new RoundedRect(rect, CornerRadius)))
-        {
-            context.FillRectangle(colour, new Rect(rect.X, rect.Y, 4, rect.Height));
-        }
-
-        DrawIcon(context, node.IconKey, colour, new Rect(rect.X + 14, rect.Y + 9, 16, 16));
-        var nameRight = node.CanShowOnVideo ? CanvasGeometry.EyeRect(node.X, node.Y).X - 4 : rect.Right - 10;
-        var name = theme.Body(node.Name, theme.Brush("Oadm.TextPrimaryBrush"), FontWeight.SemiBold);
-        name.MaxTextWidth = Math.Max(10, nameRight - (rect.X + 38));
-        name.MaxLineCount = 1;
-        name.Trimming = TextTrimming.CharacterEllipsis;
-        context.DrawText(name, new Point(rect.X + 38, rect.Y + 9));
+        var border = node.HasError ? NodeCardBorder.Error
+            : node.IsSelected || node.Fit == LinkFit.Fits ? NodeCardBorder.Accent
+            : NodeCardBorder.Normal;
+        var nameRight = node.CanShowOnVideo ? NodeCanvasGeometry.EyeRect(node.X, node.Y).X - 4 : rect.Right - 10;
+        NodeCanvasPainter.DrawCard(context, this, theme, rect, colour, node.IconKey, node.Name, node.IsSelected, border, nameRight);
 
         if (node.CanShowOnVideo)
         {
-            var eye = CanvasGeometry.EyeRect(node.X, node.Y);
-            DrawIcon(context, node.ShowOnVideo ? "eye" : "eyeOff",
+            var eye = NodeCanvasGeometry.EyeRect(node.X, node.Y);
+            NodeCanvasPainter.DrawIcon(context, this, node.ShowOnVideo ? "eye" : "eyeOff",
                 theme.Brush(node.ShowOnVideo ? "Oadm.TextPrimaryBrush" : "Oadm.TextDisabledBrush"), eye.Deflate(4));
         }
 
@@ -449,11 +389,11 @@ public sealed class PipelineCanvas : Control
         var inputs = node.ControlInputs;
         for (var i = 0; i < inputs.Count; i++)
         {
-            var at = CanvasGeometry.ControlPort(node.X, node.Y, i);
+            var at = NodeCanvasGeometry.ControlPort(node.X, node.Y, i);
             var lit = dragged is not null && node.Fit == LinkFit.Fits && canvas.FitsPort(dragged, node, inputs[i].Port);
             var condition = inputs[i].Accepts == Vision.Model.PortKind.Condition;
             var dot = lit ? accent : condition ? linkBrush : fill;
-            context.DrawEllipse(dot, new Pen(lit ? accent : linkBrush, 1), at, CanvasGeometry.ControlPortRadius, CanvasGeometry.ControlPortRadius);
+            context.DrawEllipse(dot, new Pen(lit ? accent : linkBrush, 1), at, NodeCanvasGeometry.ControlPortRadius, NodeCanvasGeometry.ControlPortRadius);
             var label = theme.Body(inputs[i].Label, theme.Brush("Oadm.TextSecondaryBrush"));
             context.DrawText(label, new Point(rect.X + 14, at.Y - (label.Height / 2)));
 
@@ -461,64 +401,34 @@ public sealed class PipelineCanvas : Control
             // yes-or-no node into the input.
             if (canvas.ShowsControlPlus(node) && canvas.ControlLinkOf(node, inputs[i].Port) is null)
             {
-                var plus = CanvasGeometry.ControlPlusRect(node.X, node.Y, i);
-                context.DrawLine(new Pen(linkBrush, 1, new DashStyle([2, 2], 0)), new Point(plus.Right, at.Y), new Point(at.X - CanvasGeometry.ControlPortRadius, at.Y));
+                var plus = NodeCanvasGeometry.ControlPlusRect(node.X, node.Y, i);
+                context.DrawLine(new Pen(linkBrush, 1, new DashStyle([2, 2], 0)), new Point(plus.Right, at.Y), new Point(at.X - NodeCanvasGeometry.ControlPortRadius, at.Y));
                 context.DrawRectangle(fill, new Pen(linkBrush, 1), plus, 3, 3);
-                DrawIcon(context, "add", theme.Brush("Oadm.TextSecondaryBrush"), plus.Deflate(3));
+                NodeCanvasPainter.DrawIcon(context, this, "add", theme.Brush("Oadm.TextSecondaryBrush"), plus.Deflate(3));
             }
         }
 
-        if (node.Live.Length > 0)
-        {
-            var live = theme.Body(node.Live, theme.Brush("Oadm.TextSecondaryBrush"));
-            live.MaxTextWidth = rect.Width - 24;
-            live.MaxLineCount = 1;
-            live.Trimming = TextTrimming.CharacterEllipsis;
-            context.DrawText(live, new Point(rect.X + 14, rect.Y + 35));
-        }
+        NodeCanvasPainter.DrawLine(context, theme, rect, node.Live);
 
         if (node.HasInputPort)
         {
-            var at = CanvasGeometry.InputPort(node.X, node.Y);
             var lit = dragged is not null && node.Fit == LinkFit.Fits && canvas.FitsPort(dragged, node, null);
-            context.DrawEllipse(lit ? accent : fill, new Pen(lit ? accent : linkBrush, 1), at, CanvasGeometry.PortRadius - 1, CanvasGeometry.PortRadius - 1);
+            NodeCanvasPainter.DrawPort(context, theme, NodeCanvasGeometry.InputPort(node.X, node.Y), lit);
         }
 
         if (node.HasOutputPort)
         {
             var at = node.OutputPoint;
-            var lit = ReferenceEquals(canvas.LinkDragFrom, node);
-            context.DrawEllipse(lit ? accent : fill, new Pen(lit ? accent : linkBrush, 1), at, CanvasGeometry.PortRadius - 1, CanvasGeometry.PortRadius - 1);
+            NodeCanvasPainter.DrawPort(context, theme, at, ReferenceEquals(canvas.LinkDragFrom, node));
             if (canvas.ShowsPlus(node))
             {
-                var plus = canvas.PlusOf(node);
-                context.DrawLine(new Pen(linkBrush, 1), new Point(at.X, at.Y + CanvasGeometry.PortRadius), new Point(plus.Center.X, plus.Y));
-                context.DrawRectangle(fill, new Pen(linkBrush, 1), plus, 4, 4);
-                DrawIcon(context, "add", theme.Brush("Oadm.TextSecondaryBrush"), plus.Deflate(5));
+                NodeCanvasPainter.DrawPlus(context, this, theme, at, canvas.PlusOf(node));
             }
         }
 
         if (node.Error is { } message)
         {
-            var text = theme.Small(message, error);
-            text.MaxTextWidth = CanvasGeometry.NodeWidth + 30;
-            // On the canvas's background: the link down from the output passes behind the error, never through it.
-            context.FillRectangle(theme.Brush("Oadm.CanvasBackgroundBrush"), new Rect(rect.X - 2, rect.Bottom + 4, text.Width + 4, text.Height + 2), 3);
-            context.DrawText(text, new Point(rect.X, rect.Bottom + 5));
-        }
-    }
-
-    private void DrawIcon(DrawingContext context, string key, IBrush brush, Rect at)
-    {
-        if (!this.TryFindResource("Icon." + key, ActualThemeVariant, out var value) || value is not Avalonia.Media.Geometry geometry)
-        {
-            return;
-        }
-
-        var scale = Math.Min(at.Width, at.Height) / 24.0;
-        using (context.PushTransform(Matrix.CreateScale(scale, scale) * Matrix.CreateTranslation(at.X, at.Y)))
-        {
-            context.DrawGeometry(null, new Pen(brush, 2, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round), geometry);
+            NodeCanvasPainter.DrawBelow(context, theme, rect, message);
         }
     }
 

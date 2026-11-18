@@ -77,7 +77,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
 - Buttons follow Fluent (CLAUDE.md "buttons follow Fluent"): command buttons of toolbars and card
   or list header rows are flat, icon in the lighter accent `#7D6EF0` and neutral text (`Button.toolbar` with
   `ui:IconLabel` / `ui:ToolbarButton`; actions left, search right; in a header row with a title, the panel has the class
-  `titleRow`, which puts the buttons' text and a count on the title's baseline); icon-only buttons in the text colour, the accent on
+  `titleRow`, which puts the buttons' text, a count and a status chip on the title's baseline); icon-only buttons in the text colour, the accent on
   hover; disabled buttons dimmed; one filled accent button only for the main action of a dialog or form; filled red only
   for the confirming button of a destructive dialog, flat red text elsewhere. Red in use: `Button.danger` for Remove
   users, Delete certificates, a confirmation's Delete; `Button.toolbar.danger` for Delete all, Delete tag, a credential's
@@ -194,6 +194,12 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   `Oadm.CheckOperatorWidth`, `Oadm.CheckValueWidth` (the event select above the checks spans the three, its info icon and
   the checks' remove icon share the last column, `SharedSizeGroup` CheckEnd), so the row keeps those widths and shrinks
   on a narrow window; each input is a label-less `ui:FormField` (`wide inline`) so leaving it shows its error.
+- Node canvases: `NodeCanvasPainter` and `NodeCanvasGeometry` are the one look of every node canvas (dotted background,
+  vertical links, cards with a colour stripe, icon, name and a line, ports, the + below an output, the error directly
+  below a red-bordered card) and its view (`CanvasView`: fit, wheel zoom around the pointer); `CanvasTheme` gives drawn
+  code the theme. `NodeChainCanvas` over a `NodeChain` (`NodeChainNode`): a straight chain top to bottom with a status
+  icon and a message below each card, pan, zoom and a click that selects (Provisioning's profile editor and a camera's
+  flow). Vision Center's `PipelineCanvas` draws with the painter and adds its eye, control inputs and counts.
 - `PageHeader`: a plugin page's content for the host page header (`Subtitle`, `Trailing`; `IsHidden` leaves the header
   row out, Live View).
 - For dialogs: `DialogTitleBar`, `CardHeader`, `DialogFooter`.

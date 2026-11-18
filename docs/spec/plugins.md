@@ -512,7 +512,7 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
   packages keep their own hand-written `plugin.json`: 0.4.0, or the version of the newest member a package uses at run time
-  (0.15.0: DHCP server (`IDhcpServerLeases`) and Provisioning (`IDeviceAutoAdd` first set up); 0.13.0, the members for MCP: Applications (ACAP), Upgrade AXIS OS, Network, DHCP server, NTP server, Hardening
+  (0.15.0: DHCP server (`IDhcpServerLeases`), Provisioning (`IDeviceAutoAdd` first set up) and the node canvas of Vision Center and Text recognition; 0.13.0, the members for MCP: Applications (ACAP), Upgrade AXIS OS, Network, DHCP server, NTP server, Hardening
   scan (payload schemas or plugin tools), PKI with the EST and 802.1X servers (also `IServerCertificates`), Date and time
   (`ValidatePayload`), Users (`Secret`), Action Rule Editor, Device configuration and Edge storage (task inputs for agents,
   `PagePermissions`); 0.12.0: `PluginJson` or `ByteSize` in Application

@@ -1,7 +1,7 @@
 # Zero-touch provisioning
 
-Status: **draft spec; server part built** (every node below, the page methods and tools; the page and the canvas are
-next). Flow design of 2026-11-18; replaces the step list of 2026-10-27. Open (ask the maintainer): Users and SD card take
+Status: **draft spec; built** (every node below, the page methods and tools, the page with the canvas and the profile
+editor). Flow design of 2026-11-18; replaces the step list of 2026-10-27. Open (ask the maintainer): Users and SD card take
 a typed password only (a plugin never reads a password of the credential list); SD card formats with the camera's own
 file system and sets only the maximum age (Edge storage has no file system choice and no cleanup level); Configuration
 applies parameters, action rules and schedules (a configuration file has no stream profiles).

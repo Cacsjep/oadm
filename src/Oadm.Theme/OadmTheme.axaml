@@ -1314,6 +1314,10 @@
   <Style Selector=":is(Panel).titleRow > TextBlock.secondary">
     <Setter Property="Padding" Value="0,4,0,0" />
   </Style>
+  <!-- A status in a header row (the DHCP server's state on Provisioning): its text on the title's baseline too. -->
+  <Style Selector=":is(Panel).titleRow > ui|StatusChip">
+    <Setter Property="Margin" Value="0,4,0,0" />
+  </Style>
   <!-- A red icon alone (Remove condition, Remove action, a trash icon in a row): as small as every icon button; the
        danger button's wide padding above must not apply to it -->
   <Style Selector="Button.iconOnly.danger">

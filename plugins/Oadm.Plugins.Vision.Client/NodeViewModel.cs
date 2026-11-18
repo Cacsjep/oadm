@@ -5,6 +5,7 @@ using Avalonia;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 using Oadm.Plugins.Vision.Model;
+using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Vision.Client;
 
@@ -107,12 +108,12 @@ public sealed partial class NodeViewModel : ObservableObject
     public IReadOnlyList<ControlInput> ControlInputs => Info?.ControlInputs ?? [];
 
     /// <summary>The card's height: a row more per control input.</summary>
-    public double Height => CanvasGeometry.HeightFor(ControlInputs.Count);
+    public double Height => NodeCanvasGeometry.HeightFor(ControlInputs.Count);
 
-    public Rect Rect => CanvasGeometry.NodeRect(X, Y, Height);
+    public Rect Rect => NodeCanvasGeometry.NodeRect(X, Y, Height);
 
     /// <summary>The output dot: the bottom centre of the card.</summary>
-    public Point OutputPoint => CanvasGeometry.OutputPort(X, Y, Height);
+    public Point OutputPoint => NodeCanvasGeometry.OutputPort(X, Y, Height);
 
     /// <summary>The dot of the control input <paramref name="port"/>; null for the data input or a port it does not have.</summary>
     public Point? ControlPortAt(string? port)
@@ -122,7 +123,7 @@ public sealed partial class NodeViewModel : ObservableObject
         {
             if (inputs[i].Port == port)
             {
-                return CanvasGeometry.ControlPort(X, Y, i);
+                return NodeCanvasGeometry.ControlPort(X, Y, i);
             }
         }
 
@@ -157,7 +158,7 @@ public sealed partial class LinkViewModel(NodeViewModel from, NodeViewModel to, 
     public bool IsControl => ToPort is not null;
 
     /// <summary>Where it ends on its card: the top centre, or the control input's dot on the left edge.</summary>
-    public Point End => To.ControlPortAt(ToPort) ?? CanvasGeometry.InputPort(To.X, To.Y);
+    public Point End => To.ControlPortAt(ToPort) ?? NodeCanvasGeometry.InputPort(To.X, To.Y);
 
     public Point Start => From.OutputPoint;
 

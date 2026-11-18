@@ -1,0 +1,121 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Provisioning.Client"
+        x:Class="Oadm.Plugins.Provisioning.Client.ProfileEditorWindow"
+        x:DataType="vm:ProfileEditorViewModel"
+        Title="{Binding Title}"
+        Width="1100" Height="720"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- The profile editor (docs/spec/provisioning.md "Profiles: the flow"): the flow on the shared node canvas (straight chain,
+       Add node, Move up, Move down, Remove), the selected node's settings right of it (errors below the fields), Save. Two
+       cards. Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <Grid Grid.Row="1" Margin="16,0" ColumnDefinitions="*,380" ColumnSpacing="16">
+      <!-- The flow -->
+      <Border Grid.Column="0" Classes="card">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+            <ui:ToolbarOverflowPanel Spacing="4">
+              <ui:ToolbarButton x:Name="AddNodeButton" IconKey="add" Text="{x:Static vm:ProvisioningTexts.AddNode}" />
+              <ui:ToolbarSeparator />
+              <ui:ToolbarButton IconKey="arrowUp" Text="{x:Static vm:ProvisioningTexts.MoveUp}" Command="{Binding MoveUpCommand}"
+                                ToolTip.Tip="{Binding FixedTip}" ToolTip.ShowOnDisabled="True" />
+              <ui:ToolbarButton IconKey="arrowDown" Text="{x:Static vm:ProvisioningTexts.MoveDown}" Command="{Binding MoveDownCommand}"
+                                ToolTip.Tip="{Binding FixedTip}" ToolTip.ShowOnDisabled="True" />
+              <ui:ToolbarSeparator />
+              <ui:ToolbarButton IconKey="maximize" Text="Fit view" Command="{Binding FitViewCommand}" />
+            </ui:ToolbarOverflowPanel>
+            <ui:ToolbarButton Grid.Column="1" Classes="danger atEnd" IconKey="remove" Text="{x:Static vm:ProvisioningTexts.RemoveNode}"
+                              Command="{Binding RemoveNodeCommand}" ToolTip.Tip="{x:Static vm:ProvisioningTexts.RemoveNodeTip}" />
+          </Grid>
+          <Border Grid.Row="1" Classes="liveViewSurface" ClipToBounds="True">
+            <ui:NodeChainCanvas x:Name="Canvas" Chain="{Binding Chain}" />
+          </Border>
+          <TextBlock Grid.Row="2" Classes="fieldMessage error" Text="{Binding ProfileError}" IsVisible="{Binding HasProfileError}" TextWrapping="Wrap" />
+        </Grid>
+      </Border>
+
+      <!-- The selected node's settings, or the profile's name -->
+      <Border Grid.Column="1" Classes="card">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+          <Panel>
+            <StackPanel x:Name="ProfileForm" Classes="form" IsVisible="{Binding ShowsProfileForm}">
+              <TextBlock Classes="cardTitle" Text="{x:Static vm:ProvisioningTexts.Profile}" />
+              <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:ProvisioningTexts.Name}">
+                <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="64" />
+              </ui:FormField>
+              <TextBlock Classes="secondary" Text="{x:Static vm:ProvisioningTexts.ChooseNode}" TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel x:Name="NodeForm" Classes="form" DataContext="{Binding SelectedNode}" x:DataType="vm:NodeEditorViewModel"
+                        IsVisible="{Binding $parent[Window].((vm:ProfileEditorViewModel)DataContext).HasSelection, FallbackValue=False}">
+              <TextBlock Classes="cardTitle" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+              <ItemsControl x:Name="Fields" ItemsSource="{Binding Fields}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Classes="form" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.DataTemplates>
+                  <DataTemplate x:DataType="vm:TextFieldViewModel">
+                    <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                      <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" />
+                    </ui:FormField>
+                  </DataTemplate>
+                  <DataTemplate x:DataType="vm:ListFieldViewModel">
+                    <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}">
+                      <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" />
+                    </ui:FormField>
+                  </DataTemplate>
+                  <DataTemplate x:DataType="vm:BoolFieldViewModel">
+                    <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" />
+                  </DataTemplate>
+                  <DataTemplate x:DataType="vm:PasswordFieldViewModel">
+                    <StackPanel Classes="form">
+                      <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}">
+                        <StackPanel Spacing="6">
+                          <RadioButton GroupName="password" Content="{x:Static vm:ProvisioningTexts.FromCredentials}" IsChecked="{Binding UseCredential}" />
+                          <RadioButton GroupName="password" Content="{x:Static vm:ProvisioningTexts.TypePassword}" IsChecked="{Binding TypesPassword}" />
+                        </StackPanel>
+                      </ui:FormField>
+                      <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:ProvisioningTexts.Credential}" IsVisible="{Binding UseCredential}">
+                        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Credentials}" SelectedItem="{Binding SelectedCredential}" />
+                      </ui:FormField>
+                      <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:ProvisioningTexts.NewPassword}" IsVisible="{Binding TypesPassword}"
+                                    Hint="{x:Static vm:ProvisioningTexts.PasswordStoredHint}">
+                        <ui:PasswordBox Text="{Binding Password}" />
+                      </ui:FormField>
+                      <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:ProvisioningTexts.ConfirmPassword}" IsVisible="{Binding TypesPassword}">
+                        <ui:PasswordBox Text="{Binding Confirm}" />
+                      </ui:FormField>
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.DataTemplates>
+              </ItemsControl>
+              <TextBlock Classes="secondary" Text="{Binding Note}" TextWrapping="Wrap" IsVisible="{Binding Note, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <CheckBox Content="{x:Static vm:ProvisioningTexts.ContinueOnError}" IsChecked="{Binding ContinueOnError}" IsEnabled="{Binding CanChangeContinueOnError}"
+                        ToolTip.Tip="{x:Static vm:ProvisioningTexts.ContinueOnErrorTip}" />
+              <TextBlock Classes="secondary" Text="{x:Static vm:ProvisioningTexts.AlwaysStopsHint}" TextWrapping="Wrap" IsVisible="{Binding AlwaysStops}" />
+            </StackPanel>
+          </Panel>
+        </ScrollViewer>
+      </Border>
+
+      <ui:LoadingOverlay Grid.ColumnSpan="2" Text="{x:Static vm:ProvisioningTexts.ReadingProfile}" IsVisible="{Binding IsLoading}" />
+    </Grid>
+
+    <!-- The save's refusal directly left of Save -->
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <ui:StatusChip VerticalAlignment="Center" Margin="0,0,12,0" IsError="True" Text="{Binding ErrorText}" IsVisible="{Binding HasErrorText}" MaxWidth="560" />
+      <ui:ProgressRing Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,12,0" IsVisible="{Binding IsSaving}" />
+      <Button x:Name="SaveButton" Classes="primary" Content="{x:Static vm:ProvisioningTexts.Save}" Command="{Binding SaveCommand}"
+              ToolTip.Tip="{Binding SaveTip}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

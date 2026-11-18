@@ -5,6 +5,7 @@ using Oadm.Plugins.Vision.Api;
 using Oadm.Plugins.Vision.Client;
 using Oadm.Plugins.Vision.Model;
 using Oadm.Plugins.Vision.Models;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Vision.Tests.Client;
@@ -317,7 +318,7 @@ public sealed class ModelImportTests
         var count = canvas.Nodes.First(n => n.Kind == NodeKinds.Count);
         canvas.SelectedNode = count;
         Assert.True(canvas.ShowsControlPlus(count));
-        var plus = CanvasGeometry.ControlPlusRect(count.X, count.Y, 0);
+        var plus = NodeCanvasGeometry.ControlPlusRect(count.X, count.Y, 0);
         Assert.Equal((count, NodeKinds.ResetPort), canvas.EmptyControlAt(plus.Center));
 
         canvas.OpenPickerInto(count, NodeKinds.ResetPort);
@@ -327,7 +328,7 @@ public sealed class ModelImportTests
         var timer = canvas.Choose(NodeKinds.TimerKind)!;
         Assert.Contains(canvas.Links, l => l.From == timer && l.To == count && l.ToPort == NodeKinds.ResetPort);
         Assert.True(timer.IsSelected);
-        Assert.Null(canvas.EmptyControlAt(CanvasGeometry.ControlPort(count.X, count.Y, 0))); // the input has its link now
+        Assert.Null(canvas.EmptyControlAt(NodeCanvasGeometry.ControlPort(count.X, count.Y, 0))); // the input has its link now
 
         // A yes-or-no input offers the nodes that give one.
         canvas.OpenPickerInto(count, NodeKinds.WhilePort);
@@ -345,7 +346,7 @@ public sealed class ModelImportTests
         canvas.FitView();
         var top = canvas.ToScreen(new Point(300, 200)).Y;
         Assert.InRange(top, 0, 80);
-        var centre = canvas.ToScreen(new Point(300 + (CanvasGeometry.NodeWidth / 2), 200)).X;
+        var centre = canvas.ToScreen(new Point(300 + (NodeCanvasGeometry.NodeWidth / 2), 200)).X;
         Assert.Equal(450, centre, 1);
     }
 

@@ -242,6 +242,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
             ActiveProfileId = active?.Id,
             ActiveProfileName = active?.Name,
             SessionProfileName = session?.Profile.Name,
+            SessionProfile = session?.Profile,
             Dhcp = dhcp,
             Counts = engine.Counts(),
             Warnings = warnings,

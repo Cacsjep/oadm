@@ -62,6 +62,7 @@ Add the namespace `xmlns:ui="using:Oadm.Sdk.Client.Controls"` to your XAML.
 | `ui:DeviceIcon Category Status ShowStatusToolTip` | Every device icon in a list: the category's icon, amber or red by status, the status as the tooltip |
 | `ui:DeviceTree` + `DeviceTreeModel` | Devices grouped by tag, with search, an optional `Filter` and `DeviceInvoked` (Web View, Live View, Dashboards) |
 | `ui:PageTab Title IsActive ActivateCommand CloseCommand Count` | Every tab of a page with tabs: the active one underlined. `Count` above 0 shows a badge; without `CloseCommand` the tab is fixed (no X) |
+| `ui:NodeChainCanvas Chain` | A straight chain of nodes top to bottom (`NodeChain` of `NodeChainNode`: name, icon, colour, a line, a status icon, a message below), pan, zoom and select. Its look, `NodeCanvasPainter` and `NodeCanvasGeometry`, is the one of every node canvas; `CanvasTheme` for your own drawing |
 | `ui:TileGrid Source` | A grid of tiles that fills the page (Live View, Dashboards), see [Tiles](#tiles) |
 | `ui:LineChart`, `ui:BarChart` | A line chart over time (`ChartSeries`, a threshold line, named `ChartBand`s) and a bar chart (`ChartBar`), in the theme's colors (`ChartColor`). Used by the Load test |
 | `RowActions.Show(anchor, actions)` | The ⋯ menu of a table row (`Button.toolbar.iconOnly` with `Icon.more`, tooltip `RowActions.Tip`): everyday entries, a separator, the red ones last |

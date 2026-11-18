@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 
 using Oadm.Plugins.Vision.Model;
+using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Vision.Client;
 
@@ -186,7 +187,7 @@ public sealed class VisionPicture : Control
     {
         if (DrawKind is NodeKinds.Line or NodeKinds.Direction)
         {
-            if (CanvasGeometry.Distance(start, end) >= MinDrawn)
+            if (NodeCanvasGeometry.Distance(start, end) >= MinDrawn)
             {
                 ShapeDrawn?.Invoke(this, [start, end]);
             }

@@ -3,6 +3,7 @@ using Avalonia;
 using Oadm.Plugins.Vision.Client;
 using Oadm.Plugins.Vision.Graph;
 using Oadm.Plugins.Vision.Model;
+using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Vision.Tests.Client;
 
@@ -244,13 +245,13 @@ public sealed class CanvasViewModelTests
     public void Links_run_from_the_bottom_of_an_output_to_the_top_of_an_input()
     {
         var node = new NodeViewModel(new PipelineNode { Id = "x", Kind = NodeKinds.Track, X = 100, Y = 200 });
-        Assert.Equal(new Point(100 + (CanvasGeometry.NodeWidth / 2), 200), CanvasGeometry.InputPort(node.X, node.Y));
-        Assert.Equal(new Point(100 + (CanvasGeometry.NodeWidth / 2), 200 + CanvasGeometry.NodeHeight), CanvasGeometry.OutputPort(node.X, node.Y));
-        var plus = CanvasGeometry.PlusRect(node.X, node.Y);
-        Assert.True(plus.Top > 200 + CanvasGeometry.NodeHeight);
-        Assert.Equal(CanvasGeometry.OutputPort(node.X, node.Y).X, plus.Center.X);
-        Assert.True(CanvasGeometry.PlusRect(node.X, node.Y, belowError: true).Top > plus.Top);
-        var (c1, c2) = CanvasGeometry.Curve(new Point(0, 0), new Point(0, 200));
+        Assert.Equal(new Point(100 + (NodeCanvasGeometry.NodeWidth / 2), 200), NodeCanvasGeometry.InputPort(node.X, node.Y));
+        Assert.Equal(new Point(100 + (NodeCanvasGeometry.NodeWidth / 2), 200 + NodeCanvasGeometry.NodeHeight), NodeCanvasGeometry.OutputPort(node.X, node.Y));
+        var plus = NodeCanvasGeometry.PlusRect(node.X, node.Y);
+        Assert.True(plus.Top > 200 + NodeCanvasGeometry.NodeHeight);
+        Assert.Equal(NodeCanvasGeometry.OutputPort(node.X, node.Y).X, plus.Center.X);
+        Assert.True(NodeCanvasGeometry.PlusRect(node.X, node.Y, belowError: true).Top > plus.Top);
+        var (c1, c2) = NodeCanvasGeometry.Curve(new Point(0, 0), new Point(0, 200));
         Assert.True(c1.Y > 0 && c2.Y < 200); // vertical curve
     }
 
@@ -262,7 +263,7 @@ public sealed class CanvasViewModelTests
         foreach (var node in canvas.Nodes)
         {
             var topLeft = canvas.ToScreen(new Point(node.X, node.Y));
-            var bottomRight = canvas.ToScreen(new Point(node.X + CanvasGeometry.NodeWidth, node.Y + CanvasGeometry.NodeHeight));
+            var bottomRight = canvas.ToScreen(new Point(node.X + NodeCanvasGeometry.NodeWidth, node.Y + NodeCanvasGeometry.NodeHeight));
             Assert.True(topLeft.X >= 0 && topLeft.Y >= 0 && bottomRight.X <= 900 && bottomRight.Y <= 500, $"{node.Name} in the view");
         }
 
@@ -271,7 +272,7 @@ public sealed class CanvasViewModelTests
             canvas.ZoomAt(new Point(100, 100), 1.1);
         }
 
-        Assert.Equal(CanvasGeometry.MaxZoom, canvas.Zoom);
+        Assert.Equal(NodeCanvasGeometry.MaxZoom, canvas.Zoom);
         var under = canvas.ToWorld(new Point(300, 200));
         canvas.ZoomAt(new Point(300, 200), 1 / 1.1);
         Assert.Equal(under.X, canvas.ToWorld(new Point(300, 200)).X, 6); // the point under the pointer stays
@@ -280,7 +281,7 @@ public sealed class CanvasViewModelTests
             canvas.ZoomAt(new Point(100, 100), 1 / 1.1);
         }
 
-        Assert.Equal(CanvasGeometry.MinZoom, canvas.Zoom);
+        Assert.Equal(NodeCanvasGeometry.MinZoom, canvas.Zoom);
         Assert.Equal("25 %", canvas.ZoomText);
     }
 
@@ -290,16 +291,16 @@ public sealed class CanvasViewModelTests
         var canvas = Canvas(PageSamples.GatePeople);
         var track = canvas.Find("d")!;
         Assert.Same(track, canvas.NodeAt(new Point(track.X + 50, track.Y + 20)));
-        Assert.Same(track, canvas.OutputPortAt(CanvasGeometry.OutputPort(track.X, track.Y)));
-        Assert.Same(track, canvas.EyeAt(CanvasGeometry.EyeRect(track.X, track.Y).Center));
+        Assert.Same(track, canvas.OutputPortAt(NodeCanvasGeometry.OutputPort(track.X, track.Y)));
+        Assert.Same(track, canvas.EyeAt(NodeCanvasGeometry.EyeRect(track.X, track.Y).Center));
         Assert.Null(canvas.PlusAt(canvas.PlusOf(track).Center)); // its output leads on, not selected
         canvas.SelectedNode = track;
         Assert.Same(track, canvas.PlusAt(canvas.PlusOf(track).Center));
         var gate = canvas.Find("g")!;
-        Assert.Null(canvas.OutputPortAt(CanvasGeometry.OutputPort(gate.X, gate.Y))); // Event has no output
+        Assert.Null(canvas.OutputPortAt(NodeCanvasGeometry.OutputPort(gate.X, gate.Y))); // Event has no output
 
         var link = canvas.Links.First(l => l.From.Id == "b");
-        var middle = CanvasGeometry.OnCurve(CanvasGeometry.OutputPort(link.From.X, link.From.Y), CanvasGeometry.InputPort(link.To.X, link.To.Y), 0.5);
+        var middle = NodeCanvasGeometry.OnCurve(NodeCanvasGeometry.OutputPort(link.From.X, link.From.Y), NodeCanvasGeometry.InputPort(link.To.X, link.To.Y), 0.5);
         Assert.Same(link, canvas.LinkAt(middle));
         canvas.ToggleEye(track);
         Assert.False(track.ShowOnVideo);
@@ -425,12 +426,12 @@ public sealed class PageLayoutTests
         var track = canvas.Find("d")!;
         canvas.SelectedNode = track;
         Assert.Equal(Avalonia.Input.StandardCursorType.Hand, canvas.CursorAt(canvas.PlusOf(track).Center));
-        Assert.Equal(Avalonia.Input.StandardCursorType.Hand, canvas.CursorAt(CanvasGeometry.EyeRect(track.X, track.Y).Center));
+        Assert.Equal(Avalonia.Input.StandardCursorType.Hand, canvas.CursorAt(NodeCanvasGeometry.EyeRect(track.X, track.Y).Center));
         Assert.Equal(Avalonia.Input.StandardCursorType.Hand, canvas.CursorAt(new Point(track.X + 40, track.Y + 40)));
-        Assert.Equal(Avalonia.Input.StandardCursorType.Cross, canvas.CursorAt(CanvasGeometry.OutputPort(track.X, track.Y)));
+        Assert.Equal(Avalonia.Input.StandardCursorType.Cross, canvas.CursorAt(NodeCanvasGeometry.OutputPort(track.X, track.Y)));
         Assert.Null(canvas.CursorAt(new Point(-500, -500)));
         canvas.CanEdit = false;
-        Assert.NotEqual(Avalonia.Input.StandardCursorType.Cross, canvas.CursorAt(CanvasGeometry.OutputPort(track.X, track.Y)));
+        Assert.NotEqual(Avalonia.Input.StandardCursorType.Cross, canvas.CursorAt(NodeCanvasGeometry.OutputPort(track.X, track.Y)));
     }
 }
 
