@@ -121,6 +121,9 @@ public sealed record StatusReply
     /// <summary>The profile the session runs (the active one as it was at Start).</summary>
     public string? SessionProfileName { get; init; }
 
+    /// <summary>The nodes the session runs (the page draws a camera's flow with them); null while stopped.</summary>
+    public Profile? SessionProfile { get; init; }
+
     /// <summary>The DHCP server; null when its plugin does not run.</summary>
     public DhcpServerSummary? Dhcp { get; init; }
 
