@@ -12,7 +12,8 @@ grid columns), read only, nothing is ever written to a device.
   Device Manager, License Plate Verifier, Optimizer, 2N and other software are left out.
 - The ids come from the NVD API (`services.nvd.nist.gov/rest/json/cves/2.0?sourceIdentifier=product-security@axis.com`, one
   request, about 100 records); each record from the CVE Program as Axis wrote it (`cveawg.mitre.org/api/cve/<id>`,
-  `containers.cna.affected`).
+  `containers.cna.affected`). A busy answer (429 or 5xx; NVD often answers 503 without an API key) is asked again up to 4
+  times after 6, 12, 24 and 48 s (a longer Retry-After up to 2 minutes wins).
 - Ranges, in this order:
   1. Axis' exact ranges (`version` + `lessThan` / `lessThanOrEqual`, one per track) always win: NVD's own ranges lag behind
      and are wrong where checked (11.x marked affected that Axis lists as unaffected, a start version dropped, an LTS-only
