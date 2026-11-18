@@ -1,11 +1,15 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+
 using Oadm.Contracts.Assistant;
 using Oadm.Contracts.Mcp;
 using Oadm.Core.Auth;
 using Oadm.Core.Persistence;
 using Oadm.Server.Assistant;
+using Oadm.Server.Sites;
 using Oadm.Server.Tests.Support;
 using Oadm.Server.Tools;
 
@@ -294,7 +298,11 @@ public sealed class McpServerChangeTests
     [Fact]
     public async Task SitesTurnAcceptOnAndOffOnlyWithTheRunAndRefuseUnknownNodesAndSites()
     {
-        await using var server = await McpTestServer.StartAsync();
+        await using var server = await McpTestServer.StartAsync(configureServices: s =>
+        {
+            s.RemoveAll<SiteOptions>(); // a free port: another OADM server on this computer may hold TCP 5081
+            s.AddSingleton(new SiteOptions { ListenUrl = "127.0.0.1:0" });
+        });
         var key = await server.CreateKeyAsync();
         var sites = new Proto.SiteService.SiteServiceClient(server.Host.Invoker);
         var accept = (await sites.ListSitesAsync(new Proto.Empty())).Accept;
