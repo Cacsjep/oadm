@@ -10,6 +10,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Fixed
 
 - Windows: removing the server or the site node no longer fails now and then with error 1409.
+- VPN Fleet: a camera no longer stops with "ended without a result" when the WireGuard server finishes at that moment.
 
 ## [5.2.0] - 2026-11-18
 

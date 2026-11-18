@@ -282,6 +282,9 @@ public sealed class ConnectTaskPlugin : ITaskPlugin
         var end = _time.GetUtcNow() + HubWait;
         while (true)
         {
+            // Not active is read before the outcome: a task that ends between the two reads is then seen with its outcome,
+            // never as "ended without a result".
+            var active = tasks.IsActive(hubTask);
             if (await tasks.GetOutcomeAsync(hubTask, ct).ConfigureAwait(false) is { } outcome)
             {
                 if (outcome.State is TaskEndState.Done or TaskEndState.DoneWithWarnings)
@@ -294,7 +297,7 @@ public sealed class ConnectTaskPlugin : ITaskPlugin
                     + (string.IsNullOrWhiteSpace(outcome.Message) ? "." : ": " + outcome.Message.TrimEnd('.') + ".") + " Nothing was changed.");
             }
 
-            if (tasks.IsActive(hubTask) == false)
+            if (active == false)
             {
                 throw new VpnDeviceException("The task of the WireGuard server ended without a result. Set the cameras up again. Nothing was changed.");
             }
