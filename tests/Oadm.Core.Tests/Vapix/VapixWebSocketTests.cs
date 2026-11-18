@@ -20,7 +20,7 @@ public sealed class VapixWebSocketTests
         await using var device = ScriptedDevice.Start(tokenStatus: 200);
         using var client = new VapixClient(new Uri($"http://127.0.0.1:{device.Port}/"), new HttpClientHandler());
 
-        using var socket = await client.ConnectWebSocketAsync("/vapix/ws-data-stream?sources=events", TimeSpan.FromSeconds(10), CancellationToken.None);
+        using var socket = await client.ConnectWebSocketAsync("/vapix/ws-data-stream?sources=events", TimeSpan.FromSeconds(30), CancellationToken.None);
         await socket.SendAsync(Encoding.UTF8.GetBytes("hello"), WebSocketMessageType.Text, true, CancellationToken.None);
         var buffer = new byte[64];
         var result = await socket.ReceiveAsync(buffer, CancellationToken.None);
@@ -35,7 +35,7 @@ public sealed class VapixWebSocketTests
         await using var device = ScriptedDevice.Start(tokenStatus: 401);
         using var client = new VapixClient(new Uri($"http://127.0.0.1:{device.Port}/"), new HttpClientHandler());
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => client.ConnectWebSocketAsync("/vapix/ws-data-stream?sources=events", TimeSpan.FromSeconds(10), CancellationToken.None));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => client.ConnectWebSocketAsync("/vapix/ws-data-stream?sources=events", TimeSpan.FromSeconds(30), CancellationToken.None));
         Assert.Null(device.UpgradePath);
     }
 
@@ -47,7 +47,7 @@ public sealed class VapixWebSocketTests
         await using var device = ScriptedDevice.Start(tokenStatus: 200, upgradeStatus: status);
         using var client = new VapixClient(new Uri($"http://127.0.0.1:{device.Port}/"), new HttpClientHandler());
 
-        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => client.ConnectWebSocketAsync("/vapix/ws-data-stream?sources=events", TimeSpan.FromSeconds(10), CancellationToken.None));
+        var ex = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => client.ConnectWebSocketAsync("/vapix/ws-data-stream?sources=events", TimeSpan.FromSeconds(30), CancellationToken.None));
 
         Assert.Equal(text, ex.Message);
         Assert.Equal((System.Net.HttpStatusCode)status, Assert.IsType<VapixAuthenticationException>(ex.InnerException).StatusCode);
@@ -60,7 +60,7 @@ public sealed class VapixWebSocketTests
     public async Task OnlyPathsOnTheDeviceAreAccepted(string path)
     {
         using var client = new VapixClient(new Uri("http://127.0.0.1:9/"), new HttpClientHandler());
-        await Assert.ThrowsAsync<ArgumentException>(() => client.ConnectWebSocketAsync(path, TimeSpan.FromSeconds(10), CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentException>(() => client.ConnectWebSocketAsync(path, TimeSpan.FromSeconds(30), CancellationToken.None));
     }
 
     /// <summary>Answers wssession.cgi and one WebSocket upgrade (echo); keeps-alive connections are served in a loop.</summary>
@@ -154,7 +154,15 @@ public sealed class VapixWebSocketTests
                 var buffer = new byte[64];
                 var result = await socket.ReceiveAsync(buffer, CancellationToken.None);
                 await socket.SendAsync(Encoding.UTF8.GetBytes("echo " + Encoding.UTF8.GetString(buffer, 0, result.Count)), WebSocketMessageType.Text, true, CancellationToken.None);
-                await Task.Delay(500);
+                try
+                {
+                    // Open until the client closes or the test disposes the device (never a fixed wait).
+                    await socket.ReceiveAsync(buffer, _stop.Token);
+                }
+                catch (Exception ex) when (ex is OperationCanceledException or WebSocketException or IOException)
+                {
+                }
+
                 return;
             }
         }

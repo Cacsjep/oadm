@@ -86,9 +86,8 @@ public sealed class HeadlessDialogTests
             nts.ApplyCommand.Execute(null); // OK tried: the missing time zone shows below the drop-down too
             var window4 = new DateTimeWindow { DataContext = nts };
             window4.Show();
-            await PumpAsync();
+            await PumpUntilAsync(() => nts.ErrorOf(nameof(nts.SelectedZone)) is not null && nts.ErrorOf(nameof(nts.NtpServersText)) is not null);
             Assert.Equal("Select a time zone.", nts.ErrorOf(nameof(nts.SelectedZone)));
-            Assert.NotNull(nts.ErrorOf(nameof(nts.NtpServersText)));
             Capture(window4, outDir, "datetime-dialog-nts-error.png");
             window4.Close();
 
@@ -96,14 +95,13 @@ public sealed class HeadlessDialogTests
             var search = new DateTimeDialogViewModel([new FakeDevice(Guid.NewGuid())], () => now);
             var window5 = new DateTimeWindow { DataContext = search };
             window5.Show();
-            await PumpAsync();
+            await PumpUntilAsync(() => window5.GetVisualDescendants().OfType<ComboBox>().Any(c => c.IsEffectivelyVisible));
             var zones = window5.GetVisualDescendants().OfType<ComboBox>().Single();
             zones.Focus();
             window5.KeyTextInput("Tokyo");
-            await PumpAsync();
-            Assert.Equal("Asia/Tokyo", search.SelectedZone?.Id);
+            await PumpUntilAsync(() => search.SelectedZone?.Id == "Asia/Tokyo");
             zones.IsDropDownOpen = true;
-            await PumpAsync();
+            await PumpUntilAsync(() => zones.GetRealizedContainers().Any());
             var realized = zones.GetRealizedContainers().Count();
             Assert.InRange(realized, 1, 100);
             zones.IsDropDownOpen = false;
@@ -120,6 +118,23 @@ public sealed class HeadlessDialogTests
         catch (DirectoryNotFoundException)
         {
             // nothing was written
+        }
+    }
+
+    /// <summary>Runs the UI jobs until <paramref name="condition"/> holds; a slow machine only takes more rounds.</summary>
+    private static async Task PumpUntilAsync(Func<bool> condition, [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(condition))] string what = "")
+    {
+        var until = System.DateTime.UtcNow + Oadm.Sdk.Testing.Eventually.DefaultTimeout;
+        while (true)
+        {
+            Dispatcher.UIThread.RunJobs();
+            if (condition())
+            {
+                return;
+            }
+
+            Assert.True(System.DateTime.UtcNow < until, $"Timed out waiting for {what}.");
+            await Task.Delay(10);
         }
     }
 

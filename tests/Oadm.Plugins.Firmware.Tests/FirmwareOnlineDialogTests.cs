@@ -614,8 +614,7 @@ public sealed class FirmwareOnlineHeadlessTests
             await signedOut.LoadOnlineAsync(CancellationToken.None);
             var device = signedOut.Devices[4];
             device.SelectedChoice = device.Choices.First(c => !c.IsHeader);
-            await PumpAsync();
-            Assert.True(signedOut.ShowSignIn);
+            await FirmwareDialogHeadlessTests.PumpUntilAsync(() => signedOut.ShowSignIn);
             Capture(second, outDir, "firmware-online-signed-out.png");
             second.Close();
             signedOut.Dispose();

@@ -63,15 +63,12 @@ public sealed class HeadlessDialogTests
             vm.HostNameText = "cam-{n}";
             var window = new NetworkSettingsWindow { DataContext = vm, Width = 1100, Height = 1500 };
             window.Show();
-            await PumpAsync();
+            await PumpUntilAsync(() => vm.HasWarning && !vm.CanApply); // 2001:db8::103 answers ping
             Capture(window, outDir, "network-settings-dialog-multi.png");
-            Assert.True(vm.HasWarning);
-            Assert.False(vm.CanApply); // 2001:db8::103 answers ping
             Assert.Null(window.FindControl<CheckBox>("Acknowledge")); // no inline acknowledgement any more
 
             vm.Assignment.Rows[3].NewIpv6Address = "2001:db8::110";
-            await PumpAsync();
-            Assert.True(vm.CanApply);
+            await PumpUntilAsync(() => vm.CanApply);
 
             // Apply on a risky change opens the shared confirmation window.
             MessageWindow? popup = null;
@@ -196,6 +193,23 @@ public sealed class HeadlessDialogTests
         catch (DirectoryNotFoundException)
         {
             // nothing was written
+        }
+    }
+
+    /// <summary>Runs the UI jobs until <paramref name="condition"/> holds; a slow machine only takes more rounds.</summary>
+    private static async Task PumpUntilAsync(Func<bool> condition, [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(condition))] string what = "")
+    {
+        var until = DateTime.UtcNow + Oadm.Sdk.Testing.Eventually.DefaultTimeout;
+        while (true)
+        {
+            Dispatcher.UIThread.RunJobs();
+            if (condition())
+            {
+                return;
+            }
+
+            Assert.True(DateTime.UtcNow < until, $"Timed out waiting for {what}.");
+            await Task.Delay(10);
         }
     }
 
