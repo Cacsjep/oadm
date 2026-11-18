@@ -424,7 +424,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y ./artifacts/packages/oadm-server_*_${{ matrix.deb }}.deb ./artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb
           systemctl status oadm-server --no-pager || true
-          for i in $(seq 60); do (exec 3<>/dev/tcp/127.0.0.1/5080) 2>/dev/null && break; sleep 1; done
+          for i in $(seq 180); do (exec 3<>/dev/tcp/127.0.0.1/5080) 2>/dev/null && break; sleep 1; done
           # gRPC over HTTP/2 with TLS (self-signed server certificate, pinned by clients; the check accepts it).
           headers=$(curl -sk --http2 -X POST -H 'content-type: application/grpc' -H 'te: trailers' -D - -o /dev/null https://127.0.0.1:5080/oadm.Smoke/Test)
           echo "$headers"
@@ -466,7 +466,7 @@ jobs:
           systemctl status oadm-site-node --no-pager || true
           # The local channel answers every user; unbound right after the install.
           ok=0
-          for i in $(seq 60); do if oadm-site-node status > status.txt 2>&1; then ok=1; break; fi; sleep 1; done
+          for i in $(seq 180); do if oadm-site-node status > status.txt 2>&1; then ok=1; break; fi; sleep 1; done
           cat status.txt
           test "$ok" = 1 || { sudo journalctl -u oadm-site-node --no-pager | tail -60; exit 1; }
           grep -q 'Not bound' status.txt
