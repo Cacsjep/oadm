@@ -30,6 +30,10 @@
       <ui:FormField Label="End address">
         <TextBox Text="{Binding RangeEnd}" PlaceholderText="e.g. 10.0.0.199" IsReadOnly="{Binding !MayManage}" />
       </ui:FormField>
+      <ui:FormField Label="Lease time (hours)">
+        <NumericUpDown Minimum="{x:Static vm:DhcpServerViewModel.MinLeaseHours}" Maximum="{x:Static vm:DhcpServerViewModel.MaxLeaseHours}" Increment="1"
+                       FormatString="0" ParsingNumberStyle="Integer" Value="{Binding LeaseHours}" IsReadOnly="{Binding !MayManage}" />
+      </ui:FormField>
 
       <!-- What the clients of this range get, directly under the range; then the auto-add option, aligned with the inputs -->
       <ui:FormField Classes="wide" IsVisible="{Binding ClientsGetText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">

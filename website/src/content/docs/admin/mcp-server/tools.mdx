@@ -257,13 +257,13 @@ and runs after the user agreed.
 | `oadm_dhcp_lease_release_preview` | Preview | Releases a dynamic lease: the address is free and the device asks again at its next renewal. Nothing is changed. Call oadm_dhcp_lease_release_run with the handle to apply it. |
 | `oadm_dhcp_lease_release_run` | Run (changes) | Applies the plan of oadm_dhcp_lease_release_preview, which checks everything again. |
 | `oadm_dhcp_leases` | Read | Lists the leases of the DHCP server by MAC address, with their state and the end of an active lease. |
-| `oadm_dhcp_settings_save_preview` | Preview | Turns the DHCP server on or off and sets its interface, address range and the automatic add of Axis devices. Fields left out keep their value. Nothing is changed. Call oadm_dhcp_settings_save_run with the handle to apply it. |
+| `oadm_dhcp_settings_save_preview` | Preview | Turns the DHCP server on or off and sets its interface, address range, lease time and the automatic add of Axis devices. Fields left out keep their value. Nothing is changed. Call oadm_dhcp_settings_save_run with the handle to apply it. |
 | `oadm_dhcp_settings_save_run` | Run (changes) | Applies the plan of oadm_dhcp_settings_save_preview, which checks everything again. |
 | `oadm_dhcp_static_lease_delete_preview` | Preview | Deletes a static lease. The device gets an address from the range at its next renewal. Nothing is changed. Call oadm_dhcp_static_lease_delete_run with the handle to apply it. |
 | `oadm_dhcp_static_lease_delete_run` | Run (changes) | Applies the plan of oadm_dhcp_static_lease_delete_preview, which checks everything again. |
 | `oadm_dhcp_static_lease_save_preview` | Preview | Adds a static lease, or changes one with original_mac: the device with this MAC address always gets this IP address. Nothing is changed. Call oadm_dhcp_static_lease_save_run with the handle to apply it. |
 | `oadm_dhcp_static_lease_save_run` | Run (changes) | Applies the plan of oadm_dhcp_static_lease_save_preview, which checks everything again. |
-| `oadm_dhcp_status` | Read | Shows whether the DHCP server is on, its interface and range, what clients get, and other DHCP servers it saw. |
+| `oadm_dhcp_status` | Read | Shows whether the DHCP server is on, its interface, range and lease time, what clients get, and other DHCP servers it saw. |
 
 ## Hardening scan
 

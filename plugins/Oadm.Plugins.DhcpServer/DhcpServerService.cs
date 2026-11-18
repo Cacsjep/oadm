@@ -225,7 +225,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
     }
 
     /// <summary>
-    /// The field errors <see cref="SaveAsync"/> would answer ("Interface", "RangeStart", "RangeEnd"), without changing
+    /// The field errors <see cref="SaveAsync"/> would answer ("Interface", "RangeStart", "RangeEnd", "LeaseHours"), without changing
     /// anything and without the check for other DHCP servers (the preview of a tool).
     /// </summary>
     public IReadOnlyDictionary<string, string> CheckSave(DhcpSaveRequest request)
@@ -265,6 +265,11 @@ public sealed partial class DhcpServerService : IAsyncDisposable
             }
         }
 
+        if (request.LeaseHours is { } hours && DhcpValidation.LeaseHours(hours) is { } leaseError)
+        {
+            errors["LeaseHours"] = leaseError;
+        }
+
         return (errors, interfaceId, nic, start, end);
     }
 
@@ -296,6 +301,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
             RangeEnd = string.IsNullOrEmpty(end) ? null : end,
             AcceptedOtherServers = accepted,
             AutoAddAxisDevices = request.AutoAddAxisDevices,
+            LeaseHours = request.LeaseHours ?? _config.LeaseHours,
         };
         if (!config.Enabled)
         {
@@ -451,7 +457,7 @@ public sealed partial class DhcpServerService : IAsyncDisposable
             return;
         }
 
-        _engine.Scope = DhcpScope.Create(network, start, end);
+        _engine.Scope = DhcpScope.Create(network, start, end, _config.LeaseTime);
         var listener = new DhcpListener(socket, _engine, _limiter, _options.RateLimits.MaxInFlight, _logger);
         listener.Start();
         _listener = listener;

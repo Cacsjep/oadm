@@ -42,14 +42,14 @@ public sealed class PageViewModelTests : IAsyncLifetime
         await vm.LoadAsync();
         Assert.Equal(["Ethernet - 10.0.0.17/24 (Intel(R) Ethernet Connection I219-LM)", "Wi-Fi - 192.168.1.5/24"], vm.Listen.Items.Select(i => i.Label));
         Assert.Equal("eth-id", vm.Listen.SelectedId);
-        Assert.Equal("Clients get mask 255.255.255.0, router 10.0.0.138, DNS 10.0.0.138, domain example.local, lease 24 h", vm.ClientsGetText);
+        Assert.Equal("Clients get mask 255.255.255.0, router 10.0.0.138, DNS 10.0.0.138, domain example.local", vm.ClientsGetText);
         Assert.False(vm.IsEnabled);
         Assert.Equal("Stopped", vm.StatusText);
         Assert.False(vm.HasErrors); // untouched form
         Assert.Equal("No leases yet.", vm.EmptyText);
 
         vm.Listen.Selected = vm.Listen.Items[1];
-        Assert.Equal("Clients get mask 255.255.255.0, no router, no DNS, lease 24 h", vm.ClientsGetText);
+        Assert.Equal("Clients get mask 255.255.255.0, no router, no DNS", vm.ClientsGetText);
     }
 
     [Fact]
@@ -160,6 +160,31 @@ public sealed class PageViewModelTests : IAsyncLifetime
         using var again = new DhcpServerViewModel(_ctx);
         await again.LoadAsync();
         Assert.True(again.AutoAddAxisDevices);
+    }
+
+    [Fact]
+    public async Task Lease_time_is_checked_under_its_field_saved_with_save_and_loaded_again()
+    {
+        using var vm = new DhcpServerViewModel(_ctx);
+        await vm.LoadAsync();
+        Assert.Equal(24m, vm.LeaseHours); // the default
+        vm.IsEnabled = true;
+        vm.RangeStart = "10.0.0.100";
+        vm.RangeEnd = "10.0.0.199";
+
+        vm.LeaseHours = null;
+        Assert.Equal("Enter 1 to 720 hours.", vm.ErrorOf(nameof(vm.LeaseHours)));
+        Assert.False(vm.SaveCommand.CanExecute(null));
+        Assert.Equal("Enter 1 to 720 hours.", vm.SaveTip);
+
+        vm.LeaseHours = 168;
+        Assert.Null(vm.ErrorOf(nameof(vm.LeaseHours)));
+        await vm.SaveCommand.ExecuteAsync(null);
+        Assert.Equal(168, _plugin.Service!.Config.LeaseHours);
+
+        using var again = new DhcpServerViewModel(_ctx);
+        await again.LoadAsync();
+        Assert.Equal(168m, again.LeaseHours);
     }
 
     [Fact]
@@ -434,6 +459,7 @@ public sealed class HeadlessPageTests
 
             vm.RangeStart = "10.0.1.100";
             vm.RangeEnd = "10.0.0.50";
+            vm.LeaseHours = null;
             vm.HandleEvent(new PluginEvent(DhcpServerMethods.StateTopic, DhcpJson.Serialize(new DhcpState
             {
                 Config = new DhcpConfig { Enabled = true, InterfaceId = "eth-id" },
@@ -444,6 +470,7 @@ public sealed class HeadlessPageTests
 
             vm.RangeStart = "10.0.0.100";
             vm.RangeEnd = "10.0.0.199";
+            vm.LeaseHours = 24;
             vm.HandleEvent(new PluginEvent(DhcpServerMethods.StateTopic, DhcpJson.Serialize(new DhcpState
             {
                 Config = new DhcpConfig { Enabled = true, InterfaceId = "eth-id" },

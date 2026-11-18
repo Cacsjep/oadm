@@ -194,7 +194,7 @@ public sealed class PageToolTests
         var (ctx, plugin, _) = await StartAsync();
         await using var _ = plugin;
         var admin = ctx.CallAsAllDevices();
-        var payload = """{"enabled":true,"interface":"Ethernet","range_start":"10.0.0.100","range_end":"10.0.0.199","auto_add_axis_devices":true}""";
+        var payload = """{"enabled":true,"interface":"Ethernet","range_start":"10.0.0.100","range_end":"10.0.0.199","auto_add_axis_devices":true,"lease_hours":12}""";
         var before = State(plugin);
 
         var plan = Answer(await ctx.InvokeAsync(plugin, admin, "tool.settings_save.preview", payload));
@@ -202,19 +202,21 @@ public sealed class PageToolTests
         var warnings = plan["warnings"]!.AsArray().Select(w => w!.GetValue<string>()).ToList();
         Assert.Contains(DhcpPageTools.HandsOutAddresses, warnings);
         Assert.Contains(DhcpPageTools.AddsDevices, warnings);
+        Assert.Equal(12, plan["lease_hours"]!.GetValue<int>());
         Assert.Equal(before, State(plugin));
         Assert.False(plugin.Service!.Config.Enabled);
 
         var done = Answer(await ctx.InvokeAsync(plugin, admin, "tool.settings_save", payload));
         Assert.True(done["enabled"]!.GetValue<bool>());
         var config = plugin.Service.Config;
-        Assert.Equal((true, "eth-id", "10.0.0.100", "10.0.0.199", true), (config.Enabled, config.InterfaceId, config.RangeStart, config.RangeEnd, config.AutoAddAxisDevices));
+        Assert.Equal((true, "eth-id", "10.0.0.100", "10.0.0.199", true, 12), (config.Enabled, config.InterfaceId, config.RangeStart, config.RangeEnd, config.AutoAddAxisDevices, config.LeaseHours));
 
         // A change keeps the fields it leaves out; turning off says what the devices keep.
         var off = Answer(await ctx.InvokeAsync(plugin, admin, "tool.settings_save.preview", """{"enabled":false}"""));
         Assert.Equal("turn_off", off["change"]!.GetValue<string>());
         Assert.Equal([DhcpPageTools.LeasesStay], off["warnings"]!.AsArray().Select(w => w!.GetValue<string>()));
         Assert.Equal("10.0.0.100", off["range_start"]!.GetValue<string>());
+        Assert.Equal(12, off["lease_hours"]!.GetValue<int>());
         await ctx.InvokeAsync(plugin, admin, "tool.settings_save", """{"enabled":false}""");
         Assert.Equal((false, "10.0.0.100"), (plugin.Service.Config.Enabled, plugin.Service.Config.RangeStart));
     }
@@ -234,6 +236,9 @@ public sealed class PageToolTests
         var fields = range["errors"]!.AsArray().Select(e => e!["field"]!.GetValue<string>()).ToList();
         Assert.Contains("range_start", fields);
         Assert.Contains("range_end", fields);
+
+        var lease = Answer(await ctx.InvokeAsync(plugin, admin, "tool.settings_save.preview", """{"lease_hours":0}"""));
+        Assert.Equal(("lease_hours", "Enter 1 to 720 hours."), (lease["errors"]![0]!["field"]!.GetValue<string>(), lease["errors"]![0]!["error"]!.GetValue<string>()));
         Assert.Equal(before, State(plugin));
     }
 }

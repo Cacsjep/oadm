@@ -7,13 +7,16 @@ plugin: [Host services](../../website/src/content/docs/dev/host-services.md) of 
 
 ## How it works
 
-- Settings (plugin setting `config`: enabled, interfaceId, interfaceName, rangeStart, rangeEnd, autoAddAxisDevices,
-  acceptedOtherServers) restored on server start. Leases (plugin setting `leases`, a JSON list of static and
+- Settings (plugin setting `config`: enabled, interfaceId, interfaceName, rangeStart, rangeEnd, leaseHours,
+  autoAddAxisDevices, acceptedOtherServers) restored on server start; a `config` without `leaseHours` (saved before it
+  existed) or with a value outside 1 to 720 reads as 24 h. Leases (plugin setting `leases`, a JSON list of static and
   bound/expired/released leases, never offers) are written at most every 2 s when changed and on stop; they survive
   restarts.
 - Derived, never asked: mask from the interface prefix, router = the interface's IPv4 gateway when it is in the subnet,
-  DNS = the interface's IPv4 DNS servers, domain = its DNS suffix, lease 24 h (T1 50 %, T2 87.5 %), server id = the
-  interface address. Server, router and DNS addresses inside the range are skipped.
+  DNS = the interface's IPv4 DNS servers, domain = its DNS suffix, server id = the interface address.
+- Lease time: the setting "Lease time (hours)" (`leaseHours`, 1 to 720, default 24; `DhcpValidation.LeaseHours`, shared
+  by page and server), T1 50 %, T2 87.5 %. It lives in the `DhcpScope` the engine serves (`DhcpScope.LeaseTime`), set
+  on every bind after Save: new offers, acks and renewals get it; a bound lease keeps its end until it renews. Server, router and DNS addresses inside the range are skipped.
 - Protocol (`DhcpEngine`): DISCOVER -> OFFER (static lease first, then the client's previous lease, the requested
   address, the next free address from a rotating cursor, then the oldest expired/released lease); REQUEST selecting
   (another server id: our offer is withdrawn), init-reboot (NAK for a wrong address or network, silent without a
@@ -77,9 +80,10 @@ When bound to 0.0.0.0, every OS also checks the interface each packet arrived on
   DHCP server" until the first `getState` answered, later reads update in place.
 - Form: Enable DHCP server; Listen on (`InterfaceSelection`, IPv4 interfaces only, "Ethernet - 10.0.0.17/24 (Intel
   I219)"); Start address / End address (`ui:FormField`, errors under the fields while typing: "Must be inside the subnet
-  10.0.0.0/24.", "Must be after the start address.", network/broadcast/server address, at most 65,536 addresses); the
-  derived line directly under End address ("Clients get mask 255.255.255.0, router 10.0.0.138, DNS 10.0.0.138, lease
-  24 h", "no router" / "no DNS", ", domain x" when there is one); the auto-add check box below it aligned with the inputs;
+  10.0.0.0/24.", "Must be after the start address.", network/broadcast/server address, at most 65,536 addresses); Lease
+  time (hours) (`NumericUpDown` 1 to 720, "Enter 1 to 720 hours." under the field); the derived line directly under it
+  ("Clients get mask 255.255.255.0, router 10.0.0.138, DNS 10.0.0.138", "no router" / "no DNS", ", domain x" when there
+  is one); the auto-add check box below it aligned with the inputs;
   Save (disabled with the reason as tooltip; status "Checking for other DHCP servers" while saving).
 - Another DHCP server found on Save: the shared confirmation popup "Another DHCP server (10.0.0.1) answers on this network.
   Running two DHCP servers causes address conflicts. Enable anyway?"; after "Enable anyway" the status says `Running on
@@ -116,7 +120,8 @@ methods (Administrator, "manage", users with all devices; only the runs are audi
 like the page and changes nothing: `DhcpServerService.CheckStatic` (the page's field texts and the store's conflicts through
 `LeaseStore.CheckStatic`, shared with `SetStatic`), `FindLease` for the others ("The static lease no longer exists.",
 "The dynamic lease no longer exists.", "The lease no longer exists."). `oadm_dhcp_settings_save` is the page's Save
-(on or off, interface by name or id, range, automatic add; left-out fields keep their value): the preview runs the field
+(on or off, interface by name or id, range, `lease_hours`, automatic add; left-out fields keep their value;
+`oadm_dhcp_status` shows `lease_hours`): the preview runs the field
 checks of `save` (`DhcpServerService.CheckSave`, shared with `SaveAsync`) without the check for other DHCP servers and
 warns that a DHCP server hands out addresses to every device that asks (and names other servers seen); the run is the
 page's `save`: when another server answers it changes nothing and names it, and only `confirm_other_servers` (the
@@ -170,7 +175,8 @@ they never send DHCP traffic on a real interface or use port 67.
 
 - `ProtocolTests`: codec round trip with all options, overload, concatenation, malformed input and random garbage.
 - `EngineTests`: selecting/other server, init-reboot, renew/rebind, decline, release, inform, probe conflicts, offer
-  expiry, pending offer cap, probe concurrency.
+  expiry, pending offer cap, probe concurrency, the configured lease time (a bound lease keeps its end until it renews),
+  its limits.
 - `LeaseStoreTests`: allocation, static priority, collisions, expiry, reclaim, persistence, 5,000 leases.
 - `ServerTests`: the whole service: full exchange, unicast renew, live events, restart persistence, page actions, other
   server + confirmation, port in use retried, Windows service named, interface address change, pool exhausted, flood,
@@ -191,7 +197,7 @@ Never run these on a production network: a second DHCP server hands out wrong ad
 1. **Setup**: a test switch with the OADM server PC (static address, e.g. 10.0.0.17/24, gateway 10.0.0.138) and one or
    two AXIS cameras set to DHCP (factory default or Network settings "DHCP"). No other DHCP server on the switch.
 2. **Start disabled**: open the DHCP server page: status "Stopped", the interface list shows only interfaces with an
-   IPv4 address, the line "Clients get mask 255.255.255.0, router 10.0.0.138, DNS ..., lease 24 h".
+   IPv4 address, Lease time (hours) 24, the line "Clients get mask 255.255.255.0, router 10.0.0.138, DNS ...".
 3. **Field errors**: type 10.0.1.100 as start address: "Must be inside the subnet 10.0.0.0/24." under the field, Save
    disabled with the reason in its tooltip.
 4. **Enable**: range 10.0.0.100 - 10.0.0.199, Enable, Save: status "Running on Ethernet (10.0.0.17/24)".

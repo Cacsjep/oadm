@@ -18,7 +18,10 @@ public sealed record DhcpScope(DhcpNetworkInfo Network, AddressPool Pool)
 {
     public uint ServerAddress => Network.ServerAddress;
 
-    public static DhcpScope Create(DhcpNetworkInfo network, uint start, uint end)
+    /// <summary>The lease time of new offers and acks (renewals too); renewal at 50 %, rebinding at 87.5 %.</summary>
+    public TimeSpan LeaseTime { get; init; } = DhcpServerPluginInfo.LeaseTime;
+
+    public static DhcpScope Create(DhcpNetworkInfo network, uint start, uint end, TimeSpan? leaseTime = null)
     {
         ArgumentNullException.ThrowIfNull(network);
         var excluded = new HashSet<uint> { network.ServerAddress };
@@ -30,7 +33,7 @@ public sealed record DhcpScope(DhcpNetworkInfo Network, AddressPool Pool)
             }
         }
 
-        return new DhcpScope(network, new AddressPool(start, end, excluded));
+        return new DhcpScope(network, new AddressPool(start, end, excluded)) { LeaseTime = leaseTime ?? DhcpServerPluginInfo.LeaseTime };
     }
 }
 
@@ -57,8 +60,6 @@ public sealed record DhcpEngineOptions
 
     /// <summary>Port replies go to (68; tests use other ports).</summary>
     public int ClientPort { get; init; } = 68;
-
-    public TimeSpan LeaseTime { get; init; } = DhcpServerPluginInfo.LeaseTime;
 }
 
 /// <summary>
@@ -240,7 +241,7 @@ public sealed partial class DhcpEngine : IDisposable
 
     private DhcpReply? Request(DhcpMessage request, DhcpScope scope, ulong mac, DateTime now)
     {
-        var expires = now + _options.LeaseTime;
+        var expires = now + scope.LeaseTime;
         if (request.ServerId is { } serverId)
         {
             // SELECTING: the client chose a server.
@@ -337,10 +338,10 @@ public sealed partial class DhcpEngine : IDisposable
         return new DhcpReply(nak, new IPEndPoint(IPAddress.Broadcast, _options.ClientPort));
     }
 
-    private DhcpMessage Reply(DhcpMessage request, DhcpScope scope, DhcpMessageType type, uint address, bool withLease)
+    private static DhcpMessage Reply(DhcpMessage request, DhcpScope scope, DhcpMessageType type, uint address, bool withLease)
     {
         var network = scope.Network;
-        var seconds = (uint)_options.LeaseTime.TotalSeconds;
+        var seconds = (uint)scope.LeaseTime.TotalSeconds;
         var reply = new DhcpMessage
         {
             Op = DhcpMessage.BootReply,

@@ -21,14 +21,16 @@ without a DHCP server. OADM can also add new Axis devices automatically as soon 
 3. In **Listen on**, choose the network interface. It needs a static IPv4 address.
 4. Enter the **Start address** and **End address** of the range. Both must be inside the interface's subnet.
 
-   The line below shows what the devices get, taken from the interface: subnet mask, router, DNS and lease time.
+5. Set the **Lease time (hours)**: 1 hour to 30 days, 24 hours by default. Devices get a new time at their next renewal.
 
-5. Optional: check **Automatically add Axis devices that get an address**.
-6. Click **Save**.
+   The line below shows what the devices get, taken from the interface: subnet mask, router and DNS.
+
+6. Optional: check **Automatically add Axis devices that get an address**.
+7. Click **Save**.
 
    OADM first looks for other DHCP servers on the network. If it finds one, it asks before it starts.
 
-7. Check the status next to **Save**. It says, for example, "Running on Ethernet (10.0.0.17/24)".
+8. Check the status next to **Save**. It says, for example, "Running on Ethernet (10.0.0.17/24)".
 
 </Steps>
 

@@ -16,6 +16,17 @@ public static class DhcpValidation
 
     public const int MaxNameLength = 63;
 
+    /// <summary>Lease time limits in hours: 1 hour to 30 days, 24 hours by default.</summary>
+    public const int MinLeaseHours = 1;
+    public const int MaxLeaseHours = 720;
+    public const int DefaultLeaseHours = 24;
+
+    /// <summary>The error of the lease time (null = fine).</summary>
+    public static string? LeaseHours(decimal? hours) =>
+        hours is >= MinLeaseHours and <= MaxLeaseHours && hours == decimal.Truncate(hours.Value)
+            ? null
+            : string.Create(CultureInfo.InvariantCulture, $"Enter {MinLeaseHours} to {MaxLeaseHours} hours.");
+
     /// <summary>Errors of the start and end address (null = fine) for the subnet of <paramref name="network"/>.</summary>
     public static (string? Start, string? End) Range(string? start, string? end, DhcpNetworkInfo? network)
     {
