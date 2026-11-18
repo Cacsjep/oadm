@@ -72,12 +72,41 @@ public sealed partial class DhcpServerService : IAsyncDisposable
         {
             IgnoreMac = _check.IsProbeMac,
         };
+        var feed = new DhcpLeaseFeed(Summary, _store, _options.Time);
+        Feed = feed;
         if (autoAdd is not null)
         {
             var queue = new DhcpDeviceAutoAdd(autoAdd, () => _config is { Enabled: true, AutoAddAxisDevices: true }, _options.AutoAdd, _options.Time, _logger);
             _autoAdd = queue;
-            _engine.Leased = (mac, address) => queue.OnLeased(mac, address);
+            _engine.Leased = (mac, address) =>
+            {
+                feed.OnAck(mac, address);
+                queue.OnLeased(mac, address);
+            };
         }
+        else
+        {
+            _engine.Leased = feed.OnAck;
+        }
+    }
+
+    /// <summary>The read-only view other plugins get (Provisioning): the state, the acknowledged leases, the active leases.</summary>
+    public DhcpLeaseFeed Feed { get; }
+
+    /// <summary>The state for other plugins: running, interface, the server's address and mask, the range.</summary>
+    public Sdk.Network.DhcpServerSummary Summary()
+    {
+        var config = _config;
+        var status = ComputeStatus();
+        var network = config.InterfaceId is { } id ? UsableInterfaces().Select(NetworkOf).FirstOrDefault(n => n.InterfaceId == id) : null;
+        return new Sdk.Network.DhcpServerSummary(
+            IsRunning,
+            status.Text,
+            config.InterfaceName ?? network?.Name,
+            network?.Address,
+            network is null ? null : Oadm.Plugins.Network.Model.Ipv4.MaskText(network.PrefixLength),
+            config.RangeStart,
+            config.RangeEnd);
     }
 
     /// <summary>The automatic add of Axis devices (null when the host offers none).</summary>

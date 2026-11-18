@@ -33,7 +33,10 @@ public sealed partial class DeviceAutoAddService(
     TimeProvider time,
     ILogger<DeviceAutoAddService> logger,
     Core.Sites.ISiteStates? sites = null,
-    Core.DeviceGroups.DeviceViewFactory? views = null) : IDeviceAutoAdd
+    Core.DeviceGroups.DeviceViewFactory? views = null,
+    Core.Security.CredentialListStore? credentialList = null,
+    DeviceFirstPasswordService? firstPasswords = null,
+    DeviceTagStore? tagStore = null) : IDeviceAutoAdd
 {
     private long _lastLimitWarningTicks = DateTimeOffset.MinValue.UtcTicks;
 
@@ -188,6 +191,244 @@ public sealed partial class DeviceAutoAddService(
         }
     }
 
+    /// <summary>
+    /// What answers at the address without a password (Provisioning): a managed device from its record (Password not set is
+    /// factory-new), else the anonymous probe and the add page's Axis check. No credential is sent.
+    /// </summary>
+    public async Task<DeviceLook> LookAsync(string address, string expectedSerial, CancellationToken ct)
+    {
+        var ip = ParseAddress(address);
+        var serial = DeviceSerial.Normalize(expectedSerial);
+        if (await devices.FindBySerialAsync(serial, ct).ConfigureAwait(false) is { } managed)
+        {
+            return managed.Status == SdkDeviceStatus.PasswordNotSet
+                ? new DeviceLook(DeviceLookResult.FactoryNew, managed.Id, managed.Model, "The camera has no password yet.")
+                : new DeviceLook(DeviceLookResult.HasPassword, managed.Id, managed.Model, "OADM manages this camera already.");
+        }
+
+        var (verdict, probed, message) = await CheckAsync(ip, serial, ct).ConfigureAwait(false);
+        return new DeviceLook(verdict, null, probed?.Model, message);
+    }
+
+    /// <summary>
+    /// The first root password from a credential list entry (Provisioning's Set password): a managed device in Password not set
+    /// through the context menu's "Set password" (stored as its login, refresh queued), any other through the same checks at
+    /// its address (serial and needsetup right before writing). The password never leaves the server.
+    /// </summary>
+    public async Task<DeviceFirstPasswordOutcome> SetFirstPasswordAsync(string address, string expectedSerial, Guid credentialId, string source, CancellationToken ct)
+    {
+        var ip = ParseAddress(address);
+        var serial = DeviceSerial.Normalize(expectedSerial);
+        source = string.IsNullOrWhiteSpace(source) ? "a core plugin" : source.Trim();
+        if (credentialList is null || firstPasswords is null)
+        {
+            throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
+        }
+
+        if (await credentialList.RevealAsync(credentialId, ct).ConfigureAwait(false) is not { } credential)
+        {
+            return new DeviceFirstPasswordOutcome(false, DeviceFirstSetupTexts.CredentialGone);
+        }
+
+        if (!string.Equals(credential.UserName, "root", StringComparison.Ordinal))
+        {
+            return new DeviceFirstPasswordOutcome(false, DeviceFirstSetupTexts.RootOnly);
+        }
+
+        DeviceFirstPasswordResult result;
+        if (await devices.FindBySerialAsync(serial, ct).ConfigureAwait(false) is { } managed)
+        {
+            result = (await firstPasswords.SetAsync([managed.Id], credential.Password, ct).ConfigureAwait(false))[0];
+        }
+        else
+        {
+            var found = new DiscoveredDevice("first-password", serial, ip, null, null, null, DiscoveredDeviceStatus.PasswordNotSet, null, DiscoverySources.None, time.GetUtcNow());
+            result = await firstPasswords.SetUnmanagedAsync(found, credential.Password, ct).ConfigureAwait(false);
+        }
+
+        var message = result.Ok ? "Password set." : result.Message ?? "The camera did not take the password.";
+        var text = ip.ToString();
+        LogFirstPassword(serial, text, source, result.Ok);
+        if (result.Ok)
+        {
+            await audit.WriteAsync(AuditActions.FirstPasswordSet, $"{text} ({serial})", $"{source}: {message}", ct).ConfigureAwait(false);
+        }
+
+        return new DeviceFirstPasswordOutcome(result.Ok, message);
+    }
+
+    /// <summary>
+    /// Adds the device logged in with one credential list entry (Provisioning's Add to OADM), after the probe and the Axis
+    /// check, for all devices, with the tags; a managed device keeps its record and gets the tags.
+    /// </summary>
+    public async Task<DeviceAutoAddOutcome> AddWithLoginAsync(string address, string expectedSerial, Guid credentialId, IReadOnlyList<string> tags, string source, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(tags);
+        var ip = ParseAddress(address);
+        var serial = DeviceSerial.Normalize(expectedSerial);
+        source = string.IsNullOrWhiteSpace(source) ? "a core plugin" : source.Trim();
+        var text = ip.ToString();
+        if (credentialList is null)
+        {
+            throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
+        }
+
+        if (await devices.FindBySerialAsync(serial, ct).ConfigureAwait(false) is { } managed)
+        {
+            var tagged = await TagAsync(managed.Id, serial, tags, ct).ConfigureAwait(false);
+            return new DeviceAutoAddOutcome(DeviceAutoAddResult.AlreadyManaged, managed.Id, "OADM manages this camera already." + tagged);
+        }
+
+        if (await credentialList.RevealAsync(credentialId, ct).ConfigureAwait(false) is not { } credential)
+        {
+            return new DeviceAutoAddOutcome(DeviceAutoAddResult.Unreachable, null, DeviceFirstSetupTexts.CredentialGone);
+        }
+
+        var (verdict, probed, message) = await CheckAsync(ip, serial, ct).ConfigureAwait(false);
+        switch (verdict)
+        {
+            case DeviceLookResult.Unreachable:
+                return NotAdded(DeviceAutoAddResult.Unreachable, serial, text, source, message);
+            case DeviceLookResult.NotAxis:
+                return NotAdded(DeviceAutoAddResult.NotAxis, serial, text, source, message);
+            case DeviceLookResult.SerialMismatch:
+                return NotAdded(DeviceAutoAddResult.SerialMismatch, serial, text, source, message);
+        }
+
+        var found = FoundOf(ip, serial, probed!);
+        var server = await settings.GetServerSettingsAsync(ct).ConfigureAwait(false);
+        (Guid Id, SdkDeviceStatus Status)? added;
+        try
+        {
+            added = await adder.AddAsync(found, useHostName: false, initialPassword: null,
+                new Core.Security.DeviceCredentials(credential.UserName, credential.Password), server.ServerName, DeviceScope.All, ct, probed).ConfigureAwait(false);
+        }
+        catch (DeviceLimitException)
+        {
+            return NotAdded(DeviceAutoAddResult.LimitReached, serial, text, source, DeviceLimits.TooManyDevicesText);
+        }
+
+        if (added is not { } device)
+        {
+            return new DeviceAutoAddOutcome(DeviceAutoAddResult.AlreadyManaged, null, "OADM manages this camera already.");
+        }
+
+        polling.QueueRefresh([device.Id]);
+        var tagText = await TagAsync(device.Id, serial, tags, ct).ConfigureAwait(false);
+        var (result, addedText) = device.Status switch
+        {
+            SdkDeviceStatus.PasswordNotSet => (DeviceAutoAddResult.AddedPasswordNotSet, "Added; the camera has no password yet."),
+            SdkDeviceStatus.Ok or SdkDeviceStatus.Unknown => (DeviceAutoAddResult.Added, "Added and logged in as " + credential.UserName + "."),
+            _ => (DeviceAutoAddResult.AddedCredentialsRequired, "Added; the password does not work on it."),
+        };
+        LogAdded(serial, text, source, result);
+        await audit.WriteAsync(AuditActions.DeviceAddedAutomatically, $"{text} ({serial})", $"{source}: {addedText}", ct).ConfigureAwait(false);
+        await MembershipAudit.AddedAsync(views, audit, "system", string.Empty, [device.Id], source, ct, logger).ConfigureAwait(false);
+        return new DeviceAutoAddOutcome(result, device.Id, addedText + tagText);
+    }
+
+    /// <summary>The credential list without passwords.</summary>
+    public async Task<IReadOnlyList<DeviceCredentialName>> ListCredentialsAsync(CancellationToken ct)
+    {
+        if (credentialList is null)
+        {
+            throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
+        }
+
+        return [.. (await credentialList.ListAsync(ct).ConfigureAwait(false)).Select(c => new DeviceCredentialName(c.Id, c.UserName))];
+    }
+
+    /// <summary>Adds an entry to the credential list (an equal one is reused).</summary>
+    public async Task<DeviceCredentialName> AddCredentialAsync(string userName, string password, CancellationToken ct)
+    {
+        if (credentialList is null)
+        {
+            throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
+        }
+
+        var item = await credentialList.AddAsync(userName, password, ct).ConfigureAwait(false);
+        await audit.WriteAsync(AuditActions.CredentialAdded, item.UserName, "a core plugin added it", ct).ConfigureAwait(false);
+        return new DeviceCredentialName(item.Id, item.UserName);
+    }
+
+    private DiscoveredDevice FoundOf(IPAddress ip, string serial, Core.Vapix.VapixProbeResult probed) =>
+        new DiscoveredDevice("auto", serial, ip, null, null, null, DiscoveredDeviceStatus.Unknown, null, DiscoverySources.None, time.GetUtcNow()) with
+        {
+            Model = probed.Model,
+            FirmwareVersion = probed.FirmwareVersion,
+            ProductType = probed.ProductType,
+            Scheme = probed.Scheme,
+            Status = probed.IsFactoryDefault ? DiscoveredDeviceStatus.PasswordNotSet
+                : probed.AuthenticationRequired ? DiscoveredDeviceStatus.CredentialsRequired
+                : DiscoveredDeviceStatus.AnonymousAccess,
+        };
+
+    /// <summary>The anonymous probe and the Axis check: what answers at the address. No credential is sent.</summary>
+    private async Task<(DeviceLookResult Result, Core.Vapix.VapixProbeResult? Probed, string Message)> CheckAsync(IPAddress ip, string serial, CancellationToken ct)
+    {
+        var text = ip.ToString();
+        Core.Vapix.VapixProbeResult? probed;
+        try
+        {
+            probed = await vapixProbe.ProbeAsync(text, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            probed = null;
+        }
+
+        if (probed is null)
+        {
+            return (DeviceLookResult.Unreachable, null, $"No Axis device answered at {text}.");
+        }
+
+        if (!string.Equals(probed.Serial, serial, StringComparison.OrdinalIgnoreCase))
+        {
+            return (DeviceLookResult.SerialMismatch, probed, $"{text} answers as another device ({probed.Serial}), not {serial}.");
+        }
+
+        var verdict = await authenticator.CheckAxisAsync(FoundOf(ip, serial, probed), ct).ConfigureAwait(false);
+        if (verdict.Kind == DiscoveryAuthenticator.AxisVerdictKind.NotAxis)
+        {
+            return (DeviceLookResult.NotAxis, probed, verdict.Detail ?? "The device did not identify itself as an Axis device. No password was sent.");
+        }
+
+        if (verdict.Kind != DiscoveryAuthenticator.AxisVerdictKind.Verified)
+        {
+            return (DeviceLookResult.Unreachable, probed, verdict.Detail ?? $"No Axis device answered at {text}.");
+        }
+
+        return probed.IsFactoryDefault
+            ? (DeviceLookResult.FactoryNew, probed, "The camera has no password yet.")
+            : (DeviceLookResult.HasPassword, probed, "The camera has a password already.");
+    }
+
+    /// <summary>Adds the tags to the device for all devices; " Tags not set: ..." when they could not be set, else empty.</summary>
+    private async Task<string> TagAsync(Guid deviceId, string serial, IReadOnlyList<string> tags, CancellationToken ct)
+    {
+        if (tags.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        if (tagStore is null || views is null)
+        {
+            return " Tags not set: this server cannot set tags.";
+        }
+
+        try
+        {
+            var viewed = await views.System.GetAsync([deviceId], ct).ConfigureAwait(false);
+            await tagStore.SetDeviceTagsAsync(viewed, [.. tags], [], ct).ConfigureAwait(false);
+            return string.Empty;
+        }
+        catch (Exception ex) when (ex is TagNameException or TagLimitException or TagNeedsAllDevicesException or DevicesNotAvailableException)
+        {
+            LogTagsFailed(serial, ex.Message);
+            return " Tags not set: " + ex.Message.TrimEnd('.') + ".";
+        }
+    }
+
     private DeviceAutoAddOutcome NotAdded(DeviceAutoAddResult result, string serial, string address, string source, string message)
     {
         LogNotAdded(serial, address, source, result, message);
@@ -204,6 +445,12 @@ public sealed partial class DeviceAutoAddService(
 
         return ip;
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "First password of {Serial} at {Address} ({Source}): {Ok}")]
+    private partial void LogFirstPassword(string serial, string address, string source, bool ok);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Tags of {Serial} not set: {Reason}")]
+    private partial void LogTagsFailed(string serial, string reason);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Devices are not added automatically: OADM manages {Max} devices already")]
     private partial void LogLimitReached(int max);

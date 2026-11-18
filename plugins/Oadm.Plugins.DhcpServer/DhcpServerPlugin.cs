@@ -15,6 +15,7 @@ public sealed class DhcpServerPlugin : ICorePlugin, IAsyncDisposable
 {
     private readonly DhcpServerOptions _options;
     private volatile DhcpServerService? _service;
+    private IPluginServices? _services;
 
     public DhcpServerPlugin()
         : this(new DhcpServerOptions())
@@ -45,10 +46,14 @@ public sealed class DhcpServerPlugin : ICorePlugin, IAsyncDisposable
         var service = new DhcpServerService(_options, ctx.Settings, ctx.Events, ctx.Logger, ctx.Firewall, ctx.AutoAdd, ctx.Network?.ForSite(null), ctx.DeviceScopes);
         await service.StartAsync(ct).ConfigureAwait(false);
         _service = service;
+        _services = ctx.Services;
+        _services?.Offer<Sdk.Network.IDhcpServerLeases>(service.Feed); // read only, for Provisioning
     }
 
     public async Task StopAsync(CancellationToken ct)
     {
+        _services?.Withdraw<Sdk.Network.IDhcpServerLeases>();
+        _services = null;
         if (_service is { } service)
         {
             _service = null;

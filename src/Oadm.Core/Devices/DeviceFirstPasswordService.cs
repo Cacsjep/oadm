@@ -203,6 +203,26 @@ public sealed partial class DeviceFirstPasswordService
             return new DeviceFirstPasswordResult(device.Id, false, Sdk.Sites.SiteTexts.SiteOffline(device.SiteName)); // no request
         }
 
+        return await SetOnAsync(device.Id, device.Serial, device.Address, Schemes(device), (scheme, pin) => Anonymous(device, scheme, pin), password, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The first root password of a device OADM does not manage yet (Provisioning's Set password, before Add to OADM), with
+    /// the same checks: the anonymous answer at the address must carry <see cref="DiscoveredDevice.Serial"/> and systemready
+    /// must say <c>needsetup=yes</c>, else nothing is sent. HTTPS first, plain HTTP as a fallback. Stores nothing.
+    /// </summary>
+    public async Task<DeviceFirstPasswordResult> SetUnmanagedAsync(Discovery.DiscoveredDevice found, string password, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(found);
+        VapixClient.ValidatePassword(password);
+        (string, string?)[] schemes = [(Uri.UriSchemeHttps, null), (Uri.UriSchemeHttp, null)];
+        return await SetOnAsync(Guid.Empty, found.Serial, found.ConnectAddress, schemes,
+            (scheme, _) => _connector.Connect(Sites.DeviceConnections.For(found, scheme, Timeout)), password, ct).ConfigureAwait(false);
+    }
+
+    private async Task<DeviceFirstPasswordResult> SetOnAsync(
+        Guid deviceId, string expectedSerial, string address, IEnumerable<(string Scheme, string? Pin)> schemes, Func<string, string?, VapixClient> connect, string password, CancellationToken ct)
+    {
         var now = Interlocked.Increment(ref _inFlight);
         lock (_peakLock)
         {
@@ -212,18 +232,18 @@ public sealed partial class DeviceFirstPasswordService
         try
         {
             Exception? last = null;
-            foreach (var (scheme, pin) in Schemes(device))
+            foreach (var (scheme, pin) in schemes)
             {
-                using var client = Anonymous(device, scheme, pin);
+                using var client = connect(scheme, pin);
                 SystemReadyInfo ready;
                 try
                 {
                     // Same device? The anonymous Axis answer must carry the record's serial number.
                     var properties = await client.GetUnrestrictedPropertiesAsync(ct).ConfigureAwait(false);
-                    if (!DeviceSerial.TryNormalize(properties.GetValueOrDefault("SerialNumber"), out var serial) || serial != device.Serial)
+                    if (!DeviceSerial.TryNormalize(properties.GetValueOrDefault("SerialNumber"), out var serial) || serial != expectedSerial)
                     {
-                        LogOtherDevice(device.Serial, device.Address);
-                        return new DeviceFirstPasswordResult(device.Id, false, DeviceLoginService.OtherDeviceMessage + " Nothing was changed.");
+                        LogOtherDevice(expectedSerial, address);
+                        return new DeviceFirstPasswordResult(deviceId, false, DeviceLoginService.OtherDeviceMessage + " Nothing was changed.");
                     }
 
                     ready = await client.GetSystemReadyAsync(ct).ConfigureAwait(false);
@@ -236,8 +256,8 @@ public sealed partial class DeviceFirstPasswordService
 
                 if (ready.NeedSetup != true)
                 {
-                    LogAlreadySet(device.Serial, device.Address);
-                    return new DeviceFirstPasswordResult(device.Id, false, AlreadySetMessage);
+                    LogAlreadySet(expectedSerial, address);
+                    return new DeviceFirstPasswordResult(deviceId, false, AlreadySetMessage);
                 }
 
                 try
@@ -247,33 +267,33 @@ public sealed partial class DeviceFirstPasswordService
                 catch (VapixException ex)
                 {
                     var reason = ex.Message.Replace("pwdgrp.cgi refused the initial password: ", string.Empty, StringComparison.Ordinal);
-                    LogRefused(device.Serial, reason);
-                    return new DeviceFirstPasswordResult(device.Id, false, "The device rejected the password: " + reason.TrimEnd('.') + ".");
+                    LogRefused(expectedSerial, reason);
+                    return new DeviceFirstPasswordResult(deviceId, false, "The device rejected the password: " + reason.TrimEnd('.') + ".");
                 }
                 catch (InvalidOperationException)
                 {
                     // systemready changed between the two reads: SetInitialRootPasswordAsync checks again and sends nothing.
-                    return new DeviceFirstPasswordResult(device.Id, false, AlreadySetMessage);
+                    return new DeviceFirstPasswordResult(deviceId, false, AlreadySetMessage);
                 }
 
-                LogPasswordSet(device.Serial, device.Address, scheme);
-                return new DeviceFirstPasswordResult(device.Id, true);
+                LogPasswordSet(expectedSerial, address, scheme);
+                return new DeviceFirstPasswordResult(deviceId, true);
             }
 
             var result = new DeviceFirstPasswordResult(
-                device.Id,
+                deviceId,
                 false,
-                last is null ? "Unreachable - the device did not answer" : DeviceLoginService.Classify(device.Id, last).Message);
-            LogFailed(device.Serial, device.Address, result.Message ?? "-");
+                last is null ? "Unreachable - the device did not answer" : DeviceLoginService.Classify(deviceId, last).Message);
+            LogFailed(expectedSerial, address, result.Message ?? "-");
             return result;
         }
 #pragma warning disable CA1031 // Every device error becomes this device's result; the other devices go on.
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
 #pragma warning restore CA1031
         {
-            var message = DeviceLoginService.Classify(device.Id, ex).Message;
-            LogFailed(device.Serial, device.Address, message ?? ex.Message);
-            return new DeviceFirstPasswordResult(device.Id, false, message);
+            var message = DeviceLoginService.Classify(deviceId, ex).Message;
+            LogFailed(expectedSerial, address, message ?? ex.Message);
+            return new DeviceFirstPasswordResult(deviceId, false, message);
         }
         finally
         {

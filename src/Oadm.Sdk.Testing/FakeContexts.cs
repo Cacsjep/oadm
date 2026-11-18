@@ -356,6 +356,9 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     /// <inheritdoc />
     public IProtectedTags? ProtectedTags => FakeProtectedTags;
 
+    /// <summary>The server's automatic add (<see cref="ICorePluginContext.AutoAdd"/>); null by default. Tests set a fake.</summary>
+    public IDeviceAutoAdd? AutoAdd { get; init; }
+
     /// <summary>
     /// The event rules the plugin publishes to; null (the default) like a host without event rules. Set a
     /// <see cref="FakeEventPublisher"/> (<c>new FakeCoreContext { EventPublisher = new FakeEventPublisher() }</c>).

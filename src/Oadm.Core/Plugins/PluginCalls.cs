@@ -436,6 +436,36 @@ internal sealed partial class PluginCallGuard(string pluginId, ILogger logger)
             guard.Check("AutoAdd");
             return inner.FollowAsync(serial, address, source, ct);
         }
+
+        public Task<DeviceLook> LookAsync(string address, string expectedSerial, CancellationToken ct)
+        {
+            guard.Check("AutoAdd");
+            return inner.LookAsync(address, expectedSerial, ct);
+        }
+
+        public Task<DeviceFirstPasswordOutcome> SetFirstPasswordAsync(string address, string expectedSerial, Guid credentialId, string source, CancellationToken ct)
+        {
+            guard.Check("AutoAdd");
+            return inner.SetFirstPasswordAsync(address, expectedSerial, credentialId, source, ct);
+        }
+
+        public Task<DeviceAutoAddOutcome> AddWithLoginAsync(string address, string expectedSerial, Guid credentialId, IReadOnlyList<string> tags, string source, CancellationToken ct)
+        {
+            guard.Check("AutoAdd");
+            return inner.AddWithLoginAsync(address, expectedSerial, credentialId, tags, source, ct);
+        }
+
+        public Task<IReadOnlyList<DeviceCredentialName>> ListCredentialsAsync(CancellationToken ct)
+        {
+            guard.Check("AutoAdd");
+            return inner.ListCredentialsAsync(ct);
+        }
+
+        public Task<DeviceCredentialName> AddCredentialAsync(string userName, string password, CancellationToken ct)
+        {
+            guard.Check("AutoAdd");
+            return inner.AddCredentialAsync(userName, password, ct);
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Core plugin {PluginId} used ctx.{Member} in {Method} for a user with a device group: refused (use the call context)")]
