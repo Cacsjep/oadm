@@ -1,7 +1,218 @@
 {
-  "updated": "2026-11-02T12:36:17.8787836+00:00",
+  "updated": "2026-11-18T06:03:55.8117038+00:00",
   "source": "release",
   "items": [
+    {
+      "id": "CVE-2026-63288",
+      "published": "2026-11-10T05:32:06.255+00:00",
+      "score": 8.3,
+      "severity": "High",
+      "description": "A WebSocket request sent to a specific API endpoint allows unauthorized access to a separate API endpoint. This bypasses the intended authentication layer.",
+      "advisory": "https://www.axis.com/dam/public/fa/79/f5/cve-2026-63288pdf-en-US-561260.pdf",
+      "affected": [
+        {
+          "model": "A1210",
+          "ranges": [
+            {
+              "from": "11.7.12.2",
+              "lessThan": "12.11.106.1"
+            }
+          ]
+        },
+        {
+          "model": "A1601",
+          "ranges": [
+            {
+              "from": "11.1.10.1",
+              "lessThan": "12.11.106.1"
+            }
+          ]
+        },
+        {
+          "model": "A1610",
+          "ranges": [
+            {
+              "from": "11.4.32.2",
+              "lessThan": "12.11.106.1"
+            }
+          ]
+        },
+        {
+          "model": "A1710",
+          "ranges": [
+            {
+              "from": "12.0.101.4",
+              "lessThan": "12.11.106.1"
+            }
+          ]
+        },
+        {
+          "model": "A1810",
+          "ranges": [
+            {
+              "from": "12.0.101.4",
+              "lessThan": "12.11.106.1"
+            }
+          ]
+        }
+      ],
+      "severityRank": 3
+    },
+    {
+      "id": "CVE-2026-63282",
+      "published": "2026-11-10T05:23:30.194+00:00",
+      "score": 6.5,
+      "severity": "Medium",
+      "description": "Improper shell quote escaping when processing user-controlled input, potentially allowing command injection, which could lead to privilege escalation.",
+      "advisory": "https://www.axis.com/dam/public/c5/06/79/cve-2026-63282pdf-en-US-561259.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "13.0.0",
+              "lessThan": "13.0.84"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.11.123"
+            },
+            {
+              "from": "11.0.0",
+              "lessThan": "11.11.231"
+            },
+            {
+              "from": "10.0.0",
+              "lessThan": "10.12.354"
+            },
+            {
+              "from": "9.0.0",
+              "lessThan": "9.80.153"
+            },
+            {
+              "from": "7.0.0",
+              "lessThan": "8.40.112"
+            },
+            {
+              "from": "6.0.0",
+              "lessThan": "6.50.5.23"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2026-14543",
+      "published": "2026-11-10T05:20:29.154+00:00",
+      "score": 3.9,
+      "severity": "Low",
+      "description": "The VAPIX Edge storage API, enabling the escalation of user privileges by circumventing filesystem isolation, granting unauthorized access to protected system resources. This flaw can only be exploited after authenticating with an admin-privileged service account.",
+      "advisory": "https://www.axis.com/dam/public/cd/92/6b/cve-2026-14543pdf-en-US-561257.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "13.0.0",
+              "lessThan": "13.0.42"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.11.84"
+            }
+          ]
+        }
+      ],
+      "severityRank": 1
+    },
+    {
+      "id": "CVE-2026-14542",
+      "published": "2026-11-10T05:17:45.674+00:00",
+      "score": 6.7,
+      "severity": "Medium",
+      "description": "The VAPIX SIP configuration API lacked sufficient input validation, which could potentially lead to privilege escalation. This flaw can only be exploited after authenticating with an admin-privileged service account.",
+      "advisory": "https://www.axis.com/dam/public/12/1f/f8/cve-2026-14542pdf-en-US-561256.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "13.0.0",
+              "lessThan": "13.0.83"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.11.123"
+            },
+            {
+              "from": "11.0.0",
+              "lessThan": "11.11.228"
+            },
+            {
+              "from": "10.0.0",
+              "lessThan": "10.12.352"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2026-13409",
+      "published": "2026-11-10T05:15:29.566+00:00",
+      "score": 4.3,
+      "severity": "Medium",
+      "description": "The VAPIX API dynamicoverlay.cgi which results in a Denial-of-Service of the overlay functionality. This flaw can only be exploited after authenticating with an operator or admin-privileged service account.",
+      "advisory": "https://www.axis.com/dam/public/ef/b3/81/cve-2026-13409pdf-en-US-561255.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "13.0.0",
+              "lessThan": "13.0.31"
+            },
+            {
+              "from": "12.0.0",
+              "lessThan": "12.11.84"
+            },
+            {
+              "from": "11.0.0",
+              "lessThan": "11.11.218"
+            },
+            {
+              "from": "10.0.0",
+              "lessThan": "10.12.345"
+            },
+            {
+              "from": "9.0.0",
+              "lessThan": "9.80.148"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
+    {
+      "id": "CVE-2026-9063",
+      "published": "2026-11-10T05:12:29.294+00:00",
+      "score": 6.7,
+      "severity": "Medium",
+      "description": "A locally authenticated user can achieve privilege escalation via an insecure configuration that leads to unauthorized code execution. This flaw can only be exploited after authenticating with an admin-privileged service account.",
+      "advisory": "https://www.axis.com/dam/public/37/e2/7c/cve-2026-9063pdf-en-US-561254.pdf",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "from": "12.0.0",
+              "lessThan": "12.11.80"
+            },
+            {
+              "from": "13.0.0",
+              "lessThan": "13.0.14"
+            }
+          ]
+        }
+      ],
+      "severityRank": 2
+    },
     {
       "id": "CVE-2026-4757",
       "published": "2026-08-11T05:52:33.481+00:00",
