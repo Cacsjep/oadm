@@ -5,14 +5,12 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 version and date, and the release workflow copies it into the GitHub release (the client's new version notice shows it).
 Each entry is one short line in plain words (what the user gets, not how); no nested lists, no bold, no code.
 
-## [Unreleased]
-
-- Package an OADM desktop MCP extension and guide administrators through creating its scoped access key.
+## [5.2.0] - 2026-11-18
 
 ### Added
 
-- Plugin SDK: plugins can check whether the device connection uses a configured certificate pin.
-- Plugin SDK: right before a device write, a plugin can check that the user still has the session, the permission and the device.
+- MCP: a desktop extension for Claude Desktop, with a guided setup of its access key.
+- Plugin SDK 0.14.0: a check right before a device write that the user still has the access, and whether the connection uses a certificate pin.
 - VPN Fleet, a community plugin by Mo3he: see, set up, install and upgrade the VPN apps of your cameras.
 - Assistant: ask what a CVE is and it answers from OADM's CVE list, also for agents.
 
@@ -22,6 +20,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Assistant: the answer shows above its table or plan.
 - Add devices: the title names the way you add, the counts show in colour and the Address column fits the addresses.
 - New version: the download button opens oadm.app.
+- Vulnerabilities: the built-in CVE list has 6 more Axis CVEs.
 
 ### Fixed
 
