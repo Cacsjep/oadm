@@ -7,6 +7,8 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ## [Unreleased]
 
+- Package an OADM desktop MCP extension and guide administrators through creating its scoped access key.
+
 ### Added
 
 - Plugin SDK: plugins can check whether the device connection uses a configured certificate pin.

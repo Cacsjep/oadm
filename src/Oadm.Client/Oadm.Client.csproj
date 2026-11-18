@@ -91,4 +91,17 @@
     <!-- Fake mode: the release list of Axis CVEs (docs/spec/vulnerabilities.md). -->
     <EmbeddedResource Include="..\Oadm.Server\Vulnerabilities\axis-vulnerabilities.json" LogicalName="Oadm.Client.Api.FakeVulnerabilities.json" Link="Api\FakeVulnerabilities.json" />
   </ItemGroup>
+  <Target Name="PublishDesktopExtension" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' != '' and '$(SelfContained)' == 'true'">
+    <PropertyGroup>
+      <DesktopBridgeDirectory>$([System.IO.Path]::GetFullPath('$(IntermediateOutputPath)desktop-bridge'))</DesktopBridgeDirectory>
+    </PropertyGroup>
+    <RemoveDir Directories="$(DesktopBridgeDirectory)" />
+    <MSBuild Projects="../Oadm.McpBridge/Oadm.McpBridge.csproj" Targets="Restore;Publish"
+             RemoveProperties="OutputPath;TargetFramework"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=true;PublishSingleFile=true;PublishReadyToRun=false;IncludeNativeLibrariesForSelfExtract=true;DebugType=embedded;PublishDir=$(DesktopBridgeDirectory)/" />
+    <Error Condition="!Exists('$(DesktopBridgeDirectory)/Oadm.McpBridge') and !Exists('$(DesktopBridgeDirectory)/Oadm.McpBridge.exe')"
+           Text="The OADM desktop extension bridge was not published." />
+    <Copy SourceFiles="../../packaging/desktop-extension/manifest.json" DestinationFolder="$(DesktopBridgeDirectory)" />
+    <ZipDirectory SourceDirectory="$(DesktopBridgeDirectory)" DestinationFile="$(PublishDir)OADM.mcpb" Overwrite="true" />
+  </Target>
 </Project>

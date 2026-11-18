@@ -75,6 +75,9 @@
           <Button x:Name="ConnectCopy" Classes="secondary" Margin="0,0,16,8" Command="{Binding CopySelectedCommand}" IsVisible="{Binding HasConnections}">
             <ui:IconLabel Icon="{StaticResource Icon.copy}" Text="Copy" />
           </Button>
+          <Button Classes="secondary" Margin="0,0,8,8" Content="Set up a desktop app"
+                  Command="{Binding SetUpDesktopAppCommand}" IsVisible="{Binding IsAdmin}"
+                  IsEnabled="{Binding CanSetUpDesktopApp}" />
           <Button Classes="secondary" Margin="0,0,8,8" Command="{Binding DownloadCaCommand}" IsEnabled="{Binding CanDownloadCa}">
             <ui:IconLabel Icon="{StaticResource Icon.download}" Text="Download CA certificate" />
           </Button>

@@ -63,6 +63,13 @@ its device group applies to the agent's next call.
 A key ends when you delete it or on its expiry date. Restoring a backup ends every key. A role or device group that a
 key uses cannot be deleted: delete the key first.
 
+## Set up a desktop app
+
+On the MCP card, an administrator can choose **Set up a desktop app** to create a key with a role, device scope and
+expiry. Install the packaged `OADM.mcpb` extension in Claude Desktop. Enter the MCP HTTPS address and the access key.
+Download the OADM CA certificate from the MCP card if the desktop app needs it. To disconnect, delete the key in OADM
+and remove the extension in Claude Desktop.
+
 ## Connect an agent
 
 While the MCP server runs, choose your agent under **Connect an agent** and click **Copy**. You get it with this

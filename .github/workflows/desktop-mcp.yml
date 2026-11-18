@@ -1,0 +1,63 @@
+name: desktop MCP
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/desktop-mcp.yml'
+      - 'src/Oadm.McpBridge/**'
+      - 'src/Oadm.Contracts/**'
+      - 'src/Oadm.Client/Oadm.Client.csproj'
+      - 'packaging/desktop-extension/**'
+      - 'tests/DesktopMcp/**'
+      - 'tests/Oadm.Core.Tests/Sites/RoutingRulesTests.cs'
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Exercise the packaged bridge on Windows
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $root = Join-Path $env:RUNNER_TEMP 'oadm-desktop-mcp'
+          New-Item -ItemType Directory $root | Out-Null
+          $serverZip = Join-Path $root 'server.zip'
+          # The bridge is built from this PR. The host only needs the existing MCP and access-key APIs.
+          $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/Cacsjep/oadm/releases/latest'
+          if ($release.draft -or $release.prerelease -or $release.tag_name -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') {
+            throw 'Expected a stable OADM release.'
+          }
+          $version = $release.tag_name.Substring(1)
+          $name = "OADM-Server-$version-win-x64.zip"
+          $asset = @($release.assets | Where-Object name -eq $name)
+          if ($asset.Count -ne 1 -or $asset[0].digest -notmatch '^sha256:[0-9a-f]{64}$') {
+            throw "Expected one $name asset with a SHA-256 digest."
+          }
+          $sha256 = $asset[0].digest.Substring(7)
+          Write-Host "Testing against released OADM $version ($sha256)"
+          Invoke-WebRequest -Uri "https://github.com/Cacsjep/oadm/releases/download/v$version/$name" -OutFile $serverZip
+          if ((Get-FileHash $serverZip -Algorithm SHA256).Hash -ne $sha256) {
+            throw 'Unexpected OADM Server release bytes.'
+          }
+          Expand-Archive -LiteralPath $serverZip -DestinationPath "$root/server"
+          $server = @(Get-ChildItem "$root/server" -Recurse -Filter Oadm.Server.exe)
+          if ($server.Count -ne 1) { throw 'Expected exactly one OADM server executable.' }
+          dotnet publish src/Oadm.Client -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o "$root/client"
+          Copy-Item "$root/client/OADM.mcpb" "$root/extension.zip"
+          Expand-Archive -LiteralPath "$root/extension.zip" -DestinationPath "$root/extension"
+          $manifest = Get-Content "$root/extension/manifest.json" -Raw | ConvertFrom-Json
+          if (!$manifest.user_config.access_key.sensitive -or !$manifest.user_config.access_key.required) {
+            throw 'The packaged access key field must use secure storage.'
+          }
+          dotnet run --project tests/DesktopMcp -c Release -- $server[0].FullName "$root/extension/Oadm.McpBridge.exe"

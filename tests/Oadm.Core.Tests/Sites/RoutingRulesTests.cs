@@ -24,6 +24,7 @@ public sealed partial class RoutingRulesTests
         "src/Oadm.Contracts/Security/OadmChannel.cs",
         "src/Oadm.Contracts/Updates/ReleaseFeed.cs", // self update: the GitHub releases of OADM, never a device
         "src/Oadm.Contracts/Updates/UpdateProcesses.cs", // self update: the helper asks the OADM server for its version, never a device
+        "src/Oadm.McpBridge/Program.cs", // HTTPS posts to the configured OADM MCP endpoint; redirects are disabled.
         "src/Oadm.Server/Auth/ServerTlsCertificate.cs",
         // The site transport: links site nodes open (the listener, the server's HTTP/2 client on a link).
         "src/Oadm.Server/Sites/NodeLink.cs",

@@ -260,6 +260,24 @@ public sealed class AiAgentsTests
     }
 
     [Fact]
+    public void DesktopSetupStartsWithNoRoleOrDeviceScopeAndExpiresIn30Days()
+    {
+        using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
+        var lobby = new DeviceAccessOption("g1", "Lobby");
+        var form = new AccessKeyFormViewModel(api, null, FormRoles, [DeviceAccessOption.All, lobby], desktopSetup: true);
+        Assert.Equal("Set up a desktop app", form.Title);
+        Assert.Equal(30, form.Lifetime.Days);
+        Assert.Null(form.Role);
+        Assert.Null(form.Devices);
+        Assert.False(form.CreateCommand.CanExecute(null));
+
+        form.Role = FormRoles[1];
+        Assert.False(form.CreateCommand.CanExecute(null));
+        form.Devices = lobby;
+        Assert.True(form.CreateCommand.CanExecute(null));
+    }
+
+    [Fact]
     public void TheFormNeedsANameARoleAndDevicesAndAnAdministratorKeyHasAllDevices()
     {
         using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));

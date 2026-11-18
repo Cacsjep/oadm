@@ -131,7 +131,9 @@ public sealed partial class AccessKeysViewModel(IOadmApi api, IDialogService dia
 
     /// <summary>Create access key: the roles and device groups of now, then the form; the list after a key was made.</summary>
     [RelayCommand(CanExecute = nameof(CanCreate))]
-    private async Task CreateAsync()
+    private Task CreateAsync() => OpenFormAsync(desktopSetup: false);
+
+    internal async Task OpenFormAsync(bool desktopSetup)
     {
         IsOpening = true;
         AccessKeyFormViewModel form;
@@ -141,7 +143,7 @@ public sealed partial class AccessKeysViewModel(IOadmApi api, IDialogService dia
             var groups = await api.ListDeviceGroupsAsync(CancellationToken.None).ConfigureAwait(true);
             form = new AccessKeyFormViewModel(api, clipboard,
                 [.. roles.Roles.Select(r => new RoleOption(r.Id, r.Name, r.Kind))],
-                [DeviceAccessOption.All, .. groups.Groups.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).Select(g => new DeviceAccessOption(g.Id, g.Name))]);
+                [DeviceAccessOption.All, .. groups.Groups.OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase).Select(g => new DeviceAccessOption(g.Id, g.Name))], desktopSetup);
         }
         catch (RpcException ex)
         {

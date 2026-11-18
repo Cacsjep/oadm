@@ -164,6 +164,12 @@ public sealed partial class AiAgentsViewModel : ValidatingViewModel
     }
 
     /// <summary>Copy of Connect an agent: the command or the file text of the chosen configuration.</summary>
+    public bool CanSetUpDesktopApp => Running && File.Exists(Path.Combine(AppContext.BaseDirectory, "OADM.mcpb"));
+
+    [RelayCommand]
+    private Task SetUpDesktopAppAsync() => IsAdmin && CanSetUpDesktopApp
+        ? Keys.OpenFormAsync(desktopSetup: true) : Task.CompletedTask;
+
     [RelayCommand]
     private Task CopySelectedAsync() => CopyAsync(Connections.ElementAtOrDefault(Math.Max(0, SelectedConnection)));
 
@@ -326,6 +332,7 @@ public sealed partial class AiAgentsViewModel : ValidatingViewModel
         Validation.Reset();
         OnPropertyChanged(nameof(IsOn));
         OnPropertyChanged(nameof(Running));
+        OnPropertyChanged(nameof(CanSetUpDesktopApp));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(HasProblem));
         OnPropertyChanged(nameof(CertificateText));

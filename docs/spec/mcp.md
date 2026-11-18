@@ -155,6 +155,15 @@ made it. There is no Read only flag and no permission "Use AI agents": the key's
   only, so no upload token reaches the server log.
 
 
+## Set up a desktop app
+
+The MCP card opens the existing access key form with the desktop setup title.
+An administrator chooses role, devices and lifetime. Published client builds create the OADM desktop extension from this
+repository. Install `OADM.mcpb` in the desktop app, configure the MCP HTTPS address, and enter the access key in its sensitive
+field. If the app does not already trust the MCP server CA, select the CA certificate downloaded from OADM. This uses the
+normal access key permissions and preview/run behavior. Delete the key under **Access keys** to disconnect server access,
+then remove the extension in the desktop app.
+
 ## Tools
 
 One tool per user action, not per gRPC call, named `oadm_<area>_<action>` (`[A-Za-z0-9_]`, at most 64 characters).

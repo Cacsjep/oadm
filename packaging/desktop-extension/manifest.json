@@ -1,0 +1,46 @@
+{
+  "manifest_version": "0.3",
+  "name": "oadm-desktop",
+  "display_name": "OADM",
+  "version": "1.0.0",
+  "description": "Connect to your OADM server with an OADM access key.",
+  "author": {
+    "name": "OADM"
+  },
+  "server": {
+    "type": "binary",
+    "entry_point": "Oadm.McpBridge",
+    "mcp_config": {
+      "command": "${__dirname}/Oadm.McpBridge",
+      "args": [
+        "${user_config.endpoint}"
+      ],
+      "env": {
+        "OADM_MCP_KEY": "${user_config.access_key}",
+        "OADM_MCP_CA": "${user_config.ca_certificate}"
+      },
+      "platform_overrides": {
+        "win32": {
+          "command": "${__dirname}/Oadm.McpBridge.exe"
+        }
+      }
+    }
+  },
+  "user_config": {
+    "endpoint": {
+      "type": "string",
+      "title": "OADM MCP address",
+      "required": true
+    },
+    "access_key": {
+      "type": "string",
+      "title": "OADM access key",
+      "sensitive": true,
+      "required": true
+    },
+    "ca_certificate": {
+      "type": "file",
+      "title": "OADM CA certificate"
+    }
+  }
+}

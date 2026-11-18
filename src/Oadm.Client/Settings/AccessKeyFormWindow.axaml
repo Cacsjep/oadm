@@ -4,7 +4,7 @@
         xmlns:settings="using:Oadm.Client.Settings"
         x:Class="Oadm.Client.Settings.AccessKeyFormWindow"
         x:DataType="settings:AccessKeyFormViewModel"
-        Title="Create access key"
+        Title="{Binding Title}"
         Width="520" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
@@ -12,7 +12,7 @@
   <!-- Settings card AI, section MCP, Create access key (docs/spec/mcp.md "Access keys"): single operation, the form in
        Border.dialogBody. After Create the same dialog shows the key once with Copy; the footer's Cancel becomes Close. -->
   <Grid RowDefinitions="Auto,Auto,Auto">
-    <ui:DialogTitleBar Grid.Row="0" Text="Create access key" />
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
 
     <Border Grid.Row="1" Classes="dialogBody">
       <StackPanel Classes="form">
@@ -44,9 +44,11 @@
               </Button>
               <SelectableTextBlock x:Name="NewKeyText" Classes="mono" Text="{Binding NewKey}" VerticalAlignment="Center" TextWrapping="Wrap" />
             </DockPanel>
-            <TextBlock Classes="warning" Text="{x:Static settings:AccessKeyWords.CopyNow}" TextWrapping="Wrap" />
+            <TextBlock Classes="warning" Text="{Binding KeyInstructions}" TextWrapping="Wrap" />
           </StackPanel>
         </ui:FormField>
+        <Button Classes="secondary" Content="Copy extension path" Command="{Binding CopyExtensionPathCommand}"
+                IsVisible="{Binding DesktopSetup}" />
 
         <TextBlock Text="{Binding Message}" Classes="secondary" TextWrapping="Wrap"
                    IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
@@ -54,7 +56,7 @@
     </Border>
 
     <ui:DialogFooter Grid.Row="2" CancelText="{Binding CloseText}" CancelCommand="{Binding CloseCommand}">
-      <Button x:Name="CreateKey" Classes="primary" IsDefault="True" Content="Create" Command="{Binding CreateCommand}" IsVisible="{Binding IsForm}"
+      <Button x:Name="CreateKey" Classes="primary" IsDefault="True" Content="{Binding SubmitText}" Command="{Binding CreateCommand}" IsVisible="{Binding IsForm}"
               ToolTip.Tip="{Binding CreateTip}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>

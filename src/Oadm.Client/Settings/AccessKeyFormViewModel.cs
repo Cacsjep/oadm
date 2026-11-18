@@ -21,18 +21,44 @@ public sealed partial class AccessKeyFormViewModel : ValidatingViewModel
     private readonly IOadmApi _api;
     private readonly IClipboardService? _clipboard;
 
-    public AccessKeyFormViewModel(IOadmApi api, IClipboardService? clipboard, IReadOnlyList<RoleOption> roles, IReadOnlyList<DeviceAccessOption> devices)
+    public AccessKeyFormViewModel(IOadmApi api, IClipboardService? clipboard, IReadOnlyList<RoleOption> roles, IReadOnlyList<DeviceAccessOption> devices, bool desktopSetup = false)
     {
         _api = api;
         _clipboard = clipboard;
         Roles = roles;
         DeviceOptions = devices;
+        DesktopSetup = desktopSetup;
         Validation
             .Rule(nameof(Name), () => AccessKeyWords.NameError(Name))
             .Rule(nameof(Role), () => Role is null ? AccessKeyWords.ChooseRole : null)
             .Rule(nameof(Devices), () => Role?.Kind != RoleKind.Administrator && Devices is null ? DeviceGroupWords.ChooseDevices : null);
+        if (DesktopSetup)
+        {
+            Name = "Claude Desktop";
+            Devices = null;
+            Lifetime = Lifetimes[0];
+        }
         Validation.Validate();
         Validation.Reset();
+    }
+
+    public bool DesktopSetup { get; }
+
+    public string Title => DesktopSetup ? "Set up a desktop app" : "Create access key";
+
+    public string SubmitText => DesktopSetup ? "Set up" : "Create";
+
+    public string KeyInstructions => DesktopSetup
+        ? "Install the OADM extension in Claude Desktop, then paste this key into its access key field."
+        : AccessKeyWords.CopyNow;
+
+    private static string DesktopExtensionPath => Path.Combine(AppContext.BaseDirectory, "OADM.mcpb");
+
+    [RelayCommand]
+    private async Task CopyExtensionPathAsync()
+    {
+        if (_clipboard is not null && await _clipboard.SetTextAsync(DesktopExtensionPath).ConfigureAwait(true))
+            Message = "Extension path copied.";
     }
 
     public static IReadOnlyList<AccessKeyLifetime> Lifetimes { get; } = [new(30), new(90), new(365)];
