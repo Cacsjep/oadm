@@ -68,15 +68,18 @@
           },
           {
             "label": "Cleanup max age (days)",
-            "param": "Storage.S0.CleanupMaxAge"
+            "param": "Storage.S0.CleanupMaxAge",
+            "optional": true
           },
           {
             "label": "Cleanup level (%)",
-            "param": "Storage.S0.CleanupLevel"
+            "param": "Storage.S0.CleanupLevel",
+            "optional": true
           },
           {
             "label": "File system",
-            "param": "Storage.S0.FileSystem"
+            "param": "Storage.S0.FileSystem",
+            "optional": true
           }
         ]
       }

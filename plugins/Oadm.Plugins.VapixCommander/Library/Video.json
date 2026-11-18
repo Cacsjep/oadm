@@ -210,7 +210,8 @@
           },
           {
             "label": "Rotation",
-            "param": "Image.I{{channel}}.Appearance.Rotation"
+            "param": "Image.I{{channel}}.Appearance.Rotation",
+            "optional": true
           },
           {
             "label": "Bitrate mode",
