@@ -13,8 +13,9 @@ finds it, lands in the device list and gets one **task** that runs the active **
 later the camera has its password, AXIS OS, configuration, time, certificate and network settings. The progress is the
 task in the tasks pane, like every other change OADM makes.
 
-Core plugin `plugins/Oadm.Plugins.Provisioning` (+ `.Client`), id `oadm.provisioning`, **free, on by default**, no rail
-page. On by default changes nothing by itself: provisioning itself is **Off** until an Administrator turns it on.
+Core plugin `plugins/Oadm.Plugins.Provisioning` (+ `.Client`), id `oadm.provisioning`, **free, always on** (a built-in
+feature, decision 2026-11-19: the Plugins page lists it as always on, it cannot be turned off), no rail page. Always on
+changes nothing by itself: provisioning itself is **Off** until an Administrator turns it on.
 
 ## Rules that never break
 

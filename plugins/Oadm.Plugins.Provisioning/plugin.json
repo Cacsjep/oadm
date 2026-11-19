@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "minSdkVersion": "0.15.0",
   "displayName": "Provisioning",
-  "description": "Sets up factory-new cameras that get an address from OADM's DHCP server.",
+  "description": "Sets up every factory-new camera OADM finds.",
+  "alwaysOn": true,
   "siteSupport": "none"
 }

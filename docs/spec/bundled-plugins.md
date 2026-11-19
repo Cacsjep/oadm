@@ -361,7 +361,7 @@ that has the app, with five count cards (Good, Detected, Pending, Detection off,
 ## Provisioning (core plugin)
 
 `plugins/Oadm.Plugins.Provisioning` (+ `.Client`), id `oadm.provisioning`, no rail page (the Devices toolbar's Provisioning
-button opens Provisioning management), icon `workflow`, **free, on by default**, not at sites (`siteSupport` none). While provisioning is on
+button opens Provisioning management), icon `workflow`, **free, always on** (a built-in feature, decision 2026-11-19; cannot be turned off), not at sites (`siteSupport` none). While provisioning is on
 (Off by default, an Administrator turns it on), every factory-new camera OADM finds gets one task "Provision with
 <profile>" (`oadm.provisioning.run`) that runs the active profile's nodes as named steps. Spec:
 [provisioning.md](provisioning.md); details: plugin `README.md`. Redesign of 2026-11-19, built: every

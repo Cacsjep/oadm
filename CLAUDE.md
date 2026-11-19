@@ -221,7 +221,7 @@ must never break.
 - **[Help](docs/spec/help.md)**: the user docs of oadm.app shipped with the client and shown in a Help window with the
   embedded browser, served on 127.0.0.1 only; never loads oadm.app; client only.
 - **[Zero-touch provisioning](docs/spec/provisioning.md)** (redesign 2026-11-19, server built, client not yet; core plugin
-  `oadm.provisioning`, no rail page, free, on by default): while provisioning is on (Off by default, Administrator only,
+  `oadm.provisioning`, no rail page, free, always on: a built-in feature): while provisioning is on (Off by default, Administrator only,
   audited), every factory-new camera OADM finds (Discovery, range, Add manually, Import, a lease of OADM's DHCP server; not
   at sites) is added and gets one task "Provision with <profile>" with a named step per node of the active profile, never a
   second one while it runs; only cameras that say on the camera itself they have no password (a starting camera is asked

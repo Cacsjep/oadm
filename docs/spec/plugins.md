@@ -596,7 +596,7 @@ box back with the error below the list (`PluginsViewModel.SwitchAsync`).
   on; packages without a choice use their default), applied before the core plugins start
   (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
 - **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade AXIS OS, Date and time, Applications
-  (ACAP), Users, Network settings, PKI, System report, Device configuration, Outputs, Notifications, Modbus, MQTT and OPC UA (core
+  (ACAP), Users, Network settings, PKI, Provisioning, System report, Device configuration, Outputs, Notifications, Modbus, MQTT and OPC UA (core
   functionality). Enabled whatever the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers
   FAILED_PRECONDITION "<name> is always on.". Every other bundled package is switchable (on by default:
   VAPIX Commander, NTP server, DHCP server, Web View). Third-party plugins are switchable unless their manifest says
