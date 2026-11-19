@@ -609,7 +609,7 @@ box back with the error below the list (`PluginsViewModel.SwitchAsync`).
   `SetPackageEnabled` answers FAILED_PRECONDITION `ProLicenseTexts.NeedsPro` ("Needs an OADM PRO license or trial.").
   When the license changes (imported, removed, ran out) `PluginActivation.FollowPro` starts or stops the core plugins.
   Plugins page: the License column shows the chip "OADM PRO" (ok while active, tooltip `NeedsPro` otherwise), the check
-  box is locked without the license and **Activate** (administrators) opens Settings with the License card; the client
+  box is locked without the license and **Activate** (administrators) opens Settings, where OADM PRO is; the client
   reloads the list after it imported or removed the license. No bundled package is a PRO plugin.
 - **PRO parts of PKI** (`docs/spec/pki.md` "One plugin", `plugins/Oadm.Plugins.Pki/Servers/ServerSwitch.cs`): the EST
   server (`oadm.est`) and the 802.1X server (`oadm.radius`) are core plugins of the always-on PKI package. The core plugins

@@ -265,7 +265,7 @@ delete, the event log), logs (server log search with `since`, `level`, `text`, a
 as built"), PKI policies (`oadm_pki_policies`, a tool of the PKI plugin), the user docs (`oadm_docs_search(query)`: at most 5 pages of oadm.app with title, address and the best
 passage, from the index the server is built with, `Assistant/DocsIndex`; no gRPC method, so every caller has it).
 
-`oadm_server_status` (read only, every signed-in caller): what the Plugins page, the License card and the page MCP &
+`oadm_server_status` (read only, every signed-in caller): what the Plugins page, OADM PRO on the Settings page and the page MCP &
 Assistant show every user, through the reads `LicenseService.GetLicense`, `PluginService.ListPackages`, `McpService.Get`,
 `AssistantService.GetSettings` and `VulnerabilityService.Get`: OADM PRO (status, plan, device limit, end, trial), the
 plugins (on by default, `all` or `none`) with version, group, PRO and license state, MCP on and running, the assistant on
@@ -982,7 +982,7 @@ unit, the key fields, red Run for deletes and removals) and a short status line 
 ## Administration as built
 
 Decision 2026-11-15: an administrator's agent (MCP with an Administrator key; the Assistant of an administrator) does what
-the Plugins page, the License card, Backup and restore, Support and the new version dialog do. Every change is a preview
+the Plugins page, OADM PRO, Backup and restore, Support and the new version dialog do. Every change is a preview
 that writes nothing and a run that takes only its handle, through the gRPC service the client calls (`AccessRule.Admin`,
 its checks and its audit). Keys and passwords come only through the secret channel ("Secrets"), files only through upload
 and download links (the Assistant: file cards). `Tools/AdminTools`, `Tools/BackupTools`, `Tools/HostActionTools`.

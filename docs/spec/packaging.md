@@ -357,7 +357,7 @@ cacsjep.github.io/oadm addresses redirect). Texts follow "Wording".
 `/activate/` (`src/content/docs/activate.mdx`, splash with a hidden hero like the landing page, the landing top bar and
 footer, not in search; `Activate.astro`): "Activate OADM PRO", "Find the server ID in OADM under Settings > License.", one
 card **Activate license** (Server ID, License code), below it "No license yet? In OADM, open Settings > License and click
-Start 30-day trial. Once per server.". `?server=<id>` fills the server ID (the link of OADM's License card). Checks in the
+Start 30-day trial. Once per server.". `?server=<id>` fills the server ID (the link of OADM PRO on the Settings page). Checks in the
 browser, each error directly below its field: the server ID is a GUID, the code `OADM-XXXX-XXXX-XXXX` (typed in any case,
 with or without dashes and the OADM prefix). It posts to the support forum; a license comes back as a file and is
 downloaded at once as that file, with **Download again** and "In OADM, open Settings > License and click Import

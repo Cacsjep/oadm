@@ -14,10 +14,13 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Plugin SDK 0.15.0: the first set up of factory-new cameras, the DHCP server's leases, a plugin's own files for its tasks, the node canvas and commands on a task in the tasks pane.
 - Set password of factory-default devices: administrators can pick a saved password of root from the credential list, with an eye to show it.
 
+### Changed
+
+- Settings: one column of settings with a search and one Save, in the look of the Windows settings.
+
 ### Fixed
 
 - Windows: removing the server or the site node no longer fails now and then with error 1409.
-- Settings: a click on the arrow of a card opens and closes it.
 - VPN Fleet: a camera no longer stops with "ended without a result" when the WireGuard server finishes at that moment.
 
 ## [5.2.0] - 2026-11-18

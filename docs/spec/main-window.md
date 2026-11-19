@@ -23,7 +23,7 @@ server installs its update the connection banner says "Updating the server to V4
 `active` while the panel is open; MyAxis stays directly left of Help, Help directly left of the user) opens and closes the panel **Assistant**
 (`Assistant/AssistantPanelView`, `AssistantPanelViewModel`) as a `Border.sidePanel` right of the page area, over every page
 and open while the user moves between pages. Hidden while the assistant is off (`AssistantAvailability`, read with
-`GetSettings` on every connect and after the Settings card saves) or the role lacks `assistant.use`; an open panel stays
+`GetSettings` on every connect and after the Settings page saves) or the role lacks `assistant.use`; an open panel stays
 readable when the assistant is turned off meanwhile (its X closes it), a role that lost the permission closes it. A
 conversation id per opened panel and New chat; `End` on close, New chat and sign out. The panel: title with **New chat**
 and Close, the virtualized conversation (the user's messages, the answer as Markdown with Copy, tool lines, preview cards

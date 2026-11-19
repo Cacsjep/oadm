@@ -173,7 +173,7 @@ must never break.
   service's firewall rules and folder checks.
 - **[OADM PRO license](docs/spec/licensing.md)**: a signed license key (the plugin license format, ECDSA P-256) for
   this server's ID; the public keys in the repo, the private keys never; only PRO plugins and the PRO parts of PKI (EST and
-  802.1X servers) read it, **OADM itself is never limited**; Settings card License.
+  802.1X servers) read it, **OADM itself is never limited**; Settings page, OADM PRO.
 - **[EST server](docs/spec/est-server.md)**: a PRO part of PKI (core plugin `oadm.est` in the PKI package, off by default,
   Turn on on its tab of the PKI page, runs only with OADM PRO, its own source-available license): RFC 7030 on TCP 9454,
   cameras enroll with their Axis device ID and only if OADM manages them, the CA of the profile's issuing policy signs,

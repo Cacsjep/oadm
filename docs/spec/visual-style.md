@@ -63,11 +63,10 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   header (core plugin pages, Permissions, Credentials, About, Settings) is the shared `Controls/PageTitleBar` (title, grey
   side subtitle, trailing content); host pages never repeat the page title in a card heading. A plugin page may leave the header row out
   (`ui:PageHeader.IsHidden`, Live View: every pixel for the video).
-- The Settings page's cards fold: `Controls/CollapsibleCard` (the card title with the chevron of a
-  group as its header, the whole row toggles it; closed by default). Every card of the page: Client, Polling,
-  Discovery, Tasks, Security, Server, Backup and restore, License, Support. A card opens by itself when an input inside
-  it shows a validation error; a stored server value the form refuses shows its error when the page loads, so Save
-  (outside the cards) is never disabled by an error in a closed card.
+- The Settings page is the Windows 11 settings look in OADM's colors (`docs/spec/settings-backup.md` "Settings page"): one
+  column of setting rows (`c:SettingsCard`: icon, title and hint left, the control right, the controls sharing one right
+  edge) in groups, rows with more behind them as expanders (`c:SettingsExpander`, closed at the start, opening by
+  themselves on a validation error inside, so the one Save on top is never disabled by an error out of sight).
 - Content in rounded cards: background `#181818` (only slightly lighter than the window),
   corner radius 8 (Microsoft Fluent geometry: 8 for cards, menus and flyouts, 4 for buttons, inputs and rows inside a page) (menus compact: entries padded 10,6, at least 160 px wide (`Oadm.MenuMinWidth`), separators 3 px apart), padding 20-24, 16 px gap. The device grid sits in one card, the tasks
   pane in a second card below it, separated by a draggable splitter so the user can resize
@@ -364,9 +363,12 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 - `Oadm.Theme.Shell`: `TermsWindow` (the terms of use on the first start, client and OADM Site Node app), `TitleBarLayout`
   and `WindowFit` (see above).
 
-**Client only** (`src/Oadm.Client/Controls`, prefix `c`): `PageTitleBar` (every host page header), `CollapsibleCard`
-(every card that folds: the Settings page; closed by default, opens by itself when an input inside shows a validation
-error), `TagChipList` (the tags of a device as chips), `TagColorPicker` (the color of a tag, the tags dialog), `LiveViewPanel` (the live view beside the device grid),
+**Client only** (`src/Oadm.Client/Controls`, prefix `c`): `PageTitleBar` (every host page header), the Settings
+page's `SettingsList` (the column of groups with the search: `Filter`, `HasMatches`), `SettingsGroup` (a heading and its
+rows 4 px apart), `SettingsCard` (one setting as a row: `Icon`, `Title`, `Hint`, the control, `IsShown`; the 20 px icon in
+the accent, inside an expander 16 px in the icon colour), `SettingsExpander` (a row with a chevron and rows below it:
+`HeaderContent`, `IsExpanded`, `IsShown`; opens by itself on a validation error inside and while the search finds a row
+in it) and `UnitBadge` (the unit inside a number field, `NumericUpDown.InnerRightContent`; accent, white text), `TagChipList` (the tags of a device as chips), `TagColorPicker` (the color of a tag, the tags dialog), `LiveViewPanel` (the live view beside the device grid),
 `FirstPasswordChoiceBox` (the credential choice with its eye right of a first password's fields: the add page's Set
 password editor and the context menu's Set password),
 `SplashLogo` (the animated logo of the start splash), `GridSelection` (a grid's multi-item selection to its view model in

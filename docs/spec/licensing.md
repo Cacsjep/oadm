@@ -78,7 +78,7 @@ start the trial in the app once.
   "An administrator can start the trial.") and the off state of the EST and 802.1X servers while they need OADM PRO (the
   button primary, the one main action there; `ServerSwitchState.TrialAvailable`). Plugin pages start it through
   `ICorePluginClientContext.StartProTrialAsync` and check `IsAdministrator` (SDK 0.4.0 default members; older hosts:
-  NotSupportedException / false); the host routes it through the License card's view model, so the card, the plugin list
+  NotSupportedException / false); the host routes it through the view model of OADM PRO on the Settings page, so the page, the plugin list
   and the task catalog follow (`LicenseViewModel.LicenseChanged`).
 
 ## gRPC and client
@@ -87,12 +87,13 @@ start the trial in the app once.
   max_devices, expires, trial, trial_available, has_key), `ImportLicense(license)` (Admin, audited "Imported license",
   INVALID_ARGUMENT with the reason, nothing stored), `RemoveLicense` (Admin, audited "Removed license" when a key was
   imported), `StartTrial` (Admin, audited "Started trial", FAILED_PRECONDITION with the reason).
-- Settings page, card **License** (right column below Backup and restore; every user, read only for operators):
-  Server ID with copy, "OADM PRO" with the state (status chip: ok active, warning trial, error expired / trial ended /
-  other server / not valid; "Licensed to ..." below), **Start 30-day trial** (see "Trial"), **Import license** (file
-  picker `.oadmlicense`) and **Remove license** (red, confirmed, only while a key is imported) for administrators, the
-  link **Activate license** (unless a bought license is active) that opens `https://oadm.app/activate/?server=<id>`. The
-  result of Import and Remove sits next to the buttons.
+- Settings page, group Server (`docs/spec/settings-backup.md` "Settings page"; every user, read only for operators): the
+  expander **OADM PRO** with the state on its header (status chip: ok active, warning trial, error expired / trial ended /
+  other server / not valid; "Licensed to ..." as its hint), inside it **License key** (administrators: **Import license**,
+  file picker `.oadmlicense`; **Remove license**, red, confirmed, only while a key is imported; the link **Activate
+  license**, unless a bought license is active, that opens `https://oadm.app/activate/?server=<id>`; the result of Import
+  and Remove left of the buttons) and **Try OADM PRO for 30 days** (see "Trial"; others read who can start it); the row
+  **Server ID** with copy.
 - Issuing: the page `oadm.app/activate/` (`docs/spec/packaging.md` "Activation page") sends the server ID with a bought
   license code, and the support forum returns the signed key as a `.oadmlicense` file (a code works for one server; the
   same server can fetch it again). The forum's own rules are documented in its repository; it issues no trials.

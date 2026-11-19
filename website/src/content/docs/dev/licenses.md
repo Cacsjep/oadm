@@ -10,8 +10,8 @@ Plugins under the Apache 2.0 license of OADM may be closed source and sold; noth
 
 ## How it works
 
-1. Every OADM server has a **server ID**, made at its first start. The customer finds it on the **Settings** page (card
-   **License**) and in **Enter license** on the **Plugins** page, and sends it to you. A restored backup keeps it, so moving a server keeps its licenses.
+1. Every OADM server has a **server ID**, made at its first start. The customer finds it on the **Settings** page (row
+   **Server ID**) and in **Enter license** on the **Plugins** page, and sends it to you. A restored backup keeps it, so moving a server keeps its licenses.
 2. You make a key pair once. The **public key** goes into your plugin's project (and from there into its
    `plugin.json`); the **private key** stays with you.
 3. For each sale you sign a license key for the customer's server ID: who it is for, until when and, if you want, which

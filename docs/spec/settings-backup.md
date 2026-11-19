@@ -20,7 +20,7 @@ for `zero_conf_seconds`). Settings page labels in quotes.
 | `Devices.WaitingRetryMinutes` | 15, 1..1440 | Discovery "Try waiting devices every (min)", `optional waiting_retry_minutes = 10`; `docs/spec/add-devices.md` "Waiting list" |
 | `Tasks.MaxParallelPerPlugin` | 16, 1..256 | Tasks "Parallel tasks per plugin" ("How many devices a task runs on at the same time, e.g. restarts or AXIS OS upgrades."), `optional max_parallel_tasks_per_plugin = 9` |
 | `Devices.AllowBasicOverHttp` | false | Security "Device login", check box "Allow Basic login over HTTP" ("Sends passwords unencrypted. Only for devices without HTTPS."), `optional allow_basic_over_http = 11` |
-| `Server.Name` | the host name | Server "Server name", `server_name = 4` |
+| `Server.Name` | the host name | not on the Settings page: users do not change the server name (decision 2026-11-19); the setting, `server_name = 4` and the code stay, still read and written for backups and older clients |
 | `Server.ListenUrl` | `https://0.0.0.0:5080` | Server "Listen URL" ("Takes effect after the server restarts"), `listen_url = 5` |
 | `Uploads.MaxMegabytes` | 2048, 1..65536 | server only |
 | `Uploads.RetentionHours` | 24, 1..8760 | server only |
@@ -39,24 +39,80 @@ for `zero_conf_seconds`). Settings page labels in quotes.
 
 ## Settings page
 
-- Two columns (each up to 760 px, left-aligned). Left: the card **Client**, then the five server cards Polling,
-  Discovery, Tasks, Security, Server, saved together by **Save** and **Reload** in a row of their own below them ("Saves
-  Polling, Discovery, Tasks, Security and Server"); operators see the values as plain text without Save and Reload
-  ("Only administrators can change server settings."). Right: **Backup and restore** (administrators), **License** (every
-  user, `docs/spec/licensing.md`), **Support** (administrators). Narrower than 1,100 px (`SettingsView.TwoColumnWidth`) the
-  right column moves below the server settings.
-- AI agents and the Assistant change the five server cards with the same checks and texts (`Oadm.Contracts.Settings.ServerSettingsRules`,
+The layout of 2026-11-19 (`Settings/SettingsView`, `SettingsViewModel`).
+
+- **Look**: the Windows 11 settings look in OADM's colors. One column up to 980 px, left-aligned. Every setting is a row:
+  icon, title and one hint line on the left, its control on the right. Every row has a hint.
+- **Top row** below the page title, as wide as the column: the search ("Find a setting") left, the one **Save** right with
+  its result ("Saved.") directly left of it. Save writes the server settings and the automatic backups together; it is
+  disabled while a field of either has an error and its tooltip says the first one. No Reload, no other Save on the page.
+  Client settings are still saved at once. Save sends the automatic backups only when they changed; an edit after
+  "Saved." takes the message away.
+- **Search**: shows the rows whose title or hint contains the text, also the rows of an expander or group whose title
+  matches; groups without a match hide, expanders with one open; nothing found: "No setting matches."
+- **Groups** (a heading, rows 4 px apart) and their rows; an expander is a row with a chevron whose rows hang below it,
+  closed at the start, opened by the chevron or a click on the row, and by itself while an input inside has an error.
+  The rows of a group and the rows inside an expander are in alphabetical order by title; two exceptions: Confirm password
+  follows Password, the backups of the server stay newest first.
+  - **Client**: Appearance; expander **Live view** ("Decoding, video details and frame rate": Decode video on the graphics
+    card, Frame rate (adaptive quality), Show video details over the picture); Tell me about new versions.
+  - **General** (server): Allow Basic login over HTTP; Allowed clock difference (NTP); expander **Discovery** (Addresses
+    scanned at once, Discovery duration, Scan timeout, Try waiting devices every); Parallel tasks per plugin; expander
+    **Vulnerabilities** (the list's size and date on its header; List with Check now, Update the list online).
+  - **Server**: expander **Automatic backups** (the switch on its header; Backups kept, Password, Confirm password, Time);
+    Backup file (Back up now, Restore from file); expander **Backups on the server** (the folder as hint, the count on its
+    header; one row per backup with Download, Restore, Delete); Listen URL; expander **OADM PRO** (the license state on its
+    header; License key with Import license, Remove license, Activate license; Try OADM PRO for 30 days with Start 30-day trial);
+    Server ID with Copy.
+  - **Support**: Support report (Create support report).
+- **Not on the page**: Server name (users do not change it, see the table above; AI agents still can through the settings
+  tool, decision 2026-11-19), the always visible "Last automatic backup" chip and the last restore lines.
+- **Backup results** only when there is something to say (decision 2026-11-19), as a `ui:StatusChip` on the header row,
+  left of its control: on **Automatic backups** a red chip with `LastAutomaticText` while the last automatic backup failed
+  (`LastAutomaticFailed`), nothing after a good one; on **Backup file** a chip with `LastRestoreText` after a restore
+  (green, red when `LastRestoreFailed`), its `LastRestoreLines` as the chip's tooltip.
+- **Units**: a number field shows its unit as a badge inside the field at the right (accent background, white text, 3 px
+  corners), so labels carry no unit: FPS, sec (clock difference, discovery duration), addresses, ms, min, tasks, backups.
+- **Field widths**: an input is only as wide as its longest value needs (a number field: its largest number, the unit
+  badge and the up/down buttons; Time five characters), never one common width; the controls share the right edge.
+- **Switches**: `ui:OnOffSwitch`, "On" / "Off" written left of the switch (client SDK; also Provisioning management: one
+  switch look, `docs/spec/visual-style.md`).
+- **Icons**: rows of a group have a 20 px icon in the accent (`Oadm.AccentHoverBrush`); rows inside an expander the normal
+  16 px icon in the icon colour. All from `Icons.axaml`; added for this page (Lucide): `moon` (Appearance), `bellRing` (Tell me about new versions), `cpu`
+  (Decode video on the graphics card), `timer` (Scan timeout), `star` (OADM PRO), `archive` (Backups kept), `lockKeyhole`
+  (Confirm password), `fileArchive` (a backup in the list).
+- **Operators** see the server values as plain text with the same hints ("2 sec", "On"), no Save, no backup rows, no
+  Support, and "Only administrators can change server settings." under General; OADM PRO shows the state and, inside, the
+  trial line for non-administrators (`ProLicenseTexts.TrialAdminLine`) instead of the buttons.
+- **Waits**: `ui:ProgressRow` on the Backup file row while a backup, download, upload or restore runs and on the Support
+  report row while the report is made, their buttons disabled meanwhile; outcome texts directly left of the buttons they
+  report on.
+- **Reused**: the theme, `PageTitleBar`, `ui:SearchBox`, `ui:OadmIcon`, `ui:IconLabel`, `ui:ToolbarButton`,
+  `ui:StatusChip`, `ui:PasswordBox`, `Button.primary` / `.secondary` / `.toolbar.iconOnly` / `.link`, `NumericUpDown`,
+  `ComboBox`, `TextBox`, `ValidatingViewModel` (errors directly below the input through the theme's
+  `DataValidationErrors`).
+- **Its controls** (`src/Oadm.Client/Controls`, styles in `src/Oadm.Client/Themes/OadmTheme.axaml`, `docs/spec/visual-style.md`
+  "Shared controls"):
+  - `SettingsList`: the column of groups; `Filter` is the search text, `HasMatches` says whether anything is left; a group
+    whose rows the view hides (`IsShown`) hides too.
+  - `SettingsGroup`: `Title` and its rows.
+  - `SettingsCard`: one row; `Icon`, `Title`, `Hint`, the control as content, `IsShown` for the view's own condition
+    (the search uses `IsVisible`).
+  - `SettingsExpander`: `Icon`, `Title`, `Hint`, `HeaderContent` (switch or current value), `IsExpanded`, `IsShown`, its
+    rows as content (also an `ItemsControl` of rows for a list).
+  - `UnitBadge`: `Text`, placed in `NumericUpDown.InnerRightContent`.
+- **View models**: `SettingsViewModel` (client, General, Listen URL, `Filter`, the one `SaveCommand`, `SaveBlockedReason` =
+  the first error of the server fields, else of the schedule; `ServerName` is loaded and sent back unchanged) with `Video`,
+  `Backup` (`BackupViewModel`: `SaveScheduleAsync`, `IsScheduleChanged`, `Keep` 1..365, `BackupCountText`), `License`,
+  `Support` as the `DataContext` of their rows.
+- AI agents and the Assistant change the server settings with the same checks and texts (`Oadm.Contracts.Settings.ServerSettingsRules`,
   shared by the page and `oadm_settings_set_preview`/`_run`, Administrator; decision 2026-11-15, docs/spec/mcp.md "Server
   settings and services as built"); the credential list, backups and the license key stay in the page.
-- Every card folds and starts closed (`Controls/CollapsibleCard`, `docs/spec/visual-style.md`); a card opens by itself
-  when an input in it shows a validation error.
-- **Client** (every user, saved at once in the client settings file): Live view "Decode video on the graphics card" with
-  the test's result as hint and "Show video details over the picture", "Frame rate (adaptive quality)"
-  (`docs/spec/live-view.md`), "Appearance" (Dark, Light; `docs/spec/visual-style.md`), New versions "Tell me about new
-  versions".
 - Client settings (`client-settings.json` in LocalApplicationData): server address (also `--server`), recent servers,
   pinned servers, remembered logins, device grid column layout and group mode (`GroupDevicesByTag`), bottom pane state,
   `TellAboutNewVersions`, `GpuDecoding`, `ShowVideoDetails`, `AdaptiveFps`, `Appearance`, `AcceptedTerms`.
+- **Tests**: `tests/Oadm.Client.Tests/SettingsPageTests` (search, expander opened by an error, the one Save, alphabetical
+  order, operators, result chips, progress rows, screenshots dark and light), `FormValidationTests`, `DeviceClockTests`.
 
 ## Credentials, Plugins and About pages
 
@@ -76,10 +132,10 @@ for `zero_conf_seconds`). Settings page labels in quotes.
 
 ## Backup and restore
 
-Settings page card **Backup and restore** (Administrator only, never grantable).
+Settings page, group Server: Automatic backups, Backup file, Backups on the server (Administrator only, never grantable).
 Core `Oadm.Core.Backup` (`BackupFile`, `BackupArchive`), server `Oadm.Server.Backup` (`BackupManager`, `BackupGrpcService`,
-`BackupScheduleHostedService`, `ServerRestart`), gRPC `BackupService` (`backup.proto`), client `Backup/` (`BackupViewModel` +
-`BackupCardView`, `BackupPasswordWindow`, `RestoreWindow`).
+`BackupScheduleHostedService`, `ServerRestart`), gRPC `BackupService` (`backup.proto`), client `Backup/` (`BackupViewModel`,
+`BackupPasswordWindow`, `RestoreWindow`; the rows in `Settings/SettingsView`).
 
 - **File** (`.oadmbackup`, `BackupFile`): "OADMBACKUP", format byte, a plain JSON header (OADM version, server name, last
   migration, kind, PBKDF2-SHA256 600,000 iterations, salt, nonce, key check), then the body (a ZIP) in 1 MB chunks, each
@@ -117,26 +173,27 @@ Core `Oadm.Core.Backup` (`BackupFile`, `BackupArchive`), server `Oadm.Server.Bac
   automatic backups, Started restore, Restored backup.
 - **Client**: Back up now (password + confirm, then the save picker; the file streams to disk with the progress row), Restore
   from file (uploaded first) or a server backup's Restore (dialog: password, Check shows the counts, Restore after a
-  confirmation naming the running tasks), Automatic backups (Save is secondary: one accent button per view), the list with
-  Download, Restore, Delete (red, confirmed), the last automatic backup and the last restore report.
+  confirmation naming the running tasks), Automatic backups (saved by the page's one Save), the list with Download,
+  Restore, Delete (red, confirmed); a failed last automatic backup and the last restore report as chips (see "Settings
+  page").
 - **AI agents** (decision 2026-11-15, `docs/spec/mcp.md` "Administration as built"): an
   administrator's agent sets the automatic backups, backs up now, lists, downloads and deletes kept backups and restores one,
   each change a preview and a run of these methods. Every backup password comes through the secret channel, typed twice
-  where the card asks twice; a backup leaves only as a file of a download link (the Assistant: a file card), a backup to
+  where the page asks twice; a backup leaves only as a file of a download link (the Assistant: a file card), a backup to
   restore comes through an upload link. Back up now's file is made when it is fetched (the password held encrypted in memory
   until then). The restore's plan warns that everything is replaced, the tasks are cancelled, the server restarts with every
   client and agent disconnected and every access key ends; its run checks the password with `Inspect` first.
 - **Tests**: `tests/Oadm.Core.Tests/Backup/BackupTests` (format, another server, an older OADM upgraded, rollback, entries
   outside the folder), `tests/Oadm.Server.Tests/BackupServiceTests` (create, check, restore with a restart, automatic,
-  schedule), `tests/Oadm.Client.Tests/BackupCardTests` (+ screenshots).
+  schedule), `tests/Oadm.Client.Tests/BackupCardTests` and `SettingsPageTests` (+ screenshots).
 
 ## Support report
 
-Settings page card **Support** (right column below License, Administrator only, hidden for other roles): "Logs and server
+Settings page, group Support, row **Support report** (Administrator only, hidden for other roles): "Logs and server
 details for a support request. No passwords are included." and **Create support report** (save dialog, suggested
-`oadm-support-<yyyyMMdd-HHmm>.zip`; `ui:ProgressRow` while it runs; "Saved <file>." next to the button). Server
+`oadm-support-<yyyyMMdd-HHmm>.zip`; `ui:ProgressRow` while it runs; "Saved <file>." left of the button). Server
 `Oadm.Server.Support` (`SupportReport`, `SupportGrpcService`), gRPC `SupportService.CreateReport` (`support.proto`, audited
-"Created support report"), client `Support/` (`SupportViewModel`, `SupportCardView`).
+"Created support report"), client `Support/` (`SupportViewModel`).
 
 - **Server part** (made in `<datafolder>/support`, deleted after the download; files older than 30 minutes are leftovers and
   go with the next report): `oadm-support-<server name>-<yyyyMMdd-HHmm>.zip` with `logs/` (the server's `*.log` files,
@@ -156,4 +213,4 @@ details for a support request. No passwords are included." and **Create support 
   entry of it plus this computer's `client-*.log` files under `client-logs/` (same 200 MB cap), off the UI thread; a
   failure removes the cut file.
 - **Tests**: `tests/Oadm.Server.Tests/SupportReportTests` (contents, no secrets, admin only, audit, the log cap, the file
-  name), `tests/Oadm.Client.Tests/SupportCardTests` (combined ZIP, failure, card for administrators + screenshots).
+  name), `tests/Oadm.Client.Tests/SupportCardTests` (combined ZIP, failure, row for administrators + screenshots).

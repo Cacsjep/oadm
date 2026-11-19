@@ -48,7 +48,7 @@ grid columns), read only, nothing is ever written to a device.
 
 ## Update online (opt-in)
 
-Server setting `Vulnerabilities.Update`, Settings card **Vulnerabilities** ("Update the list online"), administrators:
+Server setting `Vulnerabilities.Update`, Settings page, General, expander **Vulnerabilities** ("Update the list online"), administrators:
 
 - **Off** (default): no outgoing call for this, ever; the list is the base list of the OADM release.
 - **By the server**: the server fetches the list when it is older than a day (checked hourly) and on **Check now**.
@@ -122,7 +122,7 @@ lists out, and a server whose clock is behind still takes a client's list. The c
   matcher and inputs as the column (model, AXIS OS, the chip; the raw chip and the column's short one compare the same),
   so an agent says what the column says; possible ones apart and never counted.
 - `src/Oadm.Client/Vulnerabilities`: `VulnerabilityCatalog` (the client's copy, the per-row match), `VulnerabilityUpdates`
-  (the fetch by the clients), `ServerConnection`'s loop (at connect, then hourly); the column, the search, the Settings card
+  (the fetch by the clients), `ServerConnection`'s loop (at connect, then hourly); the column, the search, the Settings page
   (`SettingsViewModel.Vulnerabilities.cs`), the context menu entry and its window (`DeviceVulnerabilitiesViewModel`,
   `DeviceVulnerabilitiesWindow`); fake mode serves the base list.
 
@@ -135,6 +135,6 @@ version compare, the matcher (worst first, fixed build, 5.0 rule, chips and an u
 (newest wins across a restart, broken file, newer release, an empty list, a list dated in the future kept as dated now,
 a server clock that is behind); the service (modes,
 permissions, audit, refused uploads, no outgoing call while off). `tests/Oadm.Client.Tests`: the client update with a fake fetch and clock, column text with possible ones, sort and tooltip, rows following
-a new list, an AXIS OS upgrade and a chip, the CVE search (possible too), the Settings card, the context menu entry and the window with possible rows
+a new list, an AXIS OS upgrade and a chip, the CVE search (possible too), the Settings page, the context menu entry and the window with possible rows
 (`DeviceVulnerabilitiesWindowTests`); headless screenshots (`VulnerabilityHeadlessTests`,
 `OADM_SCREENSHOT_DEVICES` renders a JSON list of real devices); Perf at 100,000 devices.

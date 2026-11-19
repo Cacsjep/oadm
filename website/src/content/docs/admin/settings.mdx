@@ -11,39 +11,47 @@ import license from '../../../assets/screens/settings-license.png';
 
 <Image src={settings} alt="Settings page" class="screen" />
 
-Each topic is a card that folds. The cards start closed: click a card's title to open it. A card opens by itself when a
-field in it shows an error.
+Every setting is a row: its name and a short hint on the left, its value on the right. The rows stand in four groups:
+**Client**, **General**, **Server** and **Support**. A row with an arrow opens to more rows; it opens by itself when a
+field in it shows an error. **Find a setting** at the top shows only the rows whose name or hint contains your text.
+
+**Save** at the top right saves the server settings and the automatic backups together. It stays grey while a field shows
+an error; point at it to see which. The client settings are saved at once.
 
 ## Client
 
-The first card is for the computer you sit at. Every user can change it, and it is saved at once.
+For the computer you sit at. Every user can change them.
 
 | Setting | Default | What it does |
 |---|---|---|
-| Decode video on the graphics card | On | Live video is decoded by the graphics card when it can; the hint below says what the test found. When it cannot, the processor decodes without a warning. |
-| Show video details over the picture | Off | A card at the top right of the live video with codec, resolution, frame rate, bit rate and decoding. |
-| Frame rate (adaptive quality) | 20 | Frames per second when the resolution follows the size of the picture (1 to 30). |
 | Appearance | Dark | Dark or Light. Takes effect after the client restarts. |
+| Live view > Decode video on the graphics card | On | Live video is decoded by the graphics card when it can; the hint says what the test found. When it cannot, the processor decodes without a warning. |
+| Live view > Frame rate (adaptive quality) | 20 | Frames per second when the resolution follows the size of the picture (1 to 30). |
+| Live view > Show video details over the picture | Off | A card at the top right of the live video with codec, resolution, frame rate, bit rate and decoding. |
 | Tell me about new versions | On | After the login, says when a newer OADM version is out. |
+
+## General
+
+Server settings: administrators change them, operators see them. They apply to every client of the server.
+
+| Setting | Default | What it does |
+|---|---|---|
+| Allow Basic login over HTTP | Off | For devices without HTTPS that accept only Basic login. OADM then sends their password unencrypted. Turn on HTTPS on the devices instead when you can. **Disable HTTPS** on such a device runs only while it is on. Takes effect at once. |
+| Allowed clock difference (NTP) | 2 sec | A device clock that differs more from the OADM server shows in the **Clock** column and turns on the event **Any device: clock off**. |
+| Discovery > Addresses scanned at once | 32 | Speed of **Network range**. |
+| Discovery > Discovery duration | 30 sec | How long **Discovery** on the add page searches (5 to 300). |
+| Discovery > Scan timeout | 1500 ms | How long **Network range** and imports wait for each address. |
+| Discovery > Try waiting devices every | 15 min | How often OADM tries the devices of imports that did not answer (1 to 1440). |
+| Parallel tasks per plugin | 16 | How many devices a task runs on at the same time, for example restarts or AXIS OS upgrades. Takes effect at once. |
+| Vulnerabilities > Update the list online | Off | Who updates the list of Axis CVEs of the **Vulnerabilities** column. **Off**: the list that came with your OADM version, nothing goes online. **By the server**: the server fetches it once a day. **By the clients**: a client with internet fetches it and hands it to the server, for a server without internet. Only the public CVE list is fetched, nothing about your devices. **Check now** in the row **List** fetches it at once. |
 
 ## Server
 
-Administrators change the server settings; operators see them. They apply to every client of the server. The settings
-stand in six cards: Polling, Discovery, Tasks, Security, Vulnerabilities and Server. **Save** below the cards saves all
-six; **Reload** reads them again.
-
 | Setting | Default | What it does |
 |---|---|---|
-| Allowed clock difference (s) | 2 | A device clock that differs more from the OADM server shows in the **Clock** column and turns on the event **Any device: clock off**. |
-| Addresses scanned at once | 32 | Speed of **Network range**. |
-| Scan timeout (ms) | 1500 | How long **Network range** and imports wait for each address. |
-| Discovery duration (s) | 30 | How long **Discovery** on the add page searches (5 to 300). |
-| Try waiting devices every (min) | 15 | How often OADM tries the devices of imports that did not answer (1 to 1440). |
-| Parallel tasks per plugin | 16 | How many devices a task runs on at the same time, for example restarts or AXIS OS upgrades. Takes effect at once. |
-| Update the list online | Off | Who updates the list of Axis CVEs of the **Vulnerabilities** column. **Off**: the list that came with your OADM version, nothing goes online. **By the server**: the server fetches it once a day. **By the clients**: a client with internet fetches it and hands it to the server, for a server without internet. Only the public CVE list is fetched, nothing about your devices. **Check now** fetches it at once. |
-| Allow Basic login over HTTP | Off | For devices without HTTPS that accept only Basic login. OADM then sends their password unencrypted. Turn on HTTPS on the devices instead when you can. **Disable HTTPS** on such a device runs only while it is on. Takes effect at once. |
-| Server name | Computer name | Shown in the login window. |
 | Listen URL | `https://0.0.0.0:5080` | Address and port of the server. Takes effect after the server restarts. |
+
+The other rows of **Server** are the backups and the license, below.
 
 ## Backup and restore
 
@@ -52,20 +60,21 @@ logins, users and roles, tags, event rules, settings, the credential list, the t
 example the PKI's certificate authorities). It is one file, encrypted with a password you choose. Without the password
 nobody can read it, OADM included.
 
-<Image src={backup} alt="The backup and restore card" class="screen" />
+<Image src={backup} alt="The backup rows of the Settings page" class="screen" />
 
-- **Back up now**: enter a password, choose where to save the file.
+- **Backup file** > **Back up now**: enter a password, choose where to save the file.
 - **Automatic backups**: every day at the time you choose (server time), the newest ones kept on the server
-  (**Backups kept**, 7 by default). They use the password you enter here; a restore needs it. The list below shows them, with
+  (**Backups kept**, 7 by default). They use the password you enter here; a restore needs it. **Save** at the top saves
+  them. A red note on the row says when the last automatic backup failed. **Backups on the server** lists them, with
   **Download**, **Restore** and **Delete**.
-- **Restore from file** or **Restore** in the list: enter the password and click **Check**. OADM reads the whole backup
+- **Backup file** > **Restore from file**, or **Restore** in the list: enter the password and click **Check**. OADM reads the whole backup
   and shows what it holds; nothing changes yet. **Restore** asks once more.
 
 <Image src={restore} alt="The restore dialog after Check" class="screen" />
 
 A restore replaces everything on the server. Before it starts, OADM saves the current state as a backup on the server
-(**Before a restore** in the list), cancels running tasks and restarts the server. Everyone logs in again. Afterwards the
-card shows what was restored.
+(**Before a restore** in the list), cancels running tasks and restarts the server. Everyone logs in again. Afterwards
+**Backup file** shows the restore; point at it to see what was restored.
 
 A backup of an older OADM is upgraded when it is restored. A backup of a newer OADM is refused: update OADM first.
 
@@ -103,20 +112,20 @@ If the new version does not start and you need the old one back:
 
 ## License
 
-The **License** card shows this server's OADM PRO license. OADM itself works the same with or without one; PRO adds
+**OADM PRO** in the **Server** group shows this server's OADM PRO license. OADM itself works the same with or without one; PRO adds
 commercial support, the EST and 802.1X servers and PRO plugins.
 
-<Image src={license} alt="The License card without a license, with Start 30-day trial" class="screen" />
+<Image src={license} alt="OADM PRO without a license, with Start 30-day trial" class="screen" />
 
-- **Server ID**: the ID a license is made for. The copy button puts it on the clipboard.
+- **Server ID** (its own row): the ID a license is made for. The copy button puts it on the clipboard.
 - **OADM PRO**: the plan and the last day, **Trial** and its last day during the 30-day trial, or what is wrong
   (expired, trial ended, made for another server, not valid).
-- **Start 30-day trial** (administrators): OADM PRO runs at once for 30 days, no account and no internet needed. Once per
+- **Try OADM PRO for 30 days** > **Start 30-day trial** (administrators): OADM PRO runs at once for 30 days, no account and no internet needed. Once per
   server. Other users see that an administrator can start it.
-- **Activate license** opens [Activate OADM PRO](../../activate/) with the server ID filled in. A bought license code
+- **License key** > **Activate license** opens [Activate OADM PRO](../../activate/) with the server ID filled in. A bought license code
   gives you the license file (`.oadmlicense`) at once.
-- **Import license** (administrators): choose the license file. It applies at once and replaces the trial.
-- **Remove license** (administrators): the EST and 802.1X servers and PRO plugins stop on this server, unless the trial
+- **License key** > **Import license** (administrators): choose the license file. It applies at once and replaces the trial.
+- **License key** > **Remove license** (administrators): the EST and 802.1X servers and PRO plugins stop on this server, unless the trial
   still runs.
 
 A license moves with a backup: after a restore on a new computer the server keeps its ID and its license. A running trial
@@ -132,4 +141,4 @@ No passwords or keys are included. The logs name devices by address and serial n
 ## Kept by each client
 
 Each client also keeps its own settings on its computer: the servers you used, the device list columns, group by tag,
-the size of the tasks pane, the **Client** card above, and whether the add page uses DNS names.
+the size of the tasks pane, the **Client** settings above, and whether the add page uses DNS names.
