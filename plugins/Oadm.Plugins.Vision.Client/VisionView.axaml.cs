@@ -96,8 +96,6 @@ public partial class VisionView : UserControl, IVisionDialogs
         Picture.ShapeSelected += (_, shape) => _editor?.Canvas.SelectedNode = shape.Node;
         Picture.NudgeRequested += (_, by) => _editor?.NudgeSelected(by.X, by.Y);
         Picture.DrawingCancelled += (_, _) => _editor?.StopDrawing();
-        NodeList.AddHandler(TappedEvent, OnNodeChosen, RoutingStrategies.Bubble, handledEventsToo: true);
-        NodeSearch.AddHandler(KeyDownEvent, OnNodeSearchKey, RoutingStrategies.Tunnel);
     }
 
     /// <summary>Applies the limits; the right column keeps the width the splitter gave it (as long as this view lives).</summary>
@@ -215,14 +213,12 @@ public partial class VisionView : UserControl, IVisionDialogs
         if (_editor is not null)
         {
             _editor.PropertyChanged -= OnEditorPropertyChanged;
-            _editor.Canvas.Picker.PropertyChanged -= OnPickerPropertyChanged;
         }
 
         _editor = editor;
         if (_editor is not null)
         {
             _editor.PropertyChanged += OnEditorPropertyChanged;
-            _editor.Canvas.Picker.PropertyChanged += OnPickerPropertyChanged;
         }
     }
 
@@ -232,46 +228,6 @@ public partial class VisionView : UserControl, IVisionDialogs
         if (e.PropertyName == nameof(PipelineEditorViewModel.DrawKind) && _editor is { DrawKind: not null })
         {
             Picture.Focus();
-        }
-    }
-
-    /// <summary>The node list opens: its search takes the keys.</summary>
-    private void OnPickerPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(NodePickerViewModel.IsOpen) && sender is NodePickerViewModel { IsOpen: true })
-        {
-            NodeSearch.Focus();
-        }
-    }
-
-    private void OnNodeChosen(object? sender, RoutedEventArgs e)
-    {
-        if ((e.Source as Control)?.DataContext is PickerKind kind && _editor is { } editor)
-        {
-            editor.Canvas.Choose(kind.Kind);
-            Canvas.Focus();
-        }
-    }
-
-    /// <summary>Enter in the search adds the first kind shown; Esc closes the list.</summary>
-    private void OnNodeSearchKey(object? sender, KeyEventArgs e)
-    {
-        if (_editor is not { } editor)
-        {
-            return;
-        }
-
-        if (e.Key == Key.Enter && editor.Canvas.Picker.ShownKinds is [var first, ..])
-        {
-            editor.Canvas.Choose(first);
-            Canvas.Focus();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            editor.Canvas.Picker.Close();
-            Canvas.Focus();
-            e.Handled = true;
         }
     }
 

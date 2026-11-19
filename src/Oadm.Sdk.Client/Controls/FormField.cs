@@ -23,6 +23,7 @@ namespace Oadm.Sdk.Client.Controls;
 /// line, e.g. IP range From / To). An empty label keeps the label column, so a check box lines up with the inputs.
 /// <see cref="Info"/> adds an <see cref="InfoIcon"/> right of the input: the explanation on hover and click, so the row
 /// needs no long hint. <see cref="LabelAbove"/> puts the label above the input, full width (the login window; SDK 0.5.0).
+/// <see cref="Help"/> puts a "?" with a short help at the right inside the input (SDK 0.15.0).
 /// </summary>
 public sealed class FormField : Grid
 {
@@ -66,7 +67,12 @@ public sealed class FormField : Grid
     private readonly Panel _labelHost = new() { VerticalAlignment = VerticalAlignment.Top };
     private readonly TextBlock _label = new() { TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis };
     private readonly TextBlock _message = new() { TextWrapping = TextWrapping.Wrap };
+    /// <summary>The short help of the field: a "?" at the right inside the input (SDK 0.15.0).</summary>
+    public static readonly StyledProperty<string?> HelpProperty =
+        AvaloniaProperty.Register<FormField, string?>(nameof(Help));
+
     private readonly InfoIcon _info = new() { VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(6, 0, 0, 0) };
+    private readonly Button _help = new() { IsVisible = false, IsTabStop = false, Focusable = false, ZIndex = 1 };
     private readonly HashSet<Control> _inputErrors = [];
     private bool _hasError;
 
@@ -82,9 +88,14 @@ public sealed class FormField : Grid
         _labelHost.Children.Add(_label);
         _message.Classes.Add("fieldMessage");
         _info.IsVisible = false;
+        _help.Classes.Add("toolbar");
+        _help.Classes.Add("iconOnly");
+        _help.Classes.Add("fieldHelp");
+        _help.Content = new OadmIcon { Data = ToolbarButton.ResolveIcon("help") };
         Children.Add(_labelHost);
         Children.Add(_message);
         Children.Add(_info);
+        Children.Add(_help);
         UpdateColumns();
         UpdateLabel();
         UpdateMessage();
@@ -153,6 +164,21 @@ public sealed class FormField : Grid
         get => GetValue(InfoProperty);
         set => SetValue(InfoProperty, value);
     }
+
+    /// <summary>
+    /// A short help of the field (classic field help, at most about 8 words, never the label again): a "?" at the right inside
+    /// the input (a text box, password box, select, button or file row; beside a check box; at the right end of the label for
+    /// a group of inputs) with the text as its tooltip and in a flyout on click. The theme gives the input room for it
+    /// (<c>ui|FormField:help</c>).
+    /// </summary>
+    public string? Help
+    {
+        get => GetValue(HelpProperty);
+        set => SetValue(HelpProperty, value);
+    }
+
+    /// <summary>The "?" of <see cref="Help"/> (tests).</summary>
+    public Button HelpButton => _help;
 
     /// <summary>Optional: a drawing below <see cref="Info"/> in its tooltip and flyout (<see cref="InfoIcon.PictureTemplate"/>).</summary>
     public IDataTemplate? InfoPicture
@@ -235,6 +261,11 @@ public sealed class FormField : Grid
         else if (change.Property == LabelProperty || change.Property == LabelHeightProperty)
         {
             UpdateLabel();
+            PlaceChildren();
+        }
+        else if (change.Property == HelpProperty)
+        {
+            PlaceChildren();
         }
         else if (change.Property == HintProperty || change.Property == ErrorProperty)
         {
@@ -307,6 +338,36 @@ public sealed class FormField : Grid
         SetRow(_info, inputRow);
         SetColumn(_info, inputColumn + 1);
         PseudoClasses.Set(":labelAbove", above);
+        PlaceHelp(inputRow, inputColumn);
+    }
+
+    /// <summary>
+    /// The "?" of <see cref="Help"/>: over the right end of a single input (the theme keeps the input's text clear of it, left
+    /// of a select's arrow and a password's eye), else at the right end of the label (above a group of inputs) or right of
+    /// the group.
+    /// </summary>
+    private void PlaceHelp(int inputRow, int inputColumn)
+    {
+        var kind = Input switch
+        {
+            PasswordBox => "password",
+            ComboBox => "combo",
+            TextBox or Button or FileRow => "inside",
+            _ => null,
+        };
+        var inside = kind is not null;
+        var inLabel = !inside && LabelAbove && !string.IsNullOrEmpty(Label);
+        SetRow(_help, inLabel ? 0 : inputRow);
+        SetColumn(_help, inside || inLabel ? inputColumn : inputColumn + 1);
+        SetColumnSpan(_help, 1);
+        _help.Classes.Set("password", kind == "password");
+        _help.Classes.Set("combo", kind == "combo");
+        _help.Classes.Set("inLabel", inLabel);
+        _help.Classes.Set("beside", !inside && !inLabel);
+        var hasHelp = !string.IsNullOrEmpty(Help);
+        _help.IsVisible = hasHelp;
+        ToolTip.SetTip(_help, Help);
+        PseudoClasses.Set(":help", hasHelp && inside);
     }
 
     /// <summary>A row narrower than label + input (e.g. a half-width card) shrinks the input, never clips it.</summary>

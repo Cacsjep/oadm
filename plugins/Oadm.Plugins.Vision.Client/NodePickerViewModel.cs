@@ -1,40 +1,20 @@
-using CommunityToolkit.Mvvm.ComponentModel;
-
 using Oadm.Plugins.Vision.Model;
-using Oadm.Sdk.Client.Collections;
+using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Vision.Client;
 
-/// <summary>A row of the node list: a group heading, or a node kind with its line.</summary>
-public abstract record PickerEntry;
-
-/// <summary>"Models", "Objects", "Geometry", "Output".</summary>
-public sealed record PickerGroup(string Name) : PickerEntry;
-
-public sealed record PickerKind(NodeKindInfo Kind) : PickerEntry
-{
-    public string Label => Kind.Label;
-
-    public string Description => Kind.Description;
-
-    public string IconKey => NodeLook.IconKey(Kind.Id);
-
-    public string BrushKey => NodeLook.BrushKey(Kind.Id);
-}
+/// <summary>A node kind in the shared node list (<see cref="NodePicker"/>): its icon, colour, group and line from the catalogue.</summary>
+public sealed record PickerKind(NodeKindInfo Kind)
+    : NodePickerItem(Kind.Label, Kind.Description, NodeLook.IconKey(Kind.Id), NodeLook.BrushKey(Kind.Id), Kind.Group);
 
 /// <summary>
 /// The node list (docs/spec/vision-center.md "Page"): Add node opens it with every kind, the + of a node with only the kinds
 /// that take its output (and links the new node), the + of an empty control input with only the kinds whose output it takes
-/// (a Timer for Reset; the new node links into it). A search narrows it; the groups keep the order of the catalogue.
+/// (a Timer for Reset; the new node links into it). A search narrows it; the groups keep the order of the catalogue. The
+/// list itself is the shared <see cref="NodePicker"/>.
 /// </summary>
-public sealed partial class NodePickerViewModel : ObservableObject
+public sealed class NodePickerViewModel : NodePickerModel
 {
-    private IReadOnlyList<NodeKindInfo> _kinds = [];
-
-    /// <summary>The list shows.</summary>
-    [ObservableProperty]
-    public partial bool IsOpen { get; private set; }
-
     /// <summary>The node whose + opened the list; null for Add node.</summary>
     public NodeViewModel? From { get; private set; }
 
@@ -42,21 +22,6 @@ public sealed partial class NodePickerViewModel : ObservableObject
     public NodeViewModel? Into { get; private set; }
 
     public string? IntoPort { get; private set; }
-
-    /// <summary>Where the list sits on the canvas (screen pixels of the canvas control).</summary>
-    [ObservableProperty]
-    public partial double Left { get; private set; }
-
-    [ObservableProperty]
-    public partial double Top { get; private set; }
-
-    [ObservableProperty]
-    public partial string SearchText { get; set; } = string.Empty;
-
-    public RangeObservableCollection<PickerEntry> Entries { get; } = [];
-
-    [ObservableProperty]
-    public partial bool IsEmpty { get; private set; }
 
     public static string Placeholder => VisionTexts.SearchNodes;
 
@@ -71,12 +36,7 @@ public sealed partial class NodePickerViewModel : ObservableObject
         From = from;
         Into = null;
         IntoPort = null;
-        _kinds = [.. NodeKinds.All.Where(k => k.Group is not null && (from is null || (output is { } o && Fits(k, o))))];
-        Left = left;
-        Top = top;
-        SearchText = string.Empty;
-        Fill();
-        IsOpen = true;
+        Show(Rows(NodeKinds.All.Where(k => k.Group is not null && (from is null || (output is { } o && Fits(k, o))))), left, top);
     }
 
     /// <summary>
@@ -86,20 +46,15 @@ public sealed partial class NodePickerViewModel : ObservableObject
     public void OpenInto(NodeViewModel into, string port, PortKind accepts, double left, double top)
     {
         ArgumentNullException.ThrowIfNull(into);
+        Show(Rows(NodeKinds.All.Where(k => k.Group is not null && Gives(k, accepts))), left, top);
         From = null;
         Into = into;
         IntoPort = port;
-        _kinds = [.. NodeKinds.All.Where(k => k.Group is not null && Gives(k, accepts))];
-        Left = left;
-        Top = top;
-        SearchText = string.Empty;
-        Fill();
-        IsOpen = true;
     }
 
-    public void Close()
+    public override void Close()
     {
-        IsOpen = false;
+        base.Close();
         From = null;
         Into = null;
         IntoPort = null;
@@ -112,25 +67,11 @@ public sealed partial class NodePickerViewModel : ObservableObject
         return kind.Accepts.Count == 0 ? kind.Output(null) == output : kind.Accepts.Any(a => kind.Output(a) == output);
     }
 
+    /// <summary>The kinds the list shows now, in order (tests).</summary>
+    public IReadOnlyList<NodeKindInfo> ShownKinds => [.. ShownItems.OfType<PickerKind>().Select(e => e.Kind)];
+
     /// <summary>A kind fits an output with its data input or one of its control inputs.</summary>
     private static bool Fits(NodeKindInfo kind, PortKind output) => kind.Takes(output) || kind.ControlInputs.Any(c => c.Accepts == output);
 
-    /// <summary>The kinds the list shows now, in order (tests).</summary>
-    public IReadOnlyList<NodeKindInfo> ShownKinds => [.. Entries.OfType<PickerKind>().Select(e => e.Kind)];
-
-    partial void OnSearchTextChanged(string value) => Fill();
-
-    private void Fill()
-    {
-        var query = SearchText.Trim();
-        var rows = new List<PickerEntry>();
-        foreach (var group in _kinds.Where(k => query.Length == 0 || k.Label.Contains(query, StringComparison.OrdinalIgnoreCase)).GroupBy(k => k.Group!))
-        {
-            rows.Add(new PickerGroup(group.Key));
-            rows.AddRange(group.Select(k => new PickerKind(k)));
-        }
-
-        Entries.ReplaceAll(rows);
-        IsEmpty = rows.Count == 0;
-    }
+    private static IEnumerable<PickerKind> Rows(IEnumerable<NodeKindInfo> kinds) => kinds.Select(k => new PickerKind(k));
 }

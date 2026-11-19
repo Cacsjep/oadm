@@ -169,27 +169,10 @@
             <Panel>
               <vm:PipelineCanvas x:Name="Canvas" Canvas="{Binding Canvas}" />
               <TextBlock Classes="secondary" Text="{Binding Canvas.ZoomText}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10,0,0,8" IsHitTestVisible="False" />
-              <Canvas DataContext="{Binding Canvas.Picker}" x:DataType="vm:NodePickerViewModel">
-                <Border x:Name="NodePicker" Classes="treePopup" Width="{x:Static vm:CanvasViewModel.PickerWidth}" Canvas.Left="{Binding Left}" Canvas.Top="{Binding Top}" IsVisible="{Binding IsOpen}">
-                  <DockPanel>
-                    <ui:SearchBox x:Name="NodeSearch" DockPanel.Dock="Top" Classes="stretch" Text="{Binding SearchText}" Placeholder="{x:Static vm:NodePickerViewModel.Placeholder}" />
-                    <TextBlock DockPanel.Dock="Top" Classes="secondary" Text="{x:Static vm:NodePickerViewModel.EmptyText}" IsVisible="{Binding IsEmpty}" />
-                    <ListBox x:Name="NodeList" Classes="eventTree" ItemsSource="{Binding Entries}" SelectionMode="Single" Margin="0,0,0,8">
-                      <ListBox.DataTemplates>
-                        <DataTemplate x:DataType="vm:PickerGroup">
-                          <TextBlock Classes="treeGroup" Text="{Binding Name}" IsHitTestVisible="False" />
-                        </DataTemplate>
-                        <DataTemplate x:DataType="vm:PickerKind">
-                          <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" Background="Transparent">
-                            <vm:NodeKindIcon Grid.RowSpan="2" Kind="{Binding Kind.Id}" Width="16" Height="16" VerticalAlignment="Top" Margin="0,2,0,0" />
-                            <TextBlock Grid.Column="1" Text="{Binding Label}" />
-                            <TextBlock Grid.Column="1" Grid.Row="1" Classes="secondary" Text="{Binding Description}" TextTrimming="CharacterEllipsis" />
-                          </Grid>
-                        </DataTemplate>
-                      </ListBox.DataTemplates>
-                    </ListBox>
-                  </DockPanel>
-                </Border>
+              <Canvas>
+                <ui:NodePicker x:Name="NodePicker" DataContext="{Binding Canvas.Picker}" Width="{x:Static vm:CanvasViewModel.PickerWidth}"
+                               Placeholder="{x:Static vm:NodePickerViewModel.Placeholder}" EmptyText="{x:Static vm:NodePickerViewModel.EmptyText}"
+                               FocusAfter="{Binding #Canvas}" />
               </Canvas>
             </Panel>
           </Border>

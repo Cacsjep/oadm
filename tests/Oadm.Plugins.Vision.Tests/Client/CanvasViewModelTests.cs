@@ -59,7 +59,7 @@ public sealed class CanvasViewModelTests
         Assert.Equal(
             NodeKinds.All.Where(k => k.Group is not null).GroupBy(k => k.Group).SelectMany(g => g).Select(k => k.Id),
             canvas.Picker.ShownKinds.Select(k => k.Id));
-        Assert.Equal(["Models", "Objects", "Geometry", "Output", "Logic", "Time"], canvas.Picker.Entries.OfType<PickerGroup>().Select(g => g.Name));
+        Assert.Equal(["Models", "Objects", "Geometry", "Output", "Logic", "Time"], canvas.Picker.Entries.OfType<Oadm.Sdk.Client.Controls.NodePickerGroup>().Select(g => g.Name));
         canvas.AddNodeCommand.Execute(null);
         Assert.False(canvas.Picker.IsOpen); // the button again closes it
     }

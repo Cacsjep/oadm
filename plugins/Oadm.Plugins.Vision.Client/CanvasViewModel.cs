@@ -35,6 +35,13 @@ public sealed partial class CanvasViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(nodes);
         ArgumentNullException.ThrowIfNull(links);
+        Picker.Chosen += (_, item) =>
+        {
+            if (item is PickerKind kind)
+            {
+                Choose(kind.Kind);
+            }
+        };
         Load(nodes, links);
     }
 

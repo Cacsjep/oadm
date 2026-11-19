@@ -199,7 +199,11 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   below a red-bordered card) and its view (`CanvasView`: fit, wheel zoom around the pointer); `CanvasTheme` gives drawn
   code the theme. `NodeChainCanvas` over a `NodeChain` (`NodeChainNode`): a straight chain top to bottom with a status
   icon and a message below each card, pan, zoom and a click that selects (Provisioning's profile editor and a camera's
-  flow). Vision Center's `PipelineCanvas` draws with the painter and adds its eye, control inputs and counts.
+  flow; `NodeChain.CanAdd` and `NodeChainNode.CanAddAfter` show the + below the last and the selected card, a click
+  raises `AddRequested`). Vision Center's `PipelineCanvas` draws with the painter and adds its eye, control inputs and
+  counts. `NodePicker` over a `NodePickerModel` (`NodePickerItem`, `NodePickerGroup`): the node list a + opens on every
+  node canvas, a popup with a search and the kinds in groups, each with its coloured icon (`NodeIcon`), name and one line;
+  Enter adds the first, Esc closes (Vision Center's pipelines, Provisioning's profile editor).
 - `PageHeader`: a plugin page's content for the host page header (`Subtitle`, `Trailing`; `IsHidden` leaves the header
   row out, Live View).
 - For dialogs: `DialogTitleBar`, `CardHeader`, `DialogFooter`.
@@ -253,7 +257,10 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   (`CodeText.Prepare(colorUnparsed: true)`: typing, an HTML body with several elements).
 - `FormField`: every labeled form row (label, input, error or hint below the input); classes `wide` and `inline`;
   `LabelAbove` puts the label above a full-width input with a 4 px gap (login, Trust this server?, new version);
-  `FormField.Info` puts an `InfoIcon` right of the input instead of a long hint.
+  `FormField.Info` puts an `InfoIcon` right of the input instead of a long hint; `FormField.Help` puts a "?" (an
+  icon-only button, `Button.fieldHelp`) at the right inside the input (left of a select's arrow and a password's eye, at
+  the right end of the label above a group of inputs) with a short help as tooltip, and the theme keeps the input's text
+  clear of it (`ui|FormField:help`); every field of Provisioning's profile editor.
 - `InfoIcon`: every "what does this mean" explanation, an info icon whose text shows on hover and click.
   `PictureTemplate` (`FormField.InfoPicture`) adds a drawing below the text, in the tooltip (`ToolTip.wide`) and the flyout:
   the pulse diagrams of the event rule limits.

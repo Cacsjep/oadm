@@ -39,6 +39,12 @@ public sealed record NodeChainNode(string Name, string IconKey, string BrushKey)
     /// <summary>The tooltip of the card (the whole line), or null.</summary>
     public string? Tip { get; init; }
 
+    /// <summary>
+    /// A node may follow this one: while the chain <see cref="NodeChain.CanAdd"/>, the + below the card shows on the last card
+    /// and on the selected one (beside the link), and a click on it raises <see cref="NodeChain.AddRequested"/>.
+    /// </summary>
+    public bool CanAddAfter { get; init; }
+
     /// <summary>The card has a red border (its message below is an error).</summary>
     public bool HasError => Below is not null && BelowBrushKey is null;
 }
@@ -70,14 +76,47 @@ public sealed partial class NodeChain : ObservableObject
     [ObservableProperty]
     public partial int FitRequest { get; set; }
 
+    /// <summary>The + below the cards that may be followed (<see cref="NodeChainNode.CanAddAfter"/>) shows (the editor).</summary>
+    [ObservableProperty]
+    public partial bool CanAdd { get; set; }
+
+    /// <summary>The tooltip of the + below a card.</summary>
+    [ObservableProperty]
+    public partial string AddTip { get; set; } = "Add a node after this one";
+
+    /// <summary>The + below a card was clicked: open the node list there (<see cref="NodePicker"/>).</summary>
+    public event EventHandler<NodeChainAddEventArgs>? AddRequested;
+
     /// <summary>Every node in the view again.</summary>
     public void FitView() => FitRequest++;
+
+    /// <summary>The + below the card at <paramref name="index"/>: raises <see cref="AddRequested"/> (the canvas on a click, tests).</summary>
+    /// <param name="index">The card whose + was clicked; the new node goes right after it.</param>
+    /// <param name="at">Where the node list opens: right of the + (pixels of the canvas control).</param>
+    public void RequestAdd(int index, Point at) => AddRequested?.Invoke(this, new NodeChainAddEventArgs(index, at));
+
+    /// <summary>The + shows below the card at <paramref name="index"/>: it may be followed and it is the last or the selected one.</summary>
+    public bool ShowsPlus(int index) =>
+        CanAdd && index >= 0 && index < Nodes.Count && Nodes[index].CanAddAfter && (index == Nodes.Count - 1 || index == SelectedIndex);
+}
+
+/// <summary>The + below a card of a <see cref="NodeChain"/> was clicked.</summary>
+/// <param name="index">The card whose + was clicked; the new node goes right after it.</param>
+/// <param name="at">Where the node list opens: right of the + (pixels of the canvas control).</param>
+public sealed class NodeChainAddEventArgs(int index, Point at) : EventArgs
+{
+    /// <summary>The card whose + was clicked; the new node goes right after it.</summary>
+    public int Index { get; } = index;
+
+    /// <summary>Where the node list opens: right of the + (pixels of the canvas control).</summary>
+    public Point At { get; } = at;
 }
 
 /// <summary>
 /// The canvas of a <see cref="NodeChain"/>: the cards top to bottom in the middle, linked from the output dot of one to the
 /// input dot of the next, the message of a card directly below it, a status icon at a card's top right. Drag the background
-/// to pan, the wheel zooms, a click selects a card. Shared look with Vision Center's canvas (<see cref="NodeCanvasPainter"/>).
+/// to pan, the wheel zooms, a click selects a card, a click on the + below a card (while <see cref="NodeChain.CanAdd"/>) raises
+/// <see cref="NodeChain.AddRequested"/>. Shared look with Vision Center's canvas (<see cref="NodeCanvasPainter"/>).
 /// </summary>
 public sealed class NodeChainCanvas : Control
 {
@@ -97,6 +136,7 @@ public sealed class NodeChainCanvas : Control
     public const double MinFitZoom = 0.8;
 
     private readonly List<Rect> _cards = [];
+    private readonly List<double> _belows = [];
     private Rect _content;
     private int _fittedCount = -1;
     private IReadOnlyList<NodeChainNode>? _laidOut;
@@ -150,7 +190,7 @@ public sealed class NodeChainCanvas : Control
 
     private void OnChainChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(NodeChain.Nodes) or nameof(NodeChain.FitRequest))
+        if (e.PropertyName is nameof(NodeChain.Nodes) or nameof(NodeChain.FitRequest) or nameof(NodeChain.CanAdd))
         {
             Relayout();
         }
@@ -188,15 +228,59 @@ public sealed class NodeChainCanvas : Control
     {
         _laidOut = nodes;
         _cards.Clear();
+        _belows.Clear();
         var y = 0.0;
         foreach (var node in nodes)
         {
             var rect = new Rect(-CardWidth / 2, y, CardWidth, NodeCanvasGeometry.NodeHeight);
             _cards.Add(rect);
-            y = rect.Bottom + Gap + (node.Below is { } below ? NodeCanvasPainter.BelowHeight(theme, below, CardWidth) : 0);
+            var below = node.Below is { } text ? NodeCanvasPainter.BelowHeight(theme, text, CardWidth) : 0;
+            _belows.Add(below);
+            y = rect.Bottom + Gap + below;
         }
 
-        _content = _cards.Count == 0 ? default : new Rect(-CardWidth / 2 - 30, -30, CardWidth + 60, y - Gap + 60);
+        // The + below the last card is part of the content (Fit view keeps it in the view).
+        var plus = nodes.Count > 0 && nodes[^1].CanAddAfter && Chain is { CanAdd: true } ? NodeCanvasGeometry.PlusGap + NodeCanvasGeometry.PlusSize : 0;
+        _content = _cards.Count == 0 ? default : new Rect(-CardWidth / 2 - 30, -30, CardWidth + 60, y - Gap + 60 + plus);
+    }
+
+    /// <summary>
+    /// Where the + below the card at <paramref name="index"/> is (canvas units): below the last card and its message
+    /// (<see cref="NodeCanvasGeometry.PlusRect"/>), beside the link in the gap below any other card.
+    /// </summary>
+    public Rect PlusRect(int index)
+    {
+        if (index < 0 || index >= _cards.Count)
+        {
+            return default;
+        }
+
+        var card = _cards[index];
+        var last = index == _cards.Count - 1;
+        var plus = NodeCanvasGeometry.PlusRect(card.Center.X - (NodeCanvasGeometry.NodeWidth / 2), card.Y, besideLinks: !last, height: card.Height);
+        return last
+            ? plus.Translate(new Vector(0, _belows[index]))
+            : plus.WithY(card.Bottom + _belows[index] + ((Gap - NodeCanvasGeometry.PlusSize) / 2));
+    }
+
+    /// <summary>The card whose + is under a point of the control; -1: none.</summary>
+    public int PlusIndexAt(Point screen)
+    {
+        if (Chain is not { } chain)
+        {
+            return -1;
+        }
+
+        var world = chain.View.ToWorld(screen);
+        for (var i = 0; i < _cards.Count; i++)
+        {
+            if (chain.ShowsPlus(i) && PlusRect(i).Inflate(2).Contains(world))
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private void FitIfNeeded(NodeChain chain)
@@ -268,9 +352,18 @@ public sealed class NodeChainCanvas : Control
                 NodeCanvasPainter.DrawLink(context, theme, from, to, isSelected: false);
             }
 
+            // The + below the cards before the cards: a card's message covers the line down to it like a link.
             for (var i = 0; i < _cards.Count; i++)
             {
-                DrawNode(context, theme, nodes[i], _cards[i], i == chain.SelectedIndex, i > 0, i < _cards.Count - 1);
+                if (chain.ShowsPlus(i))
+                {
+                    NodeCanvasPainter.DrawPlus(context, this, theme, new Point(_cards[i].Center.X, _cards[i].Bottom), PlusRect(i));
+                }
+            }
+
+            for (var i = 0; i < _cards.Count; i++)
+            {
+                DrawNode(context, theme, nodes[i], _cards[i], i == chain.SelectedIndex, i > 0, i < _cards.Count - 1 || chain.ShowsPlus(i));
             }
         }
     }
@@ -363,23 +456,44 @@ public sealed class NodeChainCanvas : Control
             return;
         }
 
-        var index = IndexAt(screen);
-        var tip = index >= 0 ? chain.Nodes[index].Tip : null;
+        var plus = PlusIndexAt(screen);
+        var index = plus >= 0 ? -1 : IndexAt(screen);
+        var tip = plus >= 0 ? chain.AddTip : index >= 0 ? chain.Nodes[index].Tip : null;
         if (!Equals(ToolTip.GetTip(this), tip))
         {
             ToolTip.SetTip(this, tip);
         }
 
-        Cursor = index >= 0 && chain.CanSelect ? new Cursor(StandardCursorType.Hand) : null;
+        Cursor = plus >= 0 || (index >= 0 && chain.CanSelect) ? new Cursor(StandardCursorType.Hand) : null;
+    }
+
+    /// <summary>
+    /// Where the node list of the + below the card at <paramref name="index"/> opens (pixels of the control): right of the +,
+    /// its top level with the +, higher when the list would not fit above the bottom.
+    /// </summary>
+    public Point PickerPlace(int index)
+    {
+        var rect = PlusRect(index);
+        var view = Chain?.View ?? new CanvasView(1, 0, 0);
+        var top = (rect.Top * view.Zoom) + view.PanY - 10;
+        return new Point((rect.Right * view.Zoom) + view.PanX + 8, Math.Max(8, Math.Min(top, Bounds.Height - NodePicker.TallestHeight - 8)));
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         ArgumentNullException.ThrowIfNull(e);
         base.OnPointerReleased(e);
-        if (Chain is { } chain && _panning && !_moved && chain.CanSelect)
+        if (Chain is { } chain && _panning && !_moved)
         {
-            chain.SelectedIndex = IndexAt(e.GetPosition(this));
+            var screen = e.GetPosition(this);
+            if (PlusIndexAt(screen) is var plus and >= 0)
+            {
+                chain.RequestAdd(plus, PickerPlace(plus));
+            }
+            else if (chain.CanSelect)
+            {
+                chain.SelectedIndex = IndexAt(screen);
+            }
         }
 
         _panning = false;

@@ -1,16 +1,14 @@
 using Avalonia;
-using Avalonia.Controls;
-using Avalonia.Media;
+
+using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Vision.Client;
 
-/// <summary>A node kind's icon in its colour (<see cref="NodeLook"/>): the node list and the heading of the selected node.</summary>
-public sealed class NodeKindIcon : Control
+/// <summary>A node kind's icon in its colour (<see cref="NodeLook"/>): the heading of the selected node. The shared <see cref="NodeIcon"/> by kind id.</summary>
+public sealed class NodeKindIcon : NodeIcon
 {
     public static readonly StyledProperty<string?> KindProperty =
         AvaloniaProperty.Register<NodeKindIcon, string?>(nameof(Kind));
-
-    static NodeKindIcon() => AffectsRender<NodeKindIcon>(KindProperty);
 
     public string? Kind
     {
@@ -18,21 +16,16 @@ public sealed class NodeKindIcon : Control
         set => SetValue(KindProperty, value);
     }
 
-    public override void Render(DrawingContext context)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-        if (Kind is not { } kind
-            || !this.TryFindResource("Icon." + NodeLook.IconKey(kind), ActualThemeVariant, out var value) || value is not Avalonia.Media.Geometry geometry)
-        {
-            return;
-        }
+    protected override Type StyleKeyOverride => typeof(NodeIcon);
 
-        var brush = new OverlayTheme(this).Brush(NodeLook.BrushKey(kind));
-        var size = Math.Min(Bounds.Width, Bounds.Height);
-        var scale = size / 24.0;
-        using (context.PushTransform(Matrix.CreateScale(scale, scale) * Matrix.CreateTranslation((Bounds.Width - size) / 2, (Bounds.Height - size) / 2)))
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        base.OnPropertyChanged(change);
+        if (change.Property == KindProperty)
         {
-            context.DrawGeometry(null, new Pen(brush, 2, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round), geometry);
+            IconKey = Kind is { } kind ? NodeLook.IconKey(kind) : null;
+            BrushKey = Kind is { } k ? NodeLook.BrushKey(k) : null;
         }
     }
 }
