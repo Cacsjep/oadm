@@ -17,8 +17,6 @@ public static class ProvisioningTexts
     // ---- Provisioning management ----
     public const string Subtitle = "Sets up every factory-new camera OADM finds.";
     public const string Reading = "Reading provisioning";
-    public const string On = "On";
-    public const string Off = "Off";
     public const string ActiveProfile = "Active profile";
     public const string NoValidProfile = "No profile without errors yet";
     public const string NoProfiles = "Press New to create the first profile.";

@@ -159,8 +159,9 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   take the accent only on hover (CLAUDE.md "buttons follow Fluent"). Toolbar uses icon + text buttons, not ADM's icon-only bar.
   A button that shows an on state takes the theme's `Button.toolbar.ok` (its icon in the OK green): the title bar's MyAxis
   while signed in, the Devices toolbar's Provisioning while provisioning is on.
-- On / Off of a whole feature in a dialog: the Fluent `ToggleSwitch` (theme style: accent, body text size) with On and Off
-  beside it, in a `ui:FormField` whose error shows why On was refused (Provisioning management).
+- One switch look: `ui:OnOffSwitch` ("On" / "Off" left of Fluent's switch in the accent) for every on / off setting of the
+  Settings page and for On / Off of a whole feature in a dialog, there in a `ui:FormField` whose error shows why On was
+  refused (Provisioning management, `Command` with a one-way `IsChecked`). No bare `ToggleSwitch`.
 - All colors in `src/Oadm.Theme/Colors.Dark.axaml` / `Colors.Light.axaml`, brushes and sizes in `src/Oadm.Theme/OadmTheme.axaml`
   (the client's `Themes/OadmTheme.axaml` includes it plus the client-only styles: tag groups, `TagChipList`, `TagColorPicker`); no
   hard-coded colors in views or code (a new color gets a key in both files). Exceptions: the splash glow gradient and the

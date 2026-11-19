@@ -244,8 +244,9 @@ public sealed class PageScreenshotTests
             dialog.Selected = dialog.Rows[1];
             Headless.Pump();
 
-            var toggle = window.FindControl<ToggleSwitch>("OnSwitch")!;
+            var toggle = window.FindControl<OnOffSwitch>("OnSwitch")!;
             Assert.True(toggle.IsChecked);
+            Assert.Contains(toggle.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == OnOffSwitch.OnText); // the one switch of OADM: "On" left of it
             Assert.Equal("Lobby cameras", window.FindControl<ComboBox>("ActiveProfileChoice")!.SelectedItem is ProfileRow row ? row.Name : null);
             Assert.True(window.FindControl<Button>("ActivateButton")!.IsEffectivelyEnabled);
             Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Classes.Contains("primary"));
@@ -264,14 +265,16 @@ public sealed class PageScreenshotTests
             offWindow.Show();
             await Oadm.Sdk.Testing.Eventually.TrueAsync(() => offDialog.Rows.Count == 1 && !offDialog.IsLoading, "the profiles");
             Headless.Pump();
-            var offToggle = offWindow.FindControl<ToggleSwitch>("OnSwitch")!;
+            var offToggle = offWindow.FindControl<OnOffSwitch>("OnSwitch")!;
             Assert.False(offToggle.IsChecked);
-            var center = offToggle.TranslatePoint(new Avalonia.Point(offToggle.Bounds.Width / 4, offToggle.Bounds.Height / 2), offWindow)!.Value;
+            var knob = offToggle.Switch;
+            var center = knob.TranslatePoint(new Avalonia.Point(knob.Bounds.Width / 4, knob.Bounds.Height / 2), offWindow)!.Value;
             offWindow.MouseDown(center, Avalonia.Input.MouseButton.Left);
             offWindow.MouseUp(center, Avalonia.Input.MouseButton.Left);
             await Oadm.Sdk.Testing.Eventually.TrueAsync(() => offDialog.HasSwitchError, "the refusal");
             Headless.Pump();
             Assert.False(offToggle.IsChecked); // the switch shows the server's state again
+            Assert.Contains(offToggle.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == OnOffSwitch.OffText);
             Assert.Equal(0, offCtx.CallsOf(ProvisioningMethods.TurnOn));
             var field = offToggle.FindAncestorOfType<FormField>()!;
             Assert.True(field.HasError);

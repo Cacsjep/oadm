@@ -1782,9 +1782,17 @@
   <Style Selector="CheckBox">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
   </Style>
-  <!-- The On / Off switch of a whole feature (Provisioning management): Fluent's switch in the accent, the body text size -->
-  <Style Selector="ToggleSwitch">
+  <!-- The one On / Off switch (ui:OnOffSwitch: the Settings page, Provisioning management): "On" / "Off" in the body text
+       size left of Fluent's switch in the accent, no space of its own for content -->
+  <Style Selector="ui|OnOffSwitch">
+    <Setter Property="Spacing" Value="10" />
+  </Style>
+  <Style Selector="ui|OnOffSwitch TextBlock.onOffText">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
+  </Style>
+  <Style Selector="ui|OnOffSwitch ToggleSwitch">
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="Padding" Value="0" />
   </Style>
   <!-- Every checkbox: box and check mark at 80 % (16 px instead of Fluent's 20 px), scaled
        around their own center so a checkbox centered in a cell stays exactly centered. -->
@@ -3082,7 +3090,7 @@
   <Style Selector="ToggleButton.sectionExpander:checked /template/ ui|OadmIcon#PART_Chevron">
     <Setter Property="Data" Value="{StaticResource Icon.chevronDown}" />
   </Style>
-  <!-- No press shrink: on a wide header (ui CollapsibleCard) Fluent's scale moves the chevron out from under the pointer, so
+  <!-- No press shrink: on a wide header Fluent's scale moves the chevron out from under the pointer, so
        the release missed the button and a click on the arrow did nothing -->
   <Style Selector="ToggleButton.sectionExpander:pressed">
     <Setter Property="RenderTransform" Value="none" />

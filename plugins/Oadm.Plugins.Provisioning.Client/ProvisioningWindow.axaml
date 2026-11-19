@@ -21,9 +21,8 @@
       <StackPanel Classes="form">
         <ui:FormField Label="{x:Static sdk:DeviceTexts.Provisioning}" Error="{Binding SwitchError}">
           <StackPanel Orientation="Horizontal" Spacing="16">
-            <ToggleSwitch x:Name="OnSwitch" IsChecked="{Binding IsOn, Mode=OneWay}" Command="{Binding ToggleCommand}"
-                          OnContent="{x:Static vm:ProvisioningTexts.On}" OffContent="{x:Static vm:ProvisioningTexts.Off}"
-                          ToolTip.Tip="{Binding SwitchTip}" />
+            <ui:OnOffSwitch x:Name="OnSwitch" IsChecked="{Binding IsOn, Mode=OneWay}" Command="{Binding ToggleCommand}"
+                            ToolTip.Tip="{Binding SwitchTip}" />
             <TextBlock Classes="secondary" VerticalAlignment="Center" Text="{Binding OnText}" IsVisible="{Binding HasOnText}" />
           </StackPanel>
         </ui:FormField>
