@@ -203,6 +203,40 @@ public static class NodeForms
         _ => ProvisioningTexts.UnknownNode,
     };
 
+    /// <summary>
+    /// The settings of a node just added (the + or a new profile): the kind's default; a new Set IP starts with the first
+    /// three numbers of the DHCP server's range in First and Last address ("192.168.15.", the user types the last one) and
+    /// the DHCP server's subnet mask, else 255.255.255.0. Saved nodes are never changed.
+    /// </summary>
+    /// <param name="kind">The kind of the new node.</param>
+    /// <param name="dhcp">The OADM DHCP server's summary from the page's status; null when it is not installed.</param>
+    public static JsonElement NewSettings(NodeKindInfo kind, Sdk.Network.DhcpServerSummary? dhcp)
+    {
+        ArgumentNullException.ThrowIfNull(kind);
+        if (kind.Kind != NodeKind.SetIp)
+        {
+            return kind.DefaultSettings;
+        }
+
+        var settings = (kind.DefaultSettings.ValueKind == JsonValueKind.Object ? JsonNode.Parse(kind.DefaultSettings.GetRawText()) as JsonObject : null) ?? [];
+        if ((NetworkPart(dhcp?.RangeStart) ?? NetworkPart(dhcp?.ServerAddress)) is { } start)
+        {
+            settings["first"] = start;
+            settings["last"] = start;
+        }
+
+        settings["subnetMask"] = Network.Model.Ipv4.TryParsePrefix(dhcp?.SubnetMask, out var prefix) && prefix is > 0 and < 32
+            ? Network.Model.Ipv4.MaskText(prefix)
+            : Network.Model.Ipv4.MaskText(24);
+        return JsonSerializer.SerializeToElement(settings);
+    }
+
+    /// <summary>"192.168.15.7" -> "192.168.15."; null when not an address.</summary>
+    private static string? NetworkPart(string? address) =>
+        Network.Model.Ipv4.TryParse(address, out var value)
+            ? string.Create(CultureInfo.InvariantCulture, $"{value >> 24}.{(value >> 16) & 255}.{(value >> 8) & 255}.")
+            : null;
+
     private static IReadOnlyList<NodeFieldViewModel> SetIp(JsonObject s) =>
     [
         new TextFieldViewModel("first", ProvisioningTexts.FirstAddress, Text(s["first"]), FieldRules.RequiredAddress) { Placeholder = "e.g. 192.168.15.10", Help = ProvisioningTexts.FirstAddressHelp },
@@ -362,7 +396,8 @@ public static class NodeForms
             case NodeKind.WaitForApproval:
                 return ProvisioningTexts.WaitsForContinue;
             case NodeKind.SetIp:
-                return Of("first") is { Length: > 0 } first ? first + " to " + Of("last") : string.Empty;
+                // A half typed pool ("192.168.15." of a new node) has no line yet.
+                return Network.Model.Ipv4.TryParse(Of("first"), out _) && Network.Model.Ipv4.TryParse(Of("last"), out _) ? Of("first") + " to " + Of("last") : string.Empty;
             case NodeKind.DateTime:
                 var source = node.Field<ChoiceFieldViewModel>("ntpSource");
                 var time = source.Is("own") ? Of("ntpServers") : source.Is("oadm") ? "OADM's NTP server" : "NTP from DHCP";

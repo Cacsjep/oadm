@@ -119,6 +119,8 @@ Set password).
     waits until the camera answers there (OADM follows the moved device). The session's reserved addresses are kept
     until Stop; a new session starts at the first address again (the addresses given before are OADM devices by then and
     skipped). Pool used up: Error "No free address left in the pool."
+    A new Set IP node (a new profile or the +) starts with the first three numbers of the DHCP range ("192.168.15.") in
+    First and Last address and the DHCP server's subnet mask, else 255.255.255.0; client side, saved nodes never change.
 
 Left out on purpose (2026-11-18): install applications, action rules (the Configuration node copies them), hardening
 check, VPN, restart, snapshot, notify, capture mode / rotation.

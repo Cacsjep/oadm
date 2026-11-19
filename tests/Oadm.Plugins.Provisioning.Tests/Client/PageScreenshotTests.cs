@@ -151,7 +151,7 @@ public sealed class PageScreenshotTests
         await Headless.Session.Dispatch(async () =>
         {
             var ctx = Samples.Context();
-            var editor = new ProfileEditorViewModel(ctx, null);
+            var editor = new ProfileEditorViewModel(ctx, null, Samples.Dhcp());
             var window = new ProfileEditorWindow();
             Oadm.Client.App.ApplyCrispText(window);
             window.Attach(editor);
@@ -168,6 +168,15 @@ public sealed class PageScreenshotTests
             var plus = canvas.PlusRect(2);
             Assert.Equal(2, canvas.PlusIndexAt(editor.Chain.View.ToScreen(plus.Center)));
             Headless.Capture(window, $"provisioning-editor-new-{suffix}.png");
+
+            // The new Set IP starts in the DHCP server's network: only the last number is left to type, no error shown yet.
+            editor.SelectedNode = editor.Nodes[2];
+            Headless.Pump();
+            Assert.Equal("10.0.0.", editor.Nodes[2].Field<TextFieldViewModel>("first").Text);
+            Assert.Null(editor.Nodes[2].Field<TextFieldViewModel>("first").ErrorOf(nameof(TextFieldViewModel.Text)));
+            Headless.Capture(window, $"provisioning-editor-setip-new-{suffix}.png");
+            editor.SelectedNode = null;
+            Headless.Pump();
 
             // The + opens the node list next to it; its search takes the keys.
             editor.Chain.RequestAdd(2, canvas.PickerPlace(2));

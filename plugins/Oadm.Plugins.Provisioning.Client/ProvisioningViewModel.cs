@@ -297,7 +297,7 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
     [RelayCommand(CanExecute = nameof(CanManageProfiles))]
     public async Task ManageProfilesAsync()
     {
-        var dialog = new ProfilesDialogViewModel(_ctx);
+        var dialog = new ProfilesDialogViewModel(_ctx, _status.Dhcp);
         if (Ui is { } ui)
         {
             await ui.ShowProfilesAsync(dialog).ConfigureAwait(true);

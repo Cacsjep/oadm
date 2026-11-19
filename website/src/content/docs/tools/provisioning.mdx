@@ -266,6 +266,8 @@ Gives each camera a fixed address from a pool of its own.
 - **Default router**: in the subnet of the pool, outside the pool.
 - **DNS servers**: at most 2, separated by commas.
 
+A new Set IP starts in the network of OADM's DHCP server (for example 192.168.15.): type the last number.
+
 How addresses are given:
 
 - Each camera gets the next free address of the pool, starting at the first. An address is skipped when a device in OADM

@@ -12,6 +12,7 @@ using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Provisioning.Client;
@@ -37,6 +38,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
 {
     private readonly ICorePluginClientContext _ctx;
     private readonly Guid? _profileId;
+    private readonly DhcpServerSummary? _dhcp;
     private Dictionary<NodeKind, NodeKindInfo> _kinds = [];
     private IReadOnlyList<CredentialChoice> _credentials = [];
     private IReadOnlyList<ProfileCommand> _commands = [];
@@ -48,10 +50,12 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
 
     /// <param name="ctx">The page's context.</param>
     /// <param name="profileId">The profile to edit; null: a new profile.</param>
-    public ProfileEditorViewModel(ICorePluginClientContext ctx, Guid? profileId)
+    /// <param name="dhcp">The OADM DHCP server's summary from the page's status (a new Set IP starts in its range); null: unknown.</param>
+    public ProfileEditorViewModel(ICorePluginClientContext ctx, Guid? profileId, DhcpServerSummary? dhcp = null)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         _profileId = profileId;
+        _dhcp = dhcp;
         Title = profileId is null ? ProvisioningTexts.NewProfileTitle : ProvisioningTexts.EditProfileTitle;
         Chain.PropertyChanged += OnChainChanged;
         Chain.CanAdd = true;
@@ -188,7 +192,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
                     Name = ProvisioningTexts.DefaultName,
                     // The two fixed nodes and Set IP, which can be moved and removed (decision 2026-11-19).
                     Nodes = [.. kinds.Where(k => k.IsFixed || k.Kind == NodeKind.SetIp).OrderBy(k => !k.IsFixed)
-                        .Select((k, i) => new FlowNode { Id = "n" + (i + 1), Kind = k.Kind, ContinueOnError = !k.AlwaysStops, Settings = k.DefaultSettings })],
+                        .Select((k, i) => new FlowNode { Id = "n" + (i + 1), Kind = k.Kind, ContinueOnError = !k.AlwaysStops, Settings = NodeForms.NewSettings(k, _dhcp) })],
                 };
             }
 
@@ -248,7 +252,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
 
         var index = SelectedNode is { } selected ? Nodes.IndexOf(selected) + 1 : Nodes.Count;
         index = Math.Clamp(index, Math.Min(2, Nodes.Count), Nodes.Count);
-        var node = Add(index, new FlowNode { Id = NextId(), Kind = kind.Kind, ContinueOnError = !kind.AlwaysStops, Settings = kind.DefaultSettings });
+        var node = Add(index, new FlowNode { Id = NextId(), Kind = kind.Kind, ContinueOnError = !kind.AlwaysStops, Settings = NodeForms.NewSettings(kind, _dhcp) });
         SelectedNode = node;
         AfterChange();
     }
@@ -278,7 +282,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
         }
 
         var at = Math.Clamp(index + 1, Math.Min(2, Nodes.Count), Nodes.Count);
-        var node = Add(at, new FlowNode { Id = NextId(), Kind = kind.Kind, ContinueOnError = !kind.AlwaysStops, Settings = kind.DefaultSettings });
+        var node = Add(at, new FlowNode { Id = NextId(), Kind = kind.Kind, ContinueOnError = !kind.AlwaysStops, Settings = NodeForms.NewSettings(kind, _dhcp) });
         SelectedNode = node;
         AfterChange();
         return node;

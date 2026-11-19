@@ -168,8 +168,15 @@ public sealed class PageViewModelTests
         vm.Ui = ui;
         var before = ctx.CallsOf(ProvisioningMethods.ListProfiles);
         await vm.ManageProfilesCommand.ExecuteAsync(null);
-        Assert.NotNull(Assert.Single(ui.Dialogs));
+        var dialog = Assert.Single(ui.Dialogs);
         Assert.Equal(before + 1, ctx.CallsOf(ProvisioningMethods.ListProfiles));
+
+        // The page's DHCP server reaches the editor: a new Set IP starts in its range.
+        var profilesUi = new FakeProfilesUi();
+        dialog.Ui = profilesUi;
+        await dialog.NewCommand.ExecuteAsync(null);
+        var setIp = Assert.Single(profilesUi.Editors).Nodes.Single(n => n.Kind == NodeKind.SetIp);
+        Assert.Equal("10.0.0.", setIp.Field<TextFieldViewModel>("first").Text);
     }
 
     [Fact]

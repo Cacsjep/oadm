@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Oadm.Plugins.Provisioning.Nodes;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Collections;
+using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Provisioning.Client;
@@ -42,10 +43,14 @@ public sealed record ProfileRow(ProfileSummary Summary)
 public sealed partial class ProfilesDialogViewModel : ObservableObject
 {
     private readonly ICorePluginClientContext _ctx;
+    private readonly DhcpServerSummary? _dhcp;
 
-    public ProfilesDialogViewModel(ICorePluginClientContext ctx)
+    /// <param name="ctx">The page's context.</param>
+    /// <param name="dhcp">The OADM DHCP server's summary from the page's status, for the editor; null: unknown.</param>
+    public ProfilesDialogViewModel(ICorePluginClientContext ctx, DhcpServerSummary? dhcp = null)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
+        _dhcp = dhcp;
     }
 
     /// <summary>Set by the window.</summary>
@@ -146,7 +151,7 @@ public sealed partial class ProfilesDialogViewModel : ObservableObject
 
     private async Task EditAsync(Guid? id)
     {
-        var editor = new ProfileEditorViewModel(_ctx, id);
+        var editor = new ProfileEditorViewModel(_ctx, id, _dhcp);
         if (Ui is { } ui)
         {
             await ui.ShowProfileEditorAsync(editor).ConfigureAwait(true);

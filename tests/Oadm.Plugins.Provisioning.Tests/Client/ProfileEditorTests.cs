@@ -166,6 +166,75 @@ public sealed class ProfileEditorTests
     }
 
     [Fact]
+    public async Task A_new_set_ip_starts_in_the_dhcp_servers_network_and_only_the_last_number_is_left_to_type()
+    {
+        var ctx = Samples.Context();
+        var editor = new ProfileEditorViewModel(ctx, null, Samples.Dhcp() with { SubnetMask = "255.255.0.0" });
+        await editor.LoadAsync();
+        await editor.CheckTask;
+
+        // The Set IP of a new profile.
+        var setIp = editor.Nodes.Single(n => n.Kind == NodeKind.SetIp);
+        TextFieldViewModel Text(NodeEditorViewModel node, string key) => node.Field<TextFieldViewModel>(key);
+        Assert.Equal("10.0.0.", Text(setIp, "first").Text); // from the range start 10.0.0.100
+        Assert.Equal("10.0.0.", Text(setIp, "last").Text);
+        Assert.Equal("255.255.0.0", Text(setIp, "subnetMask").Text);
+        Assert.Equal(string.Empty, Text(setIp, "gateway").Text);
+        Assert.Empty(setIp.Field<ListFieldViewModel>("dnsServers").Items);
+
+        // Half filled is a draft, but no error shows below an untouched field.
+        Assert.Null(Text(setIp, "first").ErrorOf(nameof(TextFieldViewModel.Text)));
+        Assert.Null(Text(setIp, "last").ErrorOf(nameof(TextFieldViewModel.Text)));
+        Assert.False(setIp.IsValid);
+        Assert.True(editor.IsDraft);
+        Assert.True(editor.SaveCommand.CanExecute(null));
+
+        // Typing the last number makes it valid.
+        Text(setIp, "first").Text = "10.0.0.10";
+        Text(setIp, "last").Text = "10.0.0.50";
+        Text(setIp, "gateway").Text = "10.0.0.1";
+        Assert.True(setIp.IsValid);
+
+        // A Set IP added with the + starts the same way; the edited one keeps its values.
+        var added = editor.AddAfter(2, Kind(NodeKind.SetIp))!;
+        Assert.Equal("10.0.0.", Text(added, "first").Text);
+        Assert.Equal("255.255.0.0", Text(added, "subnetMask").Text);
+        Assert.Equal("10.0.0.10", Text(setIp, "first").Text);
+
+        // Other kinds keep their defaults.
+        var dateTime = editor.AddAfter(2, Kind(NodeKind.DateTime))!;
+        Assert.Equal(Kind(NodeKind.DateTime).DefaultSettings.GetRawText(), dateTime.ToFlowNode().Settings!.Value.GetRawText());
+    }
+
+    [Fact]
+    public async Task A_new_set_ip_takes_the_server_address_without_a_range_and_only_the_mask_without_a_dhcp_server()
+    {
+        var ctx = Samples.Context();
+        var editor = new ProfileEditorViewModel(ctx, null, Samples.Dhcp() with { RangeStart = null, SubnetMask = null, ServerAddress = "192.168.15.2" });
+        await editor.LoadAsync();
+        var setIp = editor.Nodes.Single(n => n.Kind == NodeKind.SetIp);
+        Assert.Equal("192.168.15.", setIp.Field<TextFieldViewModel>("first").Text);
+        Assert.Equal("255.255.255.0", setIp.Field<TextFieldViewModel>("subnetMask").Text);
+
+        var (unknown, _) = await OpenAsync(null); // no DHCP server
+        var plain = unknown.Nodes.Single(n => n.Kind == NodeKind.SetIp);
+        Assert.Equal(string.Empty, plain.Field<TextFieldViewModel>("first").Text);
+        Assert.Equal(string.Empty, plain.Field<TextFieldViewModel>("last").Text);
+        Assert.Equal("255.255.255.0", plain.Field<TextFieldViewModel>("subnetMask").Text);
+        Assert.Equal(string.Empty, unknown.AddAfter(2, Kind(NodeKind.SetIp))!.Field<TextFieldViewModel>("first").Text);
+    }
+
+    [Fact]
+    public async Task A_saved_set_ip_is_never_changed_by_the_dhcp_server()
+    {
+        var ctx = Samples.Context();
+        var editor = new ProfileEditorViewModel(ctx, Samples.ProfileId, Samples.Dhcp());
+        await editor.LoadAsync();
+        var setIp = editor.Nodes.Single(n => n.Kind == NodeKind.SetIp);
+        Assert.Equal("192.168.15.10", setIp.Field<TextFieldViewModel>("first").Text);
+    }
+
+    [Fact]
     public async Task The_server_check_puts_its_error_on_the_node_and_its_warning_below_it()
     {
         var (editor, _) = await OpenAsync(null);
