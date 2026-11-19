@@ -121,6 +121,7 @@ The page's context, `ICorePluginClientContext`:
 | `Devices`, `SelectedDevices`, `DevicesChanged` | The client's copy of the device table and the Devices page selection |
 | `Has(permission)`, `HasAllDevices`, `PermissionsChanged` | Hide or lock what the user's role does not allow, or what only users with all devices may do |
 | `ShowMessageAsync`, `ConfirmAsync`, `Owner` | The host's message window and the owner for your own dialogs |
+| `CorePluginContext(pluginId)` | The context a page of that core plugin would get (SDK 0.15.0): its calls, live events, dialogs; for a toolbar entry of a plugin without a page that opens its own dialogs (Provisioning) |
 | `OpenAsync(hostPage)` | Open a host page, e.g. `HostPages.Devices`, or another plugin's page: `"plugin:" + its id` |
 | `OwnerName` | "user@machine", the owner of tasks the page starts |
 | `LiveVideo`, `DeviceWeb` | The host's live video and the device web interface, see below |
@@ -404,6 +405,7 @@ public sealed class SampleToolbarPlugin : IToolbarPlugin
 | `OpenAsync(hostPage)` | A page of the host: a `HostPages` constant (`Devices`, `AddScan`, `AddIpRange`, `AddManually`, `AddImport`, `AddImportAdm`, `ExportDevices`, `Compliance`, `Sites`, `EventRules`, `Logs`, `Settings`, `Users`, `Credentials`, `Plugins`, `About`) |
 | `Has(permission)`, `HasAllDevices`, `PermissionsChanged` | What the user's role allows |
 | `ShowMessageAsync`, `ConfirmAsync`, `Owner` | The host's message window and the owner for your own dialogs |
+| `CorePluginContext(pluginId)` | The context a page of that core plugin would get (SDK 0.15.0): its calls, live events, dialogs; for a toolbar entry of a plugin without a page that opens its own dialogs (Provisioning) |
 
 Everything runs on the UI thread. Never cache the selection: enable and disable the button from `SelectionChanged` and
 `TaskPluginsChanged`.
@@ -416,6 +418,15 @@ Everything runs on the UI thread. Never cache the selection: enable and disable 
   it with `InvokePluginAsync`. Long work runs as a job the button's dialog polls; large results come back in parts. The
   System report works this way: a save dialog first, then a progress dialog. Its platform parts sit behind a small
   interface, so the flow is testable without windows.
+- A button that shows a live state (Provisioning: green "Provisioning active" while on) takes `CorePluginContext` and
+  watches the plugin's events with `ctx.RunAsync(read, handle, options, ct)` while the button is in the window.
+
+## Commands on a task
+
+An `ITaskAction` (SDK 0.15.0, in a `*.Client.dll`) is a button in the header of the tasks pane while the selected task
+fits it (`AppliesTo` with a `TaskActionTask`: task id, task plugin, device, state, name), the plugin package is on and the
+role has `RequiredPermission`. `RunAsync` gets the Devices page's `IToolbarContext`; a failure shows in the host's
+message window. Provisioning's Run again on a failed "Provision with" task is one.
 
 ## Permissions
 

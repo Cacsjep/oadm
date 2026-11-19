@@ -15,6 +15,7 @@ loads the first, the client the second. Both come from the same folder.
 | Core plugin | `ICorePlugin` | `*.Server.dll` | A service on the server, usually with a page |
 | Core plugin page | `ICorePluginPage` | `*.Client.dll` | A page in the navigation rail |
 | Toolbar plugin | `IToolbarPlugin` | `*.Client.dll` | A control in the Devices toolbar |
+| Task command | `ITaskAction` | `*.Client.dll` | A button in the tasks pane for the selected task |
 | Action | `IActionPlugin` | `*.Server.dll` | A "Then" choice in the event rules |
 | Compliance check type | `IComplianceCheckType` | `*.Server.dll` | A kind of check on the **Compliance** page |
 

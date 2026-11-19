@@ -97,8 +97,18 @@ public sealed partial class DeviceToolbar
         UpdateVisibility();
     }
 
+    /// <summary>
+    /// The commands of plugins on a task of the tasks pane (<see cref="ITaskAction"/>) the user may run now: the package is on
+    /// and the role has the action's permission. Read when the selected task changes.
+    /// </summary>
+    public IReadOnlyList<ITaskAction> TaskActions => [.. _registry.TaskActions.Where(a => IsShown(a, () => a.RequiredPermission))];
+
+    /// <summary>Raised after the package states or the role changed (the tasks pane reads <see cref="TaskActions"/> again).</summary>
+    public event EventHandler? TaskActionsChanged;
+
     private void UpdateVisibility()
     {
+        TaskActionsChanged?.Invoke(this, EventArgs.Empty);
         foreach ((IToolbarPlugin plugin, Control control) in _byPlugin)
         {
             control.IsVisible = IsShown(plugin);
@@ -106,16 +116,18 @@ public sealed partial class DeviceToolbar
     }
 
     /// <summary>The package is on (built-in entries have none) and the role has the entry's permission.</summary>
-    private bool IsShown(IToolbarPlugin plugin)
+    private bool IsShown(IToolbarPlugin plugin) => IsShown(plugin, () => plugin.RequiredPermission);
+
+    private bool IsShown(object part, Func<string?> requiredPermission)
     {
-        if (_registry.PackageOf(plugin) is { } package && !_isPackageEnabled(package))
+        if (_registry.PackageOf(part) is { } package && !_isPackageEnabled(package))
         {
             return false;
         }
 
         try
         {
-            return plugin.RequiredPermission is not { } permission || _hasPermission(permission);
+            return requiredPermission() is not { } permission || _hasPermission(permission);
         }
 #pragma warning disable CA1031 // A plugin that cannot answer keeps its entry; the server checks the call anyway.
         catch (Exception)

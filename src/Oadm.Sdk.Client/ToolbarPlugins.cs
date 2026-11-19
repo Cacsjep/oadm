@@ -210,6 +210,14 @@ public interface IToolbarContext
     Task<string?> InvokePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) =>
         throw new NotSupportedException("This host cannot call core plugins from the toolbar.");
 
+    /// <summary>
+    /// SDK 0.15.0: the context a page of the core plugin <paramref name="pluginId"/> would get (its server calls, live events,
+    /// dialogs, the host's reveal of a stored password), for a toolbar entry of a core plugin without a page (Provisioning)
+    /// that opens dialogs of that plugin. A new context per call: keep it as long as the entry lives. Default (older hosts):
+    /// null.
+    /// </summary>
+    ICorePluginClientContext? CorePluginContext(string pluginId) => null;
+
     /// <summary>The main window, as owner for the plugin's own dialogs; null before it is shown.</summary>
     Window? Owner { get; }
 }

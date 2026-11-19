@@ -6,6 +6,15 @@ public static class DeviceTexts
     /// <summary>Why a user cannot open devices in Web View: the role lacks the right (Web View page, the device list).</summary>
     public const string OpenNotAllowed = "Your role does not allow opening devices.";
 
+    /// <summary>
+    /// SDK 0.15.0: "Provisioning", the one name of zero-touch provisioning: the Devices toolbar button and, while it is on,
+    /// what the Add devices page shows for a factory-new camera instead of Set password.
+    /// </summary>
+    public const string Provisioning = "Provisioning";
+
+    /// <summary>SDK 0.15.0: the tooltip of <see cref="Provisioning"/> on the Add devices page.</summary>
+    public const string ProvisioningTip = "Provisioning sets it up after it is added";
+
     /// <summary>Length of the shortened device id of a removed device.</summary>
     public const int ShortIdLength = 8;
 

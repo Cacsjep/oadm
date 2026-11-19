@@ -10,6 +10,7 @@ using Oadm.Client.Api;
 using Oadm.Client.Devices;
 using Oadm.Client.Dialogs;
 using Oadm.Client.Infrastructure;
+using Oadm.Sdk.Client;
 
 namespace Oadm.Client.Tasks;
 
@@ -68,6 +69,7 @@ public sealed partial class TasksViewModel : ObservableObject
             if (task is null || task == SelectedTask)
             {
                 NotifySelectionCommands();
+                UpdateActions();
             }
         };
     }
@@ -84,6 +86,94 @@ public sealed partial class TasksViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(DetailsCommand), nameof(CancelCommand), nameof(DeleteCommand))]
     public partial TaskRowViewModel? SelectedTask { get; set; }
+
+    partial void OnSelectedTaskChanged(TaskRowViewModel? value) => UpdateActions();
+
+    private Func<IReadOnlyList<ITaskAction>>? _actions;
+    private IToolbarContext? _actionContext;
+
+    /// <summary>The commands of plugins on the selected task (Run again of Provisioning), in the pane's header.</summary>
+    public ObservableCollection<TaskActionItem> SelectedActions { get; } = [];
+
+    /// <summary>Whether <see cref="SelectedActions"/> has any (the header shows them).</summary>
+    public bool HasSelectedActions => SelectedActions.Count > 0;
+
+    /// <summary>
+    /// The plugins' task commands the user may run now (<see cref="Devices.Toolbar.DeviceToolbar.TaskActions"/>) and the
+    /// Devices page's context they run with; set by the Devices page.
+    /// </summary>
+    public void UseTaskActions(Func<IReadOnlyList<ITaskAction>> actions, IToolbarContext ctx)
+    {
+        _actions = actions ?? throw new ArgumentNullException(nameof(actions));
+        _actionContext = ctx ?? throw new ArgumentNullException(nameof(ctx));
+        UpdateActions();
+    }
+
+    /// <summary>Reads which plugin commands fit the selected task again (the selection, its state, the role or the plugins changed).</summary>
+    public void UpdateActions()
+    {
+        var shown = new List<TaskActionItem>();
+        if (SelectedTask is { } row && _actions is { } actions && _actionContext is { } ctx)
+        {
+            var task = ToActionTask(row);
+            foreach (ITaskAction action in actions())
+            {
+                bool applies;
+                try
+                {
+                    applies = action.AppliesTo(task);
+                }
+#pragma warning disable CA1031 // A plugin that cannot answer shows no command; the tasks pane goes on.
+                catch (Exception)
+#pragma warning restore CA1031
+                {
+                    applies = false;
+                }
+
+                if (applies)
+                {
+                    shown.Add(SelectedActions.FirstOrDefault(a => a.Action == action && a.Task == task) ?? new TaskActionItem(action, task, RunActionAsync));
+                }
+            }
+        }
+
+        if (!shown.SequenceEqual(SelectedActions))
+        {
+            SelectedActions.Clear();
+            foreach (TaskActionItem item in shown)
+            {
+                SelectedActions.Add(item);
+            }
+
+            OnPropertyChanged(nameof(HasSelectedActions));
+        }
+
+        async Task RunActionAsync(TaskActionItem item)
+        {
+            if (_actionContext is not { } context)
+            {
+                return;
+            }
+
+            try
+            {
+                await item.Action.RunAsync(context, [item.Task], CancellationToken.None).ConfigureAwait(true);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                LogActionFailed(_logger, ex, item.Action.Id, item.Task.Name);
+                await _dialogs.ShowMessageAsync(item.Action.Text, Oadm.Sdk.Client.ServerErrors.Message(ex)).ConfigureAwait(true);
+            }
+        }
+    }
+
+    /// <summary>A task row as a plugin's task command sees it.</summary>
+    internal static TaskActionTask ToActionTask(TaskRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        var device = Guid.TryParse(row.DeviceId, out var id) ? id : Guid.Empty;
+        return new TaskActionTask(row.Id, row.PluginId, device, Oadm.Client.Plugins.TaskDialogContext.StateOf(row, row.Id, device).Status, row.Name);
+    }
 
     [ObservableProperty]
     public partial bool IsExpanded { get; set; }

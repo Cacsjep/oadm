@@ -95,6 +95,8 @@ public sealed partial class DevicesViewModel : ObservableObject
             Session = session,
         };
         ToolbarContext.Work = Work;
+        tasks.UseTaskActions(() => toolbar.TaskActions, ToolbarContext);
+        toolbar.TaskActionsChanged += (_, _) => tasks.UpdateActions();
         Columns = columns;
         Tasks = tasks;
         LiveView = liveView;

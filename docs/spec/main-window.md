@@ -39,7 +39,8 @@ hides some is cleared, the view selects the rows in one step with the ring above
 
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in [visual-style.md](visual-style.md).
-2. Toolbar: toolbar plugins (**Add** menu | Remove, Refresh, Export | task plugin actions that declare `ShowInToolbar`,
+2. Toolbar: toolbar plugins (**Add** menu | Remove, Refresh, Export, **Provisioning** (plugin; **Provisioning active** with a
+   green icon while provisioning is on, [provisioning.md](provisioning.md)) | task plugin actions that declare `ShowInToolbar`,
    then System report (plugin) | plugin entries) in `ui:ToolbarOverflowPanel`: entries that do not fit (narrow
    window, live view open) move into a **More** menu (icon `more`, right of the toolbar). Right-aligned: the AXIS OS
    release notes link (icon only, toolbar controls with the class `trailing` go here), **Group by tag** icon button (icon
@@ -129,7 +130,9 @@ Layout, top to bottom:
    name, detail, duration, progress bar + percent only for the running step; rows updated in place) and a
    Log card (level chip, time, device address, message; `TaskService.GetLog`, re-read when the current
    step or the task state changes, new entries appended), built from the shared grid and chip styles; **Cancel task**
-   in its footer while the task runs. Pane buttons: Details, Cancel, Delete, a separator, **Delete all** (red, with
+   in its footer while the task runs. Pane buttons: Details, the commands of plugins that fit the selected task
+   (`ITaskAction`, SDK 0.15.0: shown only while one fits, the package is on and the role has its permission; Provisioning's
+   **Run again** on a failed "Provision with" task), Cancel, Delete, a separator, **Delete all** (red, with
    confirmation; running tasks are cancelled first; only with "Delete all tasks" and all devices); all work per task.
 
 **Logs page** (rail, bottom; `Logging/LogsViewModel` + `LogsView`): the segmented switch **Server** | **Client** | **Audit**

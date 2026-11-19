@@ -19,6 +19,9 @@ public interface IClientPluginRegistry
     /// <summary>Toolbar parts of the Devices page from plugins (the built-in ones are registered in the container).</summary>
     IReadOnlyList<IToolbarPlugin> ToolbarPlugins { get; }
 
+    /// <summary>Commands of plugins on the selected task of the tasks pane (<see cref="ITaskAction"/>).</summary>
+    IReadOnlyList<ITaskAction> TaskActions => [];
+
     /// <summary>The plugin package (plugin.json id next to the dll) a part was loaded from; null for built-in parts.</summary>
     string? PackageOf(object part) => null;
 }
@@ -28,13 +31,14 @@ public interface IClientPluginRegistry
 /// <c>&lt;repo&gt;/artifacts/plugins/*/</c> (same discovery as the server's <c>PluginPaths.Development</c>) for
 /// <c>*.Client.dll</c>, loads each in its own
 /// <see cref="AssemblyLoadContext"/> that shares the SDK and Avalonia with the host, and instantiates every
-/// <see cref="ITaskPluginDialog"/>, <see cref="ICorePluginPage"/> and <see cref="IToolbarPlugin"/>. Failures are logged and skipped.
+/// <see cref="ITaskPluginDialog"/>, <see cref="ICorePluginPage"/>, <see cref="IToolbarPlugin"/> and <see cref="ITaskAction"/>. Failures are logged and skipped.
 /// </summary>
 public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.IAddOnPartLoader
 {
     private readonly List<ITaskPluginDialog> _dialogs = [];
     private readonly List<ICorePluginPage> _pages = [];
     private readonly List<IToolbarPlugin> _toolbar = [];
+    private readonly List<ITaskAction> _taskActions = [];
     private readonly Dictionary<object, string> _packageOf = new(ReferenceEqualityComparer.Instance);
 
     // Kept alive on purpose: a collectible load context whose object is collected starts unloading, and a plugin
@@ -114,6 +118,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
     public IReadOnlyList<ITaskPluginDialog> Dialogs => _dialogs;
     public IReadOnlyList<ICorePluginPage> Pages => _pages;
     public IReadOnlyList<IToolbarPlugin> ToolbarPlugins => _toolbar;
+    public IReadOnlyList<ITaskAction> TaskActions => _taskActions;
 
     public ITaskPluginDialog? FindDialog(string pluginId) =>
         _dialogs.Find(d => string.Equals(d.PluginId, pluginId, StringComparison.OrdinalIgnoreCase));
@@ -148,7 +153,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
             return 0; // another load got there first
         }
 
-        if (parts.Failures > 0 && parts.Dialogs.Count + parts.Pages.Count + parts.Toolbar.Count == 0)
+        if (parts.Failures > 0 && parts.Dialogs.Count + parts.Pages.Count + parts.Toolbar.Count + parts.TaskActions.Count == 0)
         {
             foreach (AssemblyLoadContext context in parts.Contexts)
             {
@@ -169,6 +174,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
         _dialogs.AddRange(parts.Dialogs);
         _pages.AddRange(parts.Pages);
         _toolbar.AddRange(parts.Toolbar);
+        _taskActions.AddRange(parts.TaskActions);
         foreach (var (part, packageId) in parts.PackageOf)
         {
             _packageOf[part] = packageId;
@@ -176,7 +182,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
 
         _contexts.AddRange(parts.Contexts);
         _loadedPackages.UnionWith(parts.Packages);
-        return parts.Dialogs.Count + parts.Pages.Count + parts.Toolbar.Count;
+        return parts.Dialogs.Count + parts.Pages.Count + parts.Toolbar.Count + parts.TaskActions.Count;
     }
 
     /// <summary>The parts of one root, loaded without touching the lists (an add-on's on the thread pool).</summary>
@@ -187,6 +193,8 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
         public List<ICorePluginPage> Pages { get; } = [];
 
         public List<IToolbarPlugin> Toolbar { get; } = [];
+
+        public List<ITaskAction> TaskActions { get; } = [];
 
         public List<(object Part, string PackageId)> PackageOf { get; } = [];
 
@@ -270,6 +278,17 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
                             parts.PackageOf.Add((toolbar, packageId));
                         }
                         LogLoaded(_logger, "toolbar", toolbar.Id, dll);
+                    }
+
+                    if (typeof(ITaskAction).IsAssignableFrom(type) && Activator.CreateInstance(type) is ITaskAction action)
+                    {
+                        parts.TaskActions.Add(action);
+                        if (packageId is not null)
+                        {
+                            parts.PackageOf.Add((action, packageId));
+                        }
+
+                        LogLoaded(_logger, "task action", action.Id, dll);
                     }
                 }
             }

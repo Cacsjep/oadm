@@ -20,6 +20,19 @@
             <Button Classes="toolbar" Command="{Binding DetailsCommand}" ToolTip.Tip="Show the result per device">
               <ui:IconLabel Icon="{StaticResource Icon.details}" Text="Details" Spacing="8" />
             </Button>
+            <!-- Commands of plugins on the selected task (ITaskAction: Run again of Provisioning), only while one fits -->
+            <ItemsControl x:Name="TaskActions" ItemsSource="{Binding SelectedActions}" IsVisible="{Binding HasSelectedActions}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="2" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="tasks:TaskActionItem">
+                  <ui:ToolbarButton IconKey="{Binding IconKey}" Text="{Binding Text}" ToolTip.Tip="{Binding Tooltip}" Command="{Binding RunCommand}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
             <Button Classes="toolbar" Command="{Binding CancelCommand}" ToolTip.Tip="Cancel the running task" IsVisible="{Binding MayCancel}">
               <ui:IconLabel Icon="{StaticResource Icon.cancel}" Text="Cancel" Spacing="8" />
             </Button>

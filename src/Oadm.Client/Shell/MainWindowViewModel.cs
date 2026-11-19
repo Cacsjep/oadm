@@ -141,6 +141,9 @@ public sealed partial class MainWindowViewModel : ObservableObject
             SyncSitesItem();
         }
 
+        // A toolbar entry of a core plugin without a page opens that plugin's dialogs with a page's context (Provisioning).
+        Devices.ToolbarContext.CorePluginContexts = NewPluginContext;
+
         // A role change (session stream): the toolbar, the rail and the task menu follow what the role allows now.
         Devices.Toolbar.ApplyPermissions(session.Has);
         session.PermissionsChanged += (_, _) =>

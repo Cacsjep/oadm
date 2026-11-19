@@ -241,6 +241,15 @@ public sealed class ToolbarContext : IToolbarContext
         return _api.InvokeCorePluginAsync(pluginId, method, payloadJson, ct);
     }
 
+    /// <summary>Makes the context of a core plugin's page (set by the main window); null: none (tests).</summary>
+    public Func<string, ICorePluginClientContext>? CorePluginContexts { get; set; }
+
+    public ICorePluginClientContext? CorePluginContext(string pluginId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
+        return CorePluginContexts?.Invoke(pluginId);
+    }
+
     private TaskPluginInfo? Find(string pluginId) =>
         _catalog.Plugins.FirstOrDefault(p => string.Equals(p.Id, pluginId, StringComparison.OrdinalIgnoreCase));
 }
