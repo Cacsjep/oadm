@@ -368,8 +368,10 @@ public sealed class McpLimitsAndLinksTests
 
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
+            // Counted only once the timer is registered: advancing the clock before that would start its due time later.
+            var timer = base.CreateTimer(callback, state, dueTime, period);
             Interlocked.Increment(ref _timers);
-            return base.CreateTimer(callback, state, dueTime, period);
+            return timer;
         }
     }
 
