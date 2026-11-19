@@ -1,81 +1,120 @@
 ---
 title: Provisioning
-description: Set up factory-new cameras as soon as you plug them in, with a profile of steps that runs on each one.
+description: Turn on provisioning and every factory-new camera OADM finds is set up by a profile of steps.
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
-import page from '../../../assets/screens/provisioning-page.png';
-import flow from '../../../assets/screens/provisioning-flow.png';
+import toolbar from '../../../assets/screens/provisioning-toolbar.png';
+import dialog from '../../../assets/screens/provisioning-dialog.png';
+import dialogOff from '../../../assets/screens/provisioning-dialog-off.png';
 import editor from '../../../assets/screens/provisioning-editor.png';
-import profiles from '../../../assets/screens/provisioning-profiles.png';
+import add from '../../../assets/screens/provisioning-add.png';
+import runAgain from '../../../assets/screens/provisioning-run-again.png';
 
-Plug factory-new cameras into the switch and let OADM set them up. Each camera gets an address from OADM's
-[DHCP server](../dhcp-server/), then the active profile runs on it: password, AXIS OS, configuration, time, certificate,
-fixed IP address and more. The table shows how far each camera got.
+Turn on provisioning and plug in factory-new cameras. Every factory-new camera OADM finds is added to OADM and gets one
+task that runs the active profile: password, AXIS OS, configuration, time, certificate, network settings and more. The
+task shows in the tasks pane like every other task.
 
-<Image src={page} alt="The Provisioning page: the DHCP server card, Stop provisioning, the active profile, Manage profiles, the start time at the right and the cameras with their state" class="screen" />
+<Image src={toolbar} alt="The Devices toolbar: Add, Remove, Refresh, Export and Provisioning active with a green icon" class="screen" />
 
 ## Before you start
 
-- The [DHCP server](../dhcp-server/) runs on the network the cameras are plugged into. The **DHCP server** card at the
-  top shows its state. **Turn on** or **Edit** opens the DHCP server page.
-- You are an administrator with all devices. Operators and viewers do not see the page by default.
+- You are an administrator. Operators and viewers do not see the **Provisioning** button by default.
 - For **Set password** from the credential list: a password of the user root on the
   [Credentials page](../../admin/users/#credentials-page). You can also type one in the profile.
+- To hand out addresses to new cameras, OADM's [DHCP server](../dhcp-server/) runs on the network they are plugged into.
+  Cameras found by Discovery, Network range, Add manually or an import are provisioned too.
 
-## Build a profile
-
-A profile is a chain of nodes that runs from top to bottom on each camera.
-
-<Image src={editor} alt="The profile editor: the chain of nodes on the left, the selected Set IP node's form on the right with an error below Last address" class="screen" />
+## Turn it on
 
 <Steps>
 
-1. Open **Provisioning** under **Automation** in the navigation rail.
-2. Click **Manage profiles**, then **New**, and enter a **Name**. The new profile starts with **Set password**, **Add to
-   OADM** and **Set IP**.
+1. Click **Provisioning** in the Devices toolbar, right of **Export**.
+2. Click **New** and build a profile (see below). Your first profile without errors becomes the **Active profile**.
+3. Turn the switch to **On**.
+4. Plug in factory-new cameras.
+
+</Steps>
+
+<Image src={dialog} alt="Provisioning: the switch On with who turned it on, the active profile, a warning, and the profile list with New, Edit, Activate and Delete" class="screen" />
+
+While provisioning is on, the toolbar button reads **Provisioning active** with a green icon. It stays on, also when the
+server restarts, until you turn the switch to **Off**. Off starts no new task; running tasks run to their end. Cancel
+them in the tasks pane if needed.
+
+The switch stays off when no profile is active or the active profile has errors. The reason shows below the switch.
+
+<Image src={dialogOff} alt="Provisioning off: Choose the active profile first. below the switch" class="screen" />
+
+Warnings show below the active profile, for example "The pool overlaps the DHCP server's range 10.0.0.100 to
+10.0.0.199." Provisioning still works.
+
+## Which cameras
+
+A camera gets its task when OADM finds it factory-new (no password yet):
+
+- by **Discovery**, also the discovery that runs in the background, **Network range**, **Add manually** or an import,
+- by an address of OADM's DHCP server,
+- when a camera OADM manages is reset to factory default.
+
+OADM asks the camera itself right before the first change. A camera that is still starting is asked again for up to 2
+minutes. A camera that has a password is never changed. A camera gets no second task while its task runs. Up to 8
+cameras run at once; the others wait as **Queued**.
+
+On the Add devices page a factory-new camera shows **Provisioning** instead of **Set password**. Add it as usual: it is
+added without a password and its task sets it up.
+
+<Image src={add} alt="The Add devices page with provisioning on: Provisioning in the Action column of a factory-new camera, Set password for one at a site" class="screen" />
+
+## Profiles
+
+A profile is a chain of nodes that runs from top to bottom on each camera. Only one profile is active at a time.
+
+<Image src={editor} alt="The profile editor: the chain of nodes on the left, the selected Network node's form on the right with an error below Last address" class="screen" />
+
+<Steps>
+
+1. In **Provisioning**, click **New**, or choose a profile and click **Edit** (or double-click it).
+2. Enter a **Name**. A new profile starts with **Set password**.
 3. Click the **+** below a node: the last one, or the one you selected. Search or browse the list of nodes and click one.
    It is added right after that node.
 4. Click a node to see its form on the right. The **?** at the right of each field tells what to enter.
-5. **Move up** and **Move down** in the toolbar change the order, **Remove** deletes the selected node, **Fit view**
-   shows the whole chain.
+5. **Move up** and **Move down** change the order, **Remove** deletes the selected node, **Fit view** shows the whole
+   chain.
 6. Click **Save**.
 
 </Steps>
 
-**Set password** and **Add to OADM** are fixed: always the first two nodes, never moved or removed. **Set IP** can be
-moved and removed like any other node.
+**Set password** is fixed: always the first node, never moved or removed.
 
-Every node ends with one result, shown on the camera's flow:
-
-- **Success** (green), with what it did, for example "Password set."
-- **Not needed** (green with a grey line): the node does not apply to this camera, for example "Not needed: no SD card."
-- **Warning** (yellow): it did its part, something is worth a look.
-- **Error** (red), with the reason.
-
-**Continue on error** is on for every node except Set password: after an error the next nodes still run. Turn it off to
-stop the camera's flow at that node. An error at Set password always stops the flow. A node that works on the camera
-fails with "The camera is not in OADM. Add to OADM did not work." when Add to OADM failed.
+The profile list shows every profile with its number of nodes and its state: **Active** or **Has errors**. **Activate**
+makes the selected profile the active one, like the **Active profile** choice. **Delete** asks first. The active profile
+cannot be deleted while provisioning is on. A change to a profile applies to the next tasks; running tasks keep their
+copy.
 
 ### Drafts
 
 Errors show below the field and on the node in the chain. You can still save the profile as a draft. A draft shows
-**Has errors** in the profile list and cannot be the active profile or start until you fix it.
+**Has errors** in the profile list and cannot be the active profile until you fix it.
 
-### Manage profiles
+### Results
 
-**Manage profiles** lists every profile with its number of nodes and its state: **Active** or **Has errors**. Choose a
-profile and click **Edit** (or double-click it), **Activate** or **Delete**. **New** starts a new profile. Your first
-profile without errors becomes active by itself.
+Every node ends with one result, shown as a step of the camera's task:
 
-<Image src={profiles} alt="Manage profiles: three profiles, the active one, one with errors, and New, Edit, Activate and Delete" class="screen" />
+- **Success**, with what it did, for example "Password set."
+- **Not needed** (a skipped step): the node does not apply to this camera, for example "Not needed: no SD card."
+- **Warning**: it did its part, something is worth a look.
+- **Error**, with the reason.
+
+**Continue on error** is on for every node except Set password: after an error the next nodes still run. Turn it off to
+stop the task at that node. An error at Set password always stops the task.
 
 ## Nodes
 
 ### Set password
 
-Sets the first root password on the camera. Fixed: always first. An error here always stops the camera's flow.
+Sets the first root password on the camera. Fixed: always first. An error here always stops the task.
 
 - **Root password**: **From the credential list** (choose a **Credential** of the user root) or **Type a password**
   (**New password** and **Confirm password**, 1 to 64 printable ASCII characters). A typed password is added to the
@@ -83,25 +122,44 @@ Sets the first root password on the camera. Fixed: always first. An error here a
 - Each credential shows when it was added. Administrators see the eye next to it: it shows the stored password, like the
   eye on the **Credentials** page, and every time it is shown goes into the audit log. Click it again to hide it.
 
-Ends with "Password set." or an error with the reason.
+After the password, OADM waits up to 2 minutes until it has read the camera with it.
 
-### Add to OADM
+- Success: "Password set."
+- Warning: "OADM has not read the camera yet; the next steps may fail."
+- Error: the reason.
 
-Adds the camera to OADM with the password of Set password, then waits up to 2 minutes until OADM has read the camera.
-Fixed: always second.
+### Network
 
-- **Tags**: optional. Separate them with commas. They put the camera into the right device groups. At most 20 tags of
-  at most 64 characters each.
+Sets the camera's IP address, DNS servers and search domain. Every part is optional, but set at least one. The camera's
+host name is never changed. The address is written last; OADM follows the camera to its new address.
+
+- **IP address**: **Keep** (as it is now, for example from DHCP) or **From a pool**.
+- **First address** and **Last address**: the pool, for example 192.168.15.10 to 192.168.15.50. In the same subnet, at
+  most 4,096 addresses.
+- **Subnet mask**: for example 255.255.255.0.
+- **Default router**: in the subnet of the pool, outside the pool.
+- **DNS servers**: optional, at most 2, separated by commas.
+- **Search domain**: optional, for example site.example.com. It needs DNS servers.
+
+A new Network node starts in the network of OADM's DHCP server (for example 192.168.15.): type the last number.
+
+How addresses are given:
+
+- Each camera gets the next free address of the pool. An address is skipped when a device in OADM has it, it answers on
+  the network, or another camera got it already.
+- Two cameras never get the same address, also when they run at the same time.
+- A given address stays reserved until the camera is in OADM with it, also when provisioning is turned off and on.
+- Keep the pool outside the DHCP server's range. An overlap is a warning in the node and in Provisioning.
 
 Results:
 
-- Success: "Added to OADM." or "OADM manages this camera already."
-- Warning: "Added to OADM. OADM has not read the camera yet; the next nodes may fail.", or a tag that could not be set.
-- Error: "OADM cannot log in to the camera with the password of Set password." or "The camera still has no password."
+- Success: "192.168.15.12 is in use, 192.168.15.13 assigned." or "The camera is at 192.168.15.13 already."
+- Error: "The camera did not take 192.168.15.13: " with the reason. OADM keeps the camera at the address that answers.
+- Error: "No free address left in the pool."
 
 ### Upgrade AXIS OS online
 
-Installs AXIS OS from axis.com, with the MyAxis sign-in of the administrator who started provisioning. The checks of
+Installs AXIS OS from axis.com, with the MyAxis sign-in of the administrator who turned provisioning on. The checks of
 [Upgrade AXIS OS](../../tasks/firmware/) apply.
 
 - **Install**: **Newest of the camera's own track**, **Newest LTS** or **Newest of the active track**.
@@ -111,8 +169,8 @@ Installs AXIS OS from axis.com, with the MyAxis sign-in of the administrator who
 Results:
 
 - Success: "AXIS OS from axis.com installed." or "Already 12.6.95."
-- Error: "Sign in to MyAxis." when the sign-in is missing or expired. After a server restart: "Stop and start
-  provisioning again: the server restarted since it was started."
+- Error: "Sign in to MyAxis." when the sign-in is missing or expired. After a server restart: "Turn
+  provisioning off and on again: the server restarted since it was turned on."
 
 ### Upgrade AXIS OS from files
 
@@ -127,15 +185,6 @@ Results:
 - Success: "AXIS OS 12.6.95 installed." or "Already 12.6.95." (same or newer AXIS OS on the camera).
 - Warning: "No file for this model."
 - Error: the reason of the upgrade.
-
-### Network settings
-
-Sets the DNS servers and the search domain. The camera's host name is never changed.
-
-- **DNS servers**: 1 or 2, separated by commas.
-- **Search domain**: optional, for example site.example.com. Left empty, the camera keeps its search domains.
-
-Ends with "DNS 10.0.0.1, search domain site.example.com." or an error with the reason.
 
 ### Date and time
 
@@ -249,91 +298,28 @@ Results:
 - Warning: "Not on this camera: Set stream profile." The camera lacks that command; the others still run.
 - Error: the reason of the commands.
 
-### Wait for approval
+## Tasks
 
-The camera waits here until you press **Continue** on its row, for example before Set IP. No settings. A waiting camera
-does not hold one of the 8 places.
+Each camera's task is named **Provision with** and the profile, for example "Provision with Lobby cameras". Its steps are
+"Check that the camera is new" and one step per node, for example "Set the password", "Set the network settings", "Set
+the date and time". **Details** in the tasks pane shows each step with its result and the task's log. The nodes start
+the tasks of their areas (Upgrade AXIS OS, Device configuration and others); those show in the tasks pane too.
 
-Ends with "Continued by admin."
+### Run again
 
-### Set IP
+Select a failed **Provision with** task and click **Run again** in the tasks pane. A new task runs only the failed steps
+and those that did not run, in order, with the same profile. A camera that failed the check that it is new is checked
+again and runs everything.
 
-Gives each camera a fixed address from a pool of its own.
-
-- **First address** and **Last address**: the pool, for example 192.168.15.10 to 192.168.15.50. In the same subnet, at
-  most 4,096 addresses.
-- **Subnet mask**: for example 255.255.255.0.
-- **Default router**: in the subnet of the pool, outside the pool.
-- **DNS servers**: at most 2, separated by commas.
-
-A new Set IP starts in the network of OADM's DHCP server (for example 192.168.15.): type the last number.
-
-How addresses are given:
-
-- Each camera gets the next free address of the pool, starting at the first. An address is skipped when a device in OADM
-  has it, it answers on the network, or another camera of this session got it.
-- Two cameras never get the same address, also when they run at the same time.
-- The addresses given stay reserved until **Stop provisioning**. The next start begins at the first address again and
-  skips the cameras OADM manages by then.
-- Keep the pool outside the DHCP server's range. An overlap is a warning in the node and on the page: "The pool overlaps
-  the DHCP server's range 192.168.15.100 to 192.168.15.200."
-
-Results:
-
-- Success: "192.168.15.12 is in use, 192.168.15.13 assigned." or "The camera is at 192.168.15.13 already."
-- Error: "The camera did not take 192.168.15.13: " with the reason, then "OADM keeps it at 192.168.15.140." OADM keeps
-  the camera at the address that answers.
-- Error: "No free address left in the pool."
-
-## Start and stop
-
-<Steps>
-
-1. Choose the active **Profile** next to Start provisioning, or click **Activate** in **Manage profiles**.
-2. Click **Start provisioning**. It stays off with the reason in its tooltip while the DHCP server is off, no profile is
-   chosen or the profile has errors.
-3. Plug in factory-new cameras. They show in the table when they get an address.
-4. When you are done, click **Stop provisioning**. Cameras that run a node finish that node first.
-
-</Steps>
-
-Provisioning stays started until you stop it, also when the server restarts. A change to the profile applies at the next
-Start. Up to 8 cameras run at once; the others wait as **Queued**.
-
-## Cameras
-
-The table has one row per camera that got an address while provisioning was started: the time it got its address, IP
-address, MAC address, model, the node it is on, state and the problem of a failed node. The search also finds the serial
-number.
-
-| State | Meaning |
-|---|---|
-| **Queued** | Waits for one of the 8 places |
-| **Running** | Runs the node in the **Node** column |
-| **Waiting for approval** | Stopped at Wait for approval until you press **Continue** |
-| **Done** | Every node ended fine |
-| **Done with warnings** | At least one node ended with a warning |
-| **Failed** | At least one node ended with an error |
-| **Not new, left as it is** | The camera already has a password. OADM changed nothing |
-
-Click a row to see the camera's flow next to the table: green nodes ended fine or were not needed, yellow ones have a
-warning, red ones an error with its message, grey ones did not run.
-
-<Image src={flow} alt="A failed camera's flow next to the table: Set password and Wait for approval green, Add to OADM yellow, Set IP red with its message, Date and time not run" class="screen" />
-
-Select rows and use the buttons above the table:
-
-- **Run failed again** runs only the red nodes and the ones that did not run, in their order.
-- **Continue** lets cameras go on past Wait for approval.
-- **Remove** removes the rows. The cameras stay in OADM.
+<Image src={runAgain} alt="The tasks pane with a failed Provision with task selected and Run again next to Details" class="screen" />
 
 ## What it never does
 
-- It never changes a camera that already has a password, and never a camera that did not get its address from OADM's
-  DHCP server. Such cameras show as **Not new, left as it is** or do not show at all.
+- It never changes a camera that already has a password.
 - It never changes the DHCP server's settings.
 - It never removes or demotes the account OADM uses on the camera.
-- It does not run at [sites](../../sites/overview/): only on the server's own network.
+- It does not run at [sites](../../sites/overview/): cameras found through a site node are added as usual and keep
+  **Set password**.
 
 <Aside>
 Related: [DHCP server](../dhcp-server/), [Upgrade AXIS OS](../../tasks/firmware/), [Device configuration](../../tasks/device-configuration/).
