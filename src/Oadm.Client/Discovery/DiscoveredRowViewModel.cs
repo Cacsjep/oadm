@@ -245,11 +245,35 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     /// <summary>"Log in" link: no known credential worked.</summary>
     public bool ShowLogIn => AuthState == AuthState.LoginFailed && !IsMuted;
 
+    private bool _provisioningOn;
+
+    /// <summary>
+    /// Provisioning is on (the page sets it for every row, docs/spec/provisioning.md): a factory-new device of the server's own
+    /// network is added without a first password and its provisioning task sets it up afterwards.
+    /// </summary>
+    public bool ProvisioningOn
+    {
+        get => _provisioningOn;
+        set
+        {
+            if (SetProperty(ref _provisioningOn, value))
+            {
+                Refresh();
+            }
+        }
+    }
+
+    /// <summary>
+    /// "Provisioning" instead of Set password: a factory-new device while provisioning is on, not at a site (provisioning does
+    /// not run at sites).
+    /// </summary>
+    public bool IsProvisioned => ProvisioningOn && IsFactoryDefault && SiteName.Length == 0;
+
     /// <summary>"Set password" link: factory default without a password yet.</summary>
-    public bool ShowSetPassword => IsFactoryDefault && !HasPendingPassword;
+    public bool ShowSetPassword => IsFactoryDefault && !HasPendingPassword && !IsProvisioned;
 
     /// <summary>"Change" link next to "Password ready".</summary>
-    public bool ShowPasswordReady => IsFactoryDefault && HasPendingPassword;
+    public bool ShowPasswordReady => IsFactoryDefault && HasPendingPassword && !IsProvisioned;
 
     /// <summary>Tooltip of the chip: why the login failed, who is logged in, or the passphrase policy.</summary>
     public string ChipTooltip => AuthState switch
@@ -371,7 +395,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
         StatusDetail = HasImportProblem || (!IsAdded && !IsAlreadyManaged && AuthState is AuthState.LoginFailed or AuthState.Unreachable) ? AuthDetail
             : _note is not null && !IsAdded && !IsAlreadyManaged ? _note
             : "";
-        CanAdd = !IsImportPlaceholder && !IsMuted && (AuthState == AuthState.Authenticated || (AuthState == AuthState.PasswordNotSet && HasPendingPassword));
+        CanAdd = !IsImportPlaceholder && !IsMuted && (AuthState == AuthState.Authenticated || (AuthState == AuthState.PasswordNotSet && (HasPendingPassword || IsProvisioned)));
         if (!CanAdd)
         {
             IsSelected = false;
@@ -387,6 +411,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsAuthenticated));
         OnPropertyChanged(nameof(IsFactoryDefault));
         OnPropertyChanged(nameof(ShowLogIn));
+        OnPropertyChanged(nameof(IsProvisioned));
         OnPropertyChanged(nameof(ShowSetPassword));
         OnPropertyChanged(nameof(ShowPasswordReady));
         OnPropertyChanged(nameof(ChipTooltip));

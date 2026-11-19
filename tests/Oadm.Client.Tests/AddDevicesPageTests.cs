@@ -196,6 +196,53 @@ public sealed class AddDevicesPageTests : IDisposable
     });
 
     [Fact]
+    public Task While_provisioning_is_on_factory_new_devices_show_provisioning_and_are_added_without_a_password() => _ui.RunAsync(async () =>
+    {
+        _api.ProvisioningOn = true;
+        AddDevicesViewModel page = Create(AddDevicesMode.Scan);
+        await using (page)
+        {
+            await page.OpenAsync();
+            await page.ProvisioningRead!;
+            await TestSupport.WaitUntilAsync(() => page.Rows.Count == 11 && page.Rows.All(r => r.AuthState != AuthState.Pending));
+            Assert.True(page.ProvisioningOn);
+            DiscoveredRowViewModel factoryNew = Row(page, "10.0.0.90");
+            Assert.Equal("Password not set", factoryNew.ChipText);
+            Assert.True(factoryNew.IsProvisioned);
+            Assert.False(factoryNew.ShowSetPassword);
+            Assert.False(factoryNew.ShowPasswordReady);
+            Assert.True(factoryNew.CanAdd);
+            Assert.True(factoryNew.IsSelected);
+            Assert.Contains("· 4 ready to add ·", page.SummaryText, StringComparison.Ordinal);
+
+            // A factory-new device at a site keeps Set password: provisioning does not run at sites.
+            DiscoveredRowViewModel atSite = Row(page, "10.0.0.91");
+            Assert.NotEqual("", atSite.SiteName);
+            Assert.False(atSite.IsProvisioned);
+            Assert.True(atSite.ShowSetPassword);
+            Assert.False(atSite.CanAdd);
+
+            // No first-password editor for it: provisioning sets the password.
+            page.OpenEditorCommand.Execute(factoryNew);
+            Assert.False(page.IsEditorOpen);
+
+            await page.AddCommand.ExecuteAsync(null);
+            IReadOnlyList<Device> devices = await _api.ListDevicesAsync(CancellationToken.None);
+            Assert.Equal(DeviceStatus.PasswordNotSet, devices.Single(d => d.Serial == factoryNew.Serial).Status);
+        }
+    });
+
+    [Fact]
+    public void The_provisioning_state_is_read_from_the_plugins_answer()
+    {
+        Assert.True(AddDevicesViewModel.ParseProvisioningState("{\"on\":true}"));
+        Assert.False(AddDevicesViewModel.ParseProvisioningState("{\"on\":false}"));
+        Assert.False(AddDevicesViewModel.ParseProvisioningState(null));
+        Assert.False(AddDevicesViewModel.ParseProvisioningState("not json"));
+        Assert.Equal("Provisioning", Oadm.Sdk.Client.DeviceTexts.Provisioning);
+    }
+
+    [Fact]
     public Task Factory_default_devices_need_a_valid_password_which_is_set_on_add() => _ui.RunAsync(async () =>
     {
         await using AddDevicesViewModel page = await OpenScanAsync();

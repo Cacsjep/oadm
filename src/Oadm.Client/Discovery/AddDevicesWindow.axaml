@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:c="using:Oadm.Client.Controls"
         xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:sdk="using:Oadm.Sdk.Client"
         xmlns:disc="using:Oadm.Client.Discovery"
         x:Class="Oadm.Client.Discovery.AddDevicesWindow"
         x:DataType="disc:AddDevicesViewModel"
@@ -167,21 +168,27 @@
             <DataGridTemplateColumn Header="Action" Width="Auto" MinWidth="110" CanUserSort="False">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="disc:DiscoveredRowViewModel">
-                  <Panel Margin="10,0">
-                    <Button Classes="link" IsVisible="{Binding ShowLogIn}" ToolTip.Tip="Enter the user name and password of this device"
-                            Command="{Binding $parent[Window].((disc:AddDevicesViewModel)DataContext).OpenEditorCommand}" CommandParameter="{Binding}">
-                      <TextBlock Text="Log in" />
-                    </Button>
-                    <Button Classes="link" IsVisible="{Binding ShowSetPassword}" ToolTip.Tip="Set the first password (user root); it is applied when the device is added"
-                            Command="{Binding $parent[Window].((disc:AddDevicesViewModel)DataContext).OpenEditorCommand}" CommandParameter="{Binding}">
-                      <TextBlock Text="Set password" />
-                    </Button>
-                    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowPasswordReady}">
-                      <TextBlock Classes="secondary" Text="Password ready" />
-                      <Button Classes="link" Command="{Binding $parent[Window].((disc:AddDevicesViewModel)DataContext).OpenEditorCommand}" CommandParameter="{Binding}">
-                        <TextBlock Text="Change" />
+                  <Panel>
+                    <!-- While provisioning is on: a factory-new device is set up by its provisioning task (the cell's text margin
+                         puts it level with the links) -->
+                    <TextBlock x:Name="ProvisioningText" Classes="secondary" IsVisible="{Binding IsProvisioned}"
+                               Text="{x:Static sdk:DeviceTexts.Provisioning}" ToolTip.Tip="{x:Static sdk:DeviceTexts.ProvisioningTip}" />
+                    <Panel Margin="10,0">
+                      <Button Classes="link" IsVisible="{Binding ShowLogIn}" ToolTip.Tip="Enter the user name and password of this device"
+                              Command="{Binding $parent[Window].((disc:AddDevicesViewModel)DataContext).OpenEditorCommand}" CommandParameter="{Binding}">
+                        <TextBlock Text="Log in" />
                       </Button>
-                    </StackPanel>
+                      <Button Classes="link" IsVisible="{Binding ShowSetPassword}" ToolTip.Tip="Set the first password (user root); it is applied when the device is added"
+                              Command="{Binding $parent[Window].((disc:AddDevicesViewModel)DataContext).OpenEditorCommand}" CommandParameter="{Binding}">
+                        <TextBlock Text="Set password" />
+                      </Button>
+                      <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowPasswordReady}">
+                        <TextBlock Classes="secondary" Text="Password ready" />
+                        <Button Classes="link" Command="{Binding $parent[Window].((disc:AddDevicesViewModel)DataContext).OpenEditorCommand}" CommandParameter="{Binding}">
+                          <TextBlock Text="Change" />
+                        </Button>
+                      </StackPanel>
+                    </Panel>
                   </Panel>
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>

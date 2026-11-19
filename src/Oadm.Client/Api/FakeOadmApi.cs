@@ -1093,6 +1093,12 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         new CorePluginInfo { Id = EdgeStoragePluginId, DisplayName = "Edge storage", IconKey = "hardDrive", Group = "Maintenance" },
     ];
 
+    /// <summary>The core plugin Provisioning: only whether it is on (the Add devices page).</summary>
+    public const string ProvisioningPluginId = "oadm.provisioning";
+
+    /// <summary>Provisioning is on: the Add devices page shows "Provisioning" for factory-new devices.</summary>
+    public bool ProvisioningOn { get; set; }
+
     public Task<string?> InvokeCorePluginAsync(string pluginId, string method, string? payloadJson, CancellationToken ct) => pluginId switch
     {
         SnapshotReportPluginId => InvokeSnapshotReportAsync(method, payloadJson, ct),
@@ -1106,6 +1112,7 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         DashboardsPluginId => InvokeDashboardsAsync(method, payloadJson),
         EdgeRecordingPluginId => InvokeEdgeRecordingAsync(method, payloadJson, ct),
         EdgeStoragePluginId => InvokeEdgeStorageAsync(method, payloadJson, ct),
+        ProvisioningPluginId when method == "state" => Task.FromResult<string?>(ProvisioningOn ? "{\"on\":true}" : "{\"on\":false}"),
         _ => throw new RpcException(new Status(StatusCode.NotFound, $"Unknown core plugin '{pluginId}'.")),
     };
 
