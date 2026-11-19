@@ -1790,9 +1790,12 @@
   <Style Selector="ui|OnOffSwitch TextBlock.onOffText">
     <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeBody}" />
   </Style>
+  <!-- Fluent keeps a 12 px column right of the 40 px switch for its content, which is empty here: the switch ends where the
+       inputs of the neighbouring rows end -->
   <Style Selector="ui|OnOffSwitch ToggleSwitch">
     <Setter Property="MinWidth" Value="0" />
     <Setter Property="Padding" Value="0" />
+    <Setter Property="Margin" Value="0,0,-12,0" />
   </Style>
   <!-- Every checkbox: box and check mark at 80 % (16 px instead of Fluent's 20 px), scaled
        around their own center so a checkbox centered in a cell stays exactly centered. -->
