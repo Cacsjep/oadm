@@ -50,6 +50,9 @@ public sealed partial class DevicePollingService : IDisposable
     private readonly Lock _lastSeenSync = new();
     private List<(Guid Id, DateTime LastSeenUtc)> _lastSeen = [];
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastFullRefresh = new();
+
+    /// <summary>Per device: whether it had a password when a poll last reached it (the report of a reset camera).</summary>
+    private readonly ConcurrentDictionary<Guid, bool> _hadPassword = new();
     private SemaphoreSlim? _fullGate;
     private bool _mostDevicesDown;
 
@@ -526,9 +529,18 @@ public sealed partial class DevicePollingService : IDisposable
         if (updated is not null)
         {
             Oadm.Core.Auth.CallerContext.Raise(DeviceUpdated, this, updated);
-            if (before != DeviceStatus.PasswordNotSet && updated.Status == DeviceStatus.PasswordNotSet)
+            // The login state OADM knew before this poll: the remembered one, else the stored status's (null: never reached).
+            var hadPassword = _hadPassword.TryGetValue(device.Id, out var known) ? known : HasPassword(before);
+            if ((HasPassword(updated.Status) ?? hadPassword) is { } now)
             {
-                _factoryNew?.Report(updated, added: false); // reset to factory default: new again (Provisioning)
+                _hadPassword[device.Id] = now;
+            }
+
+            if (before != DeviceStatus.PasswordNotSet && updated.Status == DeviceStatus.PasswordNotSet && hadPassword != false)
+            {
+                // Reset to factory default: new again (Provisioning). A camera that was Password not set before it went
+                // offline is not reported again (a camera whose Set password failed would get a new task on every flap).
+                _factoryNew?.Report(updated, added: false, hadPassword: hadPassword == true);
             }
 
             if (!full && device.Status != DeviceStatus.Ok && updated.Status == DeviceStatus.Ok)
@@ -546,6 +558,17 @@ public sealed partial class DevicePollingService : IDisposable
 
         return updated;
     }
+
+    /// <summary>
+    /// Whether a device with this status has a password: false for Password not set, null when the status says nothing about
+    /// it (not reached: Unknown, Unreachable, Site offline), true for every answer of a device with a password.
+    /// </summary>
+    internal static bool? HasPassword(DeviceStatus status) => status switch
+    {
+        DeviceStatus.PasswordNotSet => false,
+        DeviceStatus.Unknown or DeviceStatus.Unreachable or DeviceStatus.SiteOffline => null,
+        _ => true,
+    };
 
     private static bool Changed(string? stored, string? seen) =>
         !string.IsNullOrEmpty(stored) && !string.IsNullOrEmpty(seen) && !string.Equals(stored, seen, StringComparison.Ordinal);

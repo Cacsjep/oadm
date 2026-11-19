@@ -29,11 +29,11 @@ public sealed partial class FactoryNewDeviceNotices(ILogger<FactoryNewDeviceNoti
         return new Subscription(this, found);
     }
 
-    /// <summary>The device needs its first password now.</summary>
-    public void Report(Device device, bool added)
+    /// <summary>The device needs its first password now; <paramref name="hadPassword"/>: it had one when OADM last reached it.</summary>
+    public void Report(Device device, bool added, bool hadPassword = false)
     {
         ArgumentNullException.ThrowIfNull(device);
-        var notice = new FactoryNewDevice(device.Id, device.Serial, device.Address, device.SiteId is not null, added);
+        var notice = new FactoryNewDevice(device.Id, device.Serial, device.Address, device.SiteId is not null, added) { HadPassword = hadPassword };
         foreach (var watcher in Volatile.Read(ref _watchers))
         {
             try

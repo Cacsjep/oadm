@@ -180,7 +180,14 @@ public enum DeviceLookResult
 /// <param name="Address">Its address.</param>
 /// <param name="AtSite">It is at a site (reached through a site node).</param>
 /// <param name="Added">It was just added (false: a managed device turned Password not set).</param>
-public sealed record FactoryNewDevice(Guid DeviceId, string Serial, string Address, bool AtSite, bool Added);
+public sealed record FactoryNewDevice(Guid DeviceId, string Serial, string Address, bool AtSite, bool Added)
+{
+    /// <summary>
+    /// A managed device that had a password when OADM last reached it (reset to factory default since); false when it was
+    /// just added or OADM does not know (it was offline since the server started).
+    /// </summary>
+    public bool HadPassword { get; init; }
+}
 
 /// <summary>The answer of <see cref="IDeviceAutoAdd.LookAsync"/> (SDK 0.15.0).</summary>
 /// <param name="Result">What answered.</param>

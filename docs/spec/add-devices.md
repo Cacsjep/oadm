@@ -264,7 +264,8 @@ one (a camera reset to factory default is new again); a device whose systemready
 (`systemready` no, no `needsetup` yet: `VapixProbeResult.IsStarting`) is asked again every 5 s for at most 2 minutes
 (`DeviceLookOptions`, the server's `TimeProvider`), then `DeviceLookResult.Starting`, never "has a password".
 `WatchFactoryNew` reports every device `DeviceAdder` stores as Password not set (this page's Add too) and every managed
-device the polling turns Password not set (`FactoryNewDeviceNotices`). Discovery and the page's probes do not wait for a
+device the polling turns Password not set (`FactoryNewDeviceNotices`) from a known password or an unknown past
+(`FactoryNewDevice.HadPassword`), never one that was Password not set before it went offline. Discovery and the page's probes do not wait for a
 starting device (they stay fast): such a device is probed as it answers then and, once added, the polling turns it
 Password not set when it is ready, which reports it. While provisioning is on, the page adds a factory-new device without a
 first password (status Password not set, the server's Commit takes it like that already) and its provisioning task sets
