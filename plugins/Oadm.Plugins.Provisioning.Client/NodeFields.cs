@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Plugins.DateAndTime.Model;
 using Oadm.Plugins.Network.Model;
 using Oadm.Plugins.Provisioning.Engine;
 using Oadm.Sdk.Client;
@@ -42,6 +43,9 @@ public abstract class NodeFieldViewModel : ValidatingViewModel
     public string? Hint { get; init; }
 
     public string? Placeholder { get; init; }
+
+    /// <summary>The short help of the "?" at the right inside the field (<c>FormField.Help</c>); never the label again.</summary>
+    public string? Help { get; init; }
 
     /// <summary>When the field shows (another field's choice); null: always.</summary>
     public Func<bool>? ShownWhen { get; init; }
@@ -189,6 +193,32 @@ public sealed partial class ListFieldViewModel : NodeFieldViewModel
             return items.Count == 0 && !WritesEmpty ? null : new JsonArray([.. items.Select(i => (JsonNode?)JsonValue.Create(i))]);
         }
     }
+}
+
+/// <summary>A time zone of AXIS OS, chosen from the list (<see cref="TimeZoneCatalog"/>): the value is its IANA id.</summary>
+public sealed partial class TimeZoneFieldViewModel : NodeFieldViewModel
+{
+    private readonly string? _other;
+
+    public TimeZoneFieldViewModel(string key, string label, string? id)
+        : base(key, label)
+    {
+        Selected = TimeZoneCatalog.Find(id?.Trim());
+        _other = Selected is null && !string.IsNullOrWhiteSpace(id) ? id.Trim() : null; // a zone of an older profile stays until another is chosen
+        Rule(nameof(Selected), () => Selected is null && _other is null ? ProvisioningTexts.ChooseTimeZone : null);
+        Ready();
+    }
+
+    /// <summary>Every zone, sorted by UTC offset.</summary>
+    public static IReadOnlyList<TimeZoneEntry> Zones => TimeZoneCatalog.All;
+
+    [ObservableProperty]
+    public partial TimeZoneEntry? Selected { get; set; }
+
+    /// <summary>The IANA id, or an id of an older profile the list does not have.</summary>
+    public string? Id => Selected?.Id ?? _other;
+
+    public override JsonNode? Value => Id is { } id ? JsonValue.Create(id) : null;
 }
 
 /// <summary>A yes or no (a check box).</summary>
@@ -643,12 +673,6 @@ public static class FieldRules
     public static string? Password(string text) =>
         text.Length == 0 ? ProvisioningTexts.EnterPassword
         : text.Length > 64 || text.Any(c => c is < (char)0x20 or > (char)0x7E) ? ProvisioningTexts.PasswordRule
-        : null;
-
-    /// <summary>An IANA time zone ("Europe/Vienna").</summary>
-    public static string? TimeZone(string text) =>
-        text.Length == 0 ? "Choose a time zone."
-        : text.Length > 64 || !System.Text.RegularExpressions.Regex.IsMatch(text, @"^[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}$") ? $"{text} is not a time zone."
         : null;
 
     /// <summary>A host name or IPv4 address (NTP servers).</summary>

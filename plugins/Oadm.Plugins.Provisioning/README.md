@@ -130,16 +130,23 @@ The engine is the node's `INodeHost`: `AutoAdd`, `Tasks`, `Devices`, `Time`, `Op
 - **Manage profiles** (`ProfilesWindow`, `ProfilesDialogViewModel`): the profiles with their nodes and state (Active, Has
   errors); New and Edit (also a double click) open the profile editor over it, Activate (off for a draft or the active
   one, the reason as tooltip), Delete (red confirmation); a refusal directly below the list.
-- **Cameras** columns: Time (`CameraRow.Seen`), MAC address, model, IP address, state, node, problem; the search also
+- **Cameras** columns: Time (`CameraRow.Seen`), IP address, MAC address, model, node, state, problem; the search also
   matches the serial number. `listCameras` in pages of 1,000, then the batched `cameras` events applied by MAC address (a row's older
   version never overwrites a newer one); `RangeObservableCollection`, one reset per search or batch; Run failed again,
   Continue and Remove on the selected rows. The empty line says what to do first.
 - **A camera's flow**: the row clicked last opens a card right of the table with the session's profile
   (`status.sessionProfile`) on the shared node canvas (`NodeChainCanvas` of the client SDK, the look of Vision Center's
   canvas): green (Success, Not needed), yellow, red with the message below, violet while it runs, grey when not run.
-- **Profile editor** (`ProfileEditorWindow`): the same canvas, Add node (the kinds of `nodeKinds` that are not fixed),
-  Move up, Move down, Remove (never the fixed two). The side panel shows the selected node's form (`NodeForms`: one per
-  kind, the server's check field by field; choices show and hide fields), errors below the fields; `checkProfile` after
+- **Profile editor** (`ProfileEditorWindow`, 1320 x 864, `WindowFit` shrinks it on small screens): the same canvas with
+  the + below the last node and the selected one (`NodeChain.CanAdd`, `NodeChainNode.CanAddAfter`, never below Set
+  password); it opens the shared node list of Vision Center (`NodePicker` over `ProfileEditorViewModel.Picker`: the kinds
+  of `nodeKinds` that are not fixed in `NodeLook.Order`, grouped by `NodeLook.Group`, each with `NodeLook.Description`)
+  and the chosen kind goes right after that node (`AddAfter`). A new profile starts with Set password, Add to OADM and Set
+  IP. Move up, Move down, Remove (never the fixed two). The side panel shows the selected node's form (`NodeForms`: one per
+  kind, the server's check field by field; choices show and hide fields), errors below the fields, a "?" with a short help
+  in every field (`NodeFieldViewModel.Help`, `ProvisioningTexts.*Help`, shown by `FormField.Help`); the time zone of Date
+  and time is the shared `TimeZoneChoice` (plugins/Shared/TimeZones.Client, with the Date and time plugin's
+  `TimeZoneCatalog` linked into the server part); `checkProfile` after
   every change (one at a time), its error on the node, its warning below it in amber. A long chain keeps the cards
   readable (at least 80 %) and pans the selected one into view.
 - **Drafts** (decision 2026-11-18): a profile with node errors is saved as a draft (Save on, the error on each node, the

@@ -111,7 +111,6 @@ public static class ProvisioningTexts
     public const string EditProfileTitle = "Edit profile";
     public const string ReadingProfile = "Reading the profile";
     public const string Flow = "Flow";
-    public const string AddNode = "Add node";
     public const string MoveUp = "Move up";
     public const string MoveDown = "Move down";
     public const string RemoveNode = "Remove";
@@ -256,7 +255,7 @@ public static class ProvisioningTexts
 
     // Date and time
     public const string TimeZone = "Time zone";
-    public const string TimeZonePlaceholder = "e.g. Europe/Vienna";
+    public const string ChooseTimeZone = "Choose a time zone.";
     public const string NtpServers = "NTP servers";
     public const string NtpHint = "Empty: the servers DHCP gives.";
     public const string Nts = "Use NTS where the camera has it";
@@ -265,4 +264,39 @@ public static class ProvisioningTexts
     public const string Tags = "Tags";
 
     public static string NotAnAddressList(string value) => $"{value} is not an IP address.";
+
+    // ---- The "?" of every field of the profile editor (at most about 8 words, never the label again) ----
+    public const string NameHelp = "Shown in Manage profiles and on the page";
+    public const string PasswordHelp = "Each new camera gets this root password";
+    public const string CredentialHelp = "A saved password of the user root";
+    public const string NewPasswordHelp = "Up to 64 letters, digits and symbols";
+    public const string ConfirmHelp = "Type the same password again";
+    public const string TagsHelp = "Device tags in OADM, separated by commas";
+    public const string FirstAddressHelp = "The pool starts at this address";
+    public const string LastAddressHelp = "The pool ends at this address";
+    public const string MaskHelp = "The mask of the fixed address";
+    public const string RouterHelp = "The gateway of the camera's network";
+    public const string DnsHelp = "Up to 2, separated by commas";
+    public const string TimeZoneHelp = "Type a city to jump to it";
+    public const string TimeSourceHelp = "Where the camera gets its time";
+    public const string NtpServersHelp = "Up to 5 host names or IP addresses";
+    public const string NtsHelp = "The camera checks that the time is genuine";
+    public const string OsTargetHelp = "The AXIS OS version each camera gets";
+    public const string OnlyIfOlderHelp = "Cameras with this version or newer skip it";
+    public const string OsFilesHelp = "One file per camera model";
+    public const string HostNameHelp = "The camera's name on the network";
+    public const string StartNumberHelp = "{n} counts up from this number";
+    public const string SearchDomainHelp = "Added to short host names";
+    public const string ConfigSourceHelp = "Where the settings are copied from";
+    public const string ConfigFileHelp = "A file of Export configuration";
+    public const string TemplateCameraHelp = "A camera set up the way you want";
+    public const string ApplyHelp = "What is copied to each camera";
+    public const string AccountNameHelp = "1 to 14 letters and digits";
+    public const string RoleHelp = "What the account may do";
+    public const string PtzHelp = "The account may move the camera";
+    public const string SecretHelp = "Kept encrypted on the server";
+    public const string CertificateHelp = "Where the HTTPS certificate comes from";
+    public const string PrepareHelp = "Format erases everything on the card";
+    public const string KeepDaysHelp = "Empty: the camera keeps its setting";
+    public const string CommandHelp = "A command of the VAPIX Commander library";
 }

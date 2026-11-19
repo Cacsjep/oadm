@@ -6,19 +6,12 @@ using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Provisioning.Client;
 
-/// <summary>The profile editor window. View only: wiring to the view model, the Add node menu, the file picker and the device choice.</summary>
+/// <summary>The profile editor window. View only: wiring to the view model, the file picker and the device choice.</summary>
 public partial class ProfileEditorWindow : Window, IProfileEditorUi
 {
     public ProfileEditorWindow()
     {
         InitializeComponent();
-        AddNodeButton.Click += (_, _) =>
-        {
-            if (DataContext is ProfileEditorViewModel vm && vm.AddableKinds.Count > 0)
-            {
-                RowActions.Show(AddNodeButton, [.. vm.AddableKinds.Select(k => new IssuedCertificateAction(k.Name, vm.AddNodeCommand, k))]);
-            }
-        };
     }
 
     public void Attach(ProfileEditorViewModel viewModel)

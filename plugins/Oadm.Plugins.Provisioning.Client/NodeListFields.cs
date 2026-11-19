@@ -24,7 +24,7 @@ public sealed partial class UserRowViewModel : ValidatingViewModel
         Name = name ?? string.Empty;
         Role = UsersFieldViewModel.Roles.FirstOrDefault(r => string.Equals(r.Value, role, StringComparison.OrdinalIgnoreCase)) ?? UsersFieldViewModel.Roles[0];
         Ptz = ptz;
-        Password = new SecretFieldViewModel(ProvisioningTexts.AccountPassword, secretId);
+        Password = new SecretFieldViewModel(ProvisioningTexts.AccountPassword, secretId) { Help = ProvisioningTexts.SecretHelp };
         Password.Changed += (_, _) => _owner.RowChanged();
         Validation.Rule(nameof(Name), () => _owner.NameError(this));
         Validation.Reset();

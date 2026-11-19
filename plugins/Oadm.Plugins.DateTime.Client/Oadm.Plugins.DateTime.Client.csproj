@@ -37,6 +37,11 @@
     <InternalsVisibleTo Include="Oadm.Plugins.DateTime.Tests" />
   </ItemGroup>
 
+  <!-- The time zone select, shared with Provisioning's Date and time node. -->
+  <ItemGroup>
+    <Compile Include="..\Shared\TimeZones.Client\TimeZoneChoice.cs" Link="Common\TimeZoneChoice.cs" />
+  </ItemGroup>
+
   <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
     <ItemGroup>
       <_OadmPluginFiles Include="$(OutDir)**\*" Exclude="$(OutDir)plugin.json" />

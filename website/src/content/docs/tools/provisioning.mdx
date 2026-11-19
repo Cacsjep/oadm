@@ -33,39 +33,30 @@ A profile is a chain of nodes that runs from top to bottom on each camera.
 <Steps>
 
 1. Open **Provisioning** under **Automation** in the navigation rail.
-2. Click **Manage profiles**, then **New**, and enter a **Name**.
-3. Click **Add node** and choose a node. It is added below the selected node.
-4. Click a node to see its form on the right. **Move up** and **Move down** change the order, **Remove** deletes it.
-5. Click **Save**.
+2. Click **Manage profiles**, then **New**, and enter a **Name**. The new profile starts with **Set password**, **Add to
+   OADM** and **Set IP**.
+3. Click the **+** below a node: the last one, or the one you selected. Search or browse the list of nodes and click one.
+   It is added right after that node.
+4. Click a node to see its form on the right. The **?** at the right of each field tells what to enter.
+5. **Move up** and **Move down** in the toolbar change the order, **Remove** deletes the selected node, **Fit view**
+   shows the whole chain.
+6. Click **Save**.
 
 </Steps>
 
-Every profile starts with two fixed nodes. They cannot be moved or removed:
+**Set password** and **Add to OADM** are fixed: always the first two nodes, never moved or removed. **Set IP** can be
+moved and removed like any other node.
 
-- **Set password**: the root password, from the credential list or typed. A typed password is added to the credential
-  list when you save and is never shown again.
-- **Add to OADM**: adds the camera with that password. Optional **Tags** put it into the right device groups.
+Every node ends with one result, shown on the camera's flow:
 
-The nodes you can add:
-
-| Node | What it does |
-|---|---|
-| **Upgrade AXIS OS online** | Installs AXIS OS from axis.com: the newest of the camera's own track, the newest LTS or the newest of the active track. Optional **Only if older than**. Needs the MyAxis sign-in of the administrator who starts provisioning |
-| **Upgrade AXIS OS from files** | Each camera gets the file for its model from the files you choose. No file for the model: a warning. A file older than the camera's AXIS OS is never installed |
-| **Network settings** | Host name from a pattern with `{model}`, `{serial}`, `{mac}` and `{n}` (a number per camera, from **First number**), DNS servers and search domain |
-| **Date and time** | Time zone and the time source: the NTP servers DHCP gives, servers you enter, or OADM's [NTP server](../ntp-server/) |
-| **Configuration** | Parameters, action rules and schedules from a file of Export configuration or from a template camera. Addresses, host names, certificates and passwords are never copied |
-| **Users** | More accounts with user name, role and password. OADM's own account is never touched |
-| **Certificate** | A certificate from the HTTPS certificate policy of [PKI](../pki/), or EST enrollment so the camera renews by itself ([EST server](../est-server/), OADM PRO) |
-| **802.1X** | Turns on 802.1X with the certificate and CA of PKI's 802.1X policy |
-| **SD card** | Format, encrypt with a passphrase, delete recordings after a number of days. No SD card: skipped |
-| **Autofocus** | Starts the autofocus and waits until it is done. No remote focus: skipped |
-| **VAPIX commands** | Commands of the [VAPIX Commander](../vapix-commander/) library with their values. A command the camera lacks: a warning |
-| **Wait for approval** | The camera waits here until you press **Continue** on its row, for example before Set IP |
-| **Set IP** | A fixed address from a pool, see [Set IP](#set-ip) |
+- **Success** (green), with what it did, for example "Password set."
+- **Not needed** (green with a grey line): the node does not apply to this camera, for example "Not needed: no SD card."
+- **Warning** (yellow): it did its part, something is worth a look.
+- **Error** (red), with the reason.
 
 **Continue on error** is on for every node except Set password: after an error the next nodes still run. Turn it off to
-stop the camera's flow at that node. An error at Set password always stops the flow.
+stop the camera's flow at that node. An error at Set password always stops the flow. A node that works on the camera
+fails with "The camera is not in OADM. Add to OADM did not work." when Add to OADM failed.
 
 ### Drafts
 
@@ -75,9 +66,225 @@ Errors show below the field and on the node in the chain. You can still save the
 ### Manage profiles
 
 **Manage profiles** lists every profile with its number of nodes and its state: **Active** or **Has errors**. Choose a
-profile and click **Edit** (or double-click it), **Activate** or **Delete**. **New** starts an empty profile.
+profile and click **Edit** (or double-click it), **Activate** or **Delete**. **New** starts a new profile.
 
 <Image src={profiles} alt="Manage profiles: three profiles, the active one, one with errors, and New, Edit, Activate and Delete" class="screen" />
+
+## Nodes
+
+### Set password
+
+Sets the first root password on the camera. Fixed: always first. An error here always stops the camera's flow.
+
+- **Root password**: **From the credential list** (choose a **Credential** of the user root) or **Type a password**
+  (**New password** and **Confirm password**, 1 to 64 printable ASCII characters). A typed password is added to the
+  credential list when you save and is never shown again.
+
+Ends with "Password set." or an error with the reason.
+
+### Add to OADM
+
+Adds the camera to OADM with the password of Set password, then waits up to 2 minutes until OADM has read the camera.
+Fixed: always second.
+
+- **Tags**: optional. Separate them with commas. They put the camera into the right device groups. At most 20 tags of
+  at most 64 characters each.
+
+Results:
+
+- Success: "Added to OADM." or "OADM manages this camera already."
+- Warning: "Added to OADM. OADM has not read the camera yet; the next nodes may fail.", or a tag that could not be set.
+- Error: "OADM cannot log in to the camera with the password of Set password." or "The camera still has no password."
+
+### Upgrade AXIS OS online
+
+Installs AXIS OS from axis.com, with the MyAxis sign-in of the administrator who started provisioning. The checks of
+[Upgrade AXIS OS](../../tasks/firmware/) apply.
+
+- **Install**: **Newest of the camera's own track**, **Newest LTS** or **Newest of the active track**.
+- **Only if older than**: optional. A version like 12.6.95. Cameras that run this version or a newer one are left as
+  they are.
+
+Results:
+
+- Success: "AXIS OS from axis.com installed." or "Already 12.6.95."
+- Error: "Sign in to MyAxis." when the sign-in is missing or expired. After a server restart: "Stop and start
+  provisioning again: the server restarted since it was started."
+
+### Upgrade AXIS OS from files
+
+Each camera gets the file for its model from the files you choose. Never a downgrade: a file older than the camera's
+AXIS OS is not installed.
+
+- **AXIS OS files**: **Choose files** uploads them to the server. Files named as Axis names its downloads, for example
+  P3265-LVE_12_6_95.bin. One file per model, at most 32 files.
+
+Results:
+
+- Success: "AXIS OS 12.6.95 installed." or "Already 12.6.95." (same or newer AXIS OS on the camera).
+- Warning: "No file for this model."
+- Error: the reason of the upgrade.
+
+### Network settings
+
+Sets the host name, the DNS servers and the search domain. Parts you leave empty stay as they are. Enter at least a host
+name or DNS servers.
+
+- **Host name**: optional. A pattern: `{model}`, `{serial}`, `{mac}` and `{n}` are filled in, for example
+  `cam-{serial}`. Use `{n}`, `{serial}` or `{mac}`, else every camera gets the same name. Letters, digits and hyphens,
+  at most 63 characters.
+- **First number**: shows when the pattern has `{n}`. The number of the first camera, 0 to 99999. Each camera of the
+  session gets the next number, in the order they arrive.
+- **DNS servers**: optional. At most 2, separated by commas.
+- **Search domain**: optional, for example site.example.com. Needs DNS servers.
+
+Ends with "Host name cam-ACCC8E012345, DNS 10.0.0.1, search domain site.example.com." or an error with the reason.
+
+### Date and time
+
+Sets the time zone and where the camera gets its time.
+
+- **Time zone**: choose from the list. Type a city to jump to it.
+- **Time from**: **The NTP servers DHCP gives**, **These NTP servers** or **OADM's NTP server** (the
+  [NTP server](../ntp-server/) of OADM, its address filled in for each camera).
+- **NTP servers**: with These NTP servers. Host names or IP addresses, at most 5, separated by commas.
+- **Use NTS where the camera has it**: with These NTP servers.
+
+Results:
+
+- Success: "Time zone Europe/Vienna, NTP 10.0.0.17.", "Time zone Europe/Vienna, NTP servers from DHCP." or "Time zone
+  Europe/Vienna, OADM's NTP server."
+- Error: "Time zone Europe/Vienna set. OADM's NTP server was not set: " with the reason.
+
+### Configuration
+
+Applies settings from a file of Export configuration in [Device configuration](../../tasks/device-configuration/), or
+from a camera OADM manages. Addresses, host names, certificates and passwords are never copied.
+
+- **Settings from**: **A configuration file** or **A template camera**.
+- **Configuration file**: a .json file of Export configuration.
+- **Template camera**: **Choose camera**. It is read when the node runs and needs AXIS OS 12.5 or later. The template
+  camera itself is left as it is.
+- **Apply**: **Parameters**, **Action rules**, **Schedules**. At least one.
+
+Results:
+
+- Success: "Parameters and action rules applied." or "Parameters of the template camera applied."
+- Not needed: "Not needed: this is the template camera."
+- Warning: settings the model lacks, listed.
+- Error: for example "The template camera ACCC8E012345 has no configuration export (AXIS OS 12.5 or later)."
+
+### Users
+
+Adds more accounts to the camera. OADM's own account is never removed, demoted or given another password. A profile can
+have several Users nodes.
+
+- **Accounts**: **Add account** adds a row, at most 10.
+  - **User name**: 1 to 14 letters and digits, each name once. root is the account of Set password.
+  - **Role**: **Viewer**, **Operator** or **Administrator**.
+  - **PTZ control**: the account may move PTZ cameras.
+  - **Password** and **Confirm password**: typed only, 1 to 64 printable ASCII characters. Kept on the server, never
+    shown again.
+
+Results:
+
+- Success: "Added operator and service."
+- Warning or Error: per account, for example "service: " with the camera's reason.
+
+### Certificate
+
+Gives the camera its certificate. The camera's clock is checked first: a camera whose clock is behind gets no
+certificate.
+
+- **Certificate**: **From PKI's HTTPS certificate policy** installs a certificate of [PKI](../pki/) and turns on HTTPS.
+  **EST enrollment (OADM PRO)** sets up enrollment with the [EST server](../est-server/), so the camera renews by itself.
+
+Results:
+
+- Success: "Certificate installed, HTTPS on." or "EST enrollment set up."
+- Error: the reason, for example "OADM PRO is not active. Nothing was changed." for EST without OADM PRO.
+
+### 802.1X
+
+Turns on 802.1X with the certificate and CA of PKI's 802.1X policy. No settings of its own. The camera's clock is
+checked first. On a switch port that enforces 802.1X the camera answers only once it is authenticated.
+
+Ends with "802.1X on." or an error with the reason.
+
+### SD card
+
+Prepares the SD card. Uses the camera's own file system.
+
+- **Prepare**: **Format**, **Encrypt** (formats too). Choose at least one, or enter days below.
+- **Passphrase** and **Confirm passphrase**: with Encrypt. Typed only, kept on the server, never shown again.
+- **Delete recordings older than (days)**: optional, 1 to 7000.
+
+Results:
+
+- Success: "SD card encrypted and formatted, recordings kept 30 days."
+- Not needed: "Not needed: no SD card."
+- Error: the reason, after what was done already.
+
+### Autofocus
+
+Starts the autofocus and waits until it is done, at most 2 minutes. No settings. Nothing else is changed.
+
+Results:
+
+- Success: "Focus found."
+- Not needed: "Not needed: no remote focus."
+- Error: "The camera could not find focus. Set focus by hand.", "The camera is too hot or too cold to move the lens." or
+  "The autofocus did not end within 2 minutes."
+
+### VAPIX commands
+
+Runs commands of the [VAPIX Commander](../vapix-commander/) library with their values, in order. The Commander's checks
+apply.
+
+- **Commands**: **Add command** adds a row, at most 50.
+  - **Command**: choose from the library. Commands marked dangerous and commands that need a password or a file cannot
+    run in a profile.
+  - The command's own fields follow, each as in VAPIX Commander.
+
+Results:
+
+- Success: "Ran Set overlay text and Set stream profile."
+- Warning: "Not on this camera: Set stream profile." The camera lacks that command; the others still run.
+- Error: the reason of the commands.
+
+### Wait for approval
+
+The camera waits here until you press **Continue** on its row, for example before Set IP. No settings. A waiting camera
+does not hold one of the 8 places.
+
+Ends with "Continued by admin."
+
+### Set IP
+
+Gives each camera a fixed address from a pool of its own.
+
+- **First address** and **Last address**: the pool, for example 192.168.15.10 to 192.168.15.50. In the same subnet, at
+  most 4,096 addresses.
+- **Subnet mask**: for example 255.255.255.0.
+- **Default router**: in the subnet of the pool, outside the pool.
+- **DNS servers**: optional. At most 2, separated by commas.
+
+How addresses are given:
+
+- Each camera gets the next free address of the pool, starting at the first. An address is skipped when a device in OADM
+  has it, it answers on the network, or another camera of this session got it.
+- Two cameras never get the same address, also when they run at the same time.
+- The addresses given stay reserved until **Stop provisioning**. The next start begins at the first address again and
+  skips the cameras OADM manages by then.
+- Keep the pool outside the DHCP server's range. An overlap is a warning in the node and on the page: "The pool overlaps
+  the DHCP server's range 192.168.15.100 to 192.168.15.200."
+
+Results:
+
+- Success: "192.168.15.12 is in use, 192.168.15.13 assigned." or "The camera is at 192.168.15.13 already."
+- Error: "The camera did not take 192.168.15.13: " with the reason, then "OADM keeps it at 192.168.15.140." OADM keeps
+  the camera at the address that answers.
+- Error: "No free address left in the pool."
 
 ## Start and stop
 
@@ -96,8 +303,8 @@ Start. Up to 8 cameras run at once; the others wait as **Queued**.
 
 ## Cameras
 
-The table has one row per camera that got an address while provisioning was started: the time it got its address, MAC
-address, model, IP address, state, the node it is on and the problem of a failed node. The search also finds the serial
+The table has one row per camera that got an address while provisioning was started: the time it got its address, IP
+address, MAC address, model, the node it is on, state and the problem of a failed node. The search also finds the serial
 number.
 
 | State | Meaning |
@@ -120,22 +327,6 @@ Select rows and use the buttons above the table:
 - **Run failed again** runs only the red nodes and the ones that did not run, in their order.
 - **Continue** lets cameras go on past Wait for approval.
 - **Remove** removes the rows. The cameras stay in OADM.
-
-## Set IP
-
-Set IP gives each camera a fixed address from a pool of its own: **First address**, **Last address**, **Subnet mask**,
-**Default router** and optional **DNS servers**.
-
-- Each camera gets the next free address of the pool, starting at the first. An address is skipped when a device in OADM
-  has it, it answers on the network, or another camera of this session got it. The node says so: "192.168.15.12 is in use,
-  192.168.15.13 assigned."
-- Two cameras never get the same address, also when they run at the same time.
-- The addresses given stay reserved until **Stop provisioning**. The next start begins at the first address again and
-  skips the cameras OADM manages by then.
-- Keep the pool outside the DHCP server's range. An overlap is a warning in the node and on the page, not an error.
-- If the camera does not answer at its new address, the node is red with both addresses and OADM keeps the camera at the
-  address that answers.
-- No free address left: the node is red with "No free address left in the pool."
 
 ## What it never does
 

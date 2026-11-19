@@ -145,6 +145,74 @@ public sealed class PageScreenshotTests
     }
 
     [Fact]
+    public async Task The_profile_editor_renders_a_new_profile_the_node_list_and_the_field_help()
+    {
+        var suffix = Headless.Appearance;
+        await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = Samples.Context();
+            var editor = new ProfileEditorViewModel(ctx, null);
+            var window = new ProfileEditorWindow();
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Attach(editor);
+            window.Show();
+            await editor.LoadAsync();
+            await editor.CheckTask;
+            Headless.Pump();
+
+            // A new profile: Set password, Add to OADM and Set IP, the + below Set IP.
+            var canvas = window.FindControl<NodeChainCanvas>("Canvas")!;
+            Assert.Equal(3, canvas.Cards.Count);
+            Assert.True(editor.Chain.ShowsPlus(2));
+            Assert.Equal(-1, canvas.PlusIndexAt(editor.Chain.View.ToScreen(canvas.Cards[0].Center)));
+            var plus = canvas.PlusRect(2);
+            Assert.Equal(2, canvas.PlusIndexAt(editor.Chain.View.ToScreen(plus.Center)));
+            Headless.Capture(window, $"provisioning-editor-new-{suffix}.png");
+
+            // The + opens the node list next to it; its search takes the keys.
+            editor.Chain.RequestAdd(2, canvas.PickerPlace(2));
+            Headless.Pump();
+            var picker = window.FindControl<NodePicker>("NodePicker")!;
+            Assert.True(picker.IsEffectivelyVisible);
+            Assert.True(picker.Search.IsKeyboardFocusWithin);
+            Assert.Equal(editor.AddableKinds.Count, editor.Picker.ShownItems.Count);
+            Headless.Capture(window, $"provisioning-editor-picker-{suffix}.png");
+
+            // Date and time from the list: the time zone choice and a ? in every field.
+            editor.Picker.Choose(editor.Picker.ShownItems.Single(i => i.Label == "Date and time"));
+            var node = editor.SelectedNode!;
+            Assert.Equal(NodeKind.DateTime, node.Kind);
+            var source = node.Field<ChoiceFieldViewModel>("ntpSource");
+            source.Selected = source.Choices.Single(c => c.Value == "own");
+            node.Field<TimeZoneFieldViewModel>("timeZone").Selected = TimeZoneFieldViewModel.Zones.Single(z => z.Id == "Europe/Vienna");
+            await editor.CheckTask;
+            Headless.Pump();
+            var form = window.FindControl<StackPanel>("NodeForm")!;
+            var fields = form.GetVisualDescendants().OfType<FormField>().Where(f => f.IsEffectivelyVisible).ToList();
+            Assert.Equal(4, fields.Count); // Time zone, Time from, NTP servers, NTS
+            Assert.All(fields, f => Assert.True(f.HelpButton.IsEffectivelyVisible));
+            Assert.Equal(ProvisioningTexts.TimeZoneHelp, ToolTip.GetTip(fields[0].HelpButton));
+            Assert.Contains(form.GetVisualDescendants().OfType<ComboBox>(), c => c.SelectedItem is Oadm.Plugins.DateAndTime.Model.TimeZoneEntry { Id: "Europe/Vienna" });
+            Headless.Capture(window, $"provisioning-editor-datetime-{suffix}.png");
+            ToolTip.SetIsOpen(fields[2].HelpButton, true);
+            Headless.Pump();
+            Headless.Capture(window, $"provisioning-editor-help-{suffix}.png");
+            ToolTip.SetIsOpen(fields[2].HelpButton, false);
+
+            // Set IP and Set password: text boxes, password boxes and a group of choices.
+            editor.SelectedNode = editor.Nodes.Single(n => n.Kind == NodeKind.SetIp);
+            Headless.Pump();
+            Headless.Capture(window, $"provisioning-editor-setip-{suffix}.png");
+            editor.SelectedNode = editor.Nodes[0];
+            editor.SelectedNode.Fields.OfType<PasswordFieldViewModel>().Single().TypesPassword = true;
+            Headless.Pump();
+            Headless.Capture(window, $"provisioning-editor-password-{suffix}.png");
+            window.Close();
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task Manage_profiles_renders_the_list_with_its_states()
     {
         var suffix = Headless.Appearance;

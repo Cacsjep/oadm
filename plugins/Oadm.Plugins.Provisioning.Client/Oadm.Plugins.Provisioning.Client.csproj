@@ -32,6 +32,11 @@
     <InternalsVisibleTo Include="Oadm.Plugins.Provisioning.Tests" />
   </ItemGroup>
 
+  <!-- The time zone select of the Date and time plugin (the catalogue comes with the server part). -->
+  <ItemGroup>
+    <Compile Include="..\Shared\TimeZones.Client\TimeZoneChoice.cs" Link="Common\TimeZoneChoice.cs" />
+  </ItemGroup>
+
   <!-- Development deployment next to the server part in artifacts/plugins/oadm.provisioning/. -->
   <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
     <ItemGroup>

@@ -24,7 +24,8 @@ server's settings.
 1. **Only factory-new cameras from OADM's DHCP.** A flow starts only for an Axis MAC that got its address from OADM's DHCP
    server **and** has no password yet (status Password not set). Any other camera that gets a lease is listed as "Not new,
    left as it is" and never changed. No Discovery fallback.
-2. **Set password first, and it stops.** Every profile starts with the fixed nodes Set password and Add to OADM. If Set
+2. **Set password first, and it stops.** Every profile starts with the fixed nodes Set password and Add to OADM (a new one also gets
+   Set IP after them, which is not fixed). If Set
    password fails, nothing after it runs for that camera. Every other node continues on error by default.
 3. **Never the same address twice.** The Set IP node takes and reserves the next free address of its pool under a short
    lock (taking only, not the write), so two cameras never get the same address; the writes run in parallel.
@@ -45,9 +46,9 @@ server's settings.
   editor, Activate, Delete with a red confirmation), in one row with the camera actions (Run failed again, Continue,
   Remove) and the search at the right end. A session lasts until Stop, also across a server restart.
   Start warns (Start stays possible) when the Set IP pool overlaps the DHCP range.
-- **Cameras**: virtualized table, one row per camera that started a flow: the time it got its row, MAC, model, address,
-  state (Queued, Running node, Done, Done with warnings, Failed), the node it is on, the problem. The serial number is
-  the MAC address on Axis cameras: no column of its own, the search still finds it. Clicking a row opens the profile's canvas
+- **Cameras**: virtualized table, one row per camera that started a flow, columns in this order: the time it got its row,
+  IP address, MAC address, model, the node it is on, state (Queued, Running node, Done, Done with warnings, Failed), the
+  problem. The serial number is the MAC address on Axis cameras: no column of its own, the search still finds it. Clicking a row opens the profile's canvas
   with that camera's result per node. **Run failed again** re-runs only the red nodes of the chosen cameras, in flow
   order. Rows can be removed (the camera stays in OADM).
 - Up to **8 cameras at once**; more wait as Queued.
@@ -55,8 +56,12 @@ server's settings.
 ## Profiles: the flow
 
 A profile is a name and a **straight chain of nodes** on the top-to-bottom canvas of Vision Center (no branches, no
-loops). Nodes are added from a list, moved up and down, removed (except the two fixed ones) and configured in the side
-panel. The profile is checked before it can be active (one error per node, the same check in the editor); a profile
+loops). A new profile starts with Set password, Add to OADM and Set IP (decision 2026-11-19; Set IP can be moved and
+removed like any other node). Nodes are added like in Vision Center: the + below the last node or the selected one (never
+below Set password) opens the shared node list (`NodePicker`: search, the kinds in groups First steps, AXIS OS, Settings,
+Security, Camera, Last steps, each with its coloured icon, name and one line) and the new node goes right after that node.
+Nodes are moved up and down, removed (except the two fixed ones) and configured in the side panel; every field has a
+"?" at its right with a short help as tooltip (`FormField.Help`). The profile is checked before it can be active (one error per node, the same check in the editor); a profile
 with errors is saved as a draft and cannot be active or started until they are fixed.
 
 Every node ends **Success**, **Warning** or **Error** with a plain message ("AXIS OS 12.6.95 installed.", "No file for
@@ -80,7 +85,8 @@ Set password).
 5. **Network settings**: host name from a pattern (`{model}`, `{serial}`, `{mac}`, `{n}` with a start number), DNS
    servers and search domain.
 6. **Date and time**: NTP servers (NTS where the camera has it) or OADM's NTP server (its address filled in), and the
-   time zone.
+   time zone, chosen from the time zones of AXIS OS like in the Date and time task (the shared `TimeZoneChoice`; the
+   server still checks the id).
 7. **Configuration**: a configuration file of Device configuration **or** a template camera read at run time; the areas
    to apply (parameters, action rules, schedules, stream profiles). Device-specific values (address, host name,
    certificates, passwords) are never copied; settings the model lacks: Warning listing them.

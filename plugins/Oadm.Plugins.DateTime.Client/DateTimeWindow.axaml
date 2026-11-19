@@ -3,6 +3,7 @@
         xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:vm="using:Oadm.Plugins.DateAndTime.Client"
         xmlns:m="using:Oadm.Plugins.DateAndTime.Model"
+        xmlns:tz="using:Oadm.Plugins.TimeZones.Client"
         x:Class="Oadm.Plugins.DateAndTime.Client.DateTimeWindow"
         x:DataType="vm:DateTimeDialogViewModel"
         Title="{Binding Title}"
@@ -29,15 +30,7 @@
 
         <!-- Time zone -->
         <TextBlock Classes="sectionTitle subsection" Text="Time zone" />
-        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Zones}" SelectedItem="{Binding SelectedZone}"
-                  PlaceholderText="Choose a time zone" IsEnabled="{Binding CanEditTimeZone}"
-                  IsTextSearchEnabled="True" TextSearch.TextBinding="{Binding City, DataType=m:TimeZoneEntry}">
-          <ComboBox.ItemTemplate>
-            <DataTemplate x:DataType="m:TimeZoneEntry">
-              <TextBlock Text="{Binding ShortLabel}" TextTrimming="CharacterEllipsis" />
-            </DataTemplate>
-          </ComboBox.ItemTemplate>
-        </ComboBox>
+        <tz:TimeZoneChoice SelectedItem="{Binding SelectedZone}" IsEnabled="{Binding CanEditTimeZone}" />
         <CheckBox Content="Automatically adjust for daylight saving time changes" IsChecked="{Binding AdjustForDst}" IsEnabled="{Binding CanAdjustDst}" />
 
         <!-- Time mode -->

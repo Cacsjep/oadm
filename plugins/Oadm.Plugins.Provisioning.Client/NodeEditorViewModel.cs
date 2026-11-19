@@ -174,12 +174,12 @@ public static class NodeForms
         return kind switch
         {
             NodeKind.SetPassword => [new PasswordFieldViewModel(FieldRules.ToGuid(settings["credentialId"]), services.Credentials)],
-            NodeKind.AddToOadm => [new ListFieldViewModel("tags", ProvisioningTexts.Tags, Strings(settings["tags"]), TagRule) { Hint = ProvisioningTexts.Optional }],
+            NodeKind.AddToOadm => [new ListFieldViewModel("tags", ProvisioningTexts.Tags, Strings(settings["tags"]), TagRule) { Hint = ProvisioningTexts.Optional, Help = ProvisioningTexts.TagsHelp }],
             NodeKind.WaitForApproval or NodeKind.Dot1x or NodeKind.Autofocus => [],
             NodeKind.SetIp => SetIp(settings),
             NodeKind.DateTime => DateTime(settings),
             NodeKind.UpgradeOnline => UpgradeOnline(settings),
-            NodeKind.UpgradeFiles => [new FilesFieldViewModel("files", ProvisioningTexts.OsFiles, OsFiles(settings["files"]), services)],
+            NodeKind.UpgradeFiles => [new FilesFieldViewModel("files", ProvisioningTexts.OsFiles, OsFiles(settings["files"]), services) { Help = ProvisioningTexts.OsFilesHelp }],
             NodeKind.NetworkSettings => NetworkSettings(settings),
             NodeKind.Configuration => Configuration(settings, services),
             NodeKind.Users => [new UsersFieldViewModel(settings["accounts"] as JsonArray)],
@@ -205,14 +205,15 @@ public static class NodeForms
 
     private static IReadOnlyList<NodeFieldViewModel> SetIp(JsonObject s) =>
     [
-        new TextFieldViewModel("first", ProvisioningTexts.FirstAddress, Text(s["first"]), FieldRules.RequiredAddress) { Placeholder = "e.g. 192.168.15.10" },
-        new TextFieldViewModel("last", ProvisioningTexts.LastAddress, Text(s["last"]), FieldRules.RequiredAddress) { Placeholder = "e.g. 192.168.15.50" },
-        new TextFieldViewModel("subnetMask", ProvisioningTexts.SubnetMask, Text(s["subnetMask"]), FieldRules.Mask) { Placeholder = "e.g. 255.255.255.0" },
-        new TextFieldViewModel("gateway", ProvisioningTexts.DefaultRouter, Text(s["gateway"]), FieldRules.RequiredAddress) { Placeholder = "e.g. 192.168.15.1" },
+        new TextFieldViewModel("first", ProvisioningTexts.FirstAddress, Text(s["first"]), FieldRules.RequiredAddress) { Placeholder = "e.g. 192.168.15.10", Help = ProvisioningTexts.FirstAddressHelp },
+        new TextFieldViewModel("last", ProvisioningTexts.LastAddress, Text(s["last"]), FieldRules.RequiredAddress) { Placeholder = "e.g. 192.168.15.50", Help = ProvisioningTexts.LastAddressHelp },
+        new TextFieldViewModel("subnetMask", ProvisioningTexts.SubnetMask, Text(s["subnetMask"]), FieldRules.Mask) { Placeholder = "e.g. 255.255.255.0", Help = ProvisioningTexts.MaskHelp },
+        new TextFieldViewModel("gateway", ProvisioningTexts.DefaultRouter, Text(s["gateway"]), FieldRules.RequiredAddress) { Placeholder = "e.g. 192.168.15.1", Help = ProvisioningTexts.RouterHelp },
         new ListFieldViewModel("dnsServers", ProvisioningTexts.DnsServers, Strings(s["dnsServers"]), FieldRules.AddressItem, 2, "Enter at most 2 DNS servers.")
         {
             Hint = ProvisioningTexts.Optional,
             WritesEmpty = true,
+            Help = ProvisioningTexts.DnsHelp,
         },
     ];
 
@@ -224,11 +225,13 @@ public static class NodeForms
             s["oadmNtp"]?.GetValueKind() == JsonValueKind.True ? "oadm" : servers.Count > 0 ? "own" : "dhcp")
         {
             WriteAs = settings => { },
+            Help = ProvisioningTexts.TimeSourceHelp,
         };
         ListFieldViewModel? list = null;
         list = new ListFieldViewModel("ntpServers", ProvisioningTexts.NtpServers, servers, FieldRules.HostItem, DateTimeNode.MaxServers, $"Enter at most {DateTimeNode.MaxServers} NTP servers.")
         {
             Hint = ProvisioningTexts.ListHint,
+            Help = ProvisioningTexts.NtpServersHelp,
             ShownWhen = () => source.Is("own"),
             WriteAs = settings =>
             {
@@ -241,10 +244,11 @@ public static class NodeForms
         {
             ShownWhen = () => source.Is("own"),
             WriteAs = settings => settings["nts"] = source.Is("own") && nts!.IsChecked,
+            Help = ProvisioningTexts.NtsHelp,
         };
         return
         [
-            new TextFieldViewModel("timeZone", ProvisioningTexts.TimeZone, Text(s["timeZone"]), FieldRules.TimeZone) { Placeholder = ProvisioningTexts.TimeZonePlaceholder },
+            new TimeZoneFieldViewModel("timeZone", ProvisioningTexts.TimeZone, Text(s["timeZone"])) { Help = ProvisioningTexts.TimeZoneHelp },
             source,
             list,
             nts,
@@ -255,10 +259,11 @@ public static class NodeForms
     [
         new ChoiceFieldViewModel("target", ProvisioningTexts.OsTarget,
             [new("ownTrack", ProvisioningTexts.OwnTrack), new("latestLts", ProvisioningTexts.LatestLts), new("latestActive", ProvisioningTexts.LatestActive)],
-            Text(s["target"])),
+            Text(s["target"])) { Help = ProvisioningTexts.OsTargetHelp },
         new TextFieldViewModel("onlyIfOlderThan", ProvisioningTexts.OnlyIfOlder, Text(s["onlyIfOlderThan"]), FieldRules.Version)
         {
             Placeholder = "e.g. 12.6.95",
+            Help = ProvisioningTexts.OnlyIfOlderHelp,
             Hint = ProvisioningTexts.Optional,
         },
     ];
@@ -268,6 +273,7 @@ public static class NodeForms
         var host = new TextFieldViewModel("hostName", ProvisioningTexts.HostName, Text(s["hostName"]), FieldRules.HostNamePattern)
         {
             Placeholder = "e.g. cam-{serial}",
+            Help = ProvisioningTexts.HostNameHelp,
             Hint = ProvisioningTexts.HostNameHint,
         };
         return
@@ -278,16 +284,19 @@ public static class NodeForms
             {
                 IsInteger = true,
                 ShownWhen = () => host.Text.Contains("{n}", StringComparison.OrdinalIgnoreCase),
+                Help = ProvisioningTexts.StartNumberHelp,
             },
             new ListFieldViewModel("dnsServers", ProvisioningTexts.DnsServers, Strings(s["dnsServers"]), FieldRules.AddressItem, NetworkSettingsNode.MaxDns,
                 $"Enter at most {NetworkSettingsNode.MaxDns} DNS servers.")
             {
                 Hint = ProvisioningTexts.Optional,
                 WritesEmpty = true,
+            Help = ProvisioningTexts.DnsHelp,
             },
             new TextFieldViewModel("searchDomain", ProvisioningTexts.SearchDomain, Text(s["searchDomain"]), FieldRules.Domain)
             {
                 Placeholder = "e.g. site.example.com",
+                Help = ProvisioningTexts.SearchDomainHelp,
                 Hint = ProvisioningTexts.Optional,
             },
         ];
@@ -296,7 +305,7 @@ public static class NodeForms
     private static IReadOnlyList<NodeFieldViewModel> Configuration(JsonObject s, INodeFormServices services)
     {
         var source = new ChoiceFieldViewModel("source", ProvisioningTexts.ConfigSource,
-            [new("file", ProvisioningTexts.ConfigFromFile), new("templateCamera", ProvisioningTexts.ConfigFromCamera)], Text(s["source"]));
+            [new("file", ProvisioningTexts.ConfigFromFile), new("templateCamera", ProvisioningTexts.ConfigFromCamera)], Text(s["source"])) { Help = ProvisioningTexts.ConfigSourceHelp };
         BoolFieldViewModel Area(string key, string label, bool fallback) =>
             new(key, label, s[key]?.GetValueKind() is { } k && k is JsonValueKind.True or JsonValueKind.False ? k == JsonValueKind.True : fallback);
         var areas = new[] { Area("parameters", ProvisioningTexts.Parameters, true), Area("actionRules", ProvisioningTexts.ActionRules, false), Area("schedules", ProvisioningTexts.Schedules, false) };
@@ -307,20 +316,22 @@ public static class NodeForms
                 name => name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? null : ProvisioningTexts.ConfigFileRule)
             {
                 NameKey = "fileName",
+                Help = ProvisioningTexts.ConfigFileHelp,
                 ShownWhen = () => source.Is("file"),
             },
             new CameraFieldViewModel("templateSerial", ProvisioningTexts.TemplateCamera, Text(s["templateSerial"]), services)
             {
                 ShownWhen = () => source.Is("templateCamera"),
+                Help = ProvisioningTexts.TemplateCameraHelp,
             },
-            new CheckGroupFieldViewModel(ProvisioningTexts.Apply, areas, () => areas.Any(a => a.IsChecked) ? null : ProvisioningTexts.ChooseAreas),
+            new CheckGroupFieldViewModel(ProvisioningTexts.Apply, areas, () => areas.Any(a => a.IsChecked) ? null : ProvisioningTexts.ChooseAreas) { Help = ProvisioningTexts.ApplyHelp },
         ];
     }
 
     private static IReadOnlyList<NodeFieldViewModel> Certificate(JsonObject s)
     {
         var mode = new ChoiceFieldViewModel("mode", ProvisioningTexts.CertificateMode,
-            [new("policy", ProvisioningTexts.CertificatePolicy), new("est", ProvisioningTexts.CertificateEst)], Text(s["mode"]));
+            [new("policy", ProvisioningTexts.CertificatePolicy), new("est", ProvisioningTexts.CertificateEst)], Text(s["mode"])) { Help = ProvisioningTexts.CertificateHelp };
         return [mode];
     }
 
@@ -333,12 +344,13 @@ public static class NodeForms
         {
             IsInteger = true,
             Hint = ProvisioningTexts.KeepDaysHint,
+            Help = ProvisioningTexts.KeepDaysHelp,
         };
         return
         [
             new CheckGroupFieldViewModel(ProvisioningTexts.SdCardDo, [format, encrypt],
-                () => format.IsChecked || encrypt.IsChecked || days.Text.Trim().Length > 0 ? null : ProvisioningTexts.ChooseSdCard),
-            new SecretFieldViewModel(ProvisioningTexts.Passphrase, FieldRules.ToGuid(s["secretId"])) { ShownWhen = () => encrypt.IsChecked },
+                () => format.IsChecked || encrypt.IsChecked || days.Text.Trim().Length > 0 ? null : ProvisioningTexts.ChooseSdCard) { Help = ProvisioningTexts.PrepareHelp },
+            new SecretFieldViewModel(ProvisioningTexts.Passphrase, FieldRules.ToGuid(s["secretId"])) { ShownWhen = () => encrypt.IsChecked, Help = ProvisioningTexts.SecretHelp },
             days,
         ];
     }
@@ -352,6 +364,7 @@ public static class NodeForms
             TextFieldViewModel t => t.Text.Trim(),
             ListFieldViewModel l => string.Join(", ", l.Items),
             ChoiceFieldViewModel c => c.Selected.Label,
+            TimeZoneFieldViewModel z => z.Id ?? string.Empty,
             _ => string.Empty,
         };
 
@@ -371,7 +384,7 @@ public static class NodeForms
             case NodeKind.DateTime:
                 var source = node.Field<ChoiceFieldViewModel>("ntpSource");
                 var time = source.Is("own") ? Of("ntpServers") : source.Is("oadm") ? "OADM's NTP server" : "NTP from DHCP";
-                return Of("timeZone") is { Length: > 0 } zone ? zone + ", " + time : time;
+                return Of("timeZone") is { Length: > 0 } zone ? (time.Length > 0 ? zone + ", " + time : zone) : time;
             case NodeKind.UpgradeOnline:
                 return Of("target") + (Of("onlyIfOlderThan") is { Length: > 0 } older ? ", if older than " + older : string.Empty);
             case NodeKind.UpgradeFiles:

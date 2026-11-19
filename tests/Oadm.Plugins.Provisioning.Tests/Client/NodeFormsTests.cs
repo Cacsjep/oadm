@@ -37,7 +37,14 @@ public sealed class NodeFormsTests
         var editor = new ProfileEditorViewModel(ctx, null) { Ui = ui };
         await editor.LoadAsync();
         await editor.CheckTask;
-        editor.AddNode(Samples.Kinds.Single(k => k.Kind == kind));
+        if (editor.Nodes.FirstOrDefault(n => n.Kind == kind) is { } present)
+        {
+            editor.SelectedNode = present; // Set IP: a new profile has it
+        }
+        else
+        {
+            editor.AddNode(Samples.Kinds.Single(k => k.Kind == kind));
+        }
         await editor.CheckTask;
         return (editor, ctx, ui, editor.SelectedNode!);
     }
@@ -145,7 +152,11 @@ public sealed class NodeFormsTests
     public async Task Date_and_time_chooses_dhcp_its_own_servers_or_oadms_ntp_server()
     {
         var (editor, ctx, _, node) = await AddAsync(NodeKind.DateTime);
-        node.Field<TextFieldViewModel>("timeZone").Text = "Europe/Vienna";
+        var zone = node.Field<TimeZoneFieldViewModel>("timeZone");
+        Assert.Equal(ProvisioningTexts.ChooseTimeZone, zone.FirstError);
+        Assert.Contains(TimeZoneFieldViewModel.Zones, z => z.Id == "Europe/Vienna");
+        zone.Selected = TimeZoneFieldViewModel.Zones.Single(z => z.Id == "Europe/Vienna");
+        Assert.Null(zone.FirstError);
         var source = node.Field<ChoiceFieldViewModel>("ntpSource");
         var servers = node.Field<ListFieldViewModel>("ntpServers");
         Assert.False(servers.IsShown);
@@ -328,5 +339,33 @@ public sealed class NodeFormsTests
         await editor.SaveCommand.ExecuteAsync(null);
         Assert.Equal(1, ctx.CallsOf(ProvisioningMethods.SaveProfile));
         Assert.NotNull(editor.Saved);
+    }
+
+    [Fact]
+    public async Task Every_field_of_every_node_has_a_short_help_that_does_not_repeat_its_label()
+    {
+        var ctx = Samples.Context();
+        var editor = new ProfileEditorViewModel(ctx, null) { Ui = new FakeEditorUi() };
+        await editor.LoadAsync();
+        foreach (var kind in editor.AddableKinds.ToList())
+        {
+            editor.AddNode(kind);
+        }
+
+        // The rows of Set password, Users and VAPIX commands have their help in the window (fixed labels).
+        var fields = editor.Nodes.SelectMany(n => n.Fields)
+            .Where(f => f is not PasswordFieldViewModel and not UsersFieldViewModel and not VapixCommandsFieldViewModel)
+            .ToList();
+        Assert.NotEmpty(fields);
+        Assert.All(fields, f =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(f.Help), $"{f.Key} has no help");
+            Assert.NotEqual(f.Label, f.Help, StringComparer.OrdinalIgnoreCase);
+        });
+
+        var helps = typeof(ProvisioningTexts).GetFields().Where(f => f.Name.EndsWith("Help", StringComparison.Ordinal)).Select(f => (string)f.GetValue(null)!).ToList();
+        Assert.True(helps.Count >= 30);
+        Assert.All(helps, h => Assert.InRange(h.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length, 2, 9));
+        Assert.All(helps, h => Assert.False(h.EndsWith('.'), h));
     }
 }

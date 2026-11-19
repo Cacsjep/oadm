@@ -54,6 +54,15 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
         _profileId = profileId;
         Title = profileId is null ? ProvisioningTexts.NewProfileTitle : ProvisioningTexts.EditProfileTitle;
         Chain.PropertyChanged += OnChainChanged;
+        Chain.CanAdd = true;
+        Chain.AddRequested += (_, e) => OpenPicker(e.Index, e.At.X, e.At.Y);
+        Picker.Chosen += (_, item) =>
+        {
+            if (item is KindItem kind)
+            {
+                AddAfter(_addAfter, kind.Kind);
+            }
+        };
         Validation.Rule(nameof(Name), () =>
             Name.Trim().Length == 0 ? ProvisioningTexts.EnterName
             : Name.Trim().Length > ProfileCheck.MaxNameLength ? $"The name has at most {ProfileCheck.MaxNameLength} characters."
@@ -72,8 +81,17 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
     /// <summary>What the canvas draws.</summary>
     public NodeChain Chain { get; } = new();
 
-    /// <summary>The kinds the Add node list offers (every kind but the fixed ones).</summary>
+    /// <summary>The kinds the node list offers (every kind but the fixed ones), in the order of <see cref="NodeLook.Order"/>.</summary>
     public ObservableCollection<NodeKindInfo> AddableKinds { get; } = [];
+
+    /// <summary>The node list the + below a node opens (the shared <see cref="NodePicker"/>).</summary>
+    public NodePickerModel Picker { get; } = new();
+
+    /// <summary>The node list's width (ProfileEditorWindow.axaml).</summary>
+    public const double PickerWidth = 340;
+
+    /// <summary>The node whose + opened the node list: the new node goes right after it.</summary>
+    private int _addAfter = -1;
 
     [ObservableProperty]
     public partial string Name { get; set; } = string.Empty;
@@ -144,7 +162,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
             _credentials = FieldRules.RootEntries(credentials);
             _commands = PluginJson.Parse<List<ProfileCommand>>(await _ctx.InvokeAsync(ProvisioningMethods.VapixCommands, null, ct).ConfigureAwait(true), json);
             AddableKinds.Clear();
-            foreach (var kind in kinds.Where(k => !k.IsFixed))
+            foreach (var kind in kinds.Where(k => !k.IsFixed).OrderBy(k => NodeLook.Rank(k.Kind)))
             {
                 AddableKinds.Add(kind);
             }
@@ -164,7 +182,9 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
                 {
                     Id = Guid.NewGuid(),
                     Name = ProvisioningTexts.DefaultName,
-                    Nodes = [.. kinds.Where(k => k.IsFixed).Select((k, i) => new FlowNode { Id = "n" + (i + 1), Kind = k.Kind, ContinueOnError = !k.AlwaysStops, Settings = k.DefaultSettings })],
+                    // The two fixed nodes and Set IP, which can be moved and removed (decision 2026-11-19).
+                    Nodes = [.. kinds.Where(k => k.IsFixed || k.Kind == NodeKind.SetIp).OrderBy(k => !k.IsFixed)
+                        .Select((k, i) => new FlowNode { Id = "n" + (i + 1), Kind = k.Kind, ContinueOnError = !k.AlwaysStops, Settings = k.DefaultSettings })],
                 };
             }
 
@@ -227,6 +247,37 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
         var node = Add(index, new FlowNode { Id = NextId(), Kind = kind.Kind, ContinueOnError = !kind.AlwaysStops, Settings = kind.DefaultSettings });
         SelectedNode = node;
         AfterChange();
+    }
+
+    /// <summary>
+    /// The + below the node at <paramref name="index"/>: the node list at (<paramref name="left"/>, <paramref name="top"/>) with
+    /// every kind but the fixed ones, grouped, each with its line. Never after Set password (Add to OADM is second).
+    /// </summary>
+    public void OpenPicker(int index, double left, double top)
+    {
+        if (index < 1 || index >= Nodes.Count || IsLoading)
+        {
+            return;
+        }
+
+        _addAfter = index;
+        Picker.Show(AddableKinds.Select(k => new KindItem(k)), left, top);
+    }
+
+    /// <summary>A kind chosen in the node list: the new node right after the node at <paramref name="index"/>, selected.</summary>
+    public NodeEditorViewModel? AddAfter(int index, NodeKindInfo kind)
+    {
+        ArgumentNullException.ThrowIfNull(kind);
+        if (kind.IsFixed || index < 0 || index >= Nodes.Count)
+        {
+            return null;
+        }
+
+        var at = Math.Clamp(index + 1, Math.Min(2, Nodes.Count), Nodes.Count);
+        var node = Add(at, new FlowNode { Id = NextId(), Kind = kind.Kind, ContinueOnError = !kind.AlwaysStops, Settings = kind.DefaultSettings });
+        SelectedNode = node;
+        AfterChange();
+        return node;
     }
 
     [RelayCommand(CanExecute = nameof(CanMoveUp))]
@@ -373,6 +424,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
     {
         if (e.PropertyName == nameof(NodeChain.SelectedIndex) && !_syncing)
         {
+            Picker.Close(); // a click on the canvas closes the node list
             _syncing = true;
             SelectedNode = Chain.SelectedIndex >= 0 && Chain.SelectedIndex < Nodes.Count ? Nodes[Chain.SelectedIndex] : null;
             _syncing = false;
@@ -492,7 +544,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
 
     private void RebuildChain()
     {
-        Chain.Nodes = [.. Nodes.Select(ToChainNode)];
+        Chain.Nodes = [.. Nodes.Select((n, i) => ToChainNode(n) with { CanAddAfter = i >= 1 })];
         _syncing = true;
         Chain.SelectedIndex = SelectedNode is null ? -1 : Nodes.IndexOf(SelectedNode);
         _syncing = false;
@@ -538,3 +590,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
         }
     }
 }
+
+/// <summary>A node kind in the profile editor's node list: its icon, colour, group and line (<see cref="NodeLook"/>).</summary>
+public sealed record KindItem(NodeKindInfo Kind)
+    : NodePickerItem(Kind.Name, NodeLook.Description(Kind.Kind), NodeLook.IconKey(Kind.Kind), NodeLook.BrushKey(Kind.Kind), NodeLook.Group(Kind.Kind));

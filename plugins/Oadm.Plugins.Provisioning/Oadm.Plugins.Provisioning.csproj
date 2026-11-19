@@ -27,6 +27,13 @@
     <Compile Include="..\Oadm.Plugins.DhcpServer\Serving\AxisOui.cs" Link="Dhcp\AxisOui.cs" />
   </ItemGroup>
 
+  <!-- The time zones of AXIS OS of the Date and time plugin: the Date and time node's choice in the editor. -->
+  <ItemGroup>
+    <Compile Include="..\Oadm.Plugins.DateTime\Model\TimeZoneCatalog.cs" Link="TimeZones\TimeZoneCatalog.cs" />
+    <Compile Include="..\Oadm.Plugins.DateTime\Model\ZoneYear.cs" Link="TimeZones\ZoneYear.cs" />
+    <EmbeddedResource Include="..\Oadm.Plugins.DateTime\Model\TimeZones.txt" Link="TimeZones\TimeZones.txt" LogicalName="Oadm.Plugins.DateAndTime.TimeZones.txt" />
+  </ItemGroup>
+
   <!-- The VAPIX Commander library and its checks for the node VAPIX commands (the same commands, fields and requirements as
        the Commander page); the library files are copied into this plugin's folder. -->
   <ItemGroup>
