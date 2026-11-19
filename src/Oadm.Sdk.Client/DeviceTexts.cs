@@ -15,6 +15,9 @@ public static class DeviceTexts
     /// <summary>SDK 0.15.0: the tooltip of <see cref="Provisioning"/> on the Add devices page.</summary>
     public const string ProvisioningTip = "Provisioning sets it up after it is added";
 
+    /// <summary>SDK 0.15.0: the login state of a factory-new camera on the Add devices page while provisioning is on.</summary>
+    public const string ReadyForProvisioning = "Ready for provisioning";
+
     /// <summary>Length of the shortened device id of a removed device.</summary>
     public const int ShortIdLength = 8;
 

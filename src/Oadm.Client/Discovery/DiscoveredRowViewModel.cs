@@ -279,6 +279,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     public string ChipTooltip => AuthState switch
     {
         AuthState.Authenticated => $"OADM logged in as {AuthUserName} with a known credential",
+        AuthState.PasswordNotSet when IsProvisioned => Oadm.Sdk.Client.DeviceTexts.ProvisioningTip,
         AuthState.PasswordNotSet => PasswordRules.Hint(PassphrasePolicy),
         _ when AuthDetail.Length > 0 => AuthDetail,
         _ => ChipText,
@@ -387,6 +388,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
             : AuthState switch
             {
                 AuthState.Authenticated => ($"Authenticated ({AuthUserName})", PillKind.Ok),
+                AuthState.PasswordNotSet when IsProvisioned => (Oadm.Sdk.Client.DeviceTexts.ReadyForProvisioning, PillKind.Accent),
                 AuthState.PasswordNotSet => ("Password not set", PillKind.Warning),
                 AuthState.LoginFailed => ("Login failed", PillKind.Error),
                 AuthState.Unreachable => ("Unreachable", PillKind.Error),
