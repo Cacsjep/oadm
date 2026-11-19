@@ -42,8 +42,8 @@ server's settings.
   server first.").
 - **Start provisioning / Stop provisioning**, the **active profile** (several profiles, one active) and **Manage profiles**
   (a dialog: every profile with its number of nodes and its state, Active or Has errors; New and Edit open the profile
-  editor, Activate, Delete with a red confirmation). While started, the right end of that row says "Started" with the
-  start time and who started it; a session lasts until Stop, also across a server restart.
+  editor, Activate, Delete with a red confirmation), in one row with the camera actions (Run failed again, Continue,
+  Remove) and the search at the right end. A session lasts until Stop, also across a server restart.
   Start warns (Start stays possible) when the Set IP pool overlaps the DHCP range.
 - **Cameras**: virtualized table, one row per camera that started a flow: the time it got its row, MAC, model, address,
   state (Queued, Running node, Done, Done with warnings, Failed), the node it is on, the problem. The serial number is

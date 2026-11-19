@@ -27,9 +27,9 @@
 
     <Grid Grid.Row="1" ColumnDefinitions="*,Auto">
       <Border x:Name="CamerasCard" Grid.Column="0" Classes="card">
-        <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="8">
-          <!-- Start or Stop, the active profile and Manage profiles left; the state of provisioning at the right end. -->
-          <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="12">
+        <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
+          <!-- One row: Start or Stop, the active profile, Manage profiles, the actions on the selected cameras; the search right. -->
+          <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="12">
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" IsVisible="{Binding MayManage}">
               <ui:ToolbarButton x:Name="StartButton" IconKey="start" Text="{x:Static vm:ProvisioningTexts.StartProvisioning}" Command="{Binding StartCommand}"
                                 IsVisible="{Binding IsStopped}" ToolTip.Tip="{Binding StartTip}" ToolTip.ShowOnDisabled="True" />
@@ -51,15 +51,10 @@
                 </ComboBox.ItemTemplate>
               </ComboBox>
             </StackPanel>
-            <ui:ToolbarButton x:Name="ManageProfilesButton" Grid.Column="2" IconKey="settings" Text="{x:Static vm:ProvisioningTexts.ManageProfiles}"
-                              Command="{Binding ManageProfilesCommand}" IsVisible="{Binding MayManage}" />
-            <ui:StatusChip x:Name="StateChip" Grid.Column="4" VerticalAlignment="Center" Text="{Binding StateText}" IsOk="{Binding IsStarted}" />
-          </Grid>
-
-          <!-- The cameras: the actions on the selected rows left, the search right. -->
-          <Grid Grid.Row="1" Classes="titleRow" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="12" Margin="{DynamicResource Oadm.GapTop}">
-            <TextBlock Grid.Column="0" Classes="sectionTitle" Text="{x:Static vm:ProvisioningTexts.Cameras}" VerticalAlignment="Center" />
-            <ui:ToolbarOverflowPanel Grid.Column="1" Spacing="4" IsVisible="{Binding MayManage}">
+            <ui:ToolbarOverflowPanel Grid.Column="2" Spacing="4" IsVisible="{Binding MayManage}">
+              <ui:ToolbarButton x:Name="ManageProfilesButton" IconKey="settings" Text="{x:Static vm:ProvisioningTexts.ManageProfiles}"
+                                Command="{Binding ManageProfilesCommand}" />
+              <ui:ToolbarSeparator />
               <ui:ToolbarButton IconKey="refresh" Text="{x:Static vm:ProvisioningTexts.RunFailedAgain}" Command="{Binding RunFailedAgainCommand}"
                                 ToolTip.Tip="{x:Static vm:ProvisioningTexts.RunFailedAgainTip}" />
               <ui:ToolbarButton IconKey="start" Text="{x:Static vm:ProvisioningTexts.Continue}" Command="{Binding ContinueCommand}"
@@ -71,9 +66,9 @@
             <ui:SearchBox Grid.Column="3" Width="240" Text="{Binding SearchText}" Placeholder="{x:Static vm:ProvisioningTexts.SearchCameras}" />
           </Grid>
 
-          <TextBlock Grid.Row="2" Classes="error" Text="{Binding ErrorText}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+          <TextBlock Grid.Row="1" Classes="error" Text="{Binding ErrorText}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
 
-          <Panel Grid.Row="3">
+          <Panel Grid.Row="2">
             <DataGrid x:Name="CameraGrid" Classes="wrapRows" ItemsSource="{Binding Rows}" IsReadOnly="True" CanUserSortColumns="True"
                       CanUserReorderColumns="False" SelectionMode="Extended" MinHeight="160">
               <DataGrid.Columns>

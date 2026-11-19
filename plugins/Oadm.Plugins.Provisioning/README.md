@@ -125,7 +125,8 @@ The engine is the node's `INodeHost`: `AutoAdd`, `Tasks`, `Devices`, `Time`, `Op
   own page (`OpenAsync("plugin:oadm.dhcp-server")`), never a copy of its form; the pool overlap warning below.
 - **Toolbar**: Start provisioning (disabled with the reason as tooltip: no DHCP server, no active profile, profile with
   errors), Stop provisioning (confirmed), the active profile (choosing one calls `activateProfile`, a refusal goes back),
-  Manage profiles; the state chip at the right end.
+  Manage profiles, then the camera actions and the search at the right end, all in one row (the buttons go into the
+  overflow menu when the flow card leaves too little room).
 - **Manage profiles** (`ProfilesWindow`, `ProfilesDialogViewModel`): the profiles with their nodes and state (Active, Has
   errors); New and Edit (also a double click) open the profile editor over it, Activate (off for a draft or the active
   one, the reason as tooltip), Delete (red confirmation); a refusal directly below the list.
