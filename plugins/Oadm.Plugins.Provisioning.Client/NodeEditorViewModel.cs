@@ -289,9 +289,8 @@ public static class NodeForms
             new ListFieldViewModel("dnsServers", ProvisioningTexts.DnsServers, Strings(s["dnsServers"]), FieldRules.AddressItem, NetworkSettingsNode.MaxDns,
                 $"Enter at most {NetworkSettingsNode.MaxDns} DNS servers.")
             {
-                Hint = ProvisioningTexts.Optional,
                 WritesEmpty = true,
-            Help = ProvisioningTexts.DnsHelp,
+                Help = ProvisioningTexts.DnsHelp,
             },
             new TextFieldViewModel("searchDomain", ProvisioningTexts.SearchDomain, Text(s["searchDomain"]), FieldRules.Domain)
             {
@@ -350,7 +349,7 @@ public static class NodeForms
         [
             new CheckGroupFieldViewModel(ProvisioningTexts.SdCardDo, [format, encrypt],
                 () => format.IsChecked || encrypt.IsChecked || days.Text.Trim().Length > 0 ? null : ProvisioningTexts.ChooseSdCard) { Help = ProvisioningTexts.PrepareHelp },
-            new SecretFieldViewModel(ProvisioningTexts.Passphrase, FieldRules.ToGuid(s["secretId"])) { ShownWhen = () => encrypt.IsChecked, Help = ProvisioningTexts.SecretHelp },
+            new SecretFieldViewModel(ProvisioningTexts.Passphrase, FieldRules.ToGuid(s["secretId"]), rule: FieldRules.Passphrase) { ShownWhen = () => encrypt.IsChecked, Help = ProvisioningTexts.SecretHelp },
             days,
         ];
     }

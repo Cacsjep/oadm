@@ -345,12 +345,12 @@ public sealed partial class SecretFieldViewModel : NodeFieldViewModel
 {
     public const string SecretKey = "secretId";
 
-    public SecretFieldViewModel(string label, Guid? storedId, bool confirm = true)
+    public SecretFieldViewModel(string label, Guid? storedId, bool confirm = true, Func<string, string?>? rule = null)
         : base(SecretKey, label)
     {
         StoredId = storedId;
         AsksConfirm = confirm;
-        Rule(nameof(Text), () => Text.Length == 0 ? (StoredId is null ? ProvisioningTexts.TypeIt(Label) : null) : FieldRules.Password(Text));
+        Rule(nameof(Text), () => Text.Length == 0 ? (StoredId is null ? ProvisioningTexts.TypeIt(Label) : null) : (rule ?? FieldRules.Password)(Text));
         Rule(nameof(Confirm), () => AsksConfirm && Text.Length > 0 && Confirm != Text ? ProvisioningTexts.PasswordsDiffer : null);
         Ready();
     }
@@ -673,6 +673,12 @@ public static class FieldRules
     public static string? Password(string text) =>
         text.Length == 0 ? ProvisioningTexts.EnterPassword
         : text.Length > 64 || text.Any(c => c is < (char)0x20 or > (char)0x7E) ? ProvisioningTexts.PasswordRule
+        : null;
+
+    /// <summary>An SD card passphrase: at most 512 bytes, no control characters (the Edge storage task's rule).</summary>
+    public static string? Passphrase(string text) =>
+        System.Text.Encoding.UTF8.GetByteCount(text) > Nodes.SdCardNode.MaxPassphraseBytes ? ProvisioningTexts.PassphraseTooLong
+        : text.Any(char.IsControl) ? ProvisioningTexts.PassphraseCharacters
         : null;
 
     /// <summary>A host name or IPv4 address (NTP servers).</summary>

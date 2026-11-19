@@ -65,7 +65,7 @@ Nodes are moved up and down, removed (except the two fixed ones) and configured 
 with errors is saved as a draft and cannot be active or started until they are fixed.
 
 Every node ends **Success**, **Warning** or **Error** with a plain message ("AXIS OS 12.6.95 installed.", "No file for
-this model.", "The camera did not answer at 10.0.0.120 within 2 minutes."). A node that does not apply (no SD card, no
+this model.", "The camera did not take 10.0.0.120: it did not answer within 2 minutes. OADM keeps it at 10.0.0.131."). A node that does not apply (no SD card, no
 remote focus) is Success with a grey "Not needed: ..." line. Each node has **Continue on error** (on by default; off for
 Set password).
 

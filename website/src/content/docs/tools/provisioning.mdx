@@ -130,12 +130,12 @@ Results:
 Sets the host name, the DNS servers and the search domain. Parts you leave empty stay as they are. Enter at least a host
 name or DNS servers.
 
-- **Host name**: optional. A pattern: `{model}`, `{serial}`, `{mac}` and `{n}` are filled in, for example
+- **Host name**: a pattern: `{model}`, `{serial}`, `{mac}` and `{n}` are filled in, for example
   `cam-{serial}`. Use `{n}`, `{serial}` or `{mac}`, else every camera gets the same name. Letters, digits and hyphens,
   at most 63 characters.
 - **First number**: shows when the pattern has `{n}`. The number of the first camera, 0 to 99999. Each camera of the
   session gets the next number, in the order they arrive.
-- **DNS servers**: optional. At most 2, separated by commas.
+- **DNS servers**: at most 2, separated by commas.
 - **Search domain**: optional, for example site.example.com. Needs DNS servers.
 
 Ends with "Host name cam-ACCC8E012345, DNS 10.0.0.1, search domain site.example.com." or an error with the reason.
@@ -216,7 +216,7 @@ Ends with "802.1X on." or an error with the reason.
 Prepares the SD card. Uses the camera's own file system.
 
 - **Prepare**: **Format**, **Encrypt** (formats too). Choose at least one, or enter days below.
-- **Passphrase** and **Confirm passphrase**: with Encrypt. Typed only, kept on the server, never shown again.
+- **Passphrase** and **Confirm passphrase**: with Encrypt. At most 512 bytes. Typed only, kept on the server, never shown again.
 - **Delete recordings older than (days)**: optional, 1 to 7000.
 
 Results:
@@ -267,7 +267,7 @@ Gives each camera a fixed address from a pool of its own.
   most 4,096 addresses.
 - **Subnet mask**: for example 255.255.255.0.
 - **Default router**: in the subnet of the pool, outside the pool.
-- **DNS servers**: optional. At most 2, separated by commas.
+- **DNS servers**: at most 2, separated by commas.
 
 How addresses are given:
 

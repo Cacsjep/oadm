@@ -148,7 +148,7 @@ public static class ProvisioningTexts
 
     // Network settings
     public const string HostName = "Host name";
-    public const string HostNameHint = "{model}, {serial}, {mac} and {n} are filled in. Optional";
+    public const string HostNameHint = "{model}, {serial}, {mac} and {n} are filled in. Enter a host name, DNS servers or both.";
     public const string StartNumber = "First number";
     public const string SearchDomain = "Search domain";
 
@@ -238,6 +238,8 @@ public static class ProvisioningTexts
     public const string NoRootCredential = "The credential list has no password of root.";
     public const string EnterPassword = "Enter a password.";
     public const string PasswordRule = "1 to 64 printable ASCII characters.";
+    public const string PassphraseTooLong = "The passphrase is too long.";
+    public const string PassphraseCharacters = "The passphrase contains characters the camera does not accept.";
     public const string PasswordsDiffer = "The passwords do not match.";
     public const string PasswordStoredHint = "Added to the credential list when you save; never shown again.";
 
