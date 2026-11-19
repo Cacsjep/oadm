@@ -118,8 +118,9 @@
   <StreamGeometry x:Key="Icon.undo">M9 14L4 9l5 -5 M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1 -5.5 5.5H11</StreamGeometry>
   <StreamGeometry x:Key="Icon.zap">M13 2L3 14h9l-1 8l10 -12h-9l1 -8z</StreamGeometry>
   <StreamGeometry x:Key="Icon.flame">M8.5 14.5a2.5 2.5 0 0 0 2.5 -2.5c0 -1.38 -0.5 -2 -1 -3c-1.07 -2.14 -0.22 -4.05 2 -6c0.5 2.5 2 4.9 4 6.5c2 1.6 3 3.5 3 5.5a7 7 0 1 1 -14 0c0 -1.15 0.43 -2.29 1 -3a2.5 2.5 0 0 0 2.5 2.5z</StreamGeometry>
-  <StreamGeometry x:Key="Icon.bell">M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3 -2 3 -9z M10.3 21a1.94 1.94 0 0 0 3.4 0</StreamGeometry>
+  <StreamGeometry x:Key="Icon.bell">M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3c0 0 3 -2 3 -9z M10.3 21a1.94 1.94 0 0 0 3.4 0</StreamGeometry>
   <!-- Lucide "message-square": the Assistant (title bar) -->
+  <StreamGeometry x:Key="Icon.bellRing">M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3c0 0 3 -2 3 -9 M10.3 21a1.94 1.94 0 0 0 3.4 0 M4 2C2.8 3.7 2 5.7 2 8 M22 8c0 -2.3 -0.8 -4.3 -2 -6</StreamGeometry>
   <StreamGeometry x:Key="Icon.chat">M21 15a2 2 0 0 1 -2 2H7l-4 4V5a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2z</StreamGeometry>
   <!-- Lucide "sparkles": the rail page AI -->
   <StreamGeometry x:Key="Icon.sparkles">M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135 -1.582a0.5 0.5 0 0 1 0 -0.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582 -6.135a0.5 0.5 0 0 1 0.963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a0.5 0.5 0 0 1 0 0.964L15.5 14.063a2 2 0 0 0 -1.437 1.437l-1.582 6.135a0.5 0.5 0 0 1 -0.963 0z M20 3v4 M22 5h-4 M4 17v2 M5 18H3</StreamGeometry>
@@ -138,6 +139,13 @@
   <!-- Lucide clipboard-check: hardening scan (checklist of the hardening guide). -->
   <StreamGeometry x:Key="Icon.clipboardCheck">M9 2h6a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1H9a1 1 0 0 1 -1 -1V3a1 1 0 0 1 1 -1z M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1 -2 2H6a2 2 0 0 1 -2 -2V6a2 2 0 0 1 2 -2h2 M9 14l2 2l4 -4</StreamGeometry>
   <!-- Device categories (first grid column, add wizard). Same 24x24 stroke style. -->
+  <StreamGeometry x:Key="Icon.moon">M12 3a6 6 0 0 0 9 9a9 9 0 1 1 -9 -9z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.cpu">M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2z M10 9h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-4a1 1 0 0 1 1 -1z M15 2v2 M15 20v2 M2 15h2 M2 9h2 M20 15h2 M20 9h2 M9 2v2 M9 20v2</StreamGeometry>
+  <StreamGeometry x:Key="Icon.timer">M10 2L14 2 M12 14L15 11 M4 14a8 8 0 1 0 16 0a8 8 0 1 0 -16 0z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.star">M11.525 2.295a0.53 0.53 0 0 1 0.95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166 0.756a0.53 0.53 0 0 1 0.294 0.904l-3.736 3.638a2.123 2.123 0 0 0 -0.611 1.878l0.882 5.14a0.53 0.53 0 0 1 -0.771 0.56l-4.618 -2.428a2.122 2.122 0 0 0 -1.973 0L6.396 21.01a0.53 0.53 0 0 1 -0.77 -0.56l0.881 -5.139a2.122 2.122 0 0 0 -0.611 -1.879L2.16 9.795a0.53 0.53 0 0 1 0.294 -0.906l5.165 -0.755a2.122 2.122 0 0 0 1.597 -1.16z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.archive">M3 3h18a1 1 0 0 1 1 1v3a1 1 0 0 1 -1 1h-18a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1z M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2V8 M10 12h4</StreamGeometry>
+  <StreamGeometry x:Key="Icon.lockKeyhole">M11 16a1 1 0 1 0 2 0a1 1 0 1 0 -2 0z M5 10h14a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2v-8a2 2 0 0 1 2 -2z M7 10V7a5 5 0 0 1 10 0v3</StreamGeometry>
+  <StreamGeometry x:Key="Icon.fileArchive">M10 12v-1 M10 18v-2 M10 7V6 M14 2v4a2 2 0 0 0 2 2h4 M15.5 22H18a2 2 0 0 0 2 -2V7l-5 -5H6a2 2 0 0 0 -2 2v16a2 2 0 0 0 0.274 1.01 M8 20a2 2 0 1 0 4 0a2 2 0 1 0 -4 0z</StreamGeometry>
   <StreamGeometry x:Key="Icon.device.camera">M16.75 12h3.632a1 1 0 0 1 0.894 1.447l-2.034 4.069a1 1 0 0 1 -1.708 0.134l-2.124 -2.97 M17.106 9.053a1 1 0 0 1 0.447 1.341l-3.106 6.211a1 1 0 0 1 -1.342 0.447L3.61 12.3a2.92 2.92 0 0 1 -1.3 -3.91L3.69 5.6a2.92 2.92 0 0 1 3.92 -1.3z M2 19h3.76a2 2 0 0 0 1.8 -1.1L9 15 M2 21v-4 M7 9h0.01</StreamGeometry>
   <StreamGeometry x:Key="Icon.device.encoder">M16 13l5.223 3.482a0.5 0.5 0 0 0 0.777 -0.416V7.87a0.5 0.5 0 0 0 -0.752 -0.432L16 10.5 M4 6h10a2 2 0 0 1 2 2v8a2 2 0 0 1 -2 2H4a2 2 0 0 1 -2 -2V8a2 2 0 0 1 2 -2z</StreamGeometry>
   <StreamGeometry x:Key="Icon.device.speaker">M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1 -2 2H6a2 2 0 0 1 -2 -2V4a2 2 0 0 1 2 -2z M12 6h0.01 M8 14a4 4 0 1 0 8 0a4 4 0 1 0 -8 0z M12 14h0.01</StreamGeometry>
