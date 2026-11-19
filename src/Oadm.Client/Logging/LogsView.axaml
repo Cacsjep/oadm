@@ -119,11 +119,19 @@
           <TextBlock Classes="secondary" Text="{Binding Audit.StatusLine}" />
         </StackPanel>
 
-        <DataGrid Grid.Row="2" x:Name="AuditGrid" ItemsSource="{Binding Audit.Entries}" IsReadOnly="True" SelectionMode="Extended"
+        <!-- wrapRows: a long detail (the outcome of a task run with its failures) wraps to at most three lines -->
+        <DataGrid Grid.Row="2" x:Name="AuditGrid" Classes="wrapRows" ItemsSource="{Binding Audit.Entries}" IsReadOnly="True" SelectionMode="Extended"
                   CanUserSortColumns="False" CanUserReorderColumns="False">
           <DataGrid.Columns>
             <DataGridTextColumn Header="Time" Width="150" Binding="{Binding TimeText}" x:DataType="log:AuditRowViewModel" />
-            <DataGridTextColumn Header="User" Width="130" Binding="{Binding UserName}" x:DataType="log:AuditRowViewModel" />
+            <DataGridTemplateColumn Header="User" Width="130">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="log:AuditRowViewModel">
+                  <!-- Wraps: "Provisioning (admin)", "MCP Lobby-bot" -->
+                  <TextBlock Classes="cellText" Text="{Binding UserName}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
             <DataGridTextColumn Header="Client" Width="130" Binding="{Binding ClientAddress}" x:DataType="log:AuditRowViewModel" />
             <DataGridTemplateColumn Header="Action" Width="230">
               <DataGridTemplateColumn.CellTemplate>
@@ -137,7 +145,13 @@
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
             <DataGridTextColumn Header="Target" Width="200" Binding="{Binding Target}" x:DataType="log:AuditRowViewModel" />
-            <DataGridTextColumn Header="Detail" Width="*" Binding="{Binding Detail}" x:DataType="log:AuditRowViewModel" />
+            <DataGridTemplateColumn Header="Detail" Width="*">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="log:AuditRowViewModel">
+                  <TextBlock Classes="cellText" Text="{Binding Detail}" ToolTip.Tip="{Binding DetailTip}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
           </DataGrid.Columns>
         </DataGrid>
       </Grid>

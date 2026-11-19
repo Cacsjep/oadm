@@ -460,8 +460,8 @@ public sealed class LoginTests
 
         await logs.ShowAuditCommand.ExecuteAsync(null);
         Assert.True(logs.IsAuditTab);
-        Assert.Equal(5014, audit.Entries.Count); // + the fake's sample entries
-        Assert.Equal("5,014 entries", audit.StatusLine);
+        Assert.Equal(5016, audit.Entries.Count); // + the fake's sample entries
+        Assert.Equal("5,016 entries", audit.StatusLine);
         Assert.True(audit.Entries[0].Id > audit.Entries[1].Id);
         return (session, logs, audit);
     }

@@ -91,3 +91,8 @@ password; every reveal is in the audit log.
 
 **Logs** > **Audit** (administrators) lists who did what: logins, user, role and settings changes, credential reveals,
 task runs, removed devices, PKI and server changes. Entries are kept 365 days.
+
+A task run is one entry. Its detail shows the number of devices while it runs, then how it ended: "3 devices: 2 done,
+1 failed" with the address, serial and error of the first three failed devices. Choose **Refresh** to see it. Each
+provisioning task has its own entry, by "Provisioning" and the administrator who turned provisioning on, with the camera
+and where it stopped ("failed at Set the password: ...").

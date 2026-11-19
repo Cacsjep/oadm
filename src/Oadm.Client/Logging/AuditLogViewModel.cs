@@ -38,6 +38,12 @@ public sealed class AuditRowViewModel
     public string Target { get; }
     public string Detail { get; }
 
+    /// <summary>A detail longer than the cell's three lines may show (the outcome of a task run) in full; null for a short one.</summary>
+    public string? DetailTip => Detail.Length > DetailTipLength ? Detail : null;
+
+    /// <summary>From this length on the Detail cell may cut the text, so its tooltip shows it whole.</summary>
+    public const int DetailTipLength = 200;
+
     /// <summary>Failed or locked logins: shown with the warning chip.</summary>
     public bool IsProblem { get; }
 

@@ -125,6 +125,37 @@ public sealed class LogsPageTests
         Assert.True(done);
     }
 
+    [Fact]
+    public async Task The_audit_tab_shows_the_outcome_of_a_task_run_in_full()
+    {
+        string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        bool done = await HeadlessSession.Shared.Dispatch(async () =>
+        {
+            using var api = new FakeOadmApi(TimeSpan.Zero);
+            var (logs, _, _) = Create(api, serverLog: true);
+            await logs.OnShownAsync();
+            await logs.ShowAuditCommand.ExecuteAsync(null);
+            var window = new Window { Width = 1400, Height = 820, Content = new Border { Padding = new Avalonia.Thickness(20), Child = new LogsView { DataContext = logs } } };
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+
+            // The long outcome wraps in its row (wrapRows) and its tooltip holds it whole; a short detail has none.
+            var upgrade = logs.Audit!.Entries.Single(e => e.Target == "Upgrade AXIS OS");
+            Assert.Equal(upgrade.Detail, upgrade.DetailTip);
+            Assert.Null(logs.Audit.Entries.Single(e => e.Target == "Restart").DetailTip);
+            var cell = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == upgrade.Detail);
+            Assert.Equal(Avalonia.Media.TextWrapping.Wrap, cell.TextWrapping);
+            Assert.Equal(upgrade.Detail, ToolTip.GetTip(cell));
+            Save(window, outDir, "client-logs-audit.png");
+            window.Close();
+            return true;
+        }, CancellationToken.None);
+        Assert.True(done);
+    }
+
     private static void Save(Window window, string? outDir, string name)
     {
         var frame = window.CaptureRenderedFrame();
