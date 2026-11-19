@@ -290,14 +290,12 @@ public sealed class PageViewModelTests
         Assert.Equal(ProvisioningTexts.NotRun, nodes[4].Line);
         Assert.True(nodes[4].IsDimmed);
         Assert.False(vm.Flow.CanSelect);
-        Assert.Equal("AC:CC:8E:4A:00:03", vm.FlowTitle);
-        Assert.Equal("AXIS Q6135-LE, 10.0.0.131", vm.FlowSubtitle);
 
         vm.SetSelection([vm.Rows.Single(r => r.IsWaiting)]);
         Assert.Equal("Oadm.AccentBrush", vm.Flow.Nodes[2].BrushKey);
         Assert.Equal(ProvisioningTexts.WaitingForApproval, vm.Flow.Nodes[2].Line);
 
-        vm.CloseFlowCommand.Execute(null);
+        vm.SetSelection([]);
         Assert.False(vm.HasFlow);
         Assert.Empty(vm.Flow.Nodes);
     }

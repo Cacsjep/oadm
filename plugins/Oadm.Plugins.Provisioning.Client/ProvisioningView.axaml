@@ -77,7 +77,7 @@
             <DataGrid x:Name="CameraGrid" Classes="wrapRows" ItemsSource="{Binding Rows}" IsReadOnly="True" CanUserSortColumns="True"
                       CanUserReorderColumns="False" SelectionMode="Extended" MinHeight="160">
               <DataGrid.Columns>
-                <DataGridTextColumn Header="{x:Static vm:ProvisioningTexts.Time}" Width="150" Binding="{Binding TimeText}" SortMemberPath="TimeSortKey" x:DataType="vm:CameraRowViewModel" />
+                <DataGridTextColumn Header="{x:Static vm:ProvisioningTexts.Time}" Width="140" CellStyleClasses="dimmed" Binding="{Binding TimeText}" SortMemberPath="TimeSortKey" x:DataType="vm:CameraRowViewModel" />
                 <DataGridTextColumn Header="{x:Static vm:ProvisioningTexts.MacAddress}" Width="140" Binding="{Binding Mac}" x:DataType="vm:CameraRowViewModel" />
                 <DataGridTextColumn Header="{x:Static vm:ProvisioningTexts.Model}" Width="1*" MinWidth="125" Binding="{Binding Model}" x:DataType="vm:CameraRowViewModel" />
                 <DataGridTextColumn Header="{x:Static vm:ProvisioningTexts.Address}" Width="115" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:CameraRowViewModel" />
@@ -108,18 +108,9 @@
 
       <!-- The flow of the camera clicked last: every node of the session's profile with the camera's result (read only). -->
       <Border x:Name="FlowCard" Grid.Column="1" Classes="card" Width="400" Margin="16,0,0,0" IsVisible="{Binding HasFlow}">
-        <Grid RowDefinitions="Auto,*" RowSpacing="8">
-          <Grid Classes="titleRow" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-            <TextBlock Grid.Column="0" Classes="cardTitle" Text="{Binding FlowTitle}" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="1" Classes="secondary" Text="{Binding FlowSubtitle}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-            <Button Grid.Column="2" Classes="toolbar iconOnly" ToolTip.Tip="Close" Command="{Binding CloseFlowCommand}">
-              <ui:OadmIcon Data="{DynamicResource Icon.close}" />
-            </Button>
-          </Grid>
-          <Border Grid.Row="1" Classes="liveViewSurface" ClipToBounds="True">
-            <ui:NodeChainCanvas x:Name="FlowCanvas" Chain="{Binding Flow}" />
-          </Border>
-        </Grid>
+        <Border Classes="liveViewSurface" ClipToBounds="True">
+          <ui:NodeChainCanvas x:Name="FlowCanvas" Chain="{Binding Flow}" />
+        </Border>
       </Border>
     </Grid>
 

@@ -22,7 +22,7 @@ public sealed partial class CameraRowViewModel : ObservableObject
     public string Mac { get; }
 
     /// <summary>When the camera got its row (its first address of the session), in local time.</summary>
-    public string TimeText => Row.Seen == default ? string.Empty : Row.Seen.ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture);
+    public string TimeText => Row.Seen == default ? string.Empty : Row.Seen.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>The sort of the time column.</summary>
     public long TimeSortKey => Row.Seen.UtcTicks;

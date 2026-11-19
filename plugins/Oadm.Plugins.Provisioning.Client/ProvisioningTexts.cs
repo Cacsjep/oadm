@@ -100,7 +100,7 @@ public static class ProvisioningTexts
     };
 
     public static string Started(DateTimeOffset at, string? by) =>
-        "Started " + at.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) + (string.IsNullOrEmpty(by) ? string.Empty : " by " + by);
+        "Started " + at.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + (string.IsNullOrEmpty(by) ? string.Empty : " by " + by);
 
     // ---- A camera's flow ----
     public const string NotRun = "Not run";

@@ -129,14 +129,10 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
 
     /// <summary>The camera whose flow the canvas shows (the row clicked last).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasFlow), nameof(FlowTitle), nameof(FlowSubtitle))]
+    [NotifyPropertyChangedFor(nameof(HasFlow))]
     public partial CameraRowViewModel? FlowCamera { get; set; }
 
     public bool HasFlow => FlowCamera is not null;
-
-    public string FlowTitle => FlowCamera?.Mac ?? string.Empty;
-
-    public string FlowSubtitle => FlowCamera is { } c ? string.Join(", ", new[] { c.Model, c.Address }.Where(s => s.Length > 0)) : string.Empty;
 
     /// <summary>The flow of <see cref="FlowCamera"/>.</summary>
     public NodeChain Flow { get; } = new() { CanSelect = false };
@@ -268,20 +264,13 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
     {
         ArgumentNullException.ThrowIfNull(rows);
         _selected = [.. rows];
-        if (_selected.Count > 0)
-        {
-            FlowCamera = _selected[^1];
-        }
+        FlowCamera = _selected.Count > 0 ? _selected[^1] : null;
 
         RefreshCommands();
     }
 
     /// <summary>Shows the flow of a camera (a click on its row).</summary>
     public void ShowFlow(CameraRowViewModel? row) => FlowCamera = row;
-
-    /// <summary>Closes the flow card.</summary>
-    [RelayCommand]
-    public void CloseFlow() => FlowCamera = null;
 
     [RelayCommand(CanExecute = nameof(CanStart))]
     public async Task StartAsync()
