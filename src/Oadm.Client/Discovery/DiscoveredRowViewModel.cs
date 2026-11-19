@@ -388,7 +388,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
             : AuthState switch
             {
                 AuthState.Authenticated => ($"Authenticated ({AuthUserName})", PillKind.Ok),
-                AuthState.PasswordNotSet when IsProvisioned => (Oadm.Sdk.Client.DeviceTexts.ReadyForProvisioning, PillKind.Accent),
+                AuthState.PasswordNotSet when IsProvisioned => (Oadm.Sdk.Client.DeviceTexts.ReadyForProvisioning, PillKind.Ok),
                 AuthState.PasswordNotSet => ("Password not set", PillKind.Warning),
                 AuthState.LoginFailed => ("Login failed", PillKind.Error),
                 AuthState.Unreachable => ("Unreachable", PillKind.Error),

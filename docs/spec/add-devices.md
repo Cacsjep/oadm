@@ -268,7 +268,7 @@ device the polling turns Password not set (`FactoryNewDeviceNotices`). Discovery
 starting device (they stay fast): such a device is probed as it answers then and, once added, the polling turns it
 Password not set when it is ready, which reports it. While provisioning is on, the page adds a factory-new device without a
 first password (status Password not set, the server's Commit takes it like that already) and its provisioning task sets
-it: its login chip reads "Ready for provisioning" (`DeviceTexts.ReadyForProvisioning`, accent, decision 2026-11-19)
+it: its login chip reads "Ready for provisioning" (`DeviceTexts.ReadyForProvisioning`, green check, decision 2026-11-19)
 instead of the yellow Password not set, and the row shows "Provisioning" (`DeviceTexts.Provisioning`, the one phrase) in
 the Action column instead of Set password, opens no first-password editor and can be added at once (a device at a site keeps Set password: provisioning
 does not run at sites). The page reads the plugin's `state` (`oadm.provisioning`, every signed-in user) when it opens; no

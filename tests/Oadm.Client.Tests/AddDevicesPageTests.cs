@@ -207,7 +207,7 @@ public sealed class AddDevicesPageTests : IDisposable
             await TestSupport.WaitUntilAsync(() => page.Rows.Count == 11 && page.Rows.All(r => r.AuthState != AuthState.Pending));
             Assert.True(page.ProvisioningOn);
             DiscoveredRowViewModel factoryNew = Row(page, "10.0.0.90");
-            Assert.Equal(("Ready for provisioning", Oadm.Client.Devices.PillKind.Accent), (factoryNew.ChipText, factoryNew.ChipKind));
+            Assert.Equal(("Ready for provisioning", Oadm.Client.Devices.PillKind.Ok), (factoryNew.ChipText, factoryNew.ChipKind));
             Assert.True(factoryNew.IsProvisioned);
             Assert.False(factoryNew.ShowSetPassword);
             Assert.False(factoryNew.ShowPasswordReady);
