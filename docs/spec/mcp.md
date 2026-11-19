@@ -880,9 +880,11 @@ The website has a user page (Administration > MCP server, `admin/mcp-server`, wi
   the page's checks with `dryRun`), `oadm_pki_certificate_sign_preview`/`_run(request, use, policy_id)` (the CSR as PEM
   text with its line breaks as spaces; the run answers the certificate as a file reference); both Administrator with
   Manage the certificate authority, all devices, audited like the page,
-  `oadm_ntp_status`, `oadm_dhcp_status`, `oadm_dhcp_leases`, `oadm_hardening_results`, the Provisioning page's reads and
-  changes `oadm_provisioning_*` (the root password of Set password only as a secret, `new_password`; a node's password or
-  passphrase only as the secret of `oadm_provisioning_secret_store`, which answers its id), and the settings reads of Device
+  `oadm_ntp_status`, `oadm_dhcp_status`, `oadm_dhcp_leases`, `oadm_hardening_results`, the reads and changes of
+  Provisioning management `oadm_provisioning_*` (On and Off, the profiles, Run again of failed provisioning tasks, the last
+  run of a camera; the root password of Set password only as a secret, `new_password`; a node's password or passphrase
+  only as the secret of `oadm_provisioning_secret_store`, which answers its id; a node's settings as JSON text, since a
+  tool's schema takes no value of any type), and the settings reads of Device
   configuration `oadm_config_parameters` (a setting by a word of its name or label, or exact names: the devices grouped
   by value), `oadm_config_action_rules` and `oadm_config_stream_profiles` (grouped by rule or profile name), read with
   the Configure devices dialog's code, 8 devices at a time within 40 s (the rest counted as not read), no secret value,

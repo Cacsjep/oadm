@@ -1,9 +1,11 @@
 # Zero-touch provisioning
 
-Status: **redesign agreed 2026-11-19, not built yet** (the build of 2026-11-18, a rail page with its own camera list and
-flow view for cameras of OADM's DHCP server, is replaced by this). Open (ask the maintainer): Users and SD card take a
-typed password only; SD card formats with the camera's own file system and sets only the maximum age; Configuration
-applies parameters, action rules and schedules (a configuration file has no stream profiles).
+Status: **redesign agreed 2026-11-19; the server side is built (stage 1), the client side is not built yet** (stage 2:
+the Devices toolbar button, Provisioning management, the Add devices page; the build of 2026-11-18, a rail page with its
+own camera list and flow view for cameras of OADM's DHCP server, is replaced by this). Open (ask the maintainer): Users
+and SD card take a typed password only; SD card formats with the camera's own file system and sets only the maximum age;
+Configuration applies parameters, action rules and schedules (a configuration file has no stream profiles); where the
+client offers Run again (below).
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
@@ -47,8 +49,39 @@ page. On by default changes nothing by itself: provisioning itself is **Off** un
   background discovery), Network range, Add manually, Import or a lease of OADM's DHCP server. The camera is added to
   OADM (status Password not set) and its task starts. On the Add devices page such a camera shows **Provisioning**
   instead of Set password and is added like any other; its setup runs afterwards.
-- **Progress**: the tasks pane. A failed task is retried with the task's usual Run again (only the failed steps, in
-  order). There is no camera list or flow view of its own.
+- **Progress**: the tasks pane. There is no camera list or flow view of its own. The task engine has no Run again of its
+  own ([tasks.md](tasks.md): no retry), so Provisioning has one: **Run again** on a failed "Provision with" task starts a
+  new task for that camera with the same profile that runs only the failed steps and those that never ran, in order (a
+  camera that failed the check that it is new is checked again and runs everything). Where the client offers it (the
+  task's row in the tasks pane, the task details) is decided with stage 2.
+
+### How a task starts (stage 1, 2026-11-19)
+
+- **One hook in the server**: `IDeviceAutoAdd.WatchFactoryNew` (SDK 0.15.0) reports every managed device that needs its
+  first password: a device the device adder stores as Password not set (the add page's Add, an import, the waiting list,
+  the automatic add of the DHCP server, an agent's add) and a managed device whose status the polling turns Password not
+  set (reset to factory default). While provisioning is on, each local one gets its task (found together: one batch).
+- **A lease of OADM's DHCP server** to an Axis MAC address: the camera is asked whether it is new (no answer: asked again
+  for 2 minutes); a new one is added (Password not set, which starts its task) or, when OADM manages it already, gets its
+  task at once; a camera with a password is neither added nor changed. On also checks the cameras that hold a lease at
+  that moment.
+- Cameras OADM manages as Password not set when provisioning is turned on get no task by that (they get one when they are
+  found again: a lease, a reset).
+- **Off** starts nothing new; running and queued provisioning tasks run to their end (a person cancels them in the tasks
+  pane). On, who turned it on and the last lease read survive a restart; the administrator's MyAxis sign-in does not
+  (Upgrade AXIS OS online then asks to turn provisioning off and on again).
+- **The task**: `oadm.provisioning.run`, hidden from the menus (only Provisioning starts it), at most 8 at once (its
+  `MaxParallelDevices`, the server setting can only lower it). Its payload (memory only) is the active profile as it was
+  when the task started; editing the profile changes later tasks only. Steps: "Check that the camera is new" (the camera
+  itself, the server waits while it is starting), then one per node: "Set the password", "Set the network settings",
+  "Upgrade AXIS OS from axis.com", "Upgrade AXIS OS from a file", "Set the date and time", "Apply the configuration", "Add
+  the users", "Install the certificate", "Turn on 802.1X", "Set up the SD card", "Run the autofocus", "Run the VAPIX
+  commands". Success is Done, Not needed is Skipped with its reason, Warning is a warning step, Error a failed step; the
+  task fails when a step failed. The nodes start the tasks of their areas as before; those show in the tasks pane too.
+- **Set password** waits after the password until OADM has read the camera with it (status Ok and its API list, at most
+  2 minutes), so the next steps can check their APIs; not read in time is a Warning.
+- **Profiles**: the active profile cannot be deleted while provisioning is on. The search domain of Network needs DNS
+  servers.
 
 ## Profiles: the flow
 
@@ -104,7 +137,8 @@ Left out on purpose: Wait for approval (2026-11-19), install applications, actio
 hardening check, VPN, restart, snapshot, notify, capture mode / rotation.
 
 Older profiles of the 2026-11-18 build load: Add to OADM and Wait for approval are dropped, Set IP and Network settings
-become one Network node (Set IP's pool, the DNS servers and search domain of either).
+become one Network node at the place of the first of them (Set IP's pool, the DNS servers of Network settings, else Set
+IP's, and its search domain); the converted profiles are stored again.
 
 ## Sites
 
@@ -120,7 +154,8 @@ Not at sites in the first version: cameras found through a site node are added a
   only the failed steps, in order.
 - Network pool: parallel cameras never get the same address (gates); the next free address skips reservations, OADM
   devices and answering addresses; overlap with the DHCP range is a warning; a used-up pool is an Error; no answer at the
-  new address within 2 minutes is an Error and the camera stays reachable; Keep never writes an address.
+  new address within 2 minutes is an Error and the camera stays reachable; Keep never writes an address. Given addresses
+  stay reserved (also across Off, On and restarts) until they are OADM devices.
 - At most 8 at once (gates, no timing).
 - Every node with its fake device: Success, Warning, Error and Not needed with their messages.
 - Older profiles load with the nodes converted as above.
