@@ -1,145 +1,127 @@
 # Zero-touch provisioning
 
-Status: **built** (every node below, the page methods and tools, the page with the canvas and the profile editor, the
-user page `website/src/content/docs/tools/provisioning.mdx`); no hardware run yet. Flow design of 2026-11-18; replaces the step list of 2026-10-27. Open (ask the maintainer): Users and SD card take
-a typed password only (the server plugin never reads a password of the credential list; only the plugin's client shows
-one, through the host's reveal of Set password); SD card formats with the camera's own
-file system and sets only the maximum age (Edge storage has no file system choice and no cleanup level); Configuration
+Status: **redesign agreed 2026-11-19, not built yet** (the build of 2026-11-18, a rail page with its own camera list and
+flow view for cameras of OADM's DHCP server, is replaced by this). Open (ask the maintainer): Users and SD card take a
+typed password only; SD card formats with the camera's own file system and sets only the maximum age; Configuration
 applies parameters, action rules and schedules (a configuration file has no stream profiles).
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
-The installer plugs factory-new cameras into the PoE switch and waits: OADM's DHCP server gives each one an address, the
-active **profile**, a flow of nodes, runs on it, and a few minutes later the camera has its password, AXIS OS,
-configuration, time, certificate and fixed address. The same canvas is the editor of a profile and, for one camera, the
-result: every node green, yellow or red with its message.
+The installer turns provisioning on and connects factory-new cameras. Every factory-new camera OADM finds, however it
+finds it, lands in the device list and gets one **task** that runs the active **profile**, a flow of nodes: a few minutes
+later the camera has its password, AXIS OS, configuration, time, certificate and network settings. The progress is the
+task in the tasks pane, like every other change OADM makes.
 
-Core plugin `plugins/Oadm.Plugins.Provisioning` (+ `.Client`), id `oadm.provisioning`, rail page **Provisioning** (group
-Automation), **free, on by default**. On by default changes nothing by itself: a camera starts a flow only while
-provisioning is started on the page and a profile is active. Every node uses the existing task of its area (with that task's
-checks); provisioning adds the order, the per-camera result and the fixed address pool. It never changes the DHCP
-server's settings.
+Core plugin `plugins/Oadm.Plugins.Provisioning` (+ `.Client`), id `oadm.provisioning`, **free, on by default**, no rail
+page. On by default changes nothing by itself: provisioning itself is **Off** until an Administrator turns it on.
 
 ## Rules that never break
 
-1. **Only factory-new cameras from OADM's DHCP.** A flow starts only for an Axis MAC that got its address from OADM's DHCP
-   server **and** has no password yet (status Password not set). Any other camera that gets a lease is listed as "Not new,
-   left as it is" and never changed. No Discovery fallback.
-2. **Set password first, and it stops.** Every profile starts with the fixed nodes Set password and Add to OADM (a new one also gets
-   Set IP after them, which is not fixed). If Set
-   password fails, nothing after it runs for that camera. Every other node continues on error by default.
-3. **Never the same address twice.** The Set IP node takes and reserves the next free address of its pool under a short
-   lock (taking only, not the write), so two cameras never get the same address; the writes run in parallel.
-4. **No lock-out.** The fixed IP must answer within 2 minutes, else the node is red with both addresses and OADM keeps the
-   camera at the address that answers. OADM's own account on the camera is never removed or demoted.
-5. **Device safety** of task plugins for every node (CLAUDE.md): APIs checked first, input validated before the first
+1. **Only factory-new cameras.** A task starts only for an Axis device that has no password yet (Password not set),
+   checked on the camera itself right before the first write, never from an old record (a camera reset to factory
+   default after it was added is new again). A camera that is still starting up is asked again until it says whether it
+   needs setup (at most 2 minutes), never taken as configured. Any other camera is never changed.
+2. **Off by default, Administrator only.** Only an Administrator turns provisioning on or off and edits profiles
+   (provisioning writes to every new camera it finds, on every network OADM sees). On and off are audited.
+3. **Set password first, and it stops.** Every profile starts with the fixed node Set password. If it fails, nothing
+   after it runs for that camera. Every other node continues on error by default.
+4. **One task per camera.** The task "Provision with <profile>" has one named step per node; it follows the task rules
+   (`docs/spec/tasks.md`: one task per device, never a persisted payload, parallelism per plugin, at most 8 at once).
+   A camera already in a running provisioning task gets no second one.
+5. **Never the same address twice.** The Network node's pool hands out the next free address under a short lock (taking
+   only, not the write), so two cameras never get the same address.
+6. **No lock-out.** A new fixed address must answer within 2 minutes, else the step is red with both addresses and OADM
+   keeps the camera at the address that answers. OADM's own account on the camera is never removed or demoted.
+7. **Device safety** of task plugins for every node (CLAUDE.md): APIs checked first, input validated before the first
    write, secrets only in the master-key store, never logged.
-6. **Administrator only** for profiles and Start/Stop (provisioning writes to every new camera). The
-   device group rules apply to the devices it adds.
 
-## The page
+## Where it lives
 
-- **DHCP card** (top): the DHCP server's state, interface and range, with Turn on / Edit opening the DHCP server's own
-  form. Provisioning never changes the DHCP server; without a running DHCP server it cannot start ("Turn on the DHCP
-  server first.").
-- **Start provisioning / Stop provisioning**, the **active profile** (several profiles, one active) and **Manage profiles**
-  (a dialog: every profile with its number of nodes and its state, Active or Has errors; New and Edit open the profile
-  editor, Activate, Delete with a red confirmation), in one row with the camera actions (Run failed again, Continue,
-  Remove) and the search at the right end. A session lasts until Stop, also across a server restart.
-  Start warns (Start stays possible) when the Set IP pool overlaps the DHCP range.
-- **Cameras**: virtualized table, one row per camera that started a flow, columns in this order: the time it got its row,
-  IP address, MAC address, model, the node it is on, state (Queued, Running node, Done, Done with warnings, Failed), the
-  problem. The serial number is the MAC address on Axis cameras: no column of its own, the search still finds it. Clicking a row opens the profile's canvas
-  with that camera's result per node. **Run failed again** re-runs only the red nodes of the chosen cameras, in flow
-  order. Rows can be removed (the camera stays in OADM).
-- Up to **8 cameras at once**; more wait as Queued.
+- **Devices toolbar**: a **Provisioning** button right of Export opens **Provisioning management**. While provisioning is
+  on, the button is green and reads **Provisioning active**.
+- **Provisioning management** (dialog): the **On / Off** switch, the **active profile** (one at a time) and the profile
+  list (every profile with its number of nodes and its state, Active or Has errors; New and Edit open the profile editor,
+  Activate, Delete with a red confirmation). On needs an active profile without errors. While no profile is active, the
+  first one saved without errors becomes active.
+- **What starts a task** while provisioning is on: every factory-new Axis camera OADM finds by Discovery (also the
+  background discovery), Network range, Add manually, Import or a lease of OADM's DHCP server. The camera is added to
+  OADM (status Password not set) and its task starts. On the Add devices page such a camera shows **Provisioning**
+  instead of Set password and is added like any other; its setup runs afterwards.
+- **Progress**: the tasks pane. A failed task is retried with the task's usual Run again (only the failed steps, in
+  order). There is no camera list or flow view of its own.
 
 ## Profiles: the flow
 
-A profile is a name and a **straight chain of nodes** on the top-to-bottom canvas of Vision Center (no branches, no
-loops). A new profile starts with Set password, Add to OADM and Set IP (decision 2026-11-19; Set IP can be moved and
-removed like any other node). Nodes are added like in Vision Center: the + below the last node or the selected one (never
-below Set password) opens the shared node list (`NodePicker`: search, the kinds in groups First steps, AXIS OS, Settings,
-Security, Camera, Last steps, each with its coloured icon, name and one line) and the new node goes right after that node.
-Nodes are moved up and down, removed (except the two fixed ones) and configured in the side panel; every field has a
-"?" at its right with a short help as tooltip (`FormField.Help`). The profile is checked before it can be active (one error per node, the same check in the editor); a profile
-with errors is saved as a draft and cannot be active or started until they are fixed. While no profile is active, the
-first one saved without errors becomes active (Start is the next click).
+A profile is a name and a **straight chain of nodes** on the top-to-bottom node canvas (no branches, no loops). A new
+profile starts with Set password. Nodes are added with the + below the last node or the selected one (never above Set
+password), from the shared node list (`NodePicker`: search, the kinds in groups, each with its coloured icon, name and
+one line), moved up and down, removed (except Set password) and configured in the side panel; every field has a "?" with
+a short help (`FormField.Help`). The profile is checked before it can be active (one error per node, the same check in
+the editor); a profile with errors is saved as a draft.
 
-Every node ends **Success**, **Warning** or **Error** with a plain message ("AXIS OS 12.6.95 installed.", "No file for
-this model.", "The camera did not take 10.0.0.120: it did not answer within 2 minutes. OADM keeps it at 10.0.0.131."). A node that does not apply (no SD card, no
-remote focus) is Success with a grey "Not needed: ..." line. Each node has **Continue on error** (on by default; off for
-Set password).
+Every step ends **Success**, **Warning** or **Error** with a plain message ("AXIS OS 12.6.95 installed.", "No file for
+this model."). A node that does not apply (no SD card, no remote focus) is Success with "Not needed: ...". Each node has
+**Continue on error** (on by default; off for Set password). Warning always continues.
 
 ## Nodes
 
 1. **Set password** (fixed, first): the root password, from OADM's credential list or typed (stored encrypted with the
    master key, added to the credential list, never shown again). The choice lists the root entries with the time each was
-   added (equal user names apart). An eye next to it shows the chosen entry's stored password with the Credentials page's
-   rules (decision 2026-11-19): Administrator only (hidden for others), through the host's reveal
-   (`ICorePluginClientContext.RevealCredentialAsync` = `SettingsService.RevealCredential`, audited "Credential list
-   password of <user> revealed", never the password, refused while no user exists); masked as 8 bullets until then, masked
-   and forgotten again on the second click, another choice, Type a password and when the editor closes; never sent to the
-   server plugin, never logged.
-2. **Add to OADM** (fixed, second): adds the camera with that login; optional **tags**, so it lands in the right device
-   group. OADM has no names of its own: a device shows its host name or address.
-3. **Upgrade AXIS OS online**: AXIS OS from axis.com with the MyAxis sign-in of the administrator who started
-   provisioning (expired or no sign-in: Error "Sign in to MyAxis."; after a server restart Start again). Target: the latest of the camera's current track, the latest LTS, or
-   the latest active track; optional **only if older than** a version (else Success "Already 12.6.95."). The Upgrade
-   AXIS OS task's checks apply.
-4. **Upgrade AXIS OS from files**: several uploaded AXIS OS files; each camera gets the file for its model. No file for
-   the model: **Warning**. Never a downgrade: a file older than the camera's AXIS OS is skipped with Success "Already
-   12.6.95.".
-5. **Network settings**: DNS servers (required) and search domain. Provisioning never sets a camera's host name
-   (decision 2026-11-19); older profiles with `hostName` and `startNumber` still load, the two are ignored.
-6. **Date and time**: NTP servers (NTS where the camera has it) or OADM's NTP server (its address filled in), and the
-   time zone, chosen from the time zones of AXIS OS like in the Date and time task (the shared `TimeZoneChoice`; the
-   server still checks the id).
-7. **Configuration**: a configuration file of Device configuration **or** a template camera read at run time; the areas
-   to apply (parameters, action rules, schedules, stream profiles). Device-specific values (address, host name,
-   certificates, passwords) are never copied; settings the model lacks: Warning listing them.
-8. **Users**: more accounts (name, role, password from the credential list or typed); several Users nodes allowed;
+   added; the eye shows the chosen entry's password with the Credentials page's rules (Administrator only, through the
+   host's reveal, audited, never the password in the log). After it, OADM logs in to the camera with that password.
+2. **Network**: the camera's network settings, every part optional but at least one set:
+   - **IP address**: **Keep** (as it is now, for example from DHCP) or **From a pool**: first and last address, subnet
+     mask, default router. It takes the next address of the pool that is free (rule 5): not reserved by provisioning, no
+     OADM device has it, no answer to ping and TCP 80/443. A taken address is skipped and the step says so
+     ("192.168.15.12 is in use, 192.168.15.13 assigned."). Pool used up: Error "No free address left in the pool." Given
+     addresses stay reserved until they are OADM devices. A pool overlapping the range of OADM's DHCP server is a warning
+     in the node, never an error. A new Network node starts with the first three numbers of that DHCP range
+     ("192.168.15.") and its subnet mask when OADM's DHCP server is set up, else empty with 255.255.255.0.
+   - **DNS servers** and **search domain**.
+   - Never the host name. The address is written last; OADM follows the moved camera.
+3. **Upgrade AXIS OS online**: from axis.com with the MyAxis sign-in of the Administrator who turned provisioning on
+   (expired or none: Error "Sign in to MyAxis."). Target: the latest of the camera's current track, the latest LTS, or the
+   latest active track; optional **only if older than** a version (else Success "Already 12.6.95."). The Upgrade AXIS OS
+   task's checks apply.
+4. **Upgrade AXIS OS from files**: uploaded AXIS OS files; each camera gets the file for its model. No file for the
+   model: Warning. Never a downgrade.
+5. **Date and time**: NTP servers (NTS where the camera has it), the ones DHCP gives or OADM's NTP server, and the time
+   zone (the shared `TimeZoneChoice`).
+6. **Configuration**: a configuration file of Device configuration **or** a template camera read at run time; the areas
+   to apply. Device-specific values (address, host name, certificates, passwords) are never copied; settings the model
+   lacks: Warning listing them.
+7. **Users**: more accounts (name, role, password from the credential list or typed); several Users nodes allowed;
    OADM's account never touched.
-9. **Certificate**: install a certificate by a PKI issuing policy (clock check first), **or** set up EST enrollment (the
-   EST server's rules, PRO) so the camera enrolls and renews by itself.
-10. **802.1X**: turns on 802.1X with the certificate and CA of PKI's 802.1X policies (no settings of its own). Placed
-    anywhere; the switch is the installer's business.
-11. **SD card**: format (ext4), encrypt (passphrase from the credential list or typed), cleanup settings (max age,
-    level). No card: Not needed.
-12. **Autofocus**: starts the autofocus and waits until it is done (at most 2 minutes). No remote focus: Not needed.
-13. **VAPIX commands**: commands of the VAPIX Commander library with their values (its checks and API requirements); a
-    command the model lacks: Warning.
-14. **Wait for approval**: the camera waits here until a person presses Continue on its row (for example before the fixed
-    IP).
-15. **Set IP**: an address **pool** of its own (first and last address, for example 192.168.15.10 to 192.168.15.50),
-    subnet mask, gateway and DNS servers; it should not overlap the DHCP range (a warning in the node and at Start,
-    never an error). Under the lock (rule 3) it takes the next address of the pool, starting at the first, that is free:
-    not reserved in this session, no OADM device has it, no answer to ping and TCP 80/443. A taken address is skipped and
-    the node says so ("192.168.15.12 is in use, 192.168.15.13 assigned."). It writes the fixed IP, mask, gateway and DNS,
-    waits until the camera answers there (OADM follows the moved device). The session's reserved addresses are kept
-    until Stop; a new session starts at the first address again (the addresses given before are OADM devices by then and
-    skipped). Pool used up: Error "No free address left in the pool."
-    A new Set IP node (a new profile or the +) starts with the first three numbers of the DHCP range ("192.168.15.") in
-    First and Last address and the DHCP server's subnet mask, else 255.255.255.0; client side, saved nodes never change.
+8. **Certificate**: a certificate by a PKI issuing policy (clock check first), **or** EST enrollment (PRO).
+9. **802.1X**: with the certificate and CA of PKI's 802.1X policies.
+10. **SD card**: format, encrypt (passphrase typed), maximum age. No card: Not needed.
+11. **Autofocus**: starts it and waits until done (at most 2 minutes). No remote focus: Not needed.
+12. **VAPIX commands**: commands of the VAPIX Commander library with their values; a command the model lacks: Warning.
 
-Left out on purpose (2026-11-18): install applications, action rules (the Configuration node copies them), hardening
-check, VPN, restart, snapshot, notify, capture mode / rotation.
+Tags for the new device come from the Add devices page as usual (or none); the profile has no Add to OADM node.
+
+Left out on purpose: Wait for approval (2026-11-19), install applications, action rules (Configuration copies them),
+hardening check, VPN, restart, snapshot, notify, capture mode / rotation.
+
+Older profiles of the 2026-11-18 build load: Add to OADM and Wait for approval are dropped, Set IP and Network settings
+become one Network node (Set IP's pool, the DNS servers and search domain of either).
 
 ## Sites
 
-Not at sites in the first version: the DHCP server and the flows run on the server's own network only.
+Not at sites in the first version: cameras found through a site node are added as usual but get no provisioning task.
 
 ## Tests
 
-- Only Password not set cameras with an OADM DHCP lease start a flow; a configured camera is never changed.
-- Set password failing stops the flow; any other failing node continues unless Continue on error is off; Warning always
-  continues; Run failed again runs only the red nodes, in order.
-- Set IP: parallel cameras never get the same address (gates); the next free address skips session reservations, OADM
-  devices and answering addresses and says which it skipped; reservations survive a restart until Stop; the DHCP
-  server's settings never change; overlap with the DHCP range is a warning; a used-up pool is an Error; no answer at the new
-  address within 2 minutes is an Error and the camera stays reachable.
-- At most 8 cameras run at once (gates, no timing); more are Queued.
-- Every node with its task's fake device: Success, Warning, Error and Not needed with their messages.
-- The profile check: one error per node, the same in the editor and before activation.
-- Network settings never writes a host name; settings of an older profile with a host name still load.
-- 100,000 devices in OADM: the free-address check and the camera table stay fast.
+- Only cameras that say they need setup start a task; a camera that is still starting is asked again, never taken as
+  configured; a managed camera reset to factory default is new again; a configured camera is never changed.
+- Off: nothing starts. On: each source (Discovery, range, Add manually, Import, DHCP lease) starts one task per camera,
+  never a second one for the same camera.
+- Set password failing stops the task; any other failing step continues unless Continue on error is off; Run again runs
+  only the failed steps, in order.
+- Network pool: parallel cameras never get the same address (gates); the next free address skips reservations, OADM
+  devices and answering addresses; overlap with the DHCP range is a warning; a used-up pool is an Error; no answer at the
+  new address within 2 minutes is an Error and the camera stays reachable; Keep never writes an address.
+- At most 8 at once (gates, no timing).
+- Every node with its fake device: Success, Warning, Error and Not needed with their messages.
+- Older profiles load with the nodes converted as above.
+- 100,000 devices in OADM: the free-address check and starting tasks for a burst of new cameras stay fast.
