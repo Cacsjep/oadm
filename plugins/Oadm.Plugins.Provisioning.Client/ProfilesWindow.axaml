@@ -1,0 +1,61 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Provisioning.Client"
+        x:Class="Oadm.Plugins.Provisioning.Client.ProfilesWindow"
+        x:DataType="vm:ProfilesDialogViewModel"
+        Title="{x:Static vm:ProvisioningTexts.ManageProfiles}"
+        Width="760" Height="520"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Manage profiles (docs/spec/provisioning.md "The page"): the profile list in one card with its command buttons
+       (New, Edit, Activate; Delete in red, apart), the server's refusal below the list, a lone Close. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ProvisioningTexts.ManageProfiles}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+          <ui:ToolbarOverflowPanel Spacing="4">
+            <ui:ToolbarButton x:Name="NewButton" IconKey="add" Text="{x:Static vm:ProvisioningTexts.New}" Command="{Binding NewCommand}" />
+            <ui:ToolbarButton x:Name="EditButton" IconKey="edit" Text="{x:Static vm:ProvisioningTexts.Edit}" Command="{Binding EditCommand}" />
+            <ui:ToolbarButton x:Name="ActivateButton" IconKey="check" Text="{x:Static vm:ProvisioningTexts.Activate}" Command="{Binding ActivateCommand}"
+                              ToolTip.Tip="{Binding ActivateTip}" ToolTip.ShowOnDisabled="True" />
+          </ui:ToolbarOverflowPanel>
+          <ui:ToolbarButton x:Name="DeleteButton" Grid.Column="1" Classes="danger" IconKey="remove" Text="{x:Static vm:ProvisioningTexts.Delete}"
+                            Command="{Binding DeleteCommand}" />
+        </Grid>
+
+        <Panel Grid.Row="1">
+          <DataGrid x:Name="ProfileGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" IsReadOnly="True" CanUserSortColumns="True"
+                    CanUserReorderColumns="False" SelectionMode="Single">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="{x:Static vm:ProvisioningTexts.Name}" Width="*" Binding="{Binding Name}" x:DataType="vm:ProfileRow" />
+              <DataGridTextColumn Width="110" Binding="{Binding Nodes}" CellStyleClasses="number" x:DataType="vm:ProfileRow">
+                <DataGridTextColumn.Header>
+                  <TextBlock Classes="numberHeader" Text="{x:Static vm:ProvisioningTexts.NodesHeader}" />
+                </DataGridTextColumn.Header>
+              </DataGridTextColumn>
+              <DataGridTemplateColumn Header="{x:Static vm:ProvisioningTexts.State}" Width="170" CanUserSort="True" SortMemberPath="StateText">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:ProfileRow">
+                    <ui:StatusChip Margin="10,0" Text="{Binding StateText}" IsOk="{Binding IsActive}" IsWarning="{Binding HasErrors}" IsVisible="{Binding HasState}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Classes="secondary" Text="{x:Static vm:ProvisioningTexts.NoProfiles}" IsVisible="{Binding ShowEmpty}"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
+          <ui:LoadingOverlay Text="{x:Static vm:ProvisioningTexts.ReadingProfiles}" IsVisible="{Binding IsLoading}" />
+        </Panel>
+
+        <TextBlock Grid.Row="2" Classes="fieldMessage error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+      </Grid>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="2" CancelText="{x:Static vm:ProvisioningTexts.Close}" CancelCommand="{Binding CloseCommand}" />
+  </Grid>
+</Window>

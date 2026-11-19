@@ -32,7 +32,7 @@
               <ui:ToolbarSeparator />
               <ui:ToolbarButton IconKey="maximize" Text="Fit view" Command="{Binding FitViewCommand}" />
             </ui:ToolbarOverflowPanel>
-            <ui:ToolbarButton Grid.Column="1" Classes="danger atEnd" IconKey="remove" Text="{x:Static vm:ProvisioningTexts.RemoveNode}"
+            <ui:ToolbarButton Grid.Column="1" Classes="danger" IconKey="remove" Text="{x:Static vm:ProvisioningTexts.RemoveNode}"
                               Command="{Binding RemoveNodeCommand}" ToolTip.Tip="{x:Static vm:ProvisioningTexts.RemoveNodeTip}" />
           </Grid>
           <Border Grid.Row="1" Classes="liveViewSurface" ClipToBounds="True">

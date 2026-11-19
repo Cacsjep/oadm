@@ -28,8 +28,20 @@ public static class ProvisioningTexts
     public const string NotStarted = "Not started";
     public const string Profile = "Profile";
     public const string NoProfile = "No profile";
-    public const string NewProfile = "New profile";
-    public const string EditProfile = "Edit profile";
+    public const string ManageProfiles = "Manage profiles";
+    public const string ReadingProfiles = "Reading the profiles";
+    public const string NoProfiles = "Press New to create the first profile.";
+    public const string New = "New";
+    public const string Activate = "Activate";
+    public const string ActivateTip = "Provisioning uses it from the next Start";
+    public const string ActiveAlready = "This profile is active.";
+    public const string Active = "Active";
+    public const string Delete = "Delete";
+    public const string Close = "Close";
+    public const string NodesHeader = "Nodes";
+    public const string Time = "Time";
+
+    public static string DeleteProfileMessage(string name) => $"The profile {name} is deleted.";
     public const string DeleteProfile = "Delete profile";
     public const string DhcpFirst = "Turn on the DHCP server first.";
     public const string ProfileFirst = "Choose the active profile first.";
@@ -48,7 +60,7 @@ public static class ProvisioningTexts
     public const string SearchCameras = "Search MAC, model, address";
     public const string NoMatch = "No camera matches the search.";
     public const string EmptyDhcpFirst = "Turn on the DHCP server first.";
-    public const string EmptyProfileFirst = "Create a profile first.";
+    public const string EmptyProfileFirst = "Create a profile in Manage profiles first.";
     public const string EmptyNotStarted = "Press Start provisioning, then plug in factory-new cameras.";
     public const string EmptyStarted = "Plug in factory-new cameras. They show here when they get an address.";
     public const string RemoveTitle = "Remove cameras";

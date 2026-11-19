@@ -8,12 +8,11 @@ namespace Oadm.Plugins.Provisioning.Client;
 /// <summary>One row of the camera table: a camera of the session by MAC address, updated in place when its row changes.</summary>
 public sealed partial class CameraRowViewModel : ObservableObject
 {
-    public CameraRowViewModel(CameraRow row, string? profile)
+    public CameraRowViewModel(CameraRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
         Row = row;
         Mac = row.Mac;
-        Profile = profile ?? string.Empty;
         Apply(row);
     }
 
@@ -21,6 +20,12 @@ public sealed partial class CameraRowViewModel : ObservableObject
     public CameraRow Row { get; private set; }
 
     public string Mac { get; }
+
+    /// <summary>When the camera got its row (its first address of the session), in local time.</summary>
+    public string TimeText => Row.Seen == default ? string.Empty : Row.Seen.ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture);
+
+    /// <summary>The sort of the time column.</summary>
+    public long TimeSortKey => Row.Seen.UtcTicks;
 
     [ObservableProperty]
     public partial string Model { get; private set; } = string.Empty;
@@ -34,9 +39,6 @@ public sealed partial class CameraRowViewModel : ObservableObject
     /// <summary>The address as a number for the sort.</summary>
     [ObservableProperty]
     public partial long AddressSortKey { get; private set; }
-
-    [ObservableProperty]
-    public partial string Profile { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsOk), nameof(IsWarning), nameof(IsError), nameof(IsAccent), nameof(IsInfo))]

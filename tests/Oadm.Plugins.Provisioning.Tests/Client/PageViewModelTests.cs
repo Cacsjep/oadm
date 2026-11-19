@@ -41,7 +41,7 @@ public sealed class PageViewModelTests
         Assert.Equal("Failed", failed.StateText);
         Assert.Equal("Set IP", failed.NodeText);
         Assert.StartsWith("The camera did not take 192.168.15.12", failed.Problem, StringComparison.Ordinal);
-        Assert.Equal("Lobby cameras", failed.Profile);
+        Assert.Equal("AXIS Q6135-LE", failed.Model);
         Assert.Equal(ProvisioningTexts.WaitingForApproval, vm.Rows.Single(r => r.IsWaiting).StateText);
         Assert.Equal(ProvisioningTexts.NotNew, vm.Rows.Single(r => r.State == CameraState.NotNew).StateText);
     }
@@ -162,19 +162,15 @@ public sealed class PageViewModelTests
     }
 
     [Fact]
-    public async Task Delete_profile_asks_with_a_red_delete()
+    public async Task Manage_profiles_opens_the_dialog_and_reads_the_profiles_again_after_it()
     {
         var (vm, ctx) = await LoadAsync();
-        ctx.ConfirmAnswer = false;
-        await vm.DeleteProfileCommand.ExecuteAsync(null);
-        Assert.Equal(0, ctx.CallsOf(ProvisioningMethods.DeleteProfile));
-        Assert.Equal("Delete", ctx.Confirmations.Single().Confirm);
-
-        ctx.ConfirmAnswer = true;
-        await vm.DeleteProfileCommand.ExecuteAsync(null);
-        Assert.Equal(1, ctx.CallsOf(ProvisioningMethods.DeleteProfile));
-        Assert.Empty(vm.Profiles);
-        Assert.Null(vm.ActiveProfile);
+        var ui = new FakePageUi();
+        vm.Ui = ui;
+        var before = ctx.CallsOf(ProvisioningMethods.ListProfiles);
+        await vm.ManageProfilesCommand.ExecuteAsync(null);
+        Assert.NotNull(Assert.Single(ui.Dialogs));
+        Assert.Equal(before + 1, ctx.CallsOf(ProvisioningMethods.ListProfiles));
     }
 
     [Fact]
@@ -221,7 +217,7 @@ public sealed class PageViewModelTests
         Assert.False(vm.StopCommand.CanExecute(null));
         Assert.False(vm.RunFailedAgainCommand.CanExecute(null));
         Assert.False(vm.RemoveCommand.CanExecute(null));
-        Assert.False(vm.NewProfileCommand.CanExecute(null));
+        Assert.False(vm.ManageProfilesCommand.CanExecute(null));
     }
 
     [Fact]

@@ -40,11 +40,14 @@ server's settings.
 - **DHCP card** (top): the DHCP server's state, interface and range, with Turn on / Edit opening the DHCP server's own
   form. Provisioning never changes the DHCP server; without a running DHCP server it cannot start ("Turn on the DHCP
   server first.").
-- **Start provisioning / Stop provisioning** and the **active profile** (several profiles, one active). While started,
-  the page says "Provisioning started" with the start time; a session lasts until Stop, also across a server restart.
+- **Start provisioning / Stop provisioning**, the **active profile** (several profiles, one active) and **Manage profiles**
+  (a dialog: every profile with its number of nodes and its state, Active or Has errors; New and Edit open the profile
+  editor, Activate, Delete with a red confirmation). While started, the right end of that row says "Started" with the
+  start time and who started it; a session lasts until Stop, also across a server restart.
   Start warns (Start stays possible) when the Set IP pool overlaps the DHCP range.
-- **Cameras**: virtualized table, one row per camera that started a flow: MAC, model, serial, address, profile, state
-  (Queued, Running node, Done, Done with warnings, Failed), the node it is on. Clicking a row opens the profile's canvas
+- **Cameras**: virtualized table, one row per camera that started a flow: the time it got its row, MAC, model, address,
+  state (Queued, Running node, Done, Done with warnings, Failed), the node it is on, the problem. The serial number is
+  the MAC address on Axis cameras: no column of its own, the search still finds it. Clicking a row opens the profile's canvas
   with that camera's result per node. **Run failed again** re-runs only the red nodes of the chosen cameras, in flow
   order. Rows can be removed (the camera stays in OADM).
 - Up to **8 cameras at once**; more wait as Queued.

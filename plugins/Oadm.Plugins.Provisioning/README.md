@@ -124,9 +124,13 @@ The engine is the node's `INodeHost`: `AutoAdd`, `Tasks`, `Devices`, `Time`, `Op
 - **DHCP card**: the DHCP server's state, interface and range from `status.dhcp`; Turn on / Edit open the DHCP server's
   own page (`OpenAsync("plugin:oadm.dhcp-server")`), never a copy of its form; the pool overlap warning below.
 - **Toolbar**: Start provisioning (disabled with the reason as tooltip: no DHCP server, no active profile, profile with
-  errors), Stop provisioning (confirmed), the state chip beside them, the active profile (choosing one calls
-  `activateProfile`, a refusal goes back), New profile, Edit profile, Delete profile (red, confirmed with Delete).
-- **Cameras**: `listCameras` in pages of 1,000, then the batched `cameras` events applied by MAC address (a row's older
+  errors), Stop provisioning (confirmed), the active profile (choosing one calls `activateProfile`, a refusal goes back),
+  Manage profiles; the state chip at the right end.
+- **Manage profiles** (`ProfilesWindow`, `ProfilesDialogViewModel`): the profiles with their nodes and state (Active, Has
+  errors); New and Edit (also a double click) open the profile editor over it, Activate (off for a draft or the active
+  one, the reason as tooltip), Delete (red confirmation); a refusal directly below the list.
+- **Cameras** columns: Time (`CameraRow.Seen`), MAC address, model, IP address, state, node, problem; the search also
+  matches the serial number. `listCameras` in pages of 1,000, then the batched `cameras` events applied by MAC address (a row's older
   version never overwrites a newer one); `RangeObservableCollection`, one reset per search or batch; Run failed again,
   Continue and Remove on the selected rows. The empty line says what to do first.
 - **A camera's flow**: the row clicked last opens a card right of the table with the session's profile

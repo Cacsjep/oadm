@@ -17,8 +17,8 @@ namespace Oadm.Plugins.Provisioning.Client;
 /// <summary>What the page view does for the view model (windows); tests leave it null or fake it.</summary>
 public interface IProvisioningPageUi
 {
-    /// <summary>Shows the profile editor modally until it closes.</summary>
-    Task ShowProfileEditorAsync(ProfileEditorViewModel editor);
+    /// <summary>Shows Manage profiles modally until it closes.</summary>
+    Task ShowProfilesAsync(ProfilesDialogViewModel dialog);
 }
 
 /// <summary>
@@ -68,7 +68,7 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
     public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(StopCommand), nameof(DeleteProfileCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StartCommand), nameof(StopCommand))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
@@ -114,7 +114,7 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
 
     /// <summary>The active profile; choosing another makes it active (refused while it has errors).</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(EditProfileCommand), nameof(DeleteProfileCommand), nameof(StartCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StartCommand))]
     public partial ProfileSummary? ActiveProfile { get; set; }
 
     public bool HasProfiles => Profiles.Count > 0;
@@ -307,45 +307,20 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
 
     public bool CanStop() => MayManage && !IsBusy && IsStarted;
 
-    [RelayCommand(CanExecute = nameof(CanNewProfile))]
-    public Task NewProfileAsync() => EditAsync(null);
-
-    public bool CanNewProfile() => MayManage;
-
-    [RelayCommand(CanExecute = nameof(CanEditProfile))]
-    public Task EditProfileAsync() => ActiveProfile is { } p ? EditAsync(p.Id) : Task.CompletedTask;
-
-    public bool CanEditProfile() => MayManage && ActiveProfile is not null;
-
-    [RelayCommand(CanExecute = nameof(CanDeleteProfile))]
-    public async Task DeleteProfileAsync()
+    /// <summary>Manage profiles: the dialog with the profile list, New, Edit, Activate and Delete.</summary>
+    [RelayCommand(CanExecute = nameof(CanManageProfiles))]
+    public async Task ManageProfilesAsync()
     {
-        if (ActiveProfile is not { } profile
-            || !await _ctx.ConfirmAsync(ProvisioningTexts.DeleteProfile, $"The profile {profile.Name} is deleted.", "Delete").ConfigureAwait(true))
+        var dialog = new ProfilesDialogViewModel(_ctx);
+        if (Ui is { } ui)
         {
-            return;
+            await ui.ShowProfilesAsync(dialog).ConfigureAwait(true);
         }
 
-        IsBusy = true;
-        try
-        {
-            var json = ProvisioningJson.Options;
-            ApplyProfiles(PluginJson.Parse<ProfilesReply>(
-                await _ctx.InvokeAsync(ProvisioningMethods.DeleteProfile, PluginJson.Serialize(new IdRequest(profile.Id), json), CancellationToken.None).ConfigureAwait(true), json));
-            ErrorText = null;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            ErrorText = ServerErrors.Message(ex);
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        await RefreshProfilesAsync().ConfigureAwait(true);
     }
 
-    /// <summary>The active profile cannot be deleted while it runs; any other can.</summary>
-    public bool CanDeleteProfile() => MayManage && !IsBusy && ActiveProfile is not null;
+    public bool CanManageProfiles() => MayManage;
 
     [RelayCommand(CanExecute = nameof(CanRunFailedAgain))]
     public Task RunFailedAgainAsync() => RowsAsync(ProvisioningMethods.RunFailedAgain, [.. _selected.Where(r => r.HasFailed).Select(r => r.Mac)]);
@@ -409,20 +384,6 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
             _applyingProfiles = true;
             ActiveProfile = previous;
             _applyingProfiles = false;
-        }
-    }
-
-    private async Task EditAsync(Guid? id)
-    {
-        var editor = new ProfileEditorViewModel(_ctx, id);
-        if (Ui is { } ui)
-        {
-            await ui.ShowProfileEditorAsync(editor).ConfigureAwait(true);
-        }
-
-        if (editor.Saved is not null)
-        {
-            await RefreshProfilesAsync().ConfigureAwait(true);
         }
     }
 
@@ -527,12 +488,6 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
         DhcpRangeText = dhcp?.RangeStart is { Length: > 0 } start ? "Range " + start + " to " + dhcp.RangeEnd : string.Empty;
         WarningText = status.Warnings.Count == 0 ? null : string.Join(Environment.NewLine, status.Warnings);
         SummaryText = ProvisioningTexts.Summary(status.Counts);
-        var profile = status.SessionProfileName;
-        foreach (var row in _all)
-        {
-            row.Profile = profile ?? string.Empty;
-        }
-
         UpdateFlow();
         Notify();
     }
@@ -543,7 +498,7 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
         _all.Clear();
         foreach (var row in rows)
         {
-            var vm = new CameraRowViewModel(row, _status.SessionProfileName);
+            var vm = new CameraRowViewModel(row);
             if (_byMac.TryAdd(row.Mac, vm))
             {
                 _all.Add(vm);
@@ -572,7 +527,7 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
             }
             else
             {
-                vm = new CameraRowViewModel(row, _status.SessionProfileName);
+                vm = new CameraRowViewModel(row);
                 _byMac[row.Mac] = vm;
                 _all.Add(vm);
                 added.Add(vm);
@@ -645,9 +600,7 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
     {
         StartCommand.NotifyCanExecuteChanged();
         StopCommand.NotifyCanExecuteChanged();
-        NewProfileCommand.NotifyCanExecuteChanged();
-        EditProfileCommand.NotifyCanExecuteChanged();
-        DeleteProfileCommand.NotifyCanExecuteChanged();
+        ManageProfilesCommand.NotifyCanExecuteChanged();
         RunFailedAgainCommand.NotifyCanExecuteChanged();
         ContinueCommand.NotifyCanExecuteChanged();
         RemoveCommand.NotifyCanExecuteChanged();

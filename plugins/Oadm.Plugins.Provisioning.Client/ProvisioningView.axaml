@@ -28,8 +28,8 @@
     <Grid Grid.Row="1" ColumnDefinitions="*,Auto">
       <Border x:Name="CamerasCard" Grid.Column="0" Classes="card">
         <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="8">
-          <!-- Start or Stop with the state beside it, the active profile and its editor (what does not fit goes behind More). -->
-          <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="12">
+          <!-- Start or Stop, the active profile and Manage profiles left; the state of provisioning at the right end. -->
+          <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="12">
             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" IsVisible="{Binding MayManage}">
               <ui:ToolbarButton x:Name="StartButton" IconKey="start" Text="{x:Static vm:ProvisioningTexts.StartProvisioning}" Command="{Binding StartCommand}"
                                 IsVisible="{Binding IsStopped}" ToolTip.Tip="{Binding StartTip}" ToolTip.ShowOnDisabled="True" />
@@ -37,8 +37,7 @@
                                 IsVisible="{Binding IsStarted}" />
               <ui:ProgressRing Width="16" Height="16" VerticalAlignment="Center" IsVisible="{Binding IsBusy}" />
             </StackPanel>
-            <ui:StatusChip x:Name="StateChip" Grid.Column="1" VerticalAlignment="Center" Text="{Binding StateText}" IsOk="{Binding IsStarted}" />
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
               <TextBlock Classes="secondary" Text="{x:Static vm:ProvisioningTexts.Profile}" VerticalAlignment="Center" />
               <ComboBox x:Name="ProfileBox" Width="220" VerticalAlignment="Center" ItemsSource="{Binding Profiles}" SelectedItem="{Binding ActiveProfile}"
                         PlaceholderText="{x:Static vm:ProvisioningTexts.NoProfile}" IsEnabled="{Binding MayManage}">
@@ -52,12 +51,9 @@
                 </ComboBox.ItemTemplate>
               </ComboBox>
             </StackPanel>
-            <ui:ToolbarOverflowPanel Grid.Column="3" Spacing="4" IsVisible="{Binding MayManage}">
-              <ui:ToolbarButton IconKey="add" Text="{x:Static vm:ProvisioningTexts.NewProfile}" Command="{Binding NewProfileCommand}" />
-              <ui:ToolbarButton x:Name="EditProfileButton" IconKey="edit" Text="{x:Static vm:ProvisioningTexts.EditProfile}" Command="{Binding EditProfileCommand}" />
-              <ui:ToolbarSeparator />
-              <ui:ToolbarButton Classes="danger" IconKey="remove" Text="{x:Static vm:ProvisioningTexts.DeleteProfile}" Command="{Binding DeleteProfileCommand}" />
-            </ui:ToolbarOverflowPanel>
+            <ui:ToolbarButton x:Name="ManageProfilesButton" Grid.Column="2" IconKey="settings" Text="{x:Static vm:ProvisioningTexts.ManageProfiles}"
+                              Command="{Binding ManageProfilesCommand}" IsVisible="{Binding MayManage}" />
+            <ui:StatusChip x:Name="StateChip" Grid.Column="4" VerticalAlignment="Center" Text="{Binding StateText}" IsOk="{Binding IsStarted}" />
           </Grid>
 
           <!-- The cameras: the actions on the selected rows left, the counts, the search right. -->
@@ -82,11 +78,10 @@
             <DataGrid x:Name="CameraGrid" Classes="wrapRows" ItemsSource="{Binding Rows}" IsReadOnly="True" CanUserSortColumns="True"
                       CanUserReorderColumns="False" SelectionMode="Extended" MinHeight="160">
               <DataGrid.Columns>
+                <DataGridTextColumn Header="{x:Static vm:ProvisioningTexts.Time}" Width="150" Binding="{Binding TimeText}" SortMemberPath="TimeSortKey" x:DataType="vm:CameraRowViewModel" />
                 <DataGridTextColumn Header="{x:Static vm:ProvisioningTexts.MacAddress}" Width="140" Binding="{Binding Mac}" x:DataType="vm:CameraRowViewModel" />
                 <DataGridTextColumn Header="{x:Static vm:ProvisioningTexts.Model}" Width="1*" MinWidth="125" Binding="{Binding Model}" x:DataType="vm:CameraRowViewModel" />
-                <DataGridTextColumn Header="{x:Static vm:ProvisioningTexts.Serial}" Width="120" Binding="{Binding Serial}" x:DataType="vm:CameraRowViewModel" />
                 <DataGridTextColumn Header="{x:Static vm:ProvisioningTexts.Address}" Width="115" Binding="{Binding Address}" SortMemberPath="AddressSortKey" x:DataType="vm:CameraRowViewModel" />
-                <DataGridTextColumn Header="{x:Static vm:ProvisioningTexts.Profile}" Width="0.7*" MinWidth="80" Binding="{Binding Profile}" x:DataType="vm:CameraRowViewModel" />
                 <DataGridTemplateColumn Header="{x:Static vm:ProvisioningTexts.State}" Width="175" CanUserSort="True" SortMemberPath="StateSortKey">
                   <DataGridTemplateColumn.CellTemplate>
                     <DataTemplate x:DataType="vm:CameraRowViewModel">

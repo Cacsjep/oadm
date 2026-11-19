@@ -301,6 +301,7 @@ internal static class Samples
             Results = results,
             Message = message,
             Version = version,
+            Seen = new DateTimeOffset(2026, 11, 18, 14, 2, 0, TimeSpan.Zero).AddMinutes(n * 3),
         };
     }
 

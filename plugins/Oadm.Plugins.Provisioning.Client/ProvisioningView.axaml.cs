@@ -20,12 +20,12 @@ public partial class ProvisioningView : UserControl, IProvisioningPageUi
         };
     }
 
-    public async Task ShowProfileEditorAsync(ProfileEditorViewModel editor)
+    public async Task ShowProfilesAsync(ProfilesDialogViewModel dialog)
     {
-        ArgumentNullException.ThrowIfNull(editor);
-        var window = new ProfileEditorWindow();
-        window.Attach(editor);
-        _ = editor.LoadAsync();
+        ArgumentNullException.ThrowIfNull(dialog);
+        var window = new ProfilesWindow();
+        window.Attach(dialog);
+        _ = dialog.LoadAsync();
         if (TopLevel.GetTopLevel(this) is Window owner)
         {
             await window.ShowDialog(owner).ConfigureAwait(true);

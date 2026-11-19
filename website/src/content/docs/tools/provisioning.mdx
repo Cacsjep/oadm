@@ -8,12 +8,13 @@ import { Image } from 'astro:assets';
 import page from '../../../assets/screens/provisioning-page.png';
 import flow from '../../../assets/screens/provisioning-flow.png';
 import editor from '../../../assets/screens/provisioning-editor.png';
+import profiles from '../../../assets/screens/provisioning-profiles.png';
 
 Plug factory-new cameras into the switch and let OADM set them up. Each camera gets an address from OADM's
 [DHCP server](../dhcp-server/), then the active profile runs on it: password, AXIS OS, configuration, time, certificate,
 fixed IP address and more. The table shows how far each camera got.
 
-<Image src={page} alt="The Provisioning page: the DHCP server card, Stop provisioning with the start time, the active profile and the cameras with their state" class="screen" />
+<Image src={page} alt="The Provisioning page: the DHCP server card, Stop provisioning, the active profile, Manage profiles, the start time at the right and the cameras with their state" class="screen" />
 
 ## Before you start
 
@@ -32,7 +33,7 @@ A profile is a chain of nodes that runs from top to bottom on each camera.
 <Steps>
 
 1. Open **Provisioning** under **Automation** in the navigation rail.
-2. Click **New profile** and enter a **Name**.
+2. Click **Manage profiles**, then **New**, and enter a **Name**.
 3. Click **Add node** and choose a node. It is added below the selected node.
 4. Click a node to see its form on the right. **Move up** and **Move down** change the order, **Remove** deletes it.
 5. Click **Save**.
@@ -71,11 +72,18 @@ stop the camera's flow at that node. An error at Set password always stops the f
 Errors show below the field and on the node in the chain. You can still save the profile as a draft. A draft shows
 **Has errors** in the profile list and cannot be the active profile or start until you fix it.
 
+### Manage profiles
+
+**Manage profiles** lists every profile with its number of nodes and its state: **Active** or **Has errors**. Choose a
+profile and click **Edit** (or double-click it), **Activate** or **Delete**. **New** starts an empty profile.
+
+<Image src={profiles} alt="Manage profiles: three profiles, the active one, one with errors, and New, Edit, Activate and Delete" class="screen" />
+
 ## Start and stop
 
 <Steps>
 
-1. Choose the active **Profile** in the toolbar.
+1. Choose the active **Profile** next to Start provisioning, or click **Activate** in **Manage profiles**.
 2. Click **Start provisioning**. It stays off with the reason in its tooltip while the DHCP server is off, no profile is
    chosen or the profile has errors.
 3. Plug in factory-new cameras. They show in the table when they get an address.
@@ -88,8 +96,9 @@ Start. Up to 8 cameras run at once; the others wait as **Queued**.
 
 ## Cameras
 
-The table has one row per camera that got an address while provisioning was started: MAC address, model, serial
-number, IP address, profile, state, the node it is on and the problem of a failed node.
+The table has one row per camera that got an address while provisioning was started: the time it got its address, MAC
+address, model, IP address, state, the node it is on and the problem of a failed node. The search also finds the serial
+number.
 
 | State | Meaning |
 |---|---|

@@ -26,7 +26,7 @@ public sealed class PageScreenshotTests
     public async Task The_page_renders_the_dhcp_card_the_cameras_and_a_cameras_flow()
     {
         var suffix = Headless.Appearance;
-        await await Headless.Session.Dispatch(async () =>
+        await Headless.Session.Dispatch(async () =>
         {
             var (vm, view, window) = await ShowAsync(Samples.Context());
             using (vm)
@@ -50,6 +50,7 @@ public sealed class PageScreenshotTests
                 Assert.True(canvas.Cards[4].Top > canvas.Cards[3].Bottom + NodeChainCanvas.Gap, "the error below Set IP pushes Date and time down");
                 Headless.Capture(window, $"provisioning-flow-{suffix}.png");
             }
+            return true;
         }, CancellationToken.None);
     }
 
@@ -57,7 +58,7 @@ public sealed class PageScreenshotTests
     public async Task The_page_without_a_session_says_what_to_do_first()
     {
         var suffix = Headless.Appearance;
-        await await Headless.Session.Dispatch(async () =>
+        await Headless.Session.Dispatch(async () =>
         {
             var (vm, view, window) = await ShowAsync(Samples.Context(Samples.Status(started: false), []));
             using (vm)
@@ -68,6 +69,7 @@ public sealed class PageScreenshotTests
                 Assert.False(view.FindControl<StatusChip>("PoolWarning")!.IsEffectivelyVisible);
                 Headless.Capture(window, $"provisioning-empty-{suffix}.png");
             }
+            return true;
         }, CancellationToken.None);
     }
 
@@ -75,7 +77,7 @@ public sealed class PageScreenshotTests
     public async Task The_profile_editor_renders_the_flow_and_the_selected_nodes_form_with_its_error()
     {
         var suffix = Headless.Appearance;
-        await await Headless.Session.Dispatch(async () =>
+        await Headless.Session.Dispatch(async () =>
         {
             var ctx = Samples.Context();
             var editor = new ProfileEditorViewModel(ctx, Samples.ProfileId);
@@ -98,6 +100,7 @@ public sealed class PageScreenshotTests
             Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == ProvisioningTexts.NotAnAddress);
             Headless.Capture(window, $"provisioning-editor-{suffix}.png");
             window.Close();
+            return true;
         }, CancellationToken.None);
     }
 
@@ -105,7 +108,7 @@ public sealed class PageScreenshotTests
     public async Task The_profile_editor_renders_a_full_profile_with_the_configuration_selected()
     {
         var suffix = Headless.Appearance;
-        await await Headless.Session.Dispatch(async () =>
+        await Headless.Session.Dispatch(async () =>
         {
             var ctx = Samples.Context();
             var editor = new ProfileEditorViewModel(ctx, Samples.FullProfileId);
@@ -137,6 +140,38 @@ public sealed class PageScreenshotTests
             Headless.Pump();
             Headless.Capture(window, $"provisioning-editor-sdcard-{suffix}.png");
             window.Close();
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Manage_profiles_renders_the_list_with_its_states()
+    {
+        var suffix = Headless.Appearance;
+        await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = Samples.Context(profiles: new ProfilesReply(
+            [
+                new ProfileSummary(Samples.ProfileId, "Lobby cameras", 5, true, true),
+                new ProfileSummary(Samples.FullProfileId, "Parking garage", 11, false, true),
+                new ProfileSummary(Guid.Parse("9c9c9c9c-8888-4c2d-9e8f-0a1b2c3d4e5f"), "Warehouse (draft)", 4, false, false),
+            ], Samples.ProfileId));
+            var dialog = new ProfilesDialogViewModel(ctx);
+            var window = new ProfilesWindow();
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Attach(dialog);
+            window.Show();
+            await dialog.LoadAsync();
+            dialog.Selected = dialog.Rows[1];
+            Headless.Pump();
+
+            Assert.Equal(3, dialog.Rows.Count);
+            Assert.True(window.FindControl<Button>("ActivateButton")!.IsEffectivelyEnabled);
+            Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Classes.Contains("primary"));
+            Assert.Contains(window.GetVisualDescendants().OfType<StatusChip>(), c => c.IsEffectivelyVisible && c.Text == ProvisioningTexts.HasErrors);
+            Headless.Capture(window, $"provisioning-profiles-{suffix}.png");
+            window.Close();
+            return true;
         }, CancellationToken.None);
     }
 }
