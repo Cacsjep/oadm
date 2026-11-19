@@ -31,6 +31,15 @@ internal sealed class FakeAxisDevice
     /// <summary>Factory default: no admin user yet (systemready needsetup = yes).</summary>
     public bool NeedSetup => Password is null;
 
+    /// <summary>The next this many systemready answers say the device is still starting (no needsetup yet).</summary>
+    public int StartingAnswers
+    {
+        get => Math.Max(0, Volatile.Read(ref _startingAnswers));
+        set => Volatile.Write(ref _startingAnswers, value);
+    }
+
+    private int _startingAnswers;
+
     /// <summary>Serves HTTPS (443). The fake has no TLS; with <see cref="Certificate"/> the pinning check is simulated.</summary>
     public bool ServesHttps { get; set; }
 
@@ -200,6 +209,13 @@ internal sealed class FakeAxisDevice
                 return authorized ? Json(BasicDeviceInfoJson()) : Unauthorized();
 
             case "axis-cgi/systemready.cgi":
+                if (Interlocked.Decrement(ref _startingAnswers) >= 0)
+                {
+                    // Still starting: systemready answers, but not yet whether it needs setup.
+                    return Json(Serialize(new { apiVersion = "1.5", method = "systemready", data = new { systemready = "no", uptime = "3", bootid = "b1" } }));
+                }
+
+                Interlocked.Exchange(ref _startingAnswers, 0);
                 return Json(Serialize(new { apiVersion = "1.5", method = "systemready", data = new { systemready = "yes", needsetup = NeedSetup ? "yes" : "no", uptime = "100", bootid = "b1", passphrasepolicy = PassphrasePolicy } }));
 
             case "axis-cgi/pwdgrp.cgi":

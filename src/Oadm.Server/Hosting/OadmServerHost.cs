@@ -697,6 +697,9 @@ public static partial class OadmServerHost
         services.AddSingleton<EventRulesService>();
         services.AddHostedService<EventLogRetentionHostedService>();
 
+        // Devices that need their first password (added that way, or reset to factory default): Provisioning starts its tasks.
+        services.AddSingleton<FactoryNewDeviceNotices>();
+
         // Polling
         services.AddSingleton<DevicePollingService>();
         services.AddHostedService<DevicePollingHostedService>();

@@ -17,7 +17,8 @@ namespace Oadm.Server.AddDevices;
 /// and the automatic add of core plugins (<see cref="DeviceAutoAddService"/>): serial unique, address per
 /// <see cref="ChooseAddress"/>, certificate pin from the probe, first root password on a factory-default device when one
 /// is given (HTTPS when offered, POST body only), else the credential that worked, verified with one authenticated call
-/// (wrong credentials still add the device, status Credentials required). The caller queues the first full refresh.
+/// (wrong credentials still add the device, status Credentials required). The caller queues the first full refresh. A device
+/// stored as Password not set is reported to <see cref="FactoryNewDeviceNotices"/> (Provisioning).
 /// </summary>
 public sealed partial class DeviceAdder(
     DeviceRepository devices,
@@ -25,7 +26,8 @@ public sealed partial class DeviceAdder(
     VapixClientFactory clients,
     IVapixConnector connector,
     VapixProbe probe,
-    ILogger<DeviceAdder> logger)
+    ILogger<DeviceAdder> logger,
+    FactoryNewDeviceNotices? factoryNew = null)
 {
     /// <summary>True when OADM manages the serial already (any user's device: "already added" is an accepted existence leak).</summary>
     public async Task<bool> IsManagedAsync(string serial, CancellationToken ct) =>
@@ -142,8 +144,13 @@ public sealed partial class DeviceAdder(
         // The verified login read the device information: model, firmware and category at once, not only after the
         // queued refresh (a device that tells nothing anonymously, e.g. 401 with the realm only, is Unknown until then and
         // would be offered live video).
-        await devices.UpdateAsync(device.Id, d => Apply(d, status, info), ct).ConfigureAwait(false);
+        var stored = await devices.UpdateAsync(device.Id, d => Apply(d, status, info), ct).ConfigureAwait(false);
         LogAdded(device.Serial, device.Address, status);
+        if (status == SdkDeviceStatus.PasswordNotSet && stored is not null)
+        {
+            factoryNew?.Report(stored, added: true); // Provisioning starts its task for it
+        }
+
         return (device.Id, status);
     }
 

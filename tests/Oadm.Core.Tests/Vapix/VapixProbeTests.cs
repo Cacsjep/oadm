@@ -124,6 +124,25 @@ public class VapixProbeTests
     }
 
     [Fact]
+    public async Task ADeviceThatIsStillStartingIsNeverTakenAsHavingAPassword()
+    {
+        // systemready answers while the device boots, before it says whether it needs setup (the "Not new" of a real camera).
+        const string Starting = """{"apiVersion":"1.5","method":"systemready","data":{"systemready":"no","uptime":"3"}}""";
+        var probe = Probe(_ => (req, body) => RecordedDevice(req, body, "401-https-headers.txt", Starting));
+
+        var result = await probe.ProbeAsync("10.0.0.48", CancellationToken.None);
+
+        Assert.NotNull(result);
+        Assert.True(result.IsStarting);
+        Assert.False(result.IsFactoryDefault);
+
+        var ready = await Probe(_ => (req, body) => RecordedDevice(req, body, "401-https-headers.txt", NeedSetupYes)).ProbeAsync("10.0.0.48", CancellationToken.None);
+        Assert.False(ready!.IsStarting);
+        var configured = await Probe(_ => (req, body) => RecordedDevice(req, body, "401-https-headers.txt", Fixtures.Read("systemready.json"))).ProbeAsync("10.0.0.48", CancellationToken.None);
+        Assert.False(configured!.IsStarting);
+    }
+
+    [Fact]
     public async Task AnonymousAccessParsesPropertiesDirectly()
     {
         var probe = Probe(_ => (req, _) => req.RequestUri!.AbsolutePath.EndsWith("systemready.cgi", StringComparison.Ordinal)

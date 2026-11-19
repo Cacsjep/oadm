@@ -259,6 +259,16 @@ credential fits; the context menu's "Log in" fixes it) or Password not set (the 
 first full refresh and writes the audit entry "Device added automatically" (user "system", target "<ip> (<serial>)",
 detail "<source>: <result>"). Not added (not Axis, other serial, unreachable): logged only. `FollowAsync(serial, address,
 source)` follows managed devices ([discovery.md](discovery.md#following-moved-devices)). Passwords never reach the plugin.
+For Provisioning (SDK 0.15.0, [provisioning.md](provisioning.md)): `LookAsync` always asks the device itself, also a managed
+one (a camera reset to factory default is new again); a device whose systemready says it is still starting
+(`systemready` no, no `needsetup` yet: `VapixProbeResult.IsStarting`) is asked again every 5 s for at most 2 minutes
+(`DeviceLookOptions`, the server's `TimeProvider`), then `DeviceLookResult.Starting`, never "has a password".
+`WatchFactoryNew` reports every device `DeviceAdder` stores as Password not set (this page's Add too) and every managed
+device the polling turns Password not set (`FactoryNewDeviceNotices`). Discovery and the page's probes do not wait for a
+starting device (they stay fast): such a device is probed as it answers then and, once added, the polling turns it
+Password not set when it is ready, which reports it. While provisioning is on, the page adds a factory-new device without a
+first password (status Password not set, the server's Commit takes it like that already) and its provisioning task sets
+it (stage 2: the row shows "Provisioning" instead of Set password; the client reads the plugin's `state`).
 
 Follow-up logins: per (session, serial) the authenticator keeps the device as last observed, the
 number of rejected automatic attempts and which credentials (SHA-256 of user + password) the device

@@ -81,4 +81,10 @@ public sealed record VapixProbeResult(
     string? ProductType = null)
 {
     public Uri BaseAddress => VapixClient.BuildBaseAddress(Scheme, Address);
+
+    /// <summary>
+    /// systemready answered that the device is still starting without saying whether it needs setup: whether it has a
+    /// password is not known yet (<see cref="IsFactoryDefault"/> is false then, never proof of a password). Ask again.
+    /// </summary>
+    public bool IsStarting { get; init; }
 }

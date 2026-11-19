@@ -42,6 +42,7 @@ public sealed partial class DevicePollingService : IDisposable
     private readonly ServerSettingsStore _settings;
     private readonly Sites.ISiteStates? _sites;
     private readonly DeviceStatusNotes? _notes;
+    private readonly FactoryNewDeviceNotices? _factoryNew;
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
     private readonly Channel<Guid> _refreshQueue = Channel.CreateUnbounded<Guid>(new UnboundedChannelOptions { SingleReader = false });
@@ -59,9 +60,11 @@ public sealed partial class DevicePollingService : IDisposable
         TimeProvider? timeProvider = null,
         ILogger<DevicePollingService>? logger = null,
         Sites.ISiteStates? sites = null,
-        DeviceStatusNotes? notes = null)
+        DeviceStatusNotes? notes = null,
+        FactoryNewDeviceNotices? factoryNew = null)
     {
         _notes = notes;
+        _factoryNew = factoryNew;
         ArgumentNullException.ThrowIfNull(devices);
         ArgumentNullException.ThrowIfNull(clients);
         ArgumentNullException.ThrowIfNull(settings);
@@ -508,7 +511,12 @@ public sealed partial class DevicePollingService : IDisposable
     {
         // The note first, so a watcher that maps the status change already reads it.
         var noteChanged = _notes?.Set(device.Id, observation.Status == DeviceStatus.CredentialsRequired ? observation.Note : null) ?? false;
-        var updated = await _devices.UpdateAsync(device.Id, d => observation.ApplyTo(d), ct).ConfigureAwait(false);
+        var before = device.Status;
+        var updated = await _devices.UpdateAsync(device.Id, d =>
+        {
+            before = d.Status; // as stored now, not as read before the poll (another poll may have written meanwhile)
+            observation.ApplyTo(d);
+        }, ct).ConfigureAwait(false);
         if (updated is not null && noteChanged)
         {
             // The status may stay Credentials required: the watchers still get the device with its new note (as stored).
@@ -518,6 +526,11 @@ public sealed partial class DevicePollingService : IDisposable
         if (updated is not null)
         {
             Oadm.Core.Auth.CallerContext.Raise(DeviceUpdated, this, updated);
+            if (before != DeviceStatus.PasswordNotSet && updated.Status == DeviceStatus.PasswordNotSet)
+            {
+                _factoryNew?.Report(updated, added: false); // reset to factory default: new again (Provisioning)
+            }
+
             if (!full && device.Status != DeviceStatus.Ok && updated.Status == DeviceStatus.Ok)
             {
                 LogBackOnline(device.Id, device.Status);

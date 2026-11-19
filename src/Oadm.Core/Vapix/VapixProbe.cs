@@ -173,10 +173,15 @@ public sealed class VapixProbe
         }
 
         var factoryDefault = false;
+        var starting = false;
         try
         {
             var ready = await client.GetSystemReadyAsync(ct).ConfigureAwait(false);
             factoryDefault = ready.NeedSetup == true;
+
+            // Still starting: systemready answers before the device knows (or tells) whether it needs setup. Never taken as
+            // "has a password"; the caller that must know asks again.
+            starting = !ready.SystemReady && ready.NeedSetup is null;
         }
         catch (Exception ex) when (!ct.IsCancellationRequested && IsBestEffortFailure(ex))
         {
@@ -197,7 +202,10 @@ public sealed class VapixProbe
             AuthenticationRequired: authRequired,
             CertificateFingerprint: client.CertificateFingerprint,
             Status: status,
-            ProductType: string.IsNullOrWhiteSpace(productType) ? null : productType.Trim());
+            ProductType: string.IsNullOrWhiteSpace(productType) ? null : productType.Trim())
+        {
+            IsStarting = starting,
+        };
     }
 
     private static bool IsTransportFailure(Exception ex)

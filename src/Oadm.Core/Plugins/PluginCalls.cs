@@ -466,6 +466,12 @@ internal sealed partial class PluginCallGuard(string pluginId, ILogger logger)
             guard.Check("AutoAdd");
             return inner.AddCredentialAsync(userName, password, ct);
         }
+
+        public IDisposable WatchFactoryNew(Action<FactoryNewDevice> found)
+        {
+            guard.Check("AutoAdd");
+            return inner.WatchFactoryNew(found);
+        }
     }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Core plugin {PluginId} used ctx.{Member} in {Method} for a user with a device group: refused (use the call context)")]

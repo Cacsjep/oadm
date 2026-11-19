@@ -83,8 +83,10 @@ public interface IDeviceAutoAdd
 
     /// <summary>
     /// SDK 0.15.0: what answers at <paramref name="address"/>, without a password: the add page's anonymous probe and Axis
-    /// check, and whether it is factory-new (no password yet). A managed device is answered from its record (Password not
-    /// set is factory-new) without a request. Never throws for device errors. Older hosts: <see cref="NotSupportedException"/>.
+    /// check, and whether it is factory-new (no password yet), always asked of the device itself, also for a managed one (a
+    /// camera reset to factory default after it was added is new again). A device that is still starting is asked again
+    /// until it says whether it needs setup, at most 2 minutes (then <see cref="DeviceLookResult.Starting"/>). Never throws
+    /// for device errors. Older hosts: <see cref="NotSupportedException"/>.
     /// </summary>
     /// <param name="address">The IP address the device was seen at.</param>
     /// <param name="expectedSerial">The serial number (MAC address) the device must report.</param>
@@ -123,6 +125,16 @@ public interface IDeviceAutoAdd
     Task<DeviceAutoAddOutcome> AddWithLoginAsync(string address, string expectedSerial, Guid credentialId, IReadOnlyList<string> tags, string source, CancellationToken ct) =>
         throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
 
+    /// <summary>
+    /// SDK 0.15.0: tells the plugin about managed devices that need their first password (status Password not set): a device
+    /// added that way (the add page, an import, the waiting list, the automatic add) and a managed device whose status turned
+    /// Password not set (reset to factory default). Called on the thread that stored the device: queue the work, never block.
+    /// Dispose the answer to stop. Older hosts: <see cref="NotSupportedException"/>.
+    /// </summary>
+    /// <param name="found">Called once per device and change.</param>
+    IDisposable WatchFactoryNew(Action<FactoryNewDevice> found) =>
+        throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
+
     /// <summary>SDK 0.15.0: the entries of the credential list, without passwords, in the order they are tried.</summary>
     /// <param name="ct">Cancels the read.</param>
     Task<IReadOnlyList<DeviceCredentialName>> ListCredentialsAsync(CancellationToken ct) =>
@@ -157,7 +169,18 @@ public enum DeviceLookResult
 
     /// <summary>Nothing answered (the device may still be starting).</summary>
     Unreachable = 4,
+
+    /// <summary>An Axis device with the expected serial number answers, but it was still starting after 2 minutes: unknown whether it has a password.</summary>
+    Starting = 5,
 }
+
+/// <summary>A managed device that needs its first password (<see cref="IDeviceAutoAdd.WatchFactoryNew"/>, SDK 0.15.0).</summary>
+/// <param name="DeviceId">The device.</param>
+/// <param name="Serial">Its serial number (MAC address, 12 hex digits).</param>
+/// <param name="Address">Its address.</param>
+/// <param name="AtSite">It is at a site (reached through a site node).</param>
+/// <param name="Added">It was just added (false: a managed device turned Password not set).</param>
+public sealed record FactoryNewDevice(Guid DeviceId, string Serial, string Address, bool AtSite, bool Added);
 
 /// <summary>The answer of <see cref="IDeviceAutoAdd.LookAsync"/> (SDK 0.15.0).</summary>
 /// <param name="Result">What answered.</param>

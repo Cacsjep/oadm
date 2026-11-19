@@ -36,9 +36,12 @@ public sealed partial class DeviceAutoAddService(
     Core.DeviceGroups.DeviceViewFactory? views = null,
     Core.Security.CredentialListStore? credentialList = null,
     DeviceFirstPasswordService? firstPasswords = null,
-    DeviceTagStore? tagStore = null) : IDeviceAutoAdd
+    DeviceTagStore? tagStore = null,
+    FactoryNewDeviceNotices? factoryNew = null,
+    DeviceLookOptions? lookOptions = null) : IDeviceAutoAdd
 {
     private long _lastLimitWarningTicks = DateTimeOffset.MinValue.UtcTicks;
+    private readonly DeviceLookOptions _look = lookOptions ?? new DeviceLookOptions();
 
     public async Task<DeviceAutoAddOutcome> AddAsync(string address, string expectedSerial, string source, CancellationToken ct)
     {
@@ -192,23 +195,34 @@ public sealed partial class DeviceAutoAddService(
     }
 
     /// <summary>
-    /// What answers at the address without a password (Provisioning): a managed device from its record (Password not set is
-    /// factory-new), else the anonymous probe and the add page's Axis check. No credential is sent.
+    /// What answers at the address without a password (Provisioning): the anonymous probe and the add page's Axis check, always
+    /// at the device itself, also for a managed one (its record may be old: a camera reset to factory default is new again).
+    /// A camera that is still starting is asked again every <see cref="DeviceLookOptions.Retry"/> until it says, at most
+    /// <see cref="DeviceLookOptions.StartingTimeout"/>; then <see cref="DeviceLookResult.Starting"/>, never "has a password".
+    /// No credential is sent.
     /// </summary>
     public async Task<DeviceLook> LookAsync(string address, string expectedSerial, CancellationToken ct)
     {
         var ip = ParseAddress(address);
         var serial = DeviceSerial.Normalize(expectedSerial);
-        if (await devices.FindBySerialAsync(serial, ct).ConfigureAwait(false) is { } managed)
+        var managed = await devices.FindBySerialAsync(serial, ct).ConfigureAwait(false);
+        var clock = _look.Time ?? time;
+        var end = clock.GetUtcNow() + _look.StartingTimeout;
+        while (true)
         {
-            return managed.Status == SdkDeviceStatus.PasswordNotSet
-                ? new DeviceLook(DeviceLookResult.FactoryNew, managed.Id, managed.Model, "The camera has no password yet.")
-                : new DeviceLook(DeviceLookResult.HasPassword, managed.Id, managed.Model, "OADM manages this camera already.");
-        }
+            var (verdict, probed, message) = await CheckAsync(ip, serial, ct).ConfigureAwait(false);
+            if (verdict != DeviceLookResult.Starting || clock.GetUtcNow() >= end)
+            {
+                return new DeviceLook(verdict, managed?.Id, probed?.Model ?? managed?.Model, message);
+            }
 
-        var (verdict, probed, message) = await CheckAsync(ip, serial, ct).ConfigureAwait(false);
-        return new DeviceLook(verdict, null, probed?.Model, message);
+            await Task.Delay(_look.Retry, clock, ct).ConfigureAwait(false);
+        }
     }
+
+    /// <summary>Devices stored as Password not set and managed ones that turned Password not set (<see cref="FactoryNewDeviceNotices"/>).</summary>
+    public IDisposable WatchFactoryNew(Action<FactoryNewDevice> found) =>
+        factoryNew?.Watch(found) ?? throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
 
     /// <summary>
     /// The first root password from a credential list entry (Provisioning's Set password): a managed device in Password not set
@@ -401,8 +415,8 @@ public sealed partial class DeviceAutoAddService(
             return (DeviceLookResult.Unreachable, probed, verdict.Detail ?? $"No Axis device answered at {text}.");
         }
 
-        return probed.IsFactoryDefault
-            ? (DeviceLookResult.FactoryNew, probed, "The camera has no password yet.")
+        return probed.IsFactoryDefault ? (DeviceLookResult.FactoryNew, probed, "The camera has no password yet.")
+            : probed.IsStarting ? (DeviceLookResult.Starting, probed, StillStarting)
             : (DeviceLookResult.HasPassword, probed, "The camera has a password already.");
     }
 
@@ -431,6 +445,9 @@ public sealed partial class DeviceAutoAddService(
             return " Tags not set: " + ex.Message.TrimEnd('.') + ".";
         }
     }
+
+    /// <summary>The look of a camera that was still starting after the wait.</summary>
+    public const string StillStarting = "The camera did not finish starting within 2 minutes.";
 
     private DeviceAutoAddOutcome NotAdded(DeviceAutoAddResult result, string serial, string address, string source, string message)
     {
@@ -463,4 +480,17 @@ public sealed partial class DeviceAutoAddService(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Device {Serial} at {Address} not added automatically ({Source}): {Result} - {Reason}")]
     private partial void LogNotAdded(string serial, string address, string source, DeviceAutoAddResult result, string reason);
+}
+
+/// <summary>How long <see cref="DeviceAutoAddService.LookAsync"/> asks a camera that is still starting (tests pass a fake clock).</summary>
+public sealed record DeviceLookOptions
+{
+    /// <summary>Longest wait for a starting camera to say whether it needs setup (2 minutes).</summary>
+    public TimeSpan StartingTimeout { get; init; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>The pause between two asks.</summary>
+    public TimeSpan Retry { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>The clock; null: the server's.</summary>
+    public TimeProvider? Time { get; init; }
 }
