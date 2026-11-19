@@ -419,9 +419,11 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
     `ui:ToolbarButton` / `Button.toolbar`, icon + text, the icon in the accent colour, the text neutral, no background.
     Never a filled button there (`ToolbarButton.IsPrimary` no longer fills).
   - **Icon-only buttons** (close, ⋯, copy, reveal, row actions): the text colour, the accent only on hover, always a
-    tooltip; never coloured, never filled. Only disabled buttons are dimmed. Two exceptions: the title bar's MyAxis cloud
-    is green (`Button.toolbar.ok`) while the user is signed in, and the Assistant's send arrow is a round filled accent button
-    (`Button.send`, like the chat apps users know; decision 2026-11-15).
+    tooltip; never coloured, never filled. Only disabled buttons are dimmed. Three exceptions: the title bar's MyAxis cloud
+    is green (`Button.toolbar.ok`) while the user is signed in, the Devices toolbar's Provisioning button has the green icon
+    (`Button.toolbar.ok`) and reads "Provisioning active" while provisioning is on (decision 2026-11-19), and the
+    Assistant's send arrow is a round filled accent button (`Button.send`, like the chat apps users know; decision
+    2026-11-15).
   - **Filled accent** `Button.primary`: only the one main action of a dialog or form (Save, Create in a dialog, Enable,
     Next, OK). `Button.secondary` for its other actions (Cancel, Turn off, Choose file, Import in a form).
 - One accent button per view (no exception: the device choice button is a command button in a page toolbar and a
