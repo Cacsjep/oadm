@@ -246,7 +246,7 @@ public sealed class NodeChainCanvas : Control
 
     /// <summary>
     /// Where the + below the card at <paramref name="index"/> is (canvas units): below the last card and its message
-    /// (<see cref="NodeCanvasGeometry.PlusRect"/>), beside the link in the gap below any other card.
+    /// (<see cref="NodeCanvasGeometry.PlusRect"/>), on the straight link in the gap below any other card.
     /// </summary>
     public Rect PlusRect(int index)
     {
@@ -257,7 +257,7 @@ public sealed class NodeChainCanvas : Control
 
         var card = _cards[index];
         var last = index == _cards.Count - 1;
-        var plus = NodeCanvasGeometry.PlusRect(card.Center.X - (NodeCanvasGeometry.NodeWidth / 2), card.Y, besideLinks: !last, height: card.Height);
+        var plus = NodeCanvasGeometry.PlusRect(card.Center.X - (NodeCanvasGeometry.NodeWidth / 2), card.Y, height: card.Height);
         return last
             ? plus.Translate(new Vector(0, _belows[index]))
             : plus.WithY(card.Bottom + _belows[index] + ((Gap - NodeCanvasGeometry.PlusSize) / 2));
