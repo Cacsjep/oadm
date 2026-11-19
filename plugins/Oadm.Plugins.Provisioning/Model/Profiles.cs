@@ -2,19 +2,23 @@ using System.Text.Json;
 
 namespace Oadm.Plugins.Provisioning.Model;
 
-/// <summary>The kinds of nodes a profile is made of (docs/spec/provisioning.md "Nodes"). Stored by name, never renamed.</summary>
+/// <summary>
+/// The kinds of nodes a profile is made of (docs/spec/provisioning.md "Nodes"). Stored by name, never renamed. The kinds of the
+/// build of 2026-11-18 that are gone (Add to OADM, Wait for approval, Set IP, Network settings) stay only so stored profiles
+/// load: <see cref="Engine.ProfileUpgrade"/> converts them, no profile keeps them.
+/// </summary>
 public enum NodeKind
 {
     /// <summary>Set password (fixed, first): the first root password from the credential list.</summary>
     SetPassword = 0,
 
-    /// <summary>Add to OADM (fixed, second): adds the camera with that login and the tags.</summary>
+    /// <summary>Gone (2026-11-19): adding is implicit. Dropped when a profile loads.</summary>
     AddToOadm = 1,
 
-    /// <summary>Wait for approval: the camera waits until a person presses Continue on its row.</summary>
+    /// <summary>Gone (2026-11-19). Dropped when a profile loads.</summary>
     WaitForApproval = 2,
 
-    /// <summary>Set IP: the next free address of the node's own pool, written as a fixed address.</summary>
+    /// <summary>Gone (2026-11-19): part of <see cref="Network"/> now. Converted when a profile loads.</summary>
     SetIp = 3,
 
     /// <summary>Date and time: NTP servers and time zone, through the Date and time task.</summary>
@@ -26,7 +30,7 @@ public enum NodeKind
     /// <summary>Upgrade AXIS OS from files: each camera the file for its model.</summary>
     UpgradeFiles = 6,
 
-    /// <summary>Network settings: DNS servers and search domain.</summary>
+    /// <summary>Gone (2026-11-19): part of <see cref="Network"/> now. Converted when a profile loads.</summary>
     NetworkSettings = 7,
 
     /// <summary>Configuration: a configuration file or a template camera, the chosen areas.</summary>
@@ -49,6 +53,9 @@ public enum NodeKind
 
     /// <summary>VAPIX commands of the VAPIX Commander library with their values.</summary>
     VapixCommands = 14,
+
+    /// <summary>Network: the address (keep it, or the next free one of a pool), DNS servers and search domain.</summary>
+    Network = 15,
 }
 
 /// <summary>One node of a profile: its kind, its settings (the kind's own record as JSON) and whether the flow goes on after an error.</summary>
@@ -66,7 +73,7 @@ public sealed record FlowNode
     public JsonElement? Settings { get; init; }
 }
 
-/// <summary>A profile: a name and a straight chain of nodes, Set password and Add to OADM first.</summary>
+/// <summary>A profile: a name and a straight chain of nodes, Set password first.</summary>
 public sealed record Profile
 {
     public Guid Id { get; init; }
@@ -88,13 +95,33 @@ public sealed record ProfileBook
 /// <summary>Settings of Set password: the credential list entry of root whose password is set (never the password itself).</summary>
 public sealed record SetPasswordSettings(Guid? CredentialId = null);
 
-/// <summary>Settings of Add to OADM: the tags the camera gets.</summary>
+/// <summary>Where the Network node takes the camera's address from.</summary>
+public enum IpMode
+{
+    /// <summary>The address stays as it is (for example from DHCP).</summary>
+    Keep = 0,
+
+    /// <summary>The next free address of the node's pool, written as a fixed address.</summary>
+    Pool = 1,
+}
+
+/// <summary>
+/// Settings of Network: the address (<see cref="Ip"/>; a pool: first and last address, subnet mask, default router), the DNS
+/// servers and the search domain. Every part optional, at least one set. Never the host name.
+/// </summary>
+public sealed record NetworkNodeSettings(
+    IpMode Ip = IpMode.Keep,
+    string? First = null,
+    string? Last = null,
+    string? SubnetMask = null,
+    string? Gateway = null,
+    IReadOnlyList<string>? DnsServers = null,
+    string? SearchDomain = null);
+
+/// <summary>Settings of the gone Add to OADM (stored profiles of 2026-11-18 only): the tags.</summary>
 public sealed record AddToOadmSettings(IReadOnlyList<string>? Tags = null);
 
-/// <summary>Settings of Wait for approval: none.</summary>
-public sealed record WaitForApprovalSettings;
-
-/// <summary>Settings of Set IP: the pool (first and last address), subnet mask, router and DNS servers.</summary>
+/// <summary>Settings of the gone Set IP (stored profiles of 2026-11-18 only): the pool, subnet mask, router and DNS servers.</summary>
 public sealed record SetIpSettings(
     string? First = null,
     string? Last = null,
@@ -134,7 +161,7 @@ public sealed record OsFile(Guid? FileId = null, string? Name = null);
 /// <summary>Settings of Upgrade AXIS OS from files: the files (one per model); an older file than the camera's is never installed.</summary>
 public sealed record UpgradeFilesSettings(IReadOnlyList<OsFile>? Files = null);
 
-/// <summary>Settings of Network settings: the DNS servers and the search domain (older profiles' hostName and startNumber are ignored).</summary>
+/// <summary>Settings of the gone Network settings (stored profiles of 2026-11-18 only): the DNS servers and the search domain.</summary>
 public sealed record NetworkSettingsSettings(
     IReadOnlyList<string>? DnsServers = null,
     string? SearchDomain = null);

@@ -11,7 +11,7 @@ using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Provisioning.Tests;
 
-/// <summary>The page methods and the tools of the plugin, with the host's rules (FakeCoreContext).</summary>
+/// <summary>The methods and the tools of the plugin, with the host's rules (FakeCoreContext).</summary>
 public sealed class PluginTests : IAsyncLifetime
 {
     private const string Password = "Typed-Pass-1";
@@ -118,28 +118,56 @@ public sealed class PluginTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Start_needs_a_running_dhcp_server_and_warns_about_an_overlapping_pool()
+    public async Task On_needs_an_active_profile_without_errors_and_warns_about_an_overlapping_pool()
     {
-        var saved = await CallAsync<ProfileReply>(ProvisioningMethods.SaveProfile, new SaveProfileRequest(NewProfile(Harness.Node("ip", NodeKind.SetIp, Harness.Pool("192.168.15.150", "192.168.15.160"))), Password));
-        await CallAsync<StatusReply>(ProvisioningMethods.ActivateProfile, new IdRequest(saved.Profile.Id));
-
-        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => CallAsync<StatusReply>(ProvisioningMethods.Start));
-        Assert.Equal("Turn on the DHCP server first.", refused.Message);
+        var off = await CallAsync<StatusReply>(ProvisioningMethods.GetStatus);
+        Assert.False(off.On);
+        Assert.Equal(ProvisioningPlugin.ChooseActiveFirst, off.TurnOnRefusal);
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => CallAsync<StatusReply>(ProvisioningMethods.TurnOn));
+        Assert.Equal(ProvisioningPlugin.ChooseActiveFirst, refused.Message);
 
         _ctx.FakeServices.Offer<IDhcpServerLeases>(_dhcp);
-        var started = await CallAsync<StatusReply>(ProvisioningMethods.Start);
+        var saved = await CallAsync<ProfileReply>(ProvisioningMethods.SaveProfile, new SaveProfileRequest(NewProfile(Harness.Node("ip", NodeKind.Network, Harness.Pool("192.168.15.150", "192.168.15.160"))), Password));
+        Assert.True(saved.Check.IsValid); // the first one without errors: active
+        var on = await CallAsync<StatusReply>(ProvisioningMethods.TurnOn);
 
-        Assert.True(started.Started);
-        Assert.Equal("admin", started.StartedBy);
-        Assert.Equal(["The pool overlaps the DHCP server's range 192.168.15.100 to 192.168.15.200."], started.Warnings);
-        Assert.Contains(_ctx.PublishedEvents, e => e.Topic == ProvisioningMethods.StatusTopic);
+        Assert.True(on.On);
+        Assert.Equal("admin", on.OnBy);
+        Assert.Null(on.TurnOnRefusal);
+        Assert.Equal(["The pool overlaps the DHCP server's range 192.168.15.100 to 192.168.15.200."], on.Warnings);
+        Assert.Contains(_ctx.PublishedEvents, e => e.Topic == ProvisioningMethods.StatusTopic && e.Audience == PluginEventAudience.AllDevices);
+        Assert.True((await CallAsync<StateReply>(ProvisioningMethods.State)).On);
+        Assert.Equal("Turned provisioning on", _plugin.AuditDetail(ProvisioningMethods.TurnOn, null));
 
-        var stopped = await CallAsync<StatusReply>(ProvisioningMethods.Stop);
-        Assert.False(stopped.Started);
+        var again = await Assert.ThrowsAsync<InvalidOperationException>(() => CallAsync<StatusReply>(ProvisioningMethods.TurnOn));
+        Assert.Equal(ProvisioningService.AlreadyOn, again.Message);
+        var delete = await Assert.ThrowsAsync<InvalidOperationException>(() => CallAsync<ProfilesReply>(ProvisioningMethods.DeleteProfile, new IdRequest(saved.Profile.Id)));
+        Assert.Equal(ProvisioningPlugin.ActiveWhileOn, delete.Message);
+
+        var turnedOff = await CallAsync<StatusReply>(ProvisioningMethods.TurnOff);
+        Assert.False(turnedOff.On);
+        Assert.False((await CallAsync<StateReply>(ProvisioningMethods.State)).On);
+        Assert.Equal("Turned provisioning off", _plugin.AuditDetail(ProvisioningMethods.TurnOff, null));
+        await CallAsync<ProfilesReply>(ProvisioningMethods.DeleteProfile, new IdRequest(saved.Profile.Id)); // off: the active one goes too
     }
 
     [Fact]
-    public async Task Every_method_is_for_users_with_all_devices_and_administrators_by_default()
+    public async Task On_survives_a_restart_of_the_plugin()
+    {
+        await CallAsync<ProfileReply>(ProvisioningMethods.SaveProfile, new SaveProfileRequest(NewProfile(), Password));
+        await CallAsync<StatusReply>(ProvisioningMethods.TurnOn);
+
+        await _plugin.StopAsync(CancellationToken.None);
+        await _plugin.StartAsync(_ctx, CancellationToken.None);
+
+        var status = await CallAsync<StatusReply>(ProvisioningMethods.GetStatus);
+        Assert.True(status.On);
+        Assert.Equal("admin", status.OnBy);
+        Assert.Equal(1, _autoAdd.Watchers); // the old service stopped watching
+    }
+
+    [Fact]
+    public async Task Whether_it_is_on_is_for_every_signed_in_user_and_everything_else_for_users_with_all_devices()
     {
         var inside = _ctx.Add(new FakeDevice { Address = "10.0.0.48" });
         var outside = _ctx.Add(new FakeDevice { Address = "10.0.0.49", Serial = "ACCC8E000002" });
@@ -147,7 +175,7 @@ public sealed class PluginTests : IAsyncLifetime
         foreach (var method in new[]
         {
             ProvisioningMethods.GetStatus, ProvisioningMethods.ListProfiles, ProvisioningMethods.NodeKinds, ProvisioningMethods.Credentials,
-            ProvisioningMethods.Start, ProvisioningMethods.Stop, ProvisioningMethods.ListCameras,
+            ProvisioningMethods.TurnOn, ProvisioningMethods.TurnOff, ProvisioningMethods.VapixCommands,
         })
         {
             canary.AllDevicesOnly(method);
@@ -158,49 +186,64 @@ public sealed class PluginTests : IAsyncLifetime
             .AllDevicesOnly(ProvisioningMethods.SaveProfile, """{"profile":{"name":"x"}}""")
             .AllDevicesOnly(ProvisioningMethods.DeleteProfile, """{"id":"00000000-0000-0000-0000-000000000001"}""")
             .AllDevicesOnly(ProvisioningMethods.ActivateProfile, """{"id":"00000000-0000-0000-0000-000000000001"}""")
-            .AllDevicesOnly(ProvisioningMethods.GetCamera, """{"mac":"AC:CC:8E:00:00:01"}""")
-            .AllDevicesOnly(ProvisioningMethods.RunFailedAgain, """{"macs":["AC:CC:8E:00:00:01"]}""")
-            .AllDevicesOnly(ProvisioningMethods.Continue, """{"macs":["AC:CC:8E:00:00:01"]}""")
-            .AllDevicesOnly(ProvisioningMethods.RemoveCameras, """{"macs":["AC:CC:8E:00:00:01"]}""")
+            .AllDevicesOnly(ProvisioningMethods.RunAgain, "{\"deviceIds\":[\"" + inside.Id + "\"]}")
+            .AllDevicesOnly(ProvisioningMethods.GetRun, "{\"deviceId\":\"" + inside.Id + "\"}")
             .AllDevicesOnly(ProvisioningMethods.StoreSecret, """{"value":"x"}""")
             .AllDevicesOnly(ProvisioningMethods.StoreFile, """{"uploadId":"0123456789abcdef0123456789abcdef"}""");
         await canary.RunAsync();
 
+        // Whether it is on: the Add devices page of any user, also with a device group.
+        var group = _ctx.CallAsGroup([inside.Id]);
+        Assert.False(_plugin.RequiresAllDevices(ProvisioningMethods.State));
+        Assert.Null(_plugin.RequiredPermission(ProvisioningMethods.State));
+        Assert.False(PluginJson.Parse<StateReply>(await _ctx.InvokeAsync(_plugin, group, ProvisioningMethods.State, null), ProvisioningJson.Options).On);
+
         Assert.All(_plugin.Permissions, p => Assert.False(p.OperatorDefault));
         Assert.Equal(PermissionKeys.Show, _plugin.RequiredPermission(ProvisioningMethods.GetStatus));
-        Assert.Equal(PermissionKeys.Manage, _plugin.RequiredPermission(ProvisioningMethods.Start));
-        Assert.Equal(UserRole.Admin, _plugin.RequiredRole("tool.start"));
-        Assert.True(_plugin.IsAudited(ProvisioningMethods.Start));
-        Assert.False(_plugin.IsAudited("tool.start.preview"));
+        Assert.Equal(PermissionKeys.Manage, _plugin.RequiredPermission(ProvisioningMethods.TurnOn));
+        Assert.Equal(PermissionKeys.Manage, _plugin.RequiredPermission(ProvisioningMethods.RunAgain));
+        Assert.Equal(UserRole.Admin, _plugin.RequiredRole("tool.turn_on"));
+        Assert.True(_plugin.IsAudited(ProvisioningMethods.TurnOn));
+        Assert.True(_plugin.IsAudited(ProvisioningMethods.TurnOff));
+        Assert.False(_plugin.IsAudited("tool.turn_on.preview"));
+        Assert.False(_plugin.HasPage);
+        var task = Assert.Single(_plugin.TaskPlugins);
+        Assert.Equal(ProvisioningInfo.TaskPluginId, task.Id);
+        Assert.False(task.ShowInMenus);
+        Assert.Equal(8, task.MaxParallelDevices);
+        Assert.Equal("Provision with Lobby", task.GetTaskName(JsonSerializer.Serialize(new RunPayload { Profile = NewProfile() }, ProvisioningJson.Options)));
     }
 
     [Fact]
-    public async Task The_tools_cover_the_page_and_a_preview_changes_nothing()
+    public async Task The_tools_cover_the_dialog_and_a_preview_changes_nothing()
     {
         var names = _plugin.Tools.Select(t => t.Name).ToList();
-        Assert.Equal(["status", "profiles", "profile", "credentials", "vapix_commands", "cameras", "profile_save", "secret_store", "file_store", "profile_delete", "profile_activate", "start", "stop", "cameras_run_failed_again", "cameras_continue", "cameras_remove"], names);
+        Assert.Equal(["status", "profiles", "profile", "credentials", "vapix_commands", "camera", "profile_save", "secret_store", "file_store", "profile_delete", "profile_activate", "turn_on", "turn_off", "run_again"], names);
         Assert.All(_plugin.Tools, t => Assert.True(t.Name.Length <= PluginTool.MaxNameLength));
 
         var saved = await CallAsync<ProfileReply>(ProvisioningMethods.SaveProfile, new SaveProfileRequest(NewProfile(), Password));
         await CallAsync<StatusReply>(ProvisioningMethods.ActivateProfile, new IdRequest(saved.Profile.Id));
-        _ctx.FakeServices.Offer<IDhcpServerLeases>(_dhcp);
 
-        var preview = await _ctx.InvokeAsync(_plugin, _admin, "tool.start.preview", "{}");
+        var preview = await _ctx.InvokeAsync(_plugin, _admin, "tool.turn_on.preview", "{}");
         Assert.Contains("Lobby", preview, StringComparison.Ordinal);
-        Assert.Null(_plugin.Engine!.Session);
+        Assert.False(_plugin.Service!.IsOn);
 
-        var savePreview = await _ctx.InvokeAsync(_plugin, _admin, "tool.profile_save.preview", """{"name":"Gate","nodes":[{"id":"set-password","kind":"set_password","settings":"{\"credential_id\":\"00000000-0000-0000-0000-000000000001\"}"},{"id":"add-to-oadm","kind":"add_to_oadm"}]}""");
-        Assert.Contains("\"nodes_with_errors\":1", savePreview, StringComparison.Ordinal);
+        var savePreview = await _ctx.InvokeAsync(_plugin, _admin, "tool.profile_save.preview", """{"name":"Gate","nodes":[{"id":"set-password","kind":"set_password","settings":"{\"credential_id\":\"00000000-0000-0000-0000-000000000001\"}"},{"id":"net","kind":"network","settings":"{\"ip\":\"keep\"}"}]}""");
+        Assert.Contains("\"nodes_with_errors\":2", savePreview, StringComparison.Ordinal);
         Assert.Single((await CallAsync<ProfilesReply>(ProvisioningMethods.ListProfiles)).Profiles);
 
         // The settings go both ways as JSON text in snake_case (a tool's schema has no value of any type).
-        var profile = await _ctx.InvokeAsync(_plugin, _admin, "tool.profile", $$"""{"id":"{{saved.Profile.Id}}"}""");
+        var profile = await _ctx.InvokeAsync(_plugin, _admin, "tool.profile", "{\"id\":\"" + saved.Profile.Id + "\"}");
         Assert.Contains("credential_id", profile, StringComparison.Ordinal);
         var refused = await _ctx.InvokeAsync(_plugin, _admin, "tool.profile_save.preview", """{"name":"Gate","nodes":[{"id":"set-password","kind":"set_password","settings":"[1]"}]}""");
         Assert.Contains("JSON object", refused, StringComparison.Ordinal);
 
         var status = await _ctx.InvokeAsync(_plugin, _admin, "tool.status", "{}");
-        Assert.Contains("\"dhcp_running\":true", status, StringComparison.Ordinal);
+        Assert.Contains("\"on\":false", status, StringComparison.Ordinal);
+        Assert.Contains("\"active_profile\":\"Lobby\"", status, StringComparison.Ordinal);
         Assert.DoesNotContain(Password, status + preview + savePreview, StringComparison.Ordinal);
+
+        var nothing = await _ctx.InvokeAsync(_plugin, _admin, "tool.run_again.preview", "{\"device_ids\":[\"" + Guid.NewGuid() + "\"]}");
+        Assert.Contains("None of these cameras has a failed provisioning task to run again.", nothing, StringComparison.Ordinal);
     }
 }

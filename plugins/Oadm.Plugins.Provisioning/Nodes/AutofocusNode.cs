@@ -25,6 +25,8 @@ public sealed class AutofocusNode : DeviceNode<AutofocusSettings>
 
     public override string Name => "Autofocus";
 
+    public override string StepName => "Run the autofocus";
+
     public override object DefaultSettings => new AutofocusSettings();
 
     protected override string? CheckSettings(AutofocusSettings settings, ProfileCheckContext context) => null;

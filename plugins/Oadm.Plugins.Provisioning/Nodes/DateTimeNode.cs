@@ -22,6 +22,8 @@ public sealed partial class DateTimeNode : TaskNode<DateTimeSettings>
 
     public override string Name => "Date and time";
 
+    public override string StepName => "Set the date and time";
+
     public override string TaskPluginId => "oadm.datetime";
 
     /// <summary>The NTP server plugin's task that sets OADM's address towards the camera as its NTP server.</summary>

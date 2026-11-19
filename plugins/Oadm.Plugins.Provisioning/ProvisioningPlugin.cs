@@ -10,22 +10,31 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Plugins.Provisioning;
 
 /// <summary>
-/// Core plugin "Provisioning" (docs/spec/provisioning.md, the plugin README): profiles, flows of nodes that set up
-/// factory-new cameras that get an address from OADM's DHCP server, while a session is started. Free, on by default; on
-/// changes nothing by itself. Administrators only (rights "show" and "manage", both off for Operator and Viewer), users
-/// with all devices only: a flow writes to every new camera. The DHCP server is read only (<see cref="IDhcpServerLeases"/>).
+/// Core plugin "Provisioning" (docs/spec/provisioning.md, the plugin README): profiles, flows of nodes that set up every
+/// factory-new camera OADM finds while provisioning is on, one task per camera (<see cref="ProvisioningTaskPlugin"/>). No rail
+/// page: the client part is the Devices toolbar's Provisioning button and its dialog. Free, on by default; on changes nothing
+/// by itself (provisioning is off until an Administrator turns it on). Rights "show" (reads) and "manage" (everything else),
+/// both off for Operator and Viewer; users with all devices only, except <see cref="ProvisioningMethods.State"/> (whether it
+/// is on), which every signed-in user may read (the Add devices page).
 /// </summary>
 public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
 {
+    public const string ChooseActiveFirst = "Choose the active profile first.";
+
+    public const string ActiveWhileOn = "Turn provisioning off first, or make another profile active.";
+
+    internal const string ProfileGone = "The profile no longer exists.";
+
     private readonly ProvisioningOptions _options;
     private readonly TimeProvider _time;
     private readonly IAddressProbe? _probe;
     private readonly bool _ownRegistry;
     private NodeRegistry _registry;
     private ICorePluginContext? _ctx;
-    private volatile ProvisioningEngine? _engine;
+    private volatile ProvisioningService? _service;
     private volatile ProfileStore? _profiles;
     private volatile NodeVault? _vault;
+    private Task? _prune;
 
     public ProvisioningPlugin()
         : this(new ProvisioningOptions(), TimeProvider.System, null)
@@ -43,6 +52,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         _probe = probe;
         _registry = registry ?? NodeRegistry.Default;
         _ownRegistry = registry is null;
+        TaskPlugins = [new ProvisioningTaskPlugin(() => _service, _options.MaxParallel)];
     }
 
     public string Id => ProvisioningInfo.PluginId;
@@ -53,54 +63,60 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
 
     public CorePluginGroup Group => CorePluginGroup.Automation;
 
-    public IReadOnlyList<ITaskPlugin> TaskPlugins { get; } = [];
+    /// <summary>No rail page: the Devices toolbar's Provisioning button opens Provisioning management.</summary>
+    public bool HasPage => false;
+
+    /// <summary>The task "Provision with &lt;profile&gt;", one per camera.</summary>
+    public IReadOnlyList<ITaskPlugin> TaskPlugins { get; }
 
     /// <summary>The tools of this plugin are named <c>oadm_provisioning_*</c>.</summary>
     public string? ToolArea => "provisioning";
 
-    /// <summary>The tools (docs/spec/mcp.md "Plugins"): the page's reads and changes with the page's checks and rights.</summary>
+    /// <summary>The tools (docs/spec/mcp.md "Plugins"): the dialog's reads and changes with its checks and rights.</summary>
     public IReadOnlyList<PluginTool> Tools => ProvisioningTools.Set.Tools;
 
-    /// <summary>The running engine (null while stopped).</summary>
-    internal ProvisioningEngine? Engine => _engine;
+    /// <summary>The running service (null while the plugin is off).</summary>
+    internal ProvisioningService? Service => _service;
 
     internal ProfileStore? Profiles => _profiles;
 
     internal NodeRegistry Registry => _registry;
 
-    /// <summary>Administrators only by default: seeing the page and changing anything.</summary>
+    /// <summary>Administrators only by default: seeing provisioning and changing anything.</summary>
     public IReadOnlyList<PermissionDefinition> Permissions { get; } =
     [
-        new(PermissionKeys.Show, "Show the page", "See the Provisioning page, its profiles and cameras.") { OperatorDefault = false, ViewerDefault = false },
-        new(PermissionKeys.Manage, "Run provisioning", "Change profiles and start or stop provisioning, which sets up every new camera.")
+        new(PermissionKeys.Show, "Show provisioning", "See whether provisioning is on, its profiles and how the last run of a camera ended.") { OperatorDefault = false, ViewerDefault = false },
+        new(PermissionKeys.Manage, "Run provisioning", "Turn provisioning on and off and change its profiles; it sets up every new camera OADM finds.")
         {
             OperatorDefault = false,
             FullDeviceControl = true,
         },
     ];
 
-    public string? RequiredPermission(string method) =>
-        ProvisioningMethods.IsRead(ProvisioningTools.Set.RulesMethodOf(method)) ? PermissionKeys.Show : PermissionKeys.Manage;
+    /// <summary>Whether it is on: a login only. Reads: "show". Everything else: "manage".</summary>
+    public string? RequiredPermission(string method)
+    {
+        var rules = ProvisioningTools.Set.RulesMethodOf(method);
+        return rules == ProvisioningMethods.State ? null : ProvisioningMethods.IsRead(rules) ? PermissionKeys.Show : PermissionKeys.Manage;
+    }
 
     public UserRole RequiredRole(string method) =>
         ProvisioningMethods.IsRead(ProvisioningTools.Set.RulesMethodOf(method)) ? UserRole.Operator : UserRole.Admin;
 
-    /// <summary>Server-wide, and a flow writes to every new camera: users with all devices only.</summary>
-    public bool RequiresAllDevices(string method) => true;
+    /// <summary>Server-wide, and it writes to every new camera: users with all devices only (whether it is on: everyone).</summary>
+    public bool RequiresAllDevices(string method) => ProvisioningTools.Set.RulesMethodOf(method) != ProvisioningMethods.State;
 
     public bool IsAudited(string method) => !PluginTool.IsPreviewMethod(method) && !ProvisioningMethods.IsRead(ProvisioningTools.Set.RulesMethodOf(method));
 
     /// <summary>The audit text: what was done, never a password.</summary>
     public string? AuditDetail(string method, string? payloadJson) => ProvisioningTools.Set.RulesMethodOf(method) switch
     {
-        ProvisioningMethods.Start => "Started provisioning",
-        ProvisioningMethods.Stop => "Stopped provisioning",
+        ProvisioningMethods.TurnOn => "Turned provisioning on",
+        ProvisioningMethods.TurnOff => "Turned provisioning off",
         ProvisioningMethods.SaveProfile => "Saved a profile",
         ProvisioningMethods.DeleteProfile => "Deleted a profile",
         ProvisioningMethods.ActivateProfile => "Chose the active profile",
-        ProvisioningMethods.RunFailedAgain => "Ran failed nodes again",
-        ProvisioningMethods.Continue => "Pressed Continue",
-        ProvisioningMethods.RemoveCameras => "Removed camera rows",
+        ProvisioningMethods.RunAgain => "Ran provisioning again",
         ProvisioningMethods.StoreSecret => "Stored a password for a profile",
         ProvisioningMethods.StoreFile => "Stored a file for a profile",
         _ => null,
@@ -121,31 +137,37 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         await profiles.LoadAsync(ct).ConfigureAwait(false);
         var vault = new NodeVault(ctx.Settings, ctx.Secrets, ctx.DataDirectory, ctx.Uploads, _time);
         await vault.LoadAsync(ct).ConfigureAwait(false);
+        _profiles = profiles;
+        _vault = vault;
         var services = new EngineServices(
             ctx.AutoAdd ?? new NoAutoAdd(),
             ctx.Tasks,
             ctx.Devices,
             ctx.Settings,
             ctx.Records ?? new MemoryPluginRecords(),
-            ctx.Events,
             () => ctx.Services?.Find<IDhcpServerLeases>(),
             _probe ?? (ctx.Network?.ForSite(null) is { } network ? new NetworkAddressProbe(network) : new NoProbe()),
             ctx.Vapix,
             vault);
-        var engine = new ProvisioningEngine(services, _registry, _options, _time, ctx.Logger);
-        await engine.LoadAsync(ct).ConfigureAwait(false);
-        _profiles = profiles;
-        _vault = vault;
-        _engine = engine;
+        var service = new ProvisioningService(services, RunnableProfileAsync, _registry, _options, _time, ctx.Logger);
+        await service.LoadAsync(ct).ConfigureAwait(false);
+        _service = service;
         await PruneAsync(ct).ConfigureAwait(false);
+        _prune = Task.Run(() => service.PruneRunsAsync(CancellationToken.None), CancellationToken.None);
     }
 
     public async Task StopAsync(CancellationToken ct)
     {
-        if (_engine is { } engine)
+        if (_prune is { } prune)
         {
-            _engine = null;
-            await engine.DisposeAsync().ConfigureAwait(false);
+            _prune = null;
+            await prune.ConfigureAwait(false);
+        }
+
+        if (_service is { } service)
+        {
+            _service = null;
+            await service.DisposeAsync().ConfigureAwait(false);
         }
 
         if (_profiles is { } profiles)
@@ -164,11 +186,16 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
     public async ValueTask DisposeAsync() => await StopAsync(CancellationToken.None).ConfigureAwait(false);
 
     public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) =>
-        throw new NotSupportedException("The page needs the user's call.");
+        throw new NotSupportedException("The plugin needs the user's call.");
 
     public async Task<string?> InvokeAsync(ICallContext caller, string method, string? payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(caller);
+        if (method == ProvisioningMethods.State)
+        {
+            return PluginJson.Serialize(new StateReply(RunningService.IsOn), ProvisioningJson.Options);
+        }
+
         if (!caller.HasAllDevices)
         {
             throw new DeviceAccessRefusedException(); // the host refuses it first (RequiresAllDevices)
@@ -192,62 +219,68 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
             ProvisioningMethods.SaveProfile => PluginJson.Serialize(await SaveProfileAsync(PluginJson.Parse<SaveProfileRequest>(payloadJson, json), ct).ConfigureAwait(false), json),
             ProvisioningMethods.DeleteProfile => PluginJson.Serialize(await DeleteProfileAsync(PluginJson.Parse<IdRequest>(payloadJson, json).Id, ct).ConfigureAwait(false), json),
             ProvisioningMethods.ActivateProfile => PluginJson.Serialize(await ActivateAsync(PluginJson.Parse<IdRequest>(payloadJson, json).Id, ct).ConfigureAwait(false), json),
-            ProvisioningMethods.Start => PluginJson.Serialize(await StartSessionAsync(caller, ct).ConfigureAwait(false), json),
+            ProvisioningMethods.TurnOn => PluginJson.Serialize(await TurnOnAsync(caller, ct).ConfigureAwait(false), json),
+            ProvisioningMethods.TurnOff => PluginJson.Serialize(await TurnOffAsync(ct).ConfigureAwait(false), json),
+            ProvisioningMethods.RunAgain => PluginJson.Serialize(await RunAgainAsync(PluginJson.Parse<DeviceIdsRequest>(payloadJson, json).DeviceIds ?? [], ct).ConfigureAwait(false), json),
+            ProvisioningMethods.GetRun => PluginJson.Serialize(await RunAsync(PluginJson.Parse<DeviceIdRequest>(payloadJson, json).DeviceId, ct).ConfigureAwait(false), json),
             ProvisioningMethods.StoreSecret => PluginJson.Serialize(await StoreSecretAsync(PluginJson.Parse<SecretRequest>(payloadJson, json), ct).ConfigureAwait(false), json),
             ProvisioningMethods.StoreFile => PluginJson.Serialize(await StoreFileAsync(caller, PluginJson.Parse<FileRequest>(payloadJson, json).UploadId, ct).ConfigureAwait(false), json),
-            ProvisioningMethods.Stop => PluginJson.Serialize(await StopSessionAsync(ct).ConfigureAwait(false), json),
-            ProvisioningMethods.ListCameras => PluginJson.Serialize(Cameras(PluginJson.ParseOrEmpty<CamerasRequest>(payloadJson, json)), json),
-            ProvisioningMethods.GetCamera => PluginJson.Serialize(Camera(PluginJson.Parse<MacRequest>(payloadJson, json).Mac), json),
-            ProvisioningMethods.RunFailedAgain => PluginJson.Serialize(new CountReply(RunningEngine.RunFailedAgain(Macs(payloadJson))), json),
-            ProvisioningMethods.Continue => PluginJson.Serialize(new CountReply(RunningEngine.Continue(Macs(payloadJson), caller.UserName)), json),
-            ProvisioningMethods.RemoveCameras => PluginJson.Serialize(new CountReply(RunningEngine.Remove(Macs(payloadJson))), json),
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
         };
     }
 
-    // ---- the page's operations (also the tools') ----
+    // ---- the dialog's operations (also the tools') ----
 
-    internal ProvisioningEngine RunningEngine => _engine ?? throw new InvalidOperationException("The Provisioning plugin is not running.");
+    internal ProvisioningService RunningService => _service ?? throw new InvalidOperationException("The Provisioning plugin is not running.");
 
     internal ProfileStore RunningProfiles => _profiles ?? throw new InvalidOperationException("The Provisioning plugin is not running.");
 
+    internal NodeVault RunningVault => _vault ?? throw new InvalidOperationException("The Provisioning plugin is not running.");
+
     internal DhcpServerSummary? Dhcp() => _ctx?.Services?.Find<IDhcpServerLeases>()?.Summary();
 
-    internal Task<StatusReply> StatusAsync(CancellationToken ct) => Task.FromResult(Status());
-
-    internal StatusReply Status()
+    internal async Task<StatusReply> StatusAsync(CancellationToken ct)
     {
-        var engine = RunningEngine;
-        var profiles = RunningProfiles;
-        var session = engine.Session;
-        var active = profiles.Active;
+        var service = RunningService;
+        var state = service.State;
+        var active = RunningProfiles.Active;
         var dhcp = Dhcp();
         var warnings = new List<string>();
-        if ((session?.Profile ?? active) is { } profile)
+        string? refusal = null;
+        var valid = false;
+        if (active is null)
         {
-            var context = new ProfileCheckContext(null, dhcp);
-            foreach (var node in profile.Nodes)
+            refusal = ChooseActiveFirst;
+        }
+        else
+        {
+            var check = await CheckAsync(active, ct).ConfigureAwait(false);
+            valid = check.IsValid;
+            if (!valid)
             {
-                if (_registry.Find(node.Kind)?.Warning(node.Settings, context) is { } warning && !warnings.Contains(warning))
-                {
-                    warnings.Add(warning);
-                }
+                refusal = ProfileCheck.FixFirst + " " + ProfileCheck.FirstError(check, active);
             }
+
+            warnings.AddRange(check.NodeWarnings.Values.Distinct(StringComparer.Ordinal));
+        }
+
+        if (state.On && refusal is not null)
+        {
+            warnings.Insert(0, "No camera gets a task now. " + refusal);
         }
 
         return new StatusReply
         {
-            Started = session is not null,
-            StartedAt = session?.StartedAt,
-            StartedBy = session?.StartedBy,
+            On = state.On,
+            OnBy = state.On ? state.OnBy : null,
+            OnAt = state.On ? state.OnAt : null,
             ActiveProfileId = active?.Id,
             ActiveProfileName = active?.Name,
-            SessionProfileName = session?.Profile.Name,
-            SessionProfile = session?.Profile,
+            ActiveProfileValid = valid,
+            TurnOnRefusal = state.On ? null : refusal,
             Dhcp = dhcp,
-            Counts = engine.Counts(),
+            RunningTasks = service.ActiveTasks,
             Warnings = warnings,
-            Version = engine.Version,
         };
     }
 
@@ -267,13 +300,22 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         return new ProfileReply(profile, await CheckAsync(profile, ct).ConfigureAwait(false));
     }
 
-    internal const string ProfileGone = "The profile no longer exists.";
-
     /// <summary>The check with the credential list and the DHCP server as they are now.</summary>
     internal async Task<ProfileCheckResult> CheckAsync(Profile profile, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(profile);
         return ProfileCheck.Check(ProfileStore.Normalize(profile, _registry), _registry, await ContextAsync(ct).ConfigureAwait(false), RunningProfiles.Book.Profiles);
+    }
+
+    /// <summary>The active profile when it has no errors (the tasks run it); null: no task starts.</summary>
+    private async Task<Profile?> RunnableProfileAsync(CancellationToken ct)
+    {
+        if (_profiles?.Active is not { } active)
+        {
+            return null;
+        }
+
+        return (await CheckAsync(active, ct).ConfigureAwait(false)).IsValid ? active : null;
     }
 
     /// <summary>The commands a VAPIX commands node can run, by category and name.</summary>
@@ -285,14 +327,19 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
                 .Select(c => new ProfileCommand(c.Id, c.Name, c.Category, c.Description, c.Fields))]
             : [];
 
-    internal IReadOnlyList<NodeKindInfo> NodeKinds() =>
-        [.. _registry.All.Select(n => new NodeKindInfo(n.Kind, n.Name, n.IsFixed, n.AlwaysStops, NodeSettings.Write(n.DefaultSettings)))];
+    /// <summary>The kinds with their default settings; a new Network node starts in the DHCP server's network.</summary>
+    internal IReadOnlyList<NodeKindInfo> NodeKinds()
+    {
+        var dhcp = Dhcp();
+        return [.. _registry.All.Select(n => new NodeKindInfo(n.Kind, n.Name, n.IsFixed, n.AlwaysStops,
+            NodeSettings.Write(n.Kind == NodeKind.Network ? NetworkNode.DefaultsFor(dhcp) : n.DefaultSettings)))];
+    }
 
     internal async Task<IReadOnlyList<DeviceCredentialName>> CredentialsAsync(CancellationToken ct)
     {
         try
         {
-            return await RunningEngine.AutoAdd.ListCredentialsAsync(ct).ConfigureAwait(false);
+            return await RunningService.AutoAdd.ListCredentialsAsync(ct).ConfigureAwait(false);
         }
         catch (NotSupportedException)
         {
@@ -328,7 +375,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         if (request.Password is { } password)
         {
             // A typed password goes into the credential list (encrypted with the server's key); the profile keeps its id only.
-            var credential = await RunningEngine.AutoAdd.AddCredentialAsync("root", password, ct).ConfigureAwait(false);
+            var credential = await RunningService.AutoAdd.AddCredentialAsync("root", password, ct).ConfigureAwait(false);
             profile = profile with
             {
                 Nodes = [.. profile.Nodes.Select(n => n.Kind == NodeKind.SetPassword ? n with { Settings = NodeSettings.Write(new SetPasswordSettings(credential.Id)) } : n)],
@@ -345,7 +392,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         await profiles.SaveAsync(profile, ct).ConfigureAwait(false);
         if (profiles.Book.ActiveId is null && check.IsValid)
         {
-            // No active profile yet (the first one): the saved profile becomes active, so Start is the next click.
+            // No active profile yet (the first one): the saved profile becomes active, so On is the next click.
             await profiles.ActivateAsync(profile.Id, ct).ConfigureAwait(false);
         }
 
@@ -354,8 +401,16 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         return new ProfileReply(profile, check);
     }
 
+    /// <summary>The profile that would be deleted, refused as Delete refuses (the tool's preview). Never writes.</summary>
+    internal Profile CheckDelete(Guid id)
+    {
+        var profile = RunningProfiles.Find(id) ?? throw new KeyNotFoundException(ProfileGone);
+        return RunningService.IsOn && RunningProfiles.Book.ActiveId == id ? throw new InvalidOperationException(ActiveWhileOn) : profile;
+    }
+
     internal async Task<ProfilesReply> DeleteProfileAsync(Guid id, CancellationToken ct)
     {
+        CheckDelete(id);
         if (!await RunningProfiles.DeleteAsync(id, ct).ConfigureAwait(false))
         {
             throw new KeyNotFoundException(ProfileGone);
@@ -381,34 +436,59 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         return await PublishStatusAsync(ct).ConfigureAwait(false);
     }
 
-    /// <summary>What Start would run, refused as Start refuses (the tool's preview). Never writes.</summary>
-    internal async Task<Profile> CheckStartAsync(CancellationToken ct)
+    /// <summary>The profile On would run, refused as On refuses (the tool's preview). Never writes.</summary>
+    internal async Task<Profile> CheckTurnOnAsync(CancellationToken ct)
     {
-        var engine = RunningEngine;
-        if (engine.Session is not null)
+        if (RunningService.IsOn)
         {
-            throw new InvalidOperationException(ProvisioningEngine.StartedAlready);
+            throw new InvalidOperationException(ProvisioningService.AlreadyOn);
         }
 
-        if (Dhcp() is not { IsRunning: true })
-        {
-            throw new InvalidOperationException(ProvisioningEngine.DhcpFirst);
-        }
-
-        var active = RunningProfiles.Active ?? throw new InvalidOperationException("Choose the active profile first.");
+        var active = RunningProfiles.Active ?? throw new InvalidOperationException(ChooseActiveFirst);
         return await CheckActivateAsync(active.Id, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Starts with the caller's tasks kept for the nodes that need the caller's MyAxis sign-in.</summary>
-    internal async Task<StatusReply> StartSessionAsync(ICallContext caller, CancellationToken ct)
+    /// <summary>Turns provisioning on with the caller's tasks kept for the nodes that need the caller's MyAxis sign-in.</summary>
+    internal async Task<StatusReply> TurnOnAsync(ICallContext caller, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(caller);
-        var profile = await CheckStartAsync(ct).ConfigureAwait(false);
-        await RunningEngine.StartAsync(profile, caller.UserName, caller.Tasks, ct).ConfigureAwait(false);
+        await CheckTurnOnAsync(ct).ConfigureAwait(false);
+        await RunningService.TurnOnAsync(caller.UserName, caller.Tasks, ct).ConfigureAwait(false);
         return await PublishStatusAsync(ct).ConfigureAwait(false);
     }
 
-    internal NodeVault RunningVault => _vault ?? throw new InvalidOperationException("The Provisioning plugin is not running.");
+    internal async Task<StatusReply> TurnOffAsync(CancellationToken ct)
+    {
+        await RunningService.TurnOffAsync(ct).ConfigureAwait(false);
+        return await PublishStatusAsync(ct).ConfigureAwait(false);
+    }
+
+    internal Task<RunAgainReply> RunAgainAsync(IReadOnlyList<Guid> deviceIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        return deviceIds.Count > DeviceLimits.MaxDevices
+            ? throw new ArgumentException($"At most {DeviceLimits.MaxDevices:N0} cameras at once.")
+            : RunningService.RunAgainAsync(deviceIds, ct);
+    }
+
+    /// <summary>The last provisioning run of a camera with each node's name.</summary>
+    internal async Task<RunReply> RunAsync(Guid deviceId, CancellationToken ct)
+    {
+        var service = RunningService;
+        var run = await service.ReadRunAsync(deviceId, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException(NoRun);
+        var again = await service.PlanAgainAsync(deviceId, ct).ConfigureAwait(false);
+        var names = again?.Profile.Nodes.Select(n => _registry.Find(n.Kind)?.Name ?? n.Kind.ToString()).ToList();
+        return new RunReply(
+            deviceId,
+            run.TaskId,
+            run.ProfileName,
+            run.Started,
+            run.Looked,
+            [.. run.Results.Select((r, i) => new RunNodeReply(names is not null && i < names.Count ? names[i] : $"Node {i + 1}", r))],
+            again is not null);
+    }
+
+    public const string NoRun = "Provisioning has not run on this camera.";
 
     /// <summary>Keeps a typed password or passphrase for a node (encrypted with the server's key) and answers its id only.</summary>
     internal async Task<SecretReply> StoreSecretAsync(SecretRequest request, CancellationToken ct)
@@ -427,7 +507,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         return await RunningVault.AddFileAsync(upload.Name, stream, ct).ConfigureAwait(false);
     }
 
-    /// <summary>The secrets and files no profile and no session names go after a day.</summary>
+    /// <summary>The secrets and files no profile names go after a day.</summary>
     private async Task PruneAsync(CancellationToken ct)
     {
         if (_vault is not { } vault || _profiles is not { } profiles)
@@ -435,40 +515,17 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
             return;
         }
 
-        var named = profiles.Book.Profiles.ToList();
-        if (_engine?.Session?.Profile is { } running)
-        {
-            named.Add(running);
-        }
-
-        await vault.PruneAsync(named, ct).ConfigureAwait(false);
+        await vault.PruneAsync(profiles.Book.Profiles, ct).ConfigureAwait(false);
     }
-
-    internal async Task<StatusReply> StopSessionAsync(CancellationToken ct)
-    {
-        await RunningEngine.StopAsync(ct).ConfigureAwait(false);
-        return await PublishStatusAsync(ct).ConfigureAwait(false);
-    }
-
-    internal CamerasPage Cameras(CamerasRequest request)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        return RunningEngine.Page(request.After, request.Limit);
-    }
-
-    internal CameraRow Camera(string mac) => RunningEngine.Find(mac) ?? throw new KeyNotFoundException("The camera is no longer in the list.");
-
-    private static IReadOnlyList<string> Macs(string? payloadJson) =>
-        PluginJson.Parse<MacsRequest>(payloadJson, ProvisioningJson.Options).Macs ?? [];
 
     private async Task<ProfileCheckContext> ContextAsync(CancellationToken ct)
     {
         IReadOnlyDictionary<Guid, string>? credentials = null;
         try
         {
-            if (_engine is { } engine)
+            if (_service is { } service)
             {
-                credentials = (await engine.AutoAdd.ListCredentialsAsync(ct).ConfigureAwait(false)).ToDictionary(c => c.Id, c => c.UserName);
+                credentials = (await service.AutoAdd.ListCredentialsAsync(ct).ConfigureAwait(false)).ToDictionary(c => c.Id, c => c.UserName);
             }
         }
         catch (NotSupportedException)
@@ -482,7 +539,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
     private async Task<StatusReply> PublishStatusAsync(CancellationToken ct)
     {
         var status = await StatusAsync(ct).ConfigureAwait(false);
-        _ctx?.Events?.Publish(ProvisioningMethods.StatusTopic, PluginJson.Serialize(status, ProvisioningJson.Options));
+        _ctx?.Events?.Publish(ProvisioningMethods.StatusTopic, PluginJson.Serialize(status, ProvisioningJson.Options), PluginEventAudience.AllDevices);
         return status;
     }
 
@@ -496,7 +553,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
             throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
     }
 
-    /// <summary>A host without network checks: Set IP refuses (nothing is written).</summary>
+    /// <summary>A host without network checks: a pool refuses (nothing is written).</summary>
     private sealed class NoProbe : IAddressProbe
     {
         public Task<AddressProbeResult> ProbeAsync(string address, CancellationToken ct) =>

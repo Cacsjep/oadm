@@ -24,10 +24,9 @@ public sealed class StageTwoNodeTests
         return device;
     }
 
-    private static CameraRow Camera(FakeDevice device, int i = 1) =>
-        new() { Mac = Harness.Mac(i), Serial = device.Serial, Address = device.Address, DeviceId = device.Id, Model = device.Model };
+    private static CameraInfo Camera(FakeDevice device, int i = 1) => new(device.Serial, device.Address, device.Model, device.Id);
 
-    private static async Task<NodeResult> RunAsync(Harness h, IProvisioningNode node, object settings, CameraRow camera)
+    private static async Task<NodeResult> RunAsync(Harness h, IProvisioningNode node, object settings, CameraInfo camera)
     {
         var flow = Harness.Node("n", node.Kind, settings);
         var run = node.RunAsync(new NodeRun(h.Engine, camera, h.Profile(flow), flow), CancellationToken.None);
@@ -43,7 +42,7 @@ public sealed class StageTwoNodeTests
             h.StarterTasks = h.Ctx;
         }
 
-        await h.StartAsync(h.Profile());
+        await h.StartAsync(h.Profile()); // the administrator turns provisioning on: their tasks for Upgrade AXIS OS online
         return h;
     }
 
@@ -148,22 +147,23 @@ public sealed class StageTwoNodeTests
         Assert.Equal("Two files are for P3265-LVE.", node.Check(Harness.Json(new UpgradeFilesSettings([new OsFile(b.Id), new OsFile(c.Id)])), Kept(h)));
     }
 
-    // ---- Network settings ----
+    // ---- Network: DNS servers and search domain (the address: NetworkNodeTests) ----
 
     [Fact]
-    public async Task Network_settings_writes_the_dns_servers_and_never_the_host_name()
+    public async Task Network_keeps_the_address_writes_the_dns_servers_and_never_the_host_name()
     {
         await using var h = await StartedAsync();
         var first = Camera(Device(h, i: 1), 1);
-        var settings = new NetworkSettingsSettings(["10.0.0.1"], "site.local");
-        var node = new NetworkSettingsNode();
+        var settings = new NetworkNodeSettings(DnsServers: ["10.0.0.1"], SearchDomain: "site.local");
+        var node = new NetworkNode();
 
         Assert.Equal(NodeResult.Success("DNS 10.0.0.1, search domain site.local."), await RunAsync(h, node, settings, first));
-        Assert.Equal(NodeResult.Success("DNS 10.0.0.1."), await RunAsync(h, node, new NetworkSettingsSettings(["10.0.0.1"]), first));
+        Assert.Equal(NodeResult.Success("DNS 10.0.0.1."), await RunAsync(h, node, new NetworkNodeSettings(DnsServers: ["10.0.0.1"]), first));
 
+        Assert.All(h.Ctx.TaskRuns, r => Assert.Equal("oadm.network", r.PluginId)); // Keep: never an address
         var payload = Payload(h.Ctx.TaskRuns[0]);
-        Assert.Equal("oadm.network", h.Ctx.TaskRuns[0].PluginId);
         Assert.False(payload.TryGetProperty("hostName", out _));
+        Assert.False(payload.TryGetProperty("ipv4", out _));
         Assert.False(payload.TryGetProperty("devices", out _));
         Assert.False(payload.GetProperty("dns").GetProperty("useDhcp").GetBoolean());
         Assert.Equal("10.0.0.1", payload.GetProperty("dns").GetProperty("servers")[0].GetString());
@@ -175,24 +175,14 @@ public sealed class StageTwoNodeTests
     }
 
     [Theory]
-    [InlineData(null, null, "Enter the DNS servers.")]
-    [InlineData(null, "site.local", "Enter the DNS servers.")]
+    [InlineData(null, null, NetworkNode.SetOnePart)]
+    [InlineData(null, "site.local", NetworkNode.DnsForDomain)]
     [InlineData("10.0.0.300", null, "10.0.0.300 is not an IPv4 address.")]
     [InlineData("10.0.0.1", "site_local", "site_local is not a domain name.")]
     [InlineData("10.0.0.1", "site.local", null)]
     [InlineData("10.0.0.1", null, null)]
-    public void Network_settings_checks_the_dns(string? dns, string? domain, string? error) =>
-        Assert.Equal(error, new NetworkSettingsNode().Check(Harness.Json(new NetworkSettingsSettings(dns is null ? [] : [dns], domain)), ProfileCheckContext.Empty));
-
-    [Fact]
-    public void Network_settings_of_an_older_profile_load_and_ignore_the_host_name()
-    {
-        using var old = JsonDocument.Parse("""{"hostName":"{model}-{n}","startNumber":10,"dnsServers":["10.0.0.1"],"searchDomain":"site.local"}""");
-        var settings = NodeSettings.Read<NetworkSettingsSettings>(old.RootElement);
-        Assert.Equal(["10.0.0.1"], settings!.DnsServers!);
-        Assert.Equal("site.local", settings.SearchDomain);
-        Assert.Null(new NetworkSettingsNode().Check(old.RootElement, ProfileCheckContext.Empty));
-    }
+    public void Network_with_keep_needs_dns_servers_or_a_search_domain(string? dns, string? domain, string? error) =>
+        Assert.Equal(error, new NetworkNode().Check(Harness.Json(new NetworkNodeSettings(DnsServers: dns is null ? [] : [dns], SearchDomain: domain)), ProfileCheckContext.Empty));
 
     // ---- Configuration ----
 
@@ -500,7 +490,8 @@ public sealed class StageTwoNodeTests
     public void Every_node_kind_is_registered_once_with_valid_defaults_except_what_must_be_chosen()
     {
         var registry = NodeRegistry.Default;
-        Assert.Equal(Enum.GetValues<NodeKind>().Length, registry.All.Count);
+        NodeKind[] gone = [NodeKind.AddToOadm, NodeKind.WaitForApproval, NodeKind.SetIp, NodeKind.NetworkSettings]; // converted on load
+        Assert.Equal(Enum.GetValues<NodeKind>().Except(gone).Order(), registry.All.Select(n => n.Kind).Order());
         Assert.Equal(registry.All.Count, registry.All.Select(n => n.Kind).Distinct().Count());
         foreach (var node in registry.All)
         {

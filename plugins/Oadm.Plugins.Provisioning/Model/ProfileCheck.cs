@@ -19,8 +19,8 @@ public sealed record ProfileCheckResult
 
 /// <summary>
 /// The check of a profile (like Vision Center's <c>VisionGraph.Check</c>): the same in the editor, on save and before a
-/// profile is active or started. One error per node: first its place (Set password first, Add to OADM second, each once),
-/// then its settings. Deterministic and cheap.
+/// profile is active. One error per node: first its place (Set password first, once), then its settings. Deterministic and
+/// cheap.
 /// </summary>
 public static partial class ProfileCheck
 {
@@ -31,6 +31,8 @@ public static partial class ProfileCheck
     public const int MaxProfiles = 50;
 
     public const string FixFirst = "Fix the profile first.";
+
+    public const string StartsWithSetPassword = "A profile starts with Set password.";
 
     [GeneratedRegex("^[A-Za-z0-9-]{1,32}$")]
     private static partial Regex NodeId();
@@ -66,9 +68,9 @@ public static partial class ProfileCheck
             return new ProfileCheckResult { ProfileErrors = profileErrors };
         }
 
-        if (nodes.Count < 2 || nodes[0].Kind != NodeKind.SetPassword || nodes[1].Kind != NodeKind.AddToOadm)
+        if (nodes.Count < 1 || nodes[0].Kind != NodeKind.SetPassword)
         {
-            profileErrors.Add("A profile starts with Set password and Add to OADM.");
+            profileErrors.Add(StartsWithSetPassword);
         }
 
         var ids = new HashSet<string>(StringComparer.Ordinal);
@@ -133,8 +135,7 @@ public static partial class ProfileCheck
         return node.Kind switch
         {
             NodeKind.SetPassword when index != 0 => "Set password is always the first node.",
-            NodeKind.AddToOadm when index != 1 => "Add to OADM is always the second node.",
-            _ when !kind.IsFixed && index < 2 => "Set password and Add to OADM come first.",
+            _ when !kind.IsFixed && index < 1 => "Set password comes first.",
             _ => null,
         };
     }

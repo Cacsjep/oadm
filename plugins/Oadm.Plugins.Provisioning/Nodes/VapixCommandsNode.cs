@@ -28,6 +28,8 @@ public sealed class VapixCommandsNode(CommandLibrary library) : DeviceNode<Vapix
 
     public override string Name => "VAPIX commands";
 
+    public override string StepName => "Run the VAPIX commands";
+
     public override object DefaultSettings => new VapixCommandsSettings([]);
 
     protected override string? CheckSettings(VapixCommandsSettings settings, ProfileCheckContext context)

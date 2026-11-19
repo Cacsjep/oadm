@@ -9,7 +9,7 @@ namespace Oadm.Plugins.Provisioning.Nodes;
 
 /// <summary>
 /// A node that works on the camera's OADM device with more than one task or with VAPIX itself (Users, SD card, Autofocus,
-/// VAPIX commands): reads and checks its settings, refuses before Add to OADM gave the camera its device, then
+/// VAPIX commands): reads and checks its settings, then
 /// <see cref="RunOnAsync"/>. Like <see cref="TaskNode{TSettings}"/> it never throws for a device problem.
 /// </summary>
 /// <typeparam name="TSettings">The node's settings record.</typeparam>
@@ -19,6 +19,8 @@ public abstract class DeviceNode<TSettings> : IProvisioningNode
     public abstract NodeKind Kind { get; }
 
     public abstract string Name { get; }
+
+    public abstract string StepName { get; }
 
     public abstract object DefaultSettings { get; }
 

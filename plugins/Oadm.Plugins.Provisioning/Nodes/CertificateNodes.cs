@@ -19,6 +19,8 @@ public sealed class CertificateNode : TaskNode<CertificateSettings>
 
     public override string Name => "Certificate";
 
+    public override string StepName => "Install the certificate";
+
     public override string TaskPluginId => HttpsTaskId;
 
     public override object DefaultSettings => new CertificateSettings();
@@ -70,6 +72,8 @@ public sealed class Dot1xNode : TaskNode<Dot1xSettings>
     public override NodeKind Kind => NodeKind.Dot1x;
 
     public override string Name => "802.1X";
+
+    public override string StepName => "Turn on 802.1X";
 
     public override string TaskPluginId => Dot1xTaskId;
 

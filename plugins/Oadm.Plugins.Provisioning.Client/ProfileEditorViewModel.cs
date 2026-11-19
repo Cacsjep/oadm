@@ -29,7 +29,7 @@ public interface IProfileEditorUi
 
 /// <summary>
 /// The profile editor (spec "Profiles: the flow"): the name, the straight chain of nodes on the canvas (add from the list,
-/// move up and down, remove; never the two fixed nodes), the selected node's settings in the side panel with their errors
+/// move up and down, remove; never Set password), the selected node's settings in the side panel with their errors
 /// below the fields, the profile check of the server (one error per node, on the node) after every change, Save. A password
 /// typed for Set password and the passwords and passphrases of other nodes go to the server once, with Save; files when
 /// chosen. A profile with node errors is saved as a draft.
@@ -156,7 +156,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
 
     Task<string> INodeFormServices.RevealCredentialAsync(Guid credentialId, CancellationToken ct) => _ctx.RevealCredentialAsync(credentialId, ct);
 
-    /// <summary>Reads the node kinds, the credential list and the profile (or starts a new one with the two fixed nodes).</summary>
+    /// <summary>Reads the node kinds, the credential list and the profile (or starts a new one with Set password).</summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
         IsLoading = true;
@@ -190,8 +190,8 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
                 {
                     Id = Guid.NewGuid(),
                     Name = ProvisioningTexts.DefaultName,
-                    // The two fixed nodes and Set IP, which can be moved and removed (decision 2026-11-19).
-                    Nodes = [.. kinds.Where(k => k.IsFixed || k.Kind == NodeKind.SetIp).OrderBy(k => !k.IsFixed)
+                    // The fixed node Set password only (redesign 2026-11-19).
+                    Nodes = [.. kinds.Where(k => k.IsFixed)
                         .Select((k, i) => new FlowNode { Id = "n" + (i + 1), Kind = k.Kind, ContinueOnError = !k.AlwaysStops, Settings = NodeForms.NewSettings(k, _dhcp) })],
                 };
             }
@@ -241,7 +241,10 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
     /// <summary>The profile as the editor holds it now.</summary>
     public Profile ToProfile() => new() { Id = _id, Name = Name.Trim(), Nodes = [.. Nodes.Select(n => n.ToFlowNode())] };
 
-    /// <summary>Add node: the kind after the selected node (never before the two fixed ones), or at the end.</summary>
+    /// <summary>The fixed nodes at the start of every profile: Set password (redesign 2026-11-19).</summary>
+    public const int FixedNodes = 1;
+
+    /// <summary>Add node: the kind after the selected node (never before Set password), or at the end.</summary>
     [RelayCommand]
     public void AddNode(NodeKindInfo? kind)
     {
@@ -251,7 +254,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
         }
 
         var index = SelectedNode is { } selected ? Nodes.IndexOf(selected) + 1 : Nodes.Count;
-        index = Math.Clamp(index, Math.Min(2, Nodes.Count), Nodes.Count);
+        index = Math.Clamp(index, Math.Min(FixedNodes, Nodes.Count), Nodes.Count);
         var node = Add(index, new FlowNode { Id = NextId(), Kind = kind.Kind, ContinueOnError = !kind.AlwaysStops, Settings = NodeForms.NewSettings(kind, _dhcp) });
         SelectedNode = node;
         AfterChange();
@@ -259,11 +262,11 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
 
     /// <summary>
     /// The + below the node at <paramref name="index"/>: the node list at (<paramref name="left"/>, <paramref name="top"/>) with
-    /// every kind but the fixed ones, grouped, each with its line. Never after Set password (Add to OADM is second).
+    /// every kind but the fixed ones, grouped, each with its line. Also below Set password, never above it.
     /// </summary>
     public void OpenPicker(int index, double left, double top)
     {
-        if (index < 1 || index >= Nodes.Count || IsLoading)
+        if (index < FixedNodes - 1 || index >= Nodes.Count || IsLoading)
         {
             return;
         }
@@ -281,7 +284,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
             return null;
         }
 
-        var at = Math.Clamp(index + 1, Math.Min(2, Nodes.Count), Nodes.Count);
+        var at = Math.Clamp(index + 1, Math.Min(FixedNodes, Nodes.Count), Nodes.Count);
         var node = Add(at, new FlowNode { Id = NextId(), Kind = kind.Kind, ContinueOnError = !kind.AlwaysStops, Settings = NodeForms.NewSettings(kind, _dhcp) });
         SelectedNode = node;
         AfterChange();
@@ -309,7 +312,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
         AfterChange();
     }
 
-    public bool CanMoveUp => SelectedNode is { IsFixed: false } node && Nodes.IndexOf(node) > 2;
+    public bool CanMoveUp => SelectedNode is { IsFixed: false } node && Nodes.IndexOf(node) > FixedNodes;
 
     public bool CanMoveDown => SelectedNode is { IsFixed: false } node && Nodes.IndexOf(node) < Nodes.Count - 1;
 
@@ -470,7 +473,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
 
         var index = Nodes.IndexOf(node);
         var to = index + by;
-        if (to < 2 || to >= Nodes.Count)
+        if (to < FixedNodes || to >= Nodes.Count)
         {
             return;
         }
@@ -566,7 +569,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
 
     private void RebuildChain()
     {
-        Chain.Nodes = [.. Nodes.Select((n, i) => ToChainNode(n) with { CanAddAfter = i >= 1 })];
+        Chain.Nodes = [.. Nodes.Select((n, i) => ToChainNode(n) with { CanAddAfter = i >= FixedNodes - 1 })];
         _syncing = true;
         Chain.SelectedIndex = SelectedNode is null ? -1 : Nodes.IndexOf(SelectedNode);
         _syncing = false;

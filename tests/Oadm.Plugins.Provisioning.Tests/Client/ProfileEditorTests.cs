@@ -21,34 +21,36 @@ public sealed class ProfileEditorTests
 
     private static NodeKindInfo Kind(NodeKind kind) => Samples.Kinds.Single(k => k.Kind == kind);
 
+    /// <summary>The Network node's address from a pool.</summary>
+    internal static void UsePool(NodeEditorViewModel node)
+    {
+        var ip = node.Field<ChoiceFieldViewModel>("ip");
+        ip.Selected = ip.Choices.Single(c => c.Value == "pool");
+    }
+
     [Fact]
-    public async Task A_new_profile_starts_with_the_two_fixed_nodes_and_set_ip_and_the_root_password_of_the_credential_list()
+    public async Task A_new_profile_starts_with_set_password_alone_and_the_root_password_of_the_credential_list()
     {
         var (editor, _) = await OpenAsync(null);
 
         Assert.Equal(ProvisioningTexts.NewProfileTitle, editor.Title);
         Assert.Equal(ProvisioningTexts.DefaultName, editor.Name);
-        Assert.Equal([NodeKind.SetPassword, NodeKind.AddToOadm, NodeKind.SetIp], editor.Nodes.Select(n => n.Kind));
+        Assert.Equal([NodeKind.SetPassword], editor.Nodes.Select(n => n.Kind));
         Assert.True(editor.Nodes[0].IsFixed);
-        Assert.True(editor.Nodes[1].IsFixed);
-        Assert.False(editor.Nodes[2].IsFixed); // Set IP can be moved and removed
-        Assert.Equal(3, editor.Nodes.Select(n => n.Id).Distinct().Count());
         Assert.Equal(Samples.Kinds.Where(k => !k.IsFixed).Select(k => k.Kind).OrderBy(NodeLook.Rank), editor.AddableKinds.Select(k => k.Kind));
         Assert.Contains("VAPIX commands", editor.AddableKinds.Select(k => k.Name));
+        Assert.DoesNotContain(editor.AddableKinds, k => k.Kind is NodeKind.AddToOadm or NodeKind.WaitForApproval or NodeKind.SetIp or NodeKind.NetworkSettings);
         var password = Assert.IsType<PasswordFieldViewModel>(Assert.Single(editor.Nodes[0].Fields));
         Assert.Equal("root", Assert.Single(password.Credentials).UserName); // only the root entries
         Assert.Equal(Samples.RootCredential, password.SelectedCredential?.Id);
         Assert.False(editor.Nodes[0].CanChangeContinueOnError);
         Assert.False(editor.Nodes[0].ContinueOnError);
-        Assert.Equal(3, editor.Chain.Nodes.Count);
+        Assert.Single(editor.Chain.Nodes);
         Assert.False(editor.HasErrors); // untouched
-        Assert.True(editor.IsDraft); // Set IP has no pool yet: a draft
+        Assert.False(editor.IsDraft);
         Assert.True(editor.SaveCommand.CanExecute(null));
-
-        editor.SelectedNode = editor.Nodes[2];
-        Assert.True(editor.RemoveNodeCommand.CanExecute(null));
-        editor.RemoveNode();
-        Assert.Equal([NodeKind.SetPassword, NodeKind.AddToOadm], editor.Nodes.Select(n => n.Kind));
+        editor.SelectedNode = editor.Nodes[0];
+        Assert.False(editor.RemoveNodeCommand.CanExecute(null));
     }
 
     [Fact]
@@ -56,38 +58,30 @@ public sealed class ProfileEditorTests
     {
         var (editor, _) = await OpenAsync(null);
 
-        // The + shows below the last node and the selected one, never below Set password (Add to OADM is second).
+        // The + shows below the last node, also below Set password.
         Assert.True(editor.Chain.CanAdd);
-        Assert.False(editor.Chain.ShowsPlus(0));
-        Assert.False(editor.Chain.ShowsPlus(1));
-        Assert.True(editor.Chain.ShowsPlus(2));
-        editor.SelectedNode = editor.Nodes[1];
-        Assert.True(editor.Chain.ShowsPlus(1));
-        editor.SelectedNode = editor.Nodes[0];
-        Assert.False(editor.Chain.ShowsPlus(0));
+        Assert.True(editor.Chain.ShowsPlus(0));
 
-        editor.Chain.RequestAdd(1, new Avalonia.Point(200, 120)); // the + below Add to OADM
+        editor.Chain.RequestAdd(0, new Avalonia.Point(200, 120)); // the + below Set password
         Assert.True(editor.Picker.IsOpen);
         Assert.Equal(200, editor.Picker.Left);
         Assert.Equal(editor.AddableKinds.Select(k => k.Name), editor.Picker.ShownItems.Select(i => i.Label));
         Assert.All(editor.Picker.ShownItems, i => Assert.False(string.IsNullOrWhiteSpace(i.Description)));
-        Assert.Equal(["AXIS OS", "Settings", "Security", "Camera", "Last steps"], editor.Picker.Entries.OfType<NodePickerGroup>().Select(g => g.Name));
+        Assert.Equal(["AXIS OS", "Settings", "Security", "Camera"], editor.Picker.Entries.OfType<NodePickerGroup>().Select(g => g.Name));
         editor.Picker.SearchText = "date";
         var dateTime = Assert.Single(editor.Picker.ShownItems);
         editor.Picker.Choose(dateTime);
 
         Assert.False(editor.Picker.IsOpen);
-        Assert.Equal([NodeKind.SetPassword, NodeKind.AddToOadm, NodeKind.DateTime, NodeKind.SetIp], editor.Nodes.Select(n => n.Kind));
-        Assert.Same(editor.Nodes[2], editor.SelectedNode);
-        Assert.Equal(2, editor.Chain.SelectedIndex);
-        Assert.Equal(4, editor.Nodes.Select(n => n.Id).Distinct().Count());
+        Assert.Equal([NodeKind.SetPassword, NodeKind.DateTime], editor.Nodes.Select(n => n.Kind));
+        Assert.Same(editor.Nodes[1], editor.SelectedNode);
+        Assert.Equal(1, editor.Chain.SelectedIndex);
 
-        // The + of the last node adds at the end; a + below Set password opens nothing.
-        editor.Chain.RequestAdd(3, new Avalonia.Point(200, 400));
-        editor.Picker.Choose(editor.Picker.ShownItems.Single(i => i.Label == "Wait for approval"));
-        Assert.Equal(NodeKind.WaitForApproval, editor.Nodes[^1].Kind);
-        editor.Chain.RequestAdd(0, new Avalonia.Point(200, 40));
-        Assert.False(editor.Picker.IsOpen);
+        // The + of the last node adds at the end.
+        editor.Chain.RequestAdd(1, new Avalonia.Point(200, 400));
+        editor.Picker.Choose(editor.Picker.ShownItems.Single(i => i.Label == "Network"));
+        Assert.Equal([NodeKind.SetPassword, NodeKind.DateTime, NodeKind.Network], editor.Nodes.Select(n => n.Kind));
+        Assert.Equal(3, editor.Nodes.Select(n => n.Id).Distinct().Count());
 
         // A click on the canvas closes the list.
         editor.Chain.RequestAdd(1, new Avalonia.Point(200, 120));
@@ -96,49 +90,49 @@ public sealed class ProfileEditorTests
     }
 
     [Fact]
-    public async Task Nodes_are_added_after_the_selection_never_before_the_fixed_ones_and_move_only_below_them()
+    public async Task Nodes_are_added_after_the_selection_never_before_set_password_and_move_only_below_it()
     {
         var (editor, _) = await OpenAsync(null);
         editor.SelectedNode = editor.Nodes[0];
         editor.AddNode(Kind(NodeKind.DateTime));
-        Assert.Equal([NodeKind.SetPassword, NodeKind.AddToOadm, NodeKind.DateTime, NodeKind.SetIp], editor.Nodes.Select(n => n.Kind));
+        editor.AddNode(Kind(NodeKind.Network));
+        Assert.Equal([NodeKind.SetPassword, NodeKind.DateTime, NodeKind.Network], editor.Nodes.Select(n => n.Kind));
         Assert.Same(editor.Nodes[2], editor.SelectedNode);
-        Assert.Equal(2, editor.Chain.SelectedIndex);
 
+        editor.SelectedNode = editor.Nodes[0];
+        editor.AddNode(Kind(NodeKind.Autofocus));
+        Assert.Equal([NodeKind.SetPassword, NodeKind.Autofocus, NodeKind.DateTime, NodeKind.Network], editor.Nodes.Select(n => n.Kind));
+
+        // Network up to right below Set password, never above it.
         editor.SelectedNode = editor.Nodes[3];
-        editor.AddNode(Kind(NodeKind.WaitForApproval));
-        Assert.Equal([NodeKind.SetPassword, NodeKind.AddToOadm, NodeKind.DateTime, NodeKind.SetIp, NodeKind.WaitForApproval], editor.Nodes.Select(n => n.Kind));
-        Assert.Equal(5, editor.Nodes.Select(n => n.Id).Distinct().Count());
-
-        // Wait for approval before Set IP and Date and time.
         Assert.True(editor.MoveUpCommand.CanExecute(null));
         editor.MoveUp();
         editor.MoveUp();
-        Assert.Equal([NodeKind.SetPassword, NodeKind.AddToOadm, NodeKind.WaitForApproval, NodeKind.DateTime, NodeKind.SetIp], editor.Nodes.Select(n => n.Kind));
-        Assert.False(editor.MoveUpCommand.CanExecute(null)); // never above Add to OADM
-        Assert.Equal(2, editor.Chain.SelectedIndex);
+        Assert.Equal([NodeKind.SetPassword, NodeKind.Network, NodeKind.Autofocus, NodeKind.DateTime], editor.Nodes.Select(n => n.Kind));
+        Assert.False(editor.MoveUpCommand.CanExecute(null));
+        Assert.Equal(1, editor.Chain.SelectedIndex);
 
-        // The fixed nodes neither move nor go.
-        editor.Chain.SelectedIndex = 1;
-        Assert.Same(editor.Nodes[1], editor.SelectedNode);
+        // Set password neither moves nor goes.
+        editor.Chain.SelectedIndex = 0;
+        Assert.Same(editor.Nodes[0], editor.SelectedNode);
         Assert.False(editor.MoveUpCommand.CanExecute(null));
         Assert.False(editor.MoveDownCommand.CanExecute(null));
         Assert.False(editor.RemoveNodeCommand.CanExecute(null));
         Assert.Equal(ProvisioningTexts.FixedTip, editor.FixedTip);
 
-        editor.SelectedNode = editor.Nodes[4];
+        editor.SelectedNode = editor.Nodes[3];
         Assert.False(editor.MoveDownCommand.CanExecute(null));
         editor.RemoveNode();
-        Assert.Equal(4, editor.Nodes.Count);
-        Assert.Same(editor.Nodes[3], editor.SelectedNode);
+        Assert.Equal(3, editor.Nodes.Count);
+        Assert.Same(editor.Nodes[2], editor.SelectedNode);
     }
 
     [Fact]
     public async Task Field_errors_show_below_the_field_once_edited_and_save_stores_a_draft()
     {
         var (editor, _) = await OpenAsync(null);
-        editor.SelectedNode = editor.Nodes.Single(n => n.Kind == NodeKind.SetIp); // a new profile has it
-        var setIp = editor.SelectedNode!;
+        var setIp = editor.AddAfter(0, Kind(NodeKind.Network))!;
+        UsePool(setIp);
         var first = (TextFieldViewModel)setIp.Fields.Single(f => f.Key == "first");
         var last = (TextFieldViewModel)setIp.Fields.Single(f => f.Key == "last");
 
@@ -152,8 +146,8 @@ public sealed class ProfileEditorTests
         last.Text = "192.168.15";
         Assert.Equal(ProvisioningTexts.NotAnAddress, last.ErrorOf(nameof(TextFieldViewModel.Text)));
         Assert.Equal(ProvisioningTexts.NotAnAddress, setIp.CanvasError);
-        Assert.Equal(ProvisioningTexts.NotAnAddress, editor.Chain.Nodes[2].Below);
-        Assert.True(editor.Chain.Nodes[2].HasError);
+        Assert.Equal(ProvisioningTexts.NotAnAddress, editor.Chain.Nodes[1].Below);
+        Assert.True(editor.Chain.Nodes[1].HasError);
 
         last.Text = "192.168.15.50";
         ((TextFieldViewModel)setIp.Fields.Single(f => f.Key == "subnetMask")).Text = "255.255.255.0";
@@ -161,20 +155,20 @@ public sealed class ProfileEditorTests
         Assert.True(setIp.IsValid);
         await editor.CheckTask;
         Assert.Null(setIp.CanvasError);
-        Assert.Equal("192.168.15.10 to 192.168.15.50", editor.Chain.Nodes[2].Line);
+        Assert.Equal("192.168.15.10 to 192.168.15.50", editor.Chain.Nodes[1].Line);
         Assert.True(editor.SaveCommand.CanExecute(null));
     }
 
     [Fact]
-    public async Task A_new_set_ip_starts_in_the_dhcp_servers_network_and_only_the_last_number_is_left_to_type()
+    public async Task A_new_network_node_starts_in_the_dhcp_servers_network_and_only_the_last_number_is_left_to_type()
     {
         var ctx = Samples.Context();
         var editor = new ProfileEditorViewModel(ctx, null, Samples.Dhcp() with { SubnetMask = "255.255.0.0" });
         await editor.LoadAsync();
         await editor.CheckTask;
 
-        // The Set IP of a new profile.
-        var setIp = editor.Nodes.Single(n => n.Kind == NodeKind.SetIp);
+        var setIp = editor.AddAfter(0, Kind(NodeKind.Network))!;
+        UsePool(setIp);
         TextFieldViewModel Text(NodeEditorViewModel node, string key) => node.Field<TextFieldViewModel>(key);
         Assert.Equal("10.0.0.", Text(setIp, "first").Text); // from the range start 10.0.0.100
         Assert.Equal("10.0.0.", Text(setIp, "last").Text);
@@ -184,9 +178,7 @@ public sealed class ProfileEditorTests
 
         // Half filled is a draft, but no error shows below an untouched field.
         Assert.Null(Text(setIp, "first").ErrorOf(nameof(TextFieldViewModel.Text)));
-        Assert.Null(Text(setIp, "last").ErrorOf(nameof(TextFieldViewModel.Text)));
         Assert.False(setIp.IsValid);
-        Assert.True(editor.IsDraft);
         Assert.True(editor.SaveCommand.CanExecute(null));
 
         // Typing the last number makes it valid.
@@ -195,42 +187,35 @@ public sealed class ProfileEditorTests
         Text(setIp, "gateway").Text = "10.0.0.1";
         Assert.True(setIp.IsValid);
 
-        // A Set IP added with the + starts the same way; the edited one keeps its values.
-        var added = editor.AddAfter(2, Kind(NodeKind.SetIp))!;
-        Assert.Equal("10.0.0.", Text(added, "first").Text);
-        Assert.Equal("255.255.0.0", Text(added, "subnetMask").Text);
-        Assert.Equal("10.0.0.10", Text(setIp, "first").Text);
-
         // Other kinds keep their defaults.
-        var dateTime = editor.AddAfter(2, Kind(NodeKind.DateTime))!;
+        var dateTime = editor.AddAfter(1, Kind(NodeKind.DateTime))!;
         Assert.Equal(Kind(NodeKind.DateTime).DefaultSettings.GetRawText(), dateTime.ToFlowNode().Settings!.Value.GetRawText());
     }
 
     [Fact]
-    public async Task A_new_set_ip_takes_the_server_address_without_a_range_and_only_the_mask_without_a_dhcp_server()
+    public async Task A_new_network_node_takes_the_server_address_without_a_range_and_only_the_mask_without_a_dhcp_server()
     {
         var ctx = Samples.Context();
         var editor = new ProfileEditorViewModel(ctx, null, Samples.Dhcp() with { RangeStart = null, SubnetMask = null, ServerAddress = "192.168.15.2" });
         await editor.LoadAsync();
-        var setIp = editor.Nodes.Single(n => n.Kind == NodeKind.SetIp);
+        var setIp = editor.AddAfter(0, Kind(NodeKind.Network))!;
         Assert.Equal("192.168.15.", setIp.Field<TextFieldViewModel>("first").Text);
         Assert.Equal("255.255.255.0", setIp.Field<TextFieldViewModel>("subnetMask").Text);
 
         var (unknown, _) = await OpenAsync(null); // no DHCP server
-        var plain = unknown.Nodes.Single(n => n.Kind == NodeKind.SetIp);
+        var plain = unknown.AddAfter(0, Kind(NodeKind.Network))!;
         Assert.Equal(string.Empty, plain.Field<TextFieldViewModel>("first").Text);
         Assert.Equal(string.Empty, plain.Field<TextFieldViewModel>("last").Text);
         Assert.Equal("255.255.255.0", plain.Field<TextFieldViewModel>("subnetMask").Text);
-        Assert.Equal(string.Empty, unknown.AddAfter(2, Kind(NodeKind.SetIp))!.Field<TextFieldViewModel>("first").Text);
     }
 
     [Fact]
-    public async Task A_saved_set_ip_is_never_changed_by_the_dhcp_server()
+    public async Task A_saved_network_node_is_never_changed_by_the_dhcp_server()
     {
         var ctx = Samples.Context();
         var editor = new ProfileEditorViewModel(ctx, Samples.ProfileId, Samples.Dhcp());
         await editor.LoadAsync();
-        var setIp = editor.Nodes.Single(n => n.Kind == NodeKind.SetIp);
+        var setIp = editor.Nodes.Single(n => n.Kind == NodeKind.Network);
         Assert.Equal("192.168.15.10", setIp.Field<TextFieldViewModel>("first").Text);
     }
 
@@ -238,8 +223,8 @@ public sealed class ProfileEditorTests
     public async Task The_server_check_puts_its_error_on_the_node_and_its_warning_below_it()
     {
         var (editor, _) = await OpenAsync(null);
-        editor.SelectedNode = editor.Nodes.Single(n => n.Kind == NodeKind.SetIp); // a new profile has it
-        var setIp = editor.SelectedNode!;
+        var setIp = editor.AddAfter(0, Kind(NodeKind.Network))!;
+        UsePool(setIp);
         foreach (var (key, value) in new[] { ("first", "10.0.0.150"), ("last", "10.0.0.160"), ("subnetMask", "255.255.255.0"), ("gateway", "10.0.0.1") })
         {
             ((TextFieldViewModel)setIp.Fields.Single(f => f.Key == key)).Text = value;
@@ -248,8 +233,8 @@ public sealed class ProfileEditorTests
         await editor.CheckTask;
         Assert.Null(setIp.CheckError);
         Assert.Equal("The pool overlaps the DHCP server's range 10.0.0.100 to 10.0.0.199.", setIp.CheckWarning);
-        Assert.Equal("Oadm.StatusWarningBrush", editor.Chain.Nodes[2].BelowBrushKey);
-        Assert.False(editor.Chain.Nodes[2].HasError);
+        Assert.Equal("Oadm.StatusWarningBrush", editor.Chain.Nodes[1].BelowBrushKey);
+        Assert.False(editor.Chain.Nodes[1].HasError);
         Assert.True(editor.SaveCommand.CanExecute(null)); // a warning never blocks
 
         // The DateTime node without a time zone: the server's error on the node, Save off with the reason.
@@ -307,12 +292,12 @@ public sealed class ProfileEditorTests
         var (editor, ctx) = await OpenAsync(Samples.ProfileId);
         Assert.Equal(ProvisioningTexts.EditProfileTitle, editor.Title);
         Assert.Equal("Lobby cameras", editor.Name);
-        Assert.Equal(5, editor.Nodes.Count);
-        var setIp = editor.Nodes.Single(n => n.Kind == NodeKind.SetIp);
-        Assert.False(setIp.ContinueOnError);
-        ((ListFieldViewModel)setIp.Fields.Single(f => f.Key == "dnsServers")).Text = "192.168.15.1, 10.0.0.17";
-        setIp.ContinueOnError = true;
-        ((ListFieldViewModel)editor.Nodes[1].Fields.Single()).Text = "Lobby; Floor 2";
+        Assert.Equal(3, editor.Nodes.Count);
+        var network = editor.Nodes.Single(n => n.Kind == NodeKind.Network);
+        Assert.False(network.ContinueOnError);
+        Assert.True(network.Field<ChoiceFieldViewModel>("ip").Is("pool"));
+        ((ListFieldViewModel)network.Fields.Single(f => f.Key == "dnsServers")).Text = "192.168.15.1, 10.0.0.17";
+        network.ContinueOnError = true;
 
         bool? closed = null;
         editor.CloseRequested += (_, saved) => closed = saved;
@@ -321,13 +306,12 @@ public sealed class ProfileEditorTests
         Assert.True(closed);
         var saved = JsonSerializer.Deserialize<SaveProfileRequest>(ctx.LastPayloadOf(ProvisioningMethods.SaveProfile)!, Samples.Json)!;
         Assert.Null(saved.Password);
-        var node = saved.Profile.Nodes.Single(n => n.Kind == NodeKind.SetIp);
+        var node = saved.Profile.Nodes.Single(n => n.Kind == NodeKind.Network);
         Assert.True(node.ContinueOnError);
         var settings = JsonNode.Parse(node.Settings!.Value.GetRawText())!;
+        Assert.Equal("pool", (string?)settings["ip"]);
         Assert.Equal("192.168.15.10", (string?)settings["first"]);
         Assert.Equal(["192.168.15.1", "10.0.0.17"], settings["dnsServers"]!.AsArray().Select(v => (string?)v));
-        var tags = JsonNode.Parse(saved.Profile.Nodes[1].Settings!.Value.GetRawText())!["tags"]!.AsArray().Select(v => (string?)v);
-        Assert.Equal(["Lobby", "Floor 2"], tags);
     }
 
     [Fact]
@@ -342,15 +326,6 @@ public sealed class ProfileEditorTests
         Assert.False(closed);
     }
 
-    [Fact]
-    public async Task Wait_for_approval_says_what_it_does_instead_of_fields()
-    {
-        var (editor, _) = await OpenAsync(null);
-        editor.AddNode(Kind(NodeKind.WaitForApproval));
-        Assert.False(editor.SelectedNode!.HasFields);
-        Assert.Equal(ProvisioningTexts.WaitHint, editor.SelectedNode.Note);
-        Assert.Equal(ProvisioningTexts.WaitsForContinue, editor.Chain.Nodes[3].Line); // after Set IP
-    }
     private static async Task<(ProfileEditorViewModel Editor, FakePageContext Ctx, PasswordFieldViewModel Field)> OpenThreeRootsAsync(bool admin = true)
     {
         var ctx = Samples.Context();

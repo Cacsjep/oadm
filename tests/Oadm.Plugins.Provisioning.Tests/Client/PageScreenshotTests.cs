@@ -7,72 +7,9 @@ using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Plugins.Provisioning.Tests.Client;
 
-/// <summary>Renders the page and the profile editor offscreen like the client shell; OADM_SCREENSHOT_DIR writes PNGs.</summary>
+/// <summary>Renders the profile editor and Manage profiles offscreen like the client shell; OADM_SCREENSHOT_DIR writes PNGs.</summary>
 public sealed class PageScreenshotTests
 {
-    private static async Task<(ProvisioningViewModel Vm, ProvisioningView View, Window Window)> ShowAsync(FakePageContext ctx)
-    {
-        var vm = new ProvisioningViewModel(ctx);
-        var view = new ProvisioningView();
-        var window = Headless.Host(view);
-        window.Show();
-        view.DataContext = vm; // after attaching: no live watch, deterministic content
-        await vm.LoadAsync();
-        Headless.Pump();
-        return (vm, view, window);
-    }
-
-    [Fact]
-    public async Task The_page_renders_the_dhcp_card_the_cameras_and_a_cameras_flow()
-    {
-        var suffix = Headless.Appearance;
-        await Headless.Session.Dispatch(async () =>
-        {
-            var (vm, view, window) = await ShowAsync(Samples.Context());
-            using (vm)
-            {
-                Assert.True(view.FindControl<Border>("DhcpCard")!.IsEffectivelyVisible);
-                Assert.True(view.FindControl<StatusChip>("PoolWarning")!.IsEffectivelyVisible);
-                Assert.True(view.FindControl<Button>("StopButton")!.IsEffectivelyVisible);
-                Assert.False(view.FindControl<Button>("StartButton")!.IsEffectivelyVisible);
-                Assert.False(view.FindControl<Border>("FlowCard")!.IsEffectivelyVisible);
-                Assert.Equal(8, view.FindControl<DataGrid>("CameraGrid")!.ItemsSource!.Cast<object>().Count());
-                Assert.DoesNotContain(view.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Classes.Contains("primary"));
-                Headless.Capture(window, $"provisioning-page-{suffix}.png");
-
-                // A click on the failed camera: its flow right of the table, green, yellow, green, red and grey.
-                var grid = view.FindControl<DataGrid>("CameraGrid")!;
-                grid.SelectedItem = vm.Rows.Single(r => r.State == CameraState.Failed);
-                Headless.Pump();
-                var canvas = view.FindControl<NodeChainCanvas>("FlowCanvas")!;
-                Assert.True(view.FindControl<Border>("FlowCard")!.IsEffectivelyVisible);
-                Assert.Equal(5, canvas.Cards.Count);
-                Assert.True(canvas.Cards[4].Top > canvas.Cards[3].Bottom + NodeChainCanvas.Gap, "the error below Set IP pushes Date and time down");
-                Headless.Capture(window, $"provisioning-flow-{suffix}.png");
-            }
-            return true;
-        }, CancellationToken.None);
-    }
-
-    [Fact]
-    public async Task The_page_without_a_session_says_what_to_do_first()
-    {
-        var suffix = Headless.Appearance;
-        await Headless.Session.Dispatch(async () =>
-        {
-            var (vm, view, window) = await ShowAsync(Samples.Context(Samples.Status(started: false), []));
-            using (vm)
-            {
-                Assert.True(view.FindControl<TextBlock>("EmptyLine")!.IsEffectivelyVisible);
-                Assert.Equal(ProvisioningTexts.EmptyNotStarted, view.FindControl<TextBlock>("EmptyLine")!.Text);
-                Assert.True(view.FindControl<Button>("StartButton")!.IsEffectivelyEnabled);
-                Assert.False(view.FindControl<StatusChip>("PoolWarning")!.IsEffectivelyVisible);
-                Headless.Capture(window, $"provisioning-empty-{suffix}.png");
-            }
-            return true;
-        }, CancellationToken.None);
-    }
-
     [Fact]
     public async Task The_profile_editor_renders_the_flow_and_the_selected_nodes_form_with_its_error()
     {
@@ -87,7 +24,7 @@ public sealed class PageScreenshotTests
             window.Show();
             await editor.LoadAsync();
             await editor.CheckTask;
-            editor.SelectedNode = editor.Nodes.Single(n => n.Kind == NodeKind.SetIp);
+            editor.SelectedNode = editor.Nodes.First(n => n.Kind == NodeKind.Network);
             var last = (TextFieldViewModel)editor.SelectedNode.Fields.Single(f => f.Key == "last");
             last.Text = "192.168.15";
             await editor.CheckTask;
@@ -122,7 +59,7 @@ public sealed class PageScreenshotTests
             await editor.CheckTask;
             Headless.Pump();
 
-            Assert.Equal(11, editor.Nodes.Count);
+            Assert.Equal(10, editor.Nodes.Count);
             Assert.All(editor.Nodes, n => Assert.Null(n.CanvasError));
             Assert.False(editor.IsDraft);
             Assert.True(window.FindControl<Button>("SaveButton")!.IsEffectivelyEnabled);
@@ -160,26 +97,26 @@ public sealed class PageScreenshotTests
             await editor.CheckTask;
             Headless.Pump();
 
-            // A new profile: Set password, Add to OADM and Set IP, the + below Set IP.
+            // A new profile: Set password alone, the + below it.
             var canvas = window.FindControl<NodeChainCanvas>("Canvas")!;
-            Assert.Equal(3, canvas.Cards.Count);
-            Assert.True(editor.Chain.ShowsPlus(2));
-            Assert.Equal(-1, canvas.PlusIndexAt(editor.Chain.View.ToScreen(canvas.Cards[0].Center)));
-            var plus = canvas.PlusRect(2);
-            Assert.Equal(2, canvas.PlusIndexAt(editor.Chain.View.ToScreen(plus.Center)));
+            Assert.Single(canvas.Cards);
+            Assert.True(editor.Chain.ShowsPlus(0));
+            var plus = canvas.PlusRect(0);
+            Assert.Equal(0, canvas.PlusIndexAt(editor.Chain.View.ToScreen(plus.Center)));
             Headless.Capture(window, $"provisioning-editor-new-{suffix}.png");
 
-            // The new Set IP starts in the DHCP server's network: only the last number is left to type, no error shown yet.
-            editor.SelectedNode = editor.Nodes[2];
+            // A new Network node starts in the DHCP server's network: only the last number is left to type, no error shown yet.
+            var network = editor.AddAfter(0, Samples.Kinds.Single(k => k.Kind == NodeKind.Network))!;
+            ProfileEditorTests.UsePool(network);
             Headless.Pump();
-            Assert.Equal("10.0.0.", editor.Nodes[2].Field<TextFieldViewModel>("first").Text);
-            Assert.Null(editor.Nodes[2].Field<TextFieldViewModel>("first").ErrorOf(nameof(TextFieldViewModel.Text)));
-            Headless.Capture(window, $"provisioning-editor-setip-new-{suffix}.png");
+            Assert.Equal("10.0.0.", network.Field<TextFieldViewModel>("first").Text);
+            Assert.Null(network.Field<TextFieldViewModel>("first").ErrorOf(nameof(TextFieldViewModel.Text)));
+            Headless.Capture(window, $"provisioning-editor-network-new-{suffix}.png");
             editor.SelectedNode = null;
             Headless.Pump();
 
             // The + opens the node list next to it; its search takes the keys.
-            editor.Chain.RequestAdd(2, canvas.PickerPlace(2));
+            editor.Chain.RequestAdd(1, canvas.PickerPlace(1));
             Headless.Pump();
             var picker = window.FindControl<NodePicker>("NodePicker")!;
             Assert.True(picker.IsEffectivelyVisible);
@@ -208,10 +145,10 @@ public sealed class PageScreenshotTests
             Headless.Capture(window, $"provisioning-editor-help-{suffix}.png");
             ToolTip.SetIsOpen(fields[2].HelpButton, false);
 
-            // Set IP and Set password: text boxes, password boxes and a group of choices.
-            editor.SelectedNode = editor.Nodes.Single(n => n.Kind == NodeKind.SetIp);
+            // Network and Set password: text boxes, password boxes and a group of choices.
+            editor.SelectedNode = editor.Nodes.First(n => n.Kind == NodeKind.Network);
             Headless.Pump();
-            Headless.Capture(window, $"provisioning-editor-setip-{suffix}.png");
+            Headless.Capture(window, $"provisioning-editor-network-{suffix}.png");
             editor.SelectedNode = editor.Nodes[0];
             editor.SelectedNode.Fields.OfType<PasswordFieldViewModel>().Single().TypesPassword = true;
             Headless.Pump();

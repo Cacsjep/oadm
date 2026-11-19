@@ -4,18 +4,6 @@ using Oadm.Plugins.Provisioning.Client;
 
 namespace Oadm.Plugins.Provisioning.Tests.Client;
 
-/// <summary>The page's windows a test opens: Manage profiles is recorded, not shown.</summary>
-internal sealed class FakePageUi : IProvisioningPageUi
-{
-    public List<ProfilesDialogViewModel> Dialogs { get; } = [];
-
-    public Task ShowProfilesAsync(ProfilesDialogViewModel dialog)
-    {
-        Dialogs.Add(dialog);
-        return Task.CompletedTask;
-    }
-}
-
 /// <summary>The editor Manage profiles opens: it records the editor and, when asked, saves it.</summary>
 internal sealed class FakeProfilesUi : IProfilesUi
 {

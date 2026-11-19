@@ -123,24 +123,27 @@ public sealed class NodeFormsTests
     }
 
     [Fact]
-    public async Task Network_settings_need_the_dns_servers_and_have_no_host_name()
+    public async Task Network_keeps_the_address_or_takes_a_pool_with_dns_and_has_no_host_name()
     {
-        var (editor, ctx, _, node) = await AddAsync(NodeKind.NetworkSettings);
-        Assert.Equal(["dnsServers", "searchDomain"], node.Fields.Select(f => f.Key));
+        var (editor, ctx, _, node) = await AddAsync(NodeKind.Network);
+        Assert.Equal(["ip", "first", "last", "subnetMask", "gateway", "dnsServers", "searchDomain"], node.Fields.Select(f => f.Key));
+        Assert.False(node.Field<TextFieldViewModel>("first").IsShown); // Keep: no pool fields
         var dns = node.Field<ListFieldViewModel>("dnsServers");
-        dns.Text = "10.0.0.1";
-        dns.Text = string.Empty;
-        Assert.Equal("Enter the DNS servers.", dns.ErrorOf(nameof(ListFieldViewModel.Text)));
         dns.Text = "10.0.0.1, 10.0.0.2, 10.0.0.3";
         Assert.Equal("Enter at most 2 DNS servers.", node.FirstError);
         dns.Text = "10.0.0.1";
         node.Field<TextFieldViewModel>("searchDomain").Text = "site.local";
         await NoErrorAsync(editor, node);
 
-        var settings = await SaveAsync(editor, ctx, NodeKind.NetworkSettings);
+        var settings = await SaveAsync(editor, ctx, NodeKind.Network);
+        Assert.Equal("keep", (string?)settings["ip"]);
         Assert.Equal(["10.0.0.1"], settings["dnsServers"]!.AsArray().Select(d => (string?)d));
         Assert.Equal("site.local", (string?)settings["searchDomain"]);
         Assert.False(settings.ContainsKey("hostName"));
+
+        ProfileEditorTests.UsePool(node);
+        Assert.True(node.Field<TextFieldViewModel>("first").IsShown);
+        Assert.False(node.IsValid);
     }
 
     [Fact]
@@ -326,7 +329,9 @@ public sealed class NodeFormsTests
     [Fact]
     public async Task A_profile_with_node_errors_is_saved_as_a_draft()
     {
-        var (editor, ctx, _, node) = await AddAsync(NodeKind.SetIp);
+        var (editor, ctx, _, node) = await AddAsync(NodeKind.Network);
+        ProfileEditorTests.UsePool(node);
+        node.Field<TextFieldViewModel>("first").Text = "192.168";
         Assert.NotNull(node.CanvasError);
         Assert.True(editor.IsDraft);
         Assert.True(editor.SaveCommand.CanExecute(null));

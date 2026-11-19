@@ -87,17 +87,6 @@ public static class ProvisioningTexts
     public const string Failed = "Failed";
     public const string NotNew = "Not new, left as it is";
 
-    public static string StateText(CameraState state, bool waiting) => state switch
-    {
-        CameraState.Queued => Queued,
-        CameraState.Running when waiting => WaitingForApproval,
-        CameraState.Running => Running,
-        CameraState.Done => Done,
-        CameraState.DoneWithWarnings => DoneWithWarnings,
-        CameraState.Failed => Failed,
-        CameraState.NotNew => NotNew,
-        _ => state.ToString(),
-    };
 
     public static string Started(DateTimeOffset at, string? by) =>
         "Started " + at.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + (string.IsNullOrEmpty(by) ? string.Empty : " by " + by);
@@ -260,6 +249,10 @@ public static class ProvisioningTexts
     public const string Nts = "Use NTS where the camera has it";
 
     // Add to OADM
+    public const string IpAddress = "IP address";
+    public const string IpKeep = "Keep";
+    public const string IpPool = "From a pool";
+    public const string IpHelp = "Keep the address, or take one from a pool";
     public const string Tags = "Tags";
 
     public static string NotAnAddressList(string value) => $"{value} is not an IP address.";

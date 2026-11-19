@@ -24,10 +24,25 @@ public sealed class ProfileStore(IPluginSettings settings) : IDisposable
 
     public Profile? Find(Guid id) => _book.Profiles.FirstOrDefault(p => p.Id == id);
 
-    public async Task LoadAsync(CancellationToken ct) =>
-        _book = PluginJson.TryParse<ProfileBook>(await settings.GetAsync(ProfilesKey, ct).ConfigureAwait(false), ProvisioningJson.Options) ?? new ProfileBook();
+    /// <summary>Reads the profiles; those of the build of 2026-11-18 are converted (<see cref="ProfileUpgrade"/>) and stored again.</summary>
+    public async Task LoadAsync(CancellationToken ct)
+    {
+        var book = PluginJson.TryParse<ProfileBook>(await settings.GetAsync(ProfilesKey, ct).ConfigureAwait(false), ProvisioningJson.Options) ?? new ProfileBook();
+        var changed = false;
+        var profiles = book.Profiles.Select(p =>
+        {
+            var converted = ProfileUpgrade.Convert(p, out var one);
+            changed |= one;
+            return converted;
+        }).ToList();
+        _book = book with { Profiles = profiles };
+        if (changed)
+        {
+            await ChangeAsync(b => b, ct).ConfigureAwait(false);
+        }
+    }
 
-    /// <summary>A new profile with the two fixed nodes and their default settings.</summary>
+    /// <summary>A new profile with the fixed node and its default settings.</summary>
     public static Profile NewProfile(string name) => new()
     {
         Id = Guid.NewGuid(),
@@ -35,18 +50,18 @@ public sealed class ProfileStore(IPluginSettings settings) : IDisposable
         Nodes =
         [
             new FlowNode { Id = "set-password", Kind = NodeKind.SetPassword, ContinueOnError = false, Settings = NodeSettings.Write(new SetPasswordSettings()) },
-            new FlowNode { Id = "add-to-oadm", Kind = NodeKind.AddToOadm, Settings = NodeSettings.Write(new AddToOadmSettings([])) },
         ],
     };
 
     /// <summary>
-    /// The profile as it is stored: a new id when it has none, Continue on error off for the nodes that always stop, the name
-    /// trimmed.
+    /// The profile as it is stored: a new id when it has none, nodes of the build of 2026-11-18 converted, Continue on error
+    /// off for the nodes that always stop, the name trimmed.
     /// </summary>
     public static Profile Normalize(Profile profile, NodeRegistry registry)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(registry);
+        profile = ProfileUpgrade.Convert(profile, out _);
         return profile with
         {
             Id = profile.Id == Guid.Empty ? Guid.NewGuid() : profile.Id,

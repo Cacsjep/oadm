@@ -24,6 +24,8 @@ public sealed partial class UsersNode : DeviceNode<UsersSettings>
 
     public override string Name => "Users";
 
+    public override string StepName => "Add the users";
+
     public override object DefaultSettings => new UsersSettings([]);
 
     /// <summary>The camera's user names: 1 to 14 letters and digits.</summary>

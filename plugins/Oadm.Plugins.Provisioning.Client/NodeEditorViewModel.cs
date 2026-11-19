@@ -26,7 +26,7 @@ public sealed partial class NodeEditorViewModel : ObservableObject
         Id = node.Id;
         Kind = node.Kind;
         Name = kind?.Name ?? node.Kind.ToString();
-        IsFixed = kind?.IsFixed ?? node.Kind is NodeKind.SetPassword or NodeKind.AddToOadm;
+        IsFixed = kind?.IsFixed ?? node.Kind == NodeKind.SetPassword;
         AlwaysStops = kind?.AlwaysStops ?? node.Kind == NodeKind.SetPassword;
         ContinueOnError = !AlwaysStops && node.ContinueOnError;
         _settings = Settings(node.Settings) ?? Settings(kind?.DefaultSettings) ?? [];
@@ -174,13 +174,11 @@ public static class NodeForms
         return kind switch
         {
             NodeKind.SetPassword => [new PasswordFieldViewModel(FieldRules.ToGuid(settings["credentialId"]), services.Credentials, services)],
-            NodeKind.AddToOadm => [new ListFieldViewModel("tags", ProvisioningTexts.Tags, Strings(settings["tags"]), TagRule) { Hint = ProvisioningTexts.Optional, Help = ProvisioningTexts.TagsHelp }],
-            NodeKind.WaitForApproval or NodeKind.Dot1x or NodeKind.Autofocus => [],
-            NodeKind.SetIp => SetIp(settings),
+            NodeKind.Dot1x or NodeKind.Autofocus => [],
+            NodeKind.Network => NetworkForm(settings),
             NodeKind.DateTime => DateTime(settings),
             NodeKind.UpgradeOnline => UpgradeOnline(settings),
             NodeKind.UpgradeFiles => [new FilesFieldViewModel("files", ProvisioningTexts.OsFiles, OsFiles(settings["files"]), services) { Help = ProvisioningTexts.OsFilesHelp }],
-            NodeKind.NetworkSettings => NetworkSettings(settings),
             NodeKind.Configuration => Configuration(settings, services),
             NodeKind.Users => [new UsersFieldViewModel(settings["accounts"] as JsonArray)],
             NodeKind.Certificate => Certificate(settings),
@@ -193,18 +191,17 @@ public static class NodeForms
     /// <summary>What a node does where its fields do not say it; null for most.</summary>
     public static string? Note(NodeKind kind) => kind switch
     {
-        NodeKind.WaitForApproval => ProvisioningTexts.WaitHint,
         NodeKind.Dot1x => ProvisioningTexts.Dot1xHint,
         NodeKind.Autofocus => ProvisioningTexts.AutofocusHint,
         NodeKind.UpgradeOnline => ProvisioningTexts.MyAxisHint,
         NodeKind.UpgradeFiles => ProvisioningTexts.OsFilesHint,
-        NodeKind.SetPassword or NodeKind.AddToOadm or NodeKind.SetIp or NodeKind.DateTime or NodeKind.NetworkSettings or NodeKind.Configuration
+        NodeKind.SetPassword or NodeKind.Network or NodeKind.DateTime or NodeKind.Configuration
             or NodeKind.Users or NodeKind.Certificate or NodeKind.SdCard or NodeKind.VapixCommands => null,
         _ => ProvisioningTexts.UnknownNode,
     };
 
     /// <summary>
-    /// The settings of a node just added (the + or a new profile): the kind's default; a new Set IP starts with the first
+    /// The settings of a node just added (the + or a new profile): the kind's default; a new Network node starts with the first
     /// three numbers of the DHCP server's range in First and Last address ("192.168.15.", the user types the last one) and
     /// the DHCP server's subnet mask, else 255.255.255.0. Saved nodes are never changed.
     /// </summary>
@@ -213,7 +210,7 @@ public static class NodeForms
     public static JsonElement NewSettings(NodeKindInfo kind, Sdk.Network.DhcpServerSummary? dhcp)
     {
         ArgumentNullException.ThrowIfNull(kind);
-        if (kind.Kind != NodeKind.SetIp)
+        if (kind.Kind != NodeKind.Network)
         {
             return kind.DefaultSettings;
         }
@@ -237,19 +234,35 @@ public static class NodeForms
             ? string.Create(CultureInfo.InvariantCulture, $"{value >> 24}.{(value >> 16) & 255}.{(value >> 8) & 255}.")
             : null;
 
-    private static IReadOnlyList<NodeFieldViewModel> SetIp(JsonObject s) =>
-    [
-        new TextFieldViewModel("first", ProvisioningTexts.FirstAddress, Text(s["first"]), FieldRules.RequiredAddress) { Placeholder = "e.g. 192.168.15.10", Help = ProvisioningTexts.FirstAddressHelp },
-        new TextFieldViewModel("last", ProvisioningTexts.LastAddress, Text(s["last"]), FieldRules.RequiredAddress) { Placeholder = "e.g. 192.168.15.50", Help = ProvisioningTexts.LastAddressHelp },
-        new TextFieldViewModel("subnetMask", ProvisioningTexts.SubnetMask, Text(s["subnetMask"]), FieldRules.Mask) { Placeholder = "e.g. 255.255.255.0", Help = ProvisioningTexts.MaskHelp },
-        new TextFieldViewModel("gateway", ProvisioningTexts.DefaultRouter, Text(s["gateway"]), FieldRules.RequiredAddress) { Placeholder = "e.g. 192.168.15.1", Help = ProvisioningTexts.RouterHelp },
-        new ListFieldViewModel("dnsServers", ProvisioningTexts.DnsServers, Strings(s["dnsServers"]), FieldRules.AddressItem, 2, "Enter at most 2 DNS servers.")
-        {
-            Hint = ProvisioningTexts.Optional,
-            WritesEmpty = true,
-            Help = ProvisioningTexts.DnsHelp,
-        },
-    ];
+    /// <summary>
+    /// Network: the address (Keep, or From a pool with its four fields), the DNS servers and the search domain. Stage 2 of the
+    /// redesign (2026-11-19) builds the final form; this one writes the settings the server checks (<c>NetworkNode</c>).
+    /// </summary>
+    private static IReadOnlyList<NodeFieldViewModel> NetworkForm(JsonObject s)
+    {
+        var ip = new ChoiceFieldViewModel("ip", ProvisioningTexts.IpAddress,
+            [new("keep", ProvisioningTexts.IpKeep), new("pool", ProvisioningTexts.IpPool)], Text(s["ip"]) ?? "keep") { Help = ProvisioningTexts.IpHelp };
+        return
+        [
+            ip,
+            new TextFieldViewModel("first", ProvisioningTexts.FirstAddress, Text(s["first"]), FieldRules.RequiredAddress) { Placeholder = "e.g. 192.168.15.10", Help = ProvisioningTexts.FirstAddressHelp, ShownWhen = () => ip.Is("pool") },
+            new TextFieldViewModel("last", ProvisioningTexts.LastAddress, Text(s["last"]), FieldRules.RequiredAddress) { Placeholder = "e.g. 192.168.15.50", Help = ProvisioningTexts.LastAddressHelp, ShownWhen = () => ip.Is("pool") },
+            new TextFieldViewModel("subnetMask", ProvisioningTexts.SubnetMask, Text(s["subnetMask"]), FieldRules.Mask) { Placeholder = "e.g. 255.255.255.0", Help = ProvisioningTexts.MaskHelp, ShownWhen = () => ip.Is("pool") },
+            new TextFieldViewModel("gateway", ProvisioningTexts.DefaultRouter, Text(s["gateway"]), FieldRules.RequiredAddress) { Placeholder = "e.g. 192.168.15.1", Help = ProvisioningTexts.RouterHelp, ShownWhen = () => ip.Is("pool") },
+            new ListFieldViewModel("dnsServers", ProvisioningTexts.DnsServers, Strings(s["dnsServers"]), FieldRules.AddressItem, NetworkNode.MaxDns, $"Enter at most {NetworkNode.MaxDns} DNS servers.")
+            {
+                Hint = ProvisioningTexts.Optional,
+                WritesEmpty = true,
+                Help = ProvisioningTexts.DnsHelp,
+            },
+            new TextFieldViewModel("searchDomain", ProvisioningTexts.SearchDomain, Text(s["searchDomain"]), FieldRules.Domain)
+            {
+                Placeholder = "e.g. site.example.com",
+                Help = ProvisioningTexts.SearchDomainHelp,
+                Hint = ProvisioningTexts.Optional,
+            },
+        ];
+    }
 
     private static IReadOnlyList<NodeFieldViewModel> DateTime(JsonObject s)
     {
@@ -298,22 +311,6 @@ public static class NodeForms
         {
             Placeholder = "e.g. 12.6.95",
             Help = ProvisioningTexts.OnlyIfOlderHelp,
-            Hint = ProvisioningTexts.Optional,
-        },
-    ];
-
-    private static IReadOnlyList<NodeFieldViewModel> NetworkSettings(JsonObject s) =>
-    [
-        new ListFieldViewModel("dnsServers", ProvisioningTexts.DnsServers, Strings(s["dnsServers"]), FieldRules.AddressItem, NetworkSettingsNode.MaxDns,
-            $"Enter at most {NetworkSettingsNode.MaxDns} DNS servers.", NetworkSettingsNode.EnterDns)
-        {
-            WritesEmpty = true,
-            Help = ProvisioningTexts.DnsHelp,
-        },
-        new TextFieldViewModel("searchDomain", ProvisioningTexts.SearchDomain, Text(s["searchDomain"]), FieldRules.Domain)
-        {
-            Placeholder = "e.g. site.example.com",
-            Help = ProvisioningTexts.SearchDomainHelp,
             Hint = ProvisioningTexts.Optional,
         },
     ];
@@ -391,13 +388,13 @@ public static class NodeForms
                 return password.UseCredential
                     ? password.SelectedCredential is null ? string.Empty : "root, from the credential list"
                     : password.Password.Length > 0 ? "root, a new password" : string.Empty;
-            case NodeKind.AddToOadm:
-                return Of("tags") is { Length: > 0 } tags ? "Tags " + tags : "No tags";
-            case NodeKind.WaitForApproval:
-                return ProvisioningTexts.WaitsForContinue;
-            case NodeKind.SetIp:
-                // A half typed pool ("192.168.15." of a new node) has no line yet.
-                return Network.Model.Ipv4.TryParse(Of("first"), out _) && Network.Model.Ipv4.TryParse(Of("last"), out _) ? Of("first") + " to " + Of("last") : string.Empty;
+            case NodeKind.Network:
+                // A half typed pool ("192.168.15." of a new node) has no address line yet.
+                var address = node.Field<ChoiceFieldViewModel>("ip").Is("pool")
+                    ? Network.Model.Ipv4.TryParse(Of("first"), out _) && Network.Model.Ipv4.TryParse(Of("last"), out _) ? Of("first") + " to " + Of("last") : string.Empty
+                    : string.Empty;
+                var dnsLine = Of("dnsServers") is { Length: > 0 } servers ? "DNS " + servers : string.Empty;
+                return string.Join(", ", new[] { address, dnsLine }.Where(p => p.Length > 0));
             case NodeKind.DateTime:
                 var source = node.Field<ChoiceFieldViewModel>("ntpSource");
                 var time = source.Is("own") ? Of("ntpServers") : source.Is("oadm") ? "OADM's NTP server" : "NTP from DHCP";
@@ -407,8 +404,6 @@ public static class NodeForms
             case NodeKind.UpgradeFiles:
                 var files = node.Field<FilesFieldViewModel>("files").Count;
                 return files == 0 ? string.Empty : ProvisioningTexts.FileCount(files);
-            case NodeKind.NetworkSettings:
-                return Of("dnsServers") is { Length: > 0 } dns ? "DNS " + dns : string.Empty;
             case NodeKind.Configuration:
                 var from = node.Field<ChoiceFieldViewModel>("source");
                 var areas = node.Fields.OfType<CheckGroupFieldViewModel>().First().Items.Where(i => i.IsChecked).Select(i => i.Label.ToLowerInvariant()).ToList();
@@ -441,8 +436,6 @@ public static class NodeForms
                 return string.Empty;
         }
     }
-
-    private static string? TagRule(string tag) => tag.Length > 64 ? "A tag has at most 64 characters." : null;
 
     private static string? Text(JsonNode? node) => node?.GetValueKind() switch
     {

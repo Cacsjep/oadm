@@ -19,17 +19,17 @@ public interface IProvisioningNode
 {
     NodeKind Kind { get; }
 
-    /// <summary>The node's name on the canvas and in the camera table ("Set IP").</summary>
+    /// <summary>The node's name on the canvas ("Network").</summary>
     string Name { get; }
 
-    /// <summary>Fixed nodes (Set password, Add to OADM) are always first, in this order, and cannot be removed.</summary>
+    /// <summary>The name of its step in the provisioning task: imperative, with the article ("Set the network settings").</summary>
+    string StepName { get; }
+
+    /// <summary>The fixed node (Set password) is always first and cannot be removed.</summary>
     bool IsFixed => false;
 
-    /// <summary>An error stops the camera's flow whatever <see cref="FlowNode.ContinueOnError"/> says (Set password).</summary>
+    /// <summary>An error stops the camera's task whatever <see cref="FlowNode.ContinueOnError"/> says (Set password).</summary>
     bool AlwaysStops => false;
-
-    /// <summary>The node works on the OADM device, so it runs only after Add to OADM gave the camera its device.</summary>
-    bool NeedsDevice => true;
 
     /// <summary>The settings a new node of this kind starts with.</summary>
     object DefaultSettings { get; }
@@ -61,7 +61,7 @@ public sealed record ProfileCheckContext(IReadOnlyDictionary<Guid, string>? Cred
 /// <summary>What a node may use while it runs (the engine implements it).</summary>
 public interface INodeHost
 {
-    /// <summary>The server's add page pipeline: first password, add with a login, credential list.</summary>
+    /// <summary>The server's add page pipeline: the look, the first password, the credential list.</summary>
     IDeviceAutoAdd AutoAdd { get; }
 
     /// <summary>Starts the tasks of other plugins and follows their outcome.</summary>
@@ -74,8 +74,8 @@ public interface INodeHost
     IVapixClientFactory Vapix { get; }
 
     /// <summary>
-    /// The tasks of the administrator who started provisioning, with their MyAxis sign-in (Upgrade AXIS OS online); null
-    /// after a server restart until provisioning is started again.
+    /// The tasks of the administrator who turned provisioning on, with their MyAxis sign-in (Upgrade AXIS OS online); null
+    /// after a server restart until provisioning is turned on again.
     /// </summary>
     ITaskRunner? StarterTasks { get; }
 
@@ -90,23 +90,14 @@ public interface INodeHost
     string Owner { get; }
 
     /// <summary>Takes and reserves the next free address of the pool for the camera (or the one it has already).</summary>
-    Task<AddressTake> TakeAddressAsync(string mac, SetIpSettings pool, CancellationToken ct);
-
-    /// <summary>Waits outside the camera's place until Continue is pressed on its row; returns who pressed it.</summary>
-    Task<string> WaitForApprovalAsync(string mac, CancellationToken ct);
-
-    /// <summary>The camera is an OADM device now.</summary>
-    void DeviceAdded(string mac, Guid deviceId, string? model);
-
-    /// <summary>The camera answers at another address now.</summary>
-    void AddressChanged(string mac, string address);
+    Task<AddressTake> TakeAddressAsync(CameraInfo camera, NetworkNode.Pool pool, CancellationToken ct);
 }
 
-/// <summary>An address of a Set IP pool: the address, or null when the pool is used up, and the addresses skipped as in use.</summary>
+/// <summary>An address of a Network pool: the address, or null when the pool is used up, and the addresses skipped as in use.</summary>
 public sealed record AddressTake(string? Address, IReadOnlyList<string> InUse, bool Reused);
 
 /// <summary>One node's run on one camera.</summary>
-public sealed record NodeRun(INodeHost Host, CameraRow Camera, Profile Profile, FlowNode Node)
+public sealed record NodeRun(INodeHost Host, CameraInfo Camera, Profile Profile, FlowNode Node)
 {
     /// <summary>The node's settings as <typeparamref name="T"/> (missing: the defaults; unreadable: null).</summary>
     public T? SettingsAs<T>()

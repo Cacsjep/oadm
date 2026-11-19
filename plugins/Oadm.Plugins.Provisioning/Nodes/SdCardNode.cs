@@ -31,6 +31,8 @@ public sealed class SdCardNode : DeviceNode<SdCardSettings>
 
     public override string Name => "SD card";
 
+    public override string StepName => "Set up the SD card";
+
     public override object DefaultSettings => new SdCardSettings();
 
     protected override string? CheckSettings(SdCardSettings settings, ProfileCheckContext context)

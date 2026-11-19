@@ -8,7 +8,8 @@ namespace Oadm.Plugins.Provisioning.Nodes;
 /// <summary>
 /// Set password (fixed, first, always stops): the first root password of a factory-new camera from a credential list entry of
 /// root, through the server's add page path (<see cref="IDeviceAutoAdd.SetFirstPasswordAsync"/>: the serial and "no password
-/// yet" checked right before writing). The password never passes through the plugin.
+/// yet" checked right before writing; the device keeps the password as its login). Then it waits until OADM has read the
+/// camera with it, so the next nodes can check their APIs. The password never passes through the plugin.
 /// </summary>
 public sealed class SetPasswordNode : IProvisioningNode
 {
@@ -18,11 +19,11 @@ public sealed class SetPasswordNode : IProvisioningNode
 
     public string Name => "Set password";
 
+    public string StepName => "Set the password";
+
     public bool IsFixed => true;
 
     public bool AlwaysStops => true;
-
-    public bool NeedsDevice => false;
 
     public object DefaultSettings => new SetPasswordSettings();
 
@@ -63,134 +64,45 @@ public sealed class SetPasswordNode : IProvisioningNode
             return NodeResult.Error(ChoosePassword);
         }
 
+        DeviceFirstPasswordOutcome outcome;
         try
         {
-            var outcome = await run.Host.AutoAdd.SetFirstPasswordAsync(run.Camera.Address, run.Camera.Serial, id, run.Host.Owner, ct).ConfigureAwait(false);
-            return outcome.Ok ? NodeResult.Success("Password set.") : NodeResult.Error(outcome.Message);
+            outcome = await run.Host.AutoAdd.SetFirstPasswordAsync(run.Camera.Address, run.Camera.Serial, id, run.Host.Owner, ct).ConfigureAwait(false);
         }
         catch (NotSupportedException)
         {
             return NodeResult.Error(DeviceFirstSetupTexts.NotSupported);
         }
-    }
-}
-
-/// <summary>
-/// Add to OADM (fixed, second): adds the camera logged in with the password of Set password and gives it the tags (so it
-/// lands in the right device group), then waits until OADM has read it (status Ok, its API list) so the next nodes can
-/// check their APIs. A camera OADM manages already (the DHCP server's automatic add) keeps its record and gets the tags.
-/// </summary>
-public sealed class AddToOadmNode : IProvisioningNode
-{
-    /// <summary>Most tags a device has (the host's limit).</summary>
-    public const int MaxTags = 20;
-
-    public const int MaxTagLength = 64;
-
-    public NodeKind Kind => NodeKind.AddToOadm;
-
-    public string Name => "Add to OADM";
-
-    public bool IsFixed => true;
-
-    public bool NeedsDevice => false;
-
-    public object DefaultSettings => new AddToOadmSettings([]);
-
-    public string? Check(JsonElement? settings, ProfileCheckContext context)
-    {
-        if (NodeSettings.Read<AddToOadmSettings>(settings) is not { } read)
+        catch (ArgumentException)
         {
-            return TaskNode<AddToOadmSettings>.Unreadable;
+            return NodeResult.Error(NodeTexts.NeedsIpAddress);
         }
 
-        var tags = read.Tags ?? [];
-        if (tags.Count > MaxTags)
+        if (!outcome.Ok)
         {
-            return $"A camera has at most {MaxTags} tags.";
+            return NodeResult.Error(outcome.Message);
         }
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var tag in tags)
-        {
-            var name = tag?.Trim() ?? string.Empty;
-            if (name.Length == 0)
-            {
-                return "Enter a name for every tag.";
-            }
-
-            if (name.Length > MaxTagLength)
-            {
-                return $"A tag has at most {MaxTagLength} characters.";
-            }
-
-            if (!seen.Add(name))
-            {
-                return $"The tag {name} is there twice.";
-            }
-        }
-
-        return null;
+        return run.Camera.DeviceId is { } deviceId && !await WaitUntilReadAsync(run.Host, deviceId, ct).ConfigureAwait(false)
+            ? NodeResult.Warning(PasswordSet + " " + NotReadYet)
+            : NodeResult.Success(PasswordSet);
     }
 
-    public async Task<NodeResult> RunAsync(NodeRun run, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(run);
-        if (run.CredentialId is not { } credential)
-        {
-            return NodeResult.Error(SetPasswordNode.ChoosePassword);
-        }
+    public const string PasswordSet = "Password set.";
 
-        var tags = (run.SettingsAs<AddToOadmSettings>()?.Tags ?? []).Select(t => t.Trim()).Where(t => t.Length > 0).ToList();
-        DeviceAutoAddOutcome outcome;
-        try
-        {
-            outcome = await run.Host.AutoAdd.AddWithLoginAsync(run.Camera.Address, run.Camera.Serial, credential, tags, run.Host.Owner, ct).ConfigureAwait(false);
-        }
-        catch (NotSupportedException)
-        {
-            return NodeResult.Error(DeviceFirstSetupTexts.NotSupported);
-        }
+    public const string NotReadYet = "OADM has not read the camera yet; the next steps may fail.";
 
-        if (outcome.DeviceId is { } added)
-        {
-            run.Host.DeviceAdded(run.Camera.Mac, added, null);
-        }
-
-        switch (outcome.Result)
-        {
-            case DeviceAutoAddResult.Added or DeviceAutoAddResult.AlreadyManaged when outcome.DeviceId is { } id:
-                break;
-            case DeviceAutoAddResult.AddedPasswordNotSet:
-                return NodeResult.Error("The camera still has no password.");
-            case DeviceAutoAddResult.AddedCredentialsRequired:
-                return NodeResult.Error("OADM cannot log in to the camera with the password of Set password.");
-            case DeviceAutoAddResult.LimitReached:
-                return NodeResult.Error(DeviceLimits.TooManyDevicesText);
-            default:
-                return NodeResult.Error(outcome.Message);
-        }
-
-        var deviceId = outcome.DeviceId!.Value;
-        var tagProblem = outcome.Message.IndexOf(" Tags not set:", StringComparison.Ordinal) is var at and >= 0 ? outcome.Message[(at + 1)..] : null;
-        var done = outcome.Result == DeviceAutoAddResult.AlreadyManaged ? "OADM manages this camera already." : "Added to OADM.";
-        if (!await WaitUntilReadAsync(run.Host, run.Camera.Mac, deviceId, ct).ConfigureAwait(false))
-        {
-            return NodeResult.Warning(done + " OADM has not read the camera yet; the next nodes may fail." + (tagProblem is null ? string.Empty : " " + tagProblem));
-        }
-
-        return tagProblem is null ? NodeResult.Success(done) : NodeResult.Warning(done + " " + tagProblem);
-    }
-
-    /// <summary>Waits until OADM read the device (status Ok and its API list), at most <see cref="ProvisioningOptions.DeviceReadTimeout"/>.</summary>
-    private static async Task<bool> WaitUntilReadAsync(INodeHost host, string mac, Guid deviceId, CancellationToken ct)
+    /// <summary>
+    /// Waits until OADM has read the device with the new password (status Ok and its API list), at most
+    /// <see cref="ProvisioningOptions.DeviceReadTimeout"/>, so the next nodes can check their APIs.
+    /// </summary>
+    private static async Task<bool> WaitUntilReadAsync(INodeHost host, Guid deviceId, CancellationToken ct)
     {
         var end = host.Time.GetUtcNow() + host.Options.DeviceReadTimeout;
         while (true)
         {
-            if (await host.Devices.FindAsync(deviceId, ct).ConfigureAwait(false) is { Status: DeviceStatus.Ok, Apis.Count: > 0 } device)
+            if (await host.Devices.FindAsync(deviceId, ct).ConfigureAwait(false) is { Status: DeviceStatus.Ok, Apis.Count: > 0 })
             {
-                host.DeviceAdded(mac, deviceId, device.Model);
                 return true;
             }
 
@@ -201,26 +113,5 @@ public sealed class AddToOadmNode : IProvisioningNode
 
             await Task.Delay(host.Options.DevicePoll, host.Time, ct).ConfigureAwait(false);
         }
-    }
-}
-
-/// <summary>Wait for approval: the camera waits here, outside the 8 places, until a person presses Continue on its row.</summary>
-public sealed class WaitForApprovalNode : IProvisioningNode
-{
-    public NodeKind Kind => NodeKind.WaitForApproval;
-
-    public string Name => "Wait for approval";
-
-    public bool NeedsDevice => false;
-
-    public object DefaultSettings => new WaitForApprovalSettings();
-
-    public string? Check(JsonElement? settings, ProfileCheckContext context) => null;
-
-    public async Task<NodeResult> RunAsync(NodeRun run, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(run);
-        var user = await run.Host.WaitForApprovalAsync(run.Camera.Mac, ct).ConfigureAwait(false);
-        return NodeResult.Success($"Continued by {user}.");
     }
 }

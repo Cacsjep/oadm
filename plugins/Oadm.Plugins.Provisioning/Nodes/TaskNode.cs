@@ -22,6 +22,8 @@ public abstract class TaskNode<TSettings> : IProvisioningNode
 
     public abstract string Name { get; }
 
+    public abstract string StepName { get; }
+
     /// <summary>The id of the task plugin this node starts ("oadm.datetime").</summary>
     public abstract string TaskPluginId { get; }
 
@@ -42,7 +44,7 @@ public abstract class TaskNode<TSettings> : IProvisioningNode
     /// <summary>The task this camera's run starts (by default <see cref="TaskPluginId"/>; Certificate starts PKI's or EST's).</summary>
     protected virtual string TaskFor(TSettings settings) => TaskPluginId;
 
-    /// <summary>Who starts the task: the plugin (default), or the user who started provisioning (their MyAxis sign-in); null: Error <see cref="NodeTexts.StartAgain"/>.</summary>
+    /// <summary>Who starts the task: the plugin (default), or the user who turned provisioning on (their MyAxis sign-in); null: Error <see cref="NodeTexts.StartAgain"/>.</summary>
     protected virtual ITaskRunner? RunnerFor(NodeRun run) => run?.Host.Tasks;
 
     /// <summary>The result after the task: <paramref name="result"/> by default; a node with a second task runs it here.</summary>
@@ -127,7 +129,7 @@ public static class TaskRuns
     public static Task<TaskOutcome?> RunTaskAsync(INodeHost host, string pluginId, Guid deviceId, string payloadJson, CancellationToken ct) =>
         RunTaskAsync(host, host?.Tasks ?? throw new ArgumentNullException(nameof(host)), pluginId, deviceId, payloadJson, ct);
 
-    /// <summary>Like <see cref="RunTaskAsync(INodeHost, string, Guid, string, CancellationToken)"/> with another runner (the user who started provisioning).</summary>
+    /// <summary>Like <see cref="RunTaskAsync(INodeHost, string, Guid, string, CancellationToken)"/> with another runner (the user who turned provisioning on).</summary>
     public static async Task<TaskOutcome?> RunTaskAsync(INodeHost host, ITaskRunner runner, string pluginId, Guid deviceId, string payloadJson, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(host);
@@ -176,12 +178,15 @@ public static class TaskRuns
 /// <summary>Texts the nodes share.</summary>
 public static class NodeTexts
 {
-    public const string NotInOadm = "The camera is not in OADM. Add to OADM did not work.";
+    public const string NotInOadm = "The camera is no longer in OADM.";
+
+    /// <summary>Set password and the check of a camera OADM reaches by a name: they need its IP address.</summary>
+    public const string NeedsIpAddress = "OADM reaches this camera by a name. Provisioning needs its IP address.";
 
     public static string TaskLost(string node) => $"The task of {node} ended without a result.";
 
-    /// <summary>A node that needs the user who started provisioning, after a server restart.</summary>
-    public const string StartAgain = "Stop and start provisioning again: the server restarted since it was started.";
+    /// <summary>A node that needs the administrator who turned provisioning on, after a server restart.</summary>
+    public const string StartAgain = "Turn provisioning off and on again: the server restarted since it was turned on.";
 
     /// <summary>The message of a task's end without its " Nothing was changed." tail.</summary>
     public static string Plain(string? message)

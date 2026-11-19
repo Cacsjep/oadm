@@ -53,7 +53,7 @@ internal static class Headless
     {
         var page = new Oadm.Client.Shell.CorePluginPageView
         {
-            DataContext = new Oadm.Client.Shell.CorePluginPageViewModel(ProvisioningInfo.PluginId, ProvisioningInfo.DisplayName, view, new ProvisioningPage().HasOwnCards),
+            DataContext = new Oadm.Client.Shell.CorePluginPageViewModel(ProvisioningInfo.PluginId, ProvisioningInfo.DisplayName, view, true),
         };
         var window = new Window { Width = width, Height = height, Content = new Border { Padding = new Thickness(16), Child = page } };
         Oadm.Client.App.ApplyCrispText(window);
@@ -240,12 +240,10 @@ internal static class Samples
         Nodes =
         [
             new FlowNode { Id = "n1", Kind = NodeKind.SetPassword, ContinueOnError = false, Settings = NodeSettings.Write(new SetPasswordSettings(RootCredential)) },
-            new FlowNode { Id = "n2", Kind = NodeKind.AddToOadm, Settings = NodeSettings.Write(new AddToOadmSettings(["Lobby"])) },
-            new FlowNode { Id = "n3", Kind = NodeKind.WaitForApproval, Settings = NodeSettings.Write(new WaitForApprovalSettings()) },
             new FlowNode
             {
-                Id = "n4", Kind = NodeKind.SetIp, ContinueOnError = false,
-                Settings = NodeSettings.Write(new SetIpSettings("192.168.15.10", "192.168.15.50", "255.255.255.0", "192.168.15.1", ["192.168.15.1"])),
+                Id = "n4", Kind = NodeKind.Network, ContinueOnError = false,
+                Settings = NodeSettings.Write(new NetworkNodeSettings(IpMode.Pool, "192.168.15.10", "192.168.15.50", "255.255.255.0", "192.168.15.1", ["192.168.15.1"])),
             },
             new FlowNode { Id = "n5", Kind = NodeKind.DateTime, Settings = NodeSettings.Write(new DateTimeSettings("Europe/Vienna", ["10.0.0.17"])) },
         ],
@@ -253,7 +251,7 @@ internal static class Samples
 
     public static readonly Guid FullProfileId = Guid.Parse("8b8b8b8b-5555-4c2d-9e8f-0a1b2c3d4e5f");
 
-    /// <summary>A realistic profile with eleven nodes (the editor's full screenshot).</summary>
+    /// <summary>A realistic profile with ten nodes (the editor's full screenshot).</summary>
     public static Profile FullProfile => new()
     {
         Id = FullProfileId,
@@ -261,9 +259,8 @@ internal static class Samples
         Nodes =
         [
             new FlowNode { Id = "n1", Kind = NodeKind.SetPassword, ContinueOnError = false, Settings = NodeSettings.Write(new SetPasswordSettings(RootCredential)) },
-            new FlowNode { Id = "n2", Kind = NodeKind.AddToOadm, Settings = NodeSettings.Write(new AddToOadmSettings(["Parking", "Level 1"])) },
             new FlowNode { Id = "n3", Kind = NodeKind.UpgradeOnline, Settings = NodeSettings.Write(new UpgradeOnlineSettings(OsTarget.LatestLts, "12.6.95")) },
-            new FlowNode { Id = "n4", Kind = NodeKind.NetworkSettings, Settings = NodeSettings.Write(new NetworkSettingsSettings(["10.0.0.1"], "site.local")) },
+            new FlowNode { Id = "n4", Kind = NodeKind.Network, Settings = NodeSettings.Write(new NetworkNodeSettings(DnsServers: ["10.0.0.1"], SearchDomain: "site.local")) },
             new FlowNode { Id = "n5", Kind = NodeKind.DateTime, Settings = NodeSettings.Write(new DateTimeSettings("Europe/Vienna", [], OadmNtp: true)) },
             new FlowNode
             {
@@ -280,85 +277,31 @@ internal static class Samples
             new FlowNode { Id = "n10", Kind = NodeKind.Autofocus, Settings = NodeSettings.Write(new AutofocusSettings()) },
             new FlowNode
             {
-                Id = "n11", Kind = NodeKind.SetIp, ContinueOnError = false,
-                Settings = NodeSettings.Write(new SetIpSettings("192.168.20.10", "192.168.20.80", "255.255.255.0", "192.168.20.1", ["192.168.20.1"])),
+                Id = "n11", Kind = NodeKind.Network, ContinueOnError = false,
+                Settings = NodeSettings.Write(new NetworkNodeSettings(IpMode.Pool, "192.168.20.10", "192.168.20.80", "255.255.255.0", "192.168.20.1", ["192.168.20.1"])),
             },
         ],
     };
 
-    public static StatusReply Status(bool started = true, bool dhcpRunning = true, CameraCounts? counts = null) => new()
+    public static StatusReply Status(bool on = true) => new()
     {
-        Started = started,
-        StartedAt = started ? new DateTimeOffset(2026, 11, 18, 14, 2, 0, TimeSpan.Zero) : null,
-        StartedBy = started ? "anna" : null,
+        On = on,
+        OnBy = on ? "anna" : null,
+        OnAt = on ? new DateTimeOffset(2026, 11, 18, 14, 2, 0, TimeSpan.Zero) : null,
         ActiveProfileId = ProfileId,
         ActiveProfileName = "Lobby cameras",
-        SessionProfileName = started ? "Lobby cameras" : null,
-        SessionProfile = started ? Profile : null,
-        Dhcp = Dhcp(dhcpRunning),
-        Counts = counts ?? (started ? Counts(Cameras()) : new CameraCounts(0, 0, 0, 0, 0, 0, 0, 0)),
-        Warnings = started ? ["The pool overlaps the DHCP server's range 10.0.0.100 to 10.0.0.199."] : [],
+        ActiveProfileValid = true,
+        Dhcp = Dhcp(),
+        Warnings = ["The pool overlaps the DHCP server's range 10.0.0.100 to 10.0.0.199."],
     };
 
     public static ProfilesReply Profiles(bool valid = true) =>
         new([new ProfileSummary(ProfileId, "Lobby cameras", 5, true, valid), new ProfileSummary(Guid.Parse("7a7a7a7a-4444-4c2d-9e8f-0a1b2c3d4e5f"), "Parking", 3, false, true)], ProfileId);
 
-    private static NodeResult Ok(string m) => NodeResult.Success(m);
-
-    /// <summary>Eight cameras: done, with warnings, failed at Set IP, running, waiting for approval, queued, not new, starting.</summary>
-    public static List<CameraRow> Cameras() =>
-    [
-        Row(1, "AXIS P3265-LVE", "192.168.15.10", CameraState.Done, 4,
-            [Ok("Password set."), Ok("Added to OADM with the tag Lobby."), Ok("Continued by anna."), Ok("192.168.15.10 assigned."), Ok("Time zone Europe/Vienna, NTP 10.0.0.17.")]),
-        Row(2, "AXIS M3086-V", "192.168.15.11", CameraState.DoneWithWarnings, 4,
-            [Ok("Password set."), NodeResult.Warning("Added to OADM. OADM has not read the camera yet; the next nodes may fail."), Ok("Continued by anna."), Ok("192.168.15.11 assigned."), Ok("Time zone Europe/Vienna, NTP 10.0.0.17.")]),
-        Row(3, "AXIS Q6135-LE", "10.0.0.131", CameraState.Failed, 3,
-            [Ok("Password set."), NodeResult.Warning("Added to OADM. The tag Lobby could not be set."), Ok("Continued by anna."), NodeResult.Error("The camera did not take 192.168.15.12: it did not answer within 2 minutes. OADM keeps it at 10.0.0.131."), null]),
-        Row(4, "AXIS P1468-LE", "10.0.0.132", CameraState.Running, 3, [Ok("Password set."), Ok("Added to OADM with the tag Lobby."), Ok("Continued by anna."), null, null]),
-        Row(5, "AXIS M4317-PLVE", "10.0.0.133", CameraState.Running, 2, [Ok("Password set."), Ok("Added to OADM with the tag Lobby."), null, null, null], waiting: true),
-        Row(6, "AXIS P3268-LV", "10.0.0.134", CameraState.Queued, -1, []),
-        Row(7, "AXIS Q1656-LE", "10.0.0.135", CameraState.NotNew, -1, [], message: "Not new, left as it is."),
-        Row(8, null, "10.0.0.136", CameraState.Running, 0, [null, null, null, null, null]),
-    ];
-
-    public static CameraRow Row(int n, string? model, string address, CameraState state, int node, IReadOnlyList<NodeResult?> results, bool waiting = false, string? message = null, long version = 1)
-    {
-        var mac = $"AC:CC:8E:4A:0{n / 10}:{n % 10:00}";
-        var names = new[] { "Set password", "Add to OADM", "Wait for approval", "Set IP", "Date and time" };
-        return new CameraRow
-        {
-            Mac = mac,
-            Serial = mac.Replace(":", string.Empty, StringComparison.Ordinal),
-            Address = address,
-            Model = model,
-            State = state,
-            NodeIndex = node,
-            NodeName = node >= 0 ? names[node] : null,
-            WaitingForApproval = waiting,
-            Results = results,
-            Message = message,
-            Version = version,
-            Seen = new DateTimeOffset(2026, 11, 18, 14, 2, 0, TimeSpan.Zero).AddMinutes(n * 3),
-        };
-    }
-
-    public static CameraCounts Counts(IReadOnlyCollection<CameraRow> rows) => new(
-        rows.Count,
-        rows.Count(r => r.State == CameraState.Queued),
-        rows.Count(r => r.State == CameraState.Running && !r.WaitingForApproval),
-        rows.Count(r => r.WaitingForApproval),
-        rows.Count(r => r.State == CameraState.Done),
-        rows.Count(r => r.State == CameraState.DoneWithWarnings),
-        rows.Count(r => r.State == CameraState.Failed),
-        rows.Count(r => r.State == CameraState.NotNew));
-
-    /// <summary>A context that answers like the server with <paramref name="cameras"/>, paged by <c>listCameras</c>.</summary>
-    public static FakePageContext Context(StatusReply? status = null, List<CameraRow>? cameras = null, ProfilesReply? profiles = null)
+    /// <summary>A context that answers like the server.</summary>
+    public static FakePageContext Context(StatusReply? status = null, ProfilesReply? profiles = null)
     {
         var ctx = new FakePageContext();
-        var rows = cameras ?? Cameras();
-        var sortedRows = rows.OrderBy(r => r.Mac, StringComparer.Ordinal).ToList();
-        var counts = Counts(rows);
         var stored = new Dictionary<Guid, Profile> { [ProfileId] = Profile, [FullProfileId] = FullProfile };
         ctx.Answers[ProvisioningMethods.GetStatus] = _ => Serialize(status ?? Status());
         ctx.Answers[ProvisioningMethods.ListProfiles] = _ => Serialize(profiles ?? Profiles());
@@ -370,16 +313,6 @@ internal static class Samples
         {
             var upload = ctx.Uploads.Single(u => u.Id == JsonSerializer.Deserialize<FileRequest>(payload!, Json)!.UploadId);
             return Serialize(new StoredFile(Guid.NewGuid(), upload.Name, upload.Size, upload.Sha256, DateTimeOffset.UnixEpoch));
-        };
-        ctx.Answers[ProvisioningMethods.ListCameras] = payload =>
-        {
-            var request = JsonSerializer.Deserialize<CamerasRequest>(payload!, Json)!;
-            var sorted = sortedRows;
-            var from = request.After is null ? 0 : sorted.FindIndex(r => string.CompareOrdinal(r.Mac, request.After) > 0);
-            from = from < 0 ? sorted.Count : from;
-            var page = sorted.Skip(from).Take(request.Limit).ToList();
-            var more = from + page.Count < sorted.Count;
-            return Serialize(new CamerasPage(page, sorted.Count, more ? page[^1].Mac : null, counts, 1));
         };
         ctx.Answers[ProvisioningMethods.GetProfile] = payload =>
         {
@@ -403,14 +336,10 @@ internal static class Samples
             stored[profile.Id] = profile;
             return Serialize(new ProfileReply(profile, Check(profile)));
         };
-        ctx.Answers[ProvisioningMethods.Start] = _ => Serialize(Status(started: true));
-        ctx.Answers[ProvisioningMethods.Stop] = _ => Serialize(Status(started: false));
-        ctx.Answers[ProvisioningMethods.ActivateProfile] = _ => Serialize(Status(started: false));
+        ctx.Answers[ProvisioningMethods.TurnOn] = _ => Serialize(Status(on: true));
+        ctx.Answers[ProvisioningMethods.TurnOff] = _ => Serialize(Status(on: false));
+        ctx.Answers[ProvisioningMethods.ActivateProfile] = _ => Serialize(Status(on: false));
         ctx.Answers[ProvisioningMethods.DeleteProfile] = _ => Serialize(new ProfilesReply([], null));
-        foreach (var method in new[] { ProvisioningMethods.RunFailedAgain, ProvisioningMethods.Continue, ProvisioningMethods.RemoveCameras })
-        {
-            ctx.Answers[method] = payload => Serialize(new CountReply(JsonSerializer.Deserialize<MacsRequest>(payload!, Json)!.Macs.Count));
-        }
 
         return ctx;
     }

@@ -28,6 +28,8 @@ public sealed class ConfigurationNode : TaskNode<ConfigurationSettings>
 
     public override string Name => "Configuration";
 
+    public override string StepName => "Apply the configuration";
+
     public override string TaskPluginId => ImportTaskId;
 
     public override object DefaultSettings => new ConfigurationSettings();

@@ -9,10 +9,10 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Plugins.Provisioning.Tools;
 
 /// <summary>
-/// The page's reads and changes as tools (docs/spec/mcp.md "Plugins"): the status, the profiles, the camera table (paged),
-/// the credential list's names; saving, deleting and activating a profile, Start and Stop, Run failed again, Continue and
-/// removing rows, each a preview with the page's checks and a run through the page's own code. The rights of the page
-/// methods: Administrator by default, users with all devices only. A typed password is a secret of the person, never an argument.
+/// The reads and changes of Provisioning management as tools (docs/spec/mcp.md "Plugins"): the status, the profiles, the
+/// credential list's names, the last run of a camera; saving, deleting and activating a profile, On and Off, Run again, each a
+/// preview with the dialog's checks and a run through the plugin's own code. The rights of the plugin's methods: Administrator
+/// by default, users with all devices only. A typed password is a secret of the person, never an argument.
 /// </summary>
 internal static class ProvisioningTools
 {
@@ -22,7 +22,7 @@ internal static class ProvisioningTools
 
     public static PluginPageTools<ProvisioningPlugin> Set { get; } = new PluginPageTools<ProvisioningPlugin>()
         .Read<NoArgs, StatusAnswer>(
-            new("status", "Provisioning status", "Whether provisioning is started, the active profile, the DHCP server, the camera counts and the warnings."),
+            new("status", "Provisioning status", "Whether provisioning is on (who turned it on, when), the active profile, why it cannot be turned on, the provisioning tasks running and the warnings."),
             ProvisioningMethods.GetStatus,
             async (plugin, _, _, ct) => StatusAnswer.Of(await plugin.StatusAsync(ct).ConfigureAwait(false)))
         .Read<NoArgs, ProfilesAnswer>(
@@ -41,12 +41,12 @@ internal static class ProvisioningTools
             new("vapix_commands", "Provisioning VAPIX commands", "The VAPIX Commander commands a VAPIX commands node can run, with their fields (name, type, required, options)."),
             ProvisioningMethods.VapixCommands,
             (plugin, _, _, _) => Task.FromResult(CommandsAnswer.Of(plugin.VapixCommands())))
-        .Read<NoArgs, CamerasAnswer>(
-            new("cameras", "Provisioning cameras", "The cameras of the session by MAC address: model, address, state, the node it is on and its message.") { Paged = true },
-            ProvisioningMethods.ListCameras,
-            (plugin, _, input, _) => Task.FromResult(CamerasAnswer.Of(plugin, input.Page)))
+        .Read<DeviceArgs, RunAnswer>(
+            new("camera", "Last provisioning of a camera", "How the last provisioning task of a camera ended: its profile, whether the camera was new, each node's result and whether run_again would start."),
+            ProvisioningMethods.GetRun,
+            async (plugin, _, input, ct) => RunAnswer.Of(await plugin.RunAsync(input.Args.DeviceId, ct).ConfigureAwait(false)))
         .Change<SaveArgs, SavePlan, SavedAnswer>(
-            new("profile_save", "Save provisioning profile", "Adds a profile, or changes the one with id. Nodes in order, Set password and Add to OADM first. With new_password the person enters the root password of Set password.")
+            new("profile_save", "Save provisioning profile", "Adds a profile, or changes the one with id. Nodes in order, set_password first. With new_password the person enters the root password of Set password.")
             {
                 Secrets = [Password],
             },
@@ -92,16 +92,16 @@ internal static class ProvisioningTools
                 return new FileAnswer(file.Id, file.Name, file.Size);
             })
         .Change<IdArgs, ProfilePlan, DoneAnswer>(
-            new("profile_delete", "Delete provisioning profile", "Deletes a profile. A running session keeps its own copy.") { Destructive = true },
+            new("profile_delete", "Delete provisioning profile", "Deletes a profile; the active one only while provisioning is off. Running tasks keep their own copy.") { Destructive = true },
             ProvisioningMethods.DeleteProfile,
-            (plugin, _, input, _) => Task.FromResult(new ProfilePlan((plugin.RunningProfiles.Find(input.Args.Id) ?? throw new KeyNotFoundException(ProvisioningPlugin.ProfileGone)).Name)),
+            (plugin, _, input, _) => Task.FromResult(new ProfilePlan(plugin.CheckDelete(input.Args.Id).Name)),
             async (plugin, _, input, _, ct) =>
             {
                 await plugin.DeleteProfileAsync(input.Args.Id, ct).ConfigureAwait(false);
                 return new DoneAnswer("Deleted.");
             })
         .Change<IdArgs, ProfilePlan, DoneAnswer>(
-            new("profile_activate", "Activate provisioning profile", "Makes a profile without errors the active one; the next Start runs it."),
+            new("profile_activate", "Activate provisioning profile", "Makes a profile without errors the active one: the next cameras found run it."),
             ProvisioningMethods.ActivateProfile,
             async (plugin, _, input, ct) => new ProfilePlan((await plugin.CheckActivateAsync(input.Args.Id, ct).ConfigureAwait(false)).Name),
             async (plugin, _, input, _, ct) =>
@@ -109,52 +109,51 @@ internal static class ProvisioningTools
                 await plugin.ActivateAsync(input.Args.Id, ct).ConfigureAwait(false);
                 return new DoneAnswer("Active.");
             })
-        .Change<NoArgs, StartPlan, DoneAnswer>(
-            new("start", "Start provisioning", "Starts provisioning with the active profile: every factory-new camera that gets an address from OADM's DHCP server runs it."),
-            ProvisioningMethods.Start,
+        .Change<NoArgs, TurnOnPlan, DoneAnswer>(
+            new("turn_on", "Turn provisioning on", "Turns provisioning on with the active profile: every factory-new camera OADM finds (discovery, network range, add manually, import, a lease of OADM's DHCP server) is added and gets a task that runs the profile."),
+            ProvisioningMethods.TurnOn,
             async (plugin, _, _, ct) =>
             {
-                var profile = await plugin.CheckStartAsync(ct).ConfigureAwait(false);
-                return new StartPlan(profile.Name, (await plugin.StatusAsync(ct).ConfigureAwait(false)).Warnings);
+                var profile = await plugin.CheckTurnOnAsync(ct).ConfigureAwait(false);
+                return new TurnOnPlan(profile.Name, (await plugin.StatusAsync(ct).ConfigureAwait(false)).Warnings);
             },
             async (plugin, caller, _, _, ct) =>
             {
-                await plugin.StartSessionAsync(caller, ct).ConfigureAwait(false);
-                return new DoneAnswer("Provisioning started.");
+                await plugin.TurnOnAsync(caller, ct).ConfigureAwait(false);
+                return new DoneAnswer("Provisioning is on.");
             })
-        .Change<NoArgs, StopPlan, DoneAnswer>(
-            new("stop", "Stop provisioning", "Stops provisioning: running flows stop waiting, the reserved addresses are free again."),
-            ProvisioningMethods.Stop,
-            (plugin, _, _, _) => Task.FromResult(plugin.RunningEngine.Session is null ? throw new InvalidOperationException(ProvisioningEngine.NotStarted) : new StopPlan(plugin.RunningEngine.Counts().Running)),
+        .Change<NoArgs, TurnOffPlan, DoneAnswer>(
+            new("turn_off", "Turn provisioning off", "Turns provisioning off: no new camera gets a task; running provisioning tasks run to their end."),
+            ProvisioningMethods.TurnOff,
+            (plugin, _, _, _) => Task.FromResult(plugin.RunningService.IsOn ? new TurnOffPlan(plugin.RunningService.ActiveTasks) : throw new InvalidOperationException(ProvisioningService.AlreadyOff)),
             async (plugin, _, _, _, ct) =>
             {
-                await plugin.StopSessionAsync(ct).ConfigureAwait(false);
-                return new DoneAnswer("Provisioning stopped.");
+                await plugin.TurnOffAsync(ct).ConfigureAwait(false);
+                return new DoneAnswer("Provisioning is off.");
             })
-        .Change<MacsArgs, CamerasPlan, CountAnswer>(
-            new("cameras_run_failed_again", "Run failed nodes again", "Runs the red nodes of failed cameras again, in flow order."),
-            ProvisioningMethods.RunFailedAgain,
-            (plugin, _, input, _) => Task.FromResult(Plan(plugin, input.Args, r => r.State == CameraState.Failed)),
-            (plugin, _, input, _, _) => Task.FromResult(new CountAnswer(plugin.RunningEngine.RunFailedAgain(input.Args.Macs))))
-        .Change<MacsArgs, CamerasPlan, CountAnswer>(
-            new("cameras_continue", "Continue cameras", "Presses Continue for cameras that wait for approval."),
-            ProvisioningMethods.Continue,
-            (plugin, _, input, _) => Task.FromResult(Plan(plugin, input.Args, r => r.WaitingForApproval)),
-            (plugin, caller, input, _, _) => Task.FromResult(new CountAnswer(plugin.RunningEngine.Continue(input.Args.Macs, caller.UserName))))
-        .Change<MacsArgs, CamerasPlan, CountAnswer>(
-            new("cameras_remove", "Remove camera rows", "Removes rows from the camera table; the cameras stay in OADM.") { Destructive = true },
-            ProvisioningMethods.RemoveCameras,
-            (plugin, _, input, _) => Task.FromResult(Plan(plugin, input.Args, r => r.State is not (CameraState.Queued or CameraState.Running))),
-            (plugin, _, input, _, _) => Task.FromResult(new CountAnswer(plugin.RunningEngine.Remove(input.Args.Macs))));
+        .Change<DevicesArgs, RunAgainPlan, RunAgainAnswer>(
+            new("run_again", "Run provisioning again", "For cameras whose provisioning task failed: a new task with the same profile that runs only the failed steps, in order."),
+            ProvisioningMethods.RunAgain,
+            async (plugin, _, input, ct) =>
+            {
+                var ids = new List<Guid>();
+                foreach (var id in (input.Args.DeviceIds ?? []).Distinct())
+                {
+                    if (await plugin.RunningService.PlanAgainAsync(id, ct).ConfigureAwait(false) is not null)
+                    {
+                        ids.Add(id);
+                    }
+                }
 
-    /// <summary>The rows of the given MAC addresses that the change applies to; none is a refusal.</summary>
-    private static CamerasPlan Plan(ProvisioningPlugin plugin, MacsArgs args, Func<CameraRow, bool> applies)
-    {
-        var rows = (args.Macs ?? []).Select(plugin.RunningEngine.Find).OfType<CameraRow>().Where(applies).ToList();
-        return rows.Count == 0
-            ? throw new PluginToolInputException("macs", "None of these cameras can do this now.")
-            : new CamerasPlan([.. rows.Select(r => r.Mac)]);
-    }
+                return ids.Count == 0
+                    ? throw new PluginToolInputException("device_ids", "None of these cameras has a failed provisioning task to run again.")
+                    : new RunAgainPlan(ids);
+            },
+            async (plugin, _, input, _, ct) =>
+            {
+                var reply = await plugin.RunAgainAsync(input.Args.DeviceIds ?? [], ct).ConfigureAwait(false);
+                return new RunAgainAnswer(reply.Started, reply.Skipped);
+            });
 }
 
 [Description("No arguments.")]
@@ -162,12 +161,14 @@ internal sealed record NoArgs;
 
 internal sealed record IdArgs([property: Description("The profile id.")] Guid Id);
 
-internal sealed record MacsArgs(
-    [property: Description("MAC addresses of cameras in the table, e.g. AC:CC:8E:01:02:03."), MaxLength(1_000)] IReadOnlyList<string> Macs);
+internal sealed record DeviceArgs([property: Description("The OADM device id of the camera.")] Guid DeviceId);
+
+internal sealed record DevicesArgs(
+    [property: Description("OADM device ids of cameras whose provisioning task failed."), MaxLength(1_000)] IReadOnlyList<Guid> DeviceIds);
 
 internal sealed record NodeArgs(
     [property: Description("The node's id in the profile: letters, digits and hyphens."), MaxLength(32)] string Id,
-    [property: Description("set_password, add_to_oadm, wait_for_approval, upgrade_online, upgrade_files, network_settings, date_time, configuration, users, certificate, dot1x, sd_card, autofocus, vapix_commands or set_ip.")] NodeKind Kind,
+    [property: Description("set_password, network, upgrade_online, upgrade_files, date_time, configuration, users, certificate, dot1x, sd_card, autofocus or vapix_commands.")] NodeKind Kind,
     [property: Description(NodeArgs.SettingsHelp), MaxLength(NodeArgs.MaxSettingsLength)] string? Settings = null,
     [property: Description("Go on with the next node after an error (ignored for set_password, which always stops).")] bool ContinueOnError = true)
 {
@@ -176,17 +177,16 @@ internal sealed record NodeArgs(
 
     /// <summary>The settings of every kind, for agents (the secrets and files by the ids of secret_store and file_store).</summary>
     public const string SettingsHelp =
-        "The node's settings as the text of a JSON object (leave out for the defaults). set_password: credential_id. add_to_oadm: tags. "
+        "The node's settings as the text of a JSON object (leave out for the defaults). set_password: credential_id. "
+        + "network: ip (keep, pool), first, last, subnet_mask, gateway (the pool), dns_servers, search_domain; at least one part set. "
         + "upgrade_online: target (ownTrack, latestLts, latestActive), only_if_older_than (e.g. 12.6.95). "
         + "upgrade_files: files [{file_id, name}] (one AXIS OS file per model; never a downgrade). "
-        + "network_settings: dns_servers, search_domain. "
         + "date_time: time_zone, ntp_servers (none: from DHCP), nts, oadm_ntp (OADM's NTP server). "
         + "configuration: source (file, templateCamera), file_id or template_serial, parameters, action_rules, schedules. "
         + "users: accounts [{name, role (viewer, operator, administrator), ptz, secret_id}]. "
         + "certificate: mode (policy, est), policy_id (none: the first HTTPS certificate policy). dot1x: none. "
         + "sd_card: format, encrypt, secret_id (the passphrase), max_age_days. autofocus: none. "
-        + "vapix_commands: commands [{command_id, values}] of the VAPIX Commander library. "
-        + "set_ip: first, last, subnet_mask, gateway, dns_servers.";
+        + "vapix_commands: commands [{command_id, values}] of the VAPIX Commander library.";
 }
 
 internal sealed record SaveArgs(
@@ -290,19 +290,19 @@ internal sealed record SavePlan(
 
 internal sealed record ProfilePlan([property: Description("The profile name.")] string Name) : PluginToolPlan(1, "profile");
 
-internal sealed record StartPlan(
-    [property: Description("The profile that runs.")] string Profile,
-    [property: Description("Warnings; Start still works.")] IReadOnlyList<string> Warnings) : PluginToolPlan(1, "session");
+internal sealed record TurnOnPlan(
+    [property: Description("The profile the cameras run.")] string Profile,
+    [property: Description("Warnings; On still works.")] IReadOnlyList<string> Warnings) : PluginToolPlan(1, "setting");
 
-internal sealed record StopPlan([property: Description("Cameras whose flow runs now.")] int Running) : PluginToolPlan(1, "session");
+internal sealed record TurnOffPlan([property: Description("Provisioning tasks that run or wait now; they run to their end.")] int RunningTasks) : PluginToolPlan(1, "setting");
 
-internal sealed record CamerasPlan([property: Description("The cameras the run changes.")] IReadOnlyList<string> Macs) : PluginToolPlan(Macs.Count, "camera");
+internal sealed record RunAgainPlan([property: Description("The cameras that get a task.")] IReadOnlyList<Guid> DeviceIds) : PluginToolPlan(DeviceIds.Count, "camera");
+
+internal sealed record RunAgainAnswer([property: Description("Tasks started.")] int Started, [property: Description("Cameras left out (nothing failed, a task runs).")] int Skipped);
 
 internal sealed record SavedAnswer([property: Description("The profile id.")] Guid Id, [property: Description("The profile has no errors.")] bool IsValid);
 
 internal sealed record DoneAnswer([property: Description("What happened.")] string Message);
-
-internal sealed record CountAnswer([property: Description("How many cameras.")] int Count);
 
 internal sealed record CredentialRow(Guid Id, string UserName);
 
@@ -346,18 +346,17 @@ internal sealed record CommandFieldRow(
     [property: Description("The values an enum field takes.")] IReadOnlyList<string>? Options);
 
 internal sealed record StatusAnswer(
-    bool Started,
-    DateTimeOffset? StartedAt,
-    string? StartedBy,
+    bool On,
+    string? OnBy,
+    DateTimeOffset? OnAt,
     string? ActiveProfile,
-    string? SessionProfile,
-    bool DhcpRunning,
-    string? DhcpStatus,
-    CameraCounts Counts,
+    bool ActiveProfileValid,
+    [property: Description("Why provisioning cannot be turned on now.")] string? TurnOnRefusal,
+    int RunningTasks,
     IReadOnlyList<string> Warnings)
 {
     public static StatusAnswer Of(StatusReply s) =>
-        new(s.Started, s.StartedAt, s.StartedBy, s.ActiveProfileName, s.SessionProfileName, s.Dhcp?.IsRunning == true, s.Dhcp?.StatusText, s.Counts, s.Warnings);
+        new(s.On, s.OnBy, s.OnAt, s.ActiveProfileName, s.ActiveProfileValid, s.TurnOnRefusal, s.RunningTasks, s.Warnings);
 }
 
 internal sealed record ProfileRow(Guid Id, string Name, int Nodes, bool IsActive, bool IsValid);
@@ -378,17 +377,21 @@ internal sealed record ProfileAnswer(Guid Id, string Name, IReadOnlyList<NodeRow
         reply.Check.ProfileErrors);
 }
 
-internal sealed record CameraToolRow(string Mac, string? Model, string Address, CameraState State, string? Node, bool WaitingForApproval, string? Message);
+internal sealed record RunNodeRow(string Node, [property: Description("success, warning, error, notNeeded; null: not run.")] NodeState? State, string? Message);
 
-internal sealed record CamerasAnswer(int Total, IReadOnlyList<CameraToolRow> Rows, string? Next)
+internal sealed record RunAnswer(
+    Guid DeviceId,
+    string Profile,
+    DateTimeOffset Started,
+    [property: Description("The camera passed the check that it is new.")] bool Checked,
+    IReadOnlyList<RunNodeRow> Nodes,
+    [property: Description("run_again would start a task.")] bool CanRunAgain)
 {
-    public static CamerasAnswer Of(ProvisioningPlugin plugin, PluginToolPage page)
-    {
-        var engine = plugin.RunningEngine;
-        var all = engine.Page(page.After, 1_000);
-        var rows = all.Rows.Select(r => new CameraToolRow(r.Mac, r.Model, r.Address, r.State, r.NodeName, r.WaitingForApproval,
-            r.Message ?? (r.NodeIndex >= 0 && r.NodeIndex < r.Results.Count ? r.Results[r.NodeIndex]?.Message : null)));
-        var (taken, more) = page.Take(rows, ProvisioningTools.Set.Json);
-        return new CamerasAnswer(all.Total, taken, more || all.Next is not null ? taken[^1].Mac : null);
-    }
+    public static RunAnswer Of(RunReply reply) => new(
+        reply.DeviceId,
+        reply.ProfileName,
+        reply.Started,
+        reply.Checked,
+        [.. reply.Nodes.Select(n => new RunNodeRow(n.Name, n.Result?.State, n.Result?.Message))],
+        reply.CanRunAgain);
 }

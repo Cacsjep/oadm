@@ -45,7 +45,7 @@ public static partial class FirmwareTask
 /// <summary>
 /// Upgrade AXIS OS online (spec node 3): the newest AXIS OS of the camera's own track, the latest LTS or the latest active
 /// track from axis.com, chosen by the Upgrade AXIS OS task when it runs (<c>"latest"</c>), downloaded with the MyAxis sign-in
-/// of the administrator who started provisioning (the task runs as that user). Optional: only for cameras older than a
+/// of the administrator who turned provisioning on (the task runs as that user). Optional: only for cameras older than a
 /// version. The task's checks apply (APIs, the decision table, the installed applications).
 /// </summary>
 public sealed class UpgradeOnlineNode : TaskNode<UpgradeOnlineSettings>
@@ -55,6 +55,8 @@ public sealed class UpgradeOnlineNode : TaskNode<UpgradeOnlineSettings>
     public override NodeKind Kind => NodeKind.UpgradeOnline;
 
     public override string Name => "Upgrade AXIS OS online";
+
+    public override string StepName => "Upgrade AXIS OS from axis.com";
 
     public override string TaskPluginId => FirmwareTask.PluginId;
 
@@ -87,7 +89,7 @@ public sealed class UpgradeOnlineNode : TaskNode<UpgradeOnlineSettings>
         return NodeRules.CompareVersions(current, settings.OnlyIfOlderThan) is >= 0 ? NodeResult.Success($"Already {current}.") : null;
     }
 
-    /// <summary>The user who started provisioning: their MyAxis sign-in downloads the file.</summary>
+    /// <summary>The user who turned provisioning on: their MyAxis sign-in downloads the file.</summary>
     protected override ITaskRunner? RunnerFor(NodeRun run) => run?.Host.StarterTasks;
 
     protected override string Payload(UpgradeOnlineSettings settings, NodeRun run)
@@ -130,6 +132,8 @@ public sealed partial class UpgradeFilesNode : TaskNode<UpgradeFilesSettings>
     public override NodeKind Kind => NodeKind.UpgradeFiles;
 
     public override string Name => "Upgrade AXIS OS from files";
+
+    public override string StepName => "Upgrade AXIS OS from a file";
 
     public override string TaskPluginId => FirmwareTask.PluginId;
 

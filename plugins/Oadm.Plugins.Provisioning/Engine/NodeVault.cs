@@ -26,7 +26,7 @@ public sealed record StoredFile(Guid Id, string Name, long Size, string Sha256, 
 /// The secrets and files the nodes name by id (README "Secrets and files"): typed passwords and passphrases encrypted with
 /// the server's master key (<see cref="ISecretProtector"/>, setting <c>secrets</c>), files in the plugin's data folder
 /// (setting <c>files</c>), handed to a task as a system upload (<see cref="IPluginUploads"/>) when a node runs. A profile
-/// never holds a secret or a file, only their ids. What no profile and no session names goes after a day.
+/// never holds a secret or a file, only their ids. What no profile names goes after a day.
 /// </summary>
 public sealed class NodeVault(IPluginSettings settings, ISecretProtector? protector, string? dataDirectory, IPluginUploads? uploads, TimeProvider? time = null) : IDisposable
 {
@@ -223,7 +223,7 @@ public sealed class NodeVault(IPluginSettings settings, ISecretProtector? protec
         return (await target.AddAsync(name, stream, content.Length, ct).ConfigureAwait(false)).Id;
     }
 
-    /// <summary>Removes the secrets and files no profile or session names and that were added more than a day ago.</summary>
+    /// <summary>Removes the secrets and files no profile names and that were added more than a day ago.</summary>
     public async Task PruneAsync(IEnumerable<Profile> named, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(named);

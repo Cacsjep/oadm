@@ -1,51 +1,58 @@
 # Provisioning
 
-Core plugin `oadm.provisioning`, rail page **Provisioning**, free, on by default. Sets up factory-new cameras that get an
-address from OADM's DHCP server, while provisioning is started on the page. The spec is
+Core plugin `oadm.provisioning`, free, on by default, no rail page. While provisioning is on, every factory-new camera
+OADM finds gets one task "Provision with <profile>" that runs the active profile. The spec is
 [`docs/spec/provisioning.md`](../../docs/spec/provisioning.md); this file holds the decisions of the code.
 
-Built: the server part with every node of the spec, the page methods and the tools; the page `Oadm.Plugins.Provisioning.Client` with the canvas and the profile editor.
+Built (redesign of 2026-11-19, stage 1): the server part, the task, every node of the spec, the methods and the tools.
+The client part `Oadm.Plugins.Provisioning.Client` holds the profile editor and Manage profiles; the Devices toolbar
+button, Provisioning management and the Add devices page's "Provisioning" are stage 2.
 
 ## How it works
 
 - **Profiles** (`Model/Profiles.cs`, setting `profiles`): a name and a straight list of `FlowNode`s (kind, settings
   record as JSON, Continue on error). One profile is active. `ProfileCheck.Check` gives one error per node (its place
-  first, then its settings) and one warning per node; the editor (`checkProfile`), Save, Activate and Start run the same
-  check. Save refuses only errors of the whole profile (name, the fixed nodes); a profile with node errors is a draft and
-  cannot be active.
-- **Session** (`Engine/ProvisioningEngine.cs`, setting `session`): Start copies the active profile into the session; changes
-  to the profile apply at the next Start. Start is refused without a running DHCP server ("Turn on the DHCP server
-  first."), clears the rows of the last session and takes the cameras that hold an active lease right away. The session
-  (profile, reserved Set IP addresses by MAC, the last DHCP acknowledgement read) is stored until Stop.
-- **Leases**: the DHCP server offers `IDhcpServerLeases` (SDK 0.15.0, read only). The engine reads the acknowledgements
-  every 2 s by sequence number; a DHCP server that started again starts its numbers again, the engine notices. Only Axis
-  MAC blocks (`AxisOui`, linked from the DHCP server) get a row. Provisioning never changes the DHCP server.
-- **Rows** (records collection `cameras`, one per MAC): Queued, Running (or waiting for approval), Done, Done with
-  warnings, Failed, Not new. At most 10,000 rows per session. Changes go to the database and the page at most every
-  500 ms (topic `cameras`: changed rows in parts of 500, removed MACs, counts); the page reads `listCameras` in pages
-  of at most 1,000 by MAC.
-- **Flow** of a camera: a place (at most 8 at once, `ProvisioningOptions.MaxParallel`), then the look
-  (`IDeviceAutoAdd.LookAsync`: the add page's probe and Axis check, no password; retried every 10 s for 2 minutes while
-  the camera starts). Not factory-new: "Not new, left as it is", nothing is sent. Factory-new: the nodes in order; an
-  Error stops the flow when the node always stops (Set password) or its Continue on error is off; a Warning always
-  continues. Done: no red node; Done with warnings: a yellow one. **Run failed again** runs the red nodes and the ones
-  that never ran, in order, without the look (Set password checks "no password yet" itself).
-- **Restart**: a row that was running ends Failed with "The server restarted while this ran." on the node it was on;
-  queued rows run again. **Stop**: flows stop waiting (a task a node started runs to its end), rows stay until the next
-  Start, the reservations go.
+  first, then its settings) and one warning per node; the editor (`checkProfile`), Save, Activate and On run the same
+  check. Save refuses only errors of the whole profile (name, Set password first); a profile with node errors is a draft
+  and cannot be active. Profiles of the build of 2026-11-18 are converted when they load and stored again
+  (`Engine/ProfileUpgrade.cs`): Add to OADM and Wait for approval dropped, Set IP and Network settings merged into one
+  Network node; `NodeKind` keeps their names only for that.
+- **On and Off** (`Engine/ProvisioningService.cs`, setting `state`: on, who, when, the last DHCP acknowledgement read).
+  On needs an active profile without errors; it keeps the caller's tasks in memory (`INodeHost.StarterTasks`, their
+  MyAxis sign-in, null after a restart). Off starts nothing new; running tasks run to their end.
+- **What starts a task**: `IDeviceAutoAdd.WatchFactoryNew` (SDK 0.15.0): the server reports a device its device adder
+  stored as Password not set and a managed device the polling turned Password not set (`FactoryNewDeviceNotices`,
+  `DeviceAdder`, `DevicePollingService`). The report only queues; a loop starts the tasks of everything queued in one
+  `RunAsync` (one task per device). Devices at a site get none. The DHCP server's acknowledgements (`IDhcpServerLeases`,
+  read every 2 s while on; On also takes the active leases) of Axis MAC blocks (`AxisOui`, linked from the DHCP server)
+  are looked at, at most 8 at once: `IDeviceAutoAdd.LookAsync` (the camera itself, the server waits while it is
+  starting; no answer: again every 10 s for 2 minutes); a new unmanaged camera is added with `AddAsync` (Password not
+  set: its report starts the task), a new managed one gets its task at once, any other is left alone. Provisioning never
+  changes the DHCP server.
+- **Never twice**: the devices whose task is starting or active are kept by id (`ITaskRunner.IsActive` drops one that
+  ended without running). A camera found again while its task runs or waits gets none.
+- **The task** (`Engine/ProvisioningTaskPlugin.cs`, `oadm.provisioning.run`): hidden from the menus, a page task (never
+  through TaskService.Run or the task tools), `MaxParallelDevices` 8. Payload (`RunPayload`, memory only): the profile as
+  it was when the task started, the nodes to run (null: all) and whether the camera is checked first. Steps: "Check that
+  the camera is new" (`LookAsync`; a password, a camera still starting after 2 minutes, another serial or no answer fail
+  it before any write), then one step per node (`IProvisioningNode.StepName`): Success Done, Not needed Skipped, Warning
+  a warning step, Error a failed step; an Error stops the task when the node always stops (Set password) or its Continue
+  on error is off. The task fails when a step failed ("2 steps failed. <the first>").
+- **Runs** (records `runs`, key the device id; records `snapshots`, key the SHA-256 of the profile's JSON): the last
+  run of each device with each node's result, written after every step. **Run again** (`runAgain`) starts, per camera
+  whose task is not active and whose last run has a red node or one that never ran, a task with the same profile that
+  runs only those nodes in order and skips the check; a camera that failed the check runs everything again. Runs of
+  removed devices and snapshots no run names go when the plugin starts (in the background).
+- **Restart**: the task engine fails the running and queued tasks (their payload is gone); Run again repeats them.
 
 ## Nodes
 
 | Node | How | Results |
 |---|---|---|
-| Set password (fixed, first, always stops) | `IDeviceAutoAdd.SetFirstPasswordAsync` with a credential list entry of root: the add page's and the context menu's path, serial and "no password yet" checked right before writing | "Password set." or the camera's refusal |
-| Add to OADM (fixed, second) | `IDeviceAutoAdd.AddWithLoginAsync` with the same entry and the tags (for all devices; the tags put it into device groups), then waits up to 2 minutes until OADM has read it (status Ok, API list) | Success; Warning when OADM has not read it yet or a tag could not be set; Error with the reason |
-| Wait for approval | Releases its place and waits for Continue on the row | "Continued by anna." |
-| Set IP | Takes the address under a lock (`TakeAddressAsync`), then the Network plugin's task "Assign IP address" (`oadm.network.assign-ip`) with a static payload | "192.168.15.12 is in use, 192.168.15.13 assigned."; "No free address left in the pool."; on failure both addresses |
-| Date and time | The Date and time task (`oadm.datetime`), mode NTP, the servers or the ones DHCP gives; with OADM's NTP server then the NTP server plugin's "Use OADM NTP server" (`oadm.ntp-server.use`), which fills in OADM's address towards the camera | "Time zone Europe/Vienna, NTP 10.0.0.17.", "Time zone Europe/Vienna, OADM's NTP server.", "Time zone ... set. OADM's NTP server was not set: ..." or the task's message |
-| Upgrade AXIS OS online | Upgrade AXIS OS (`oadm.firmware`) with `"latest":{"target"}` (own track, latest LTS, latest active; the task picks the version on axis.com for the camera's model), started with the tasks of the administrator who started provisioning (`INodeHost.StarterTasks`: their MyAxis sign-in; null after a restart). Only if older than: the device's version first, no task | "AXIS OS from axis.com installed.", "Already 12.6.95.", Error "Sign in to MyAxis." (no or expired sign-in), "Stop and start provisioning again: ..." |
+| Set password (fixed, first, always stops) | `IDeviceAutoAdd.SetFirstPasswordAsync` with a credential list entry of root: the add page's and the context menu's path, serial and "no password yet" checked right before writing; the device keeps the password as its login. Then it waits until OADM read the camera (status Ok, API list; 2 minutes) | "Password set.", Warning "Password set. OADM has not read the camera yet; the next steps may fail.", or the camera's refusal |
+| Network | DNS servers and search domain first with Network settings (`oadm.network`; none: the camera keeps its domains), then the address with "Assign IP address" (`oadm.network.assign-ip`, static, the same DNS servers, domains kept): the next free address of the pool, taken under a lock (`TakeAddressAsync`); Keep writes no address; never the host name. A failed DNS write writes no address | "192.168.15.12 is in use, 192.168.15.13 assigned. DNS 10.0.0.1, search domain site.local.", "The camera is at 192.168.15.20 already.", "No free address left in the pool.", on failure both addresses |
+| Upgrade AXIS OS online | Upgrade AXIS OS (`oadm.firmware`) with `"latest":{"target"}` (own track, latest LTS, latest active; the task picks the version on axis.com for the camera's model), started with the tasks of the administrator who turned provisioning on (`INodeHost.StarterTasks`: their MyAxis sign-in; null after a restart). Only if older than: the device's version first, no task | "AXIS OS from axis.com installed.", "Already 12.6.95.", Error "Sign in to MyAxis." (no or expired sign-in), "Turn provisioning off and on again: ..." |
 | Upgrade AXIS OS from files | Upgrade AXIS OS with every file of the node as an upload (`files`), the task takes the file whose product is the camera's model; never a downgrade (`allowDowngrade` false: the task refuses an older file before any write, the node maps that refusal to Success) | "AXIS OS 12.6.95 installed.", "Already 12.6.95." (same or newer AXIS OS on the camera), Warning "No file for this model.", Error "The file is no longer on the server. Choose it again." |
-| Network settings | Network settings (`oadm.network`): DNS servers (required) and search domain (none: the camera keeps its domains); never the host name (older settings' `hostName` and `startNumber` are ignored) | "DNS 10.0.0.1, search domain site.local." or the task's message |
 | Configuration | Import configuration (`oadm.device-config.import`) of the file, or of the template camera's export read now (`GET /config/rest/$export`, read only, uploaded for the task, never kept); the areas `param.v2`, `action-rules.v2`, `event-schedules.v2`; the task leaves out device-specific values | "Parameters and action rules applied.", Warning with the task's list of settings the camera lacks, Not needed "this is the template camera.", Error "The template camera ... is not in OADM." |
 | Users | One Users task (`oadm.users`, mode add) per account, the password from the vault in the payload; the task protects OADM's account | "Added op1 and view1.", Warning or Error per account ("op1: ...") |
 | Certificate | PKI's "Enable HTTPS" (`oadm.pki.https-enable`) with the policy (none: the first HTTPS certificate policy), or "Set up EST" (`oadm.est.setup`); the clock is never confirmed (a clock that is behind refuses) | "Certificate installed, HTTPS on.", "EST enrollment set up.", Error "OADM PRO is not active. Nothing was changed." |
@@ -53,6 +60,7 @@ Built: the server part with every node of the spec, the page methods and the too
 | SD card | Edge storage's task (`oadm.edge-storage.task`): `encryptionOn` with the passphrase from the vault (formats too) or `format`, then `retention` with the days | "SD card encrypted and formatted, recordings kept 30 days.", Not needed "no SD card." (the first task's "No SD card"), Error with the task's text |
 | Autofocus | No task: the optics API of the live view (`optics-control` in a fresh API list, `getCapabilities` with focus, `performAutofocus`, which answers when done) within `AutofocusTimeout` (2 minutes) | "Focus found.", Not needed "no remote focus.", Error "The camera could not find focus. Set focus by hand." or "The autofocus did not end within 2 minutes." |
 | VAPIX commands | The VAPIX Commander's task (`oadm.vapix-commander.run`) with the commands of the library copied into this plugin (`Library/`, sources linked) and their values (`FieldValues.Resolve` in the check), confirmed; commands the fresh API list lacks are left out | "Ran Set overlay text.", Warning "Ran ... Not on this camera: Run autofocus.", Error with the task's message |
+
 
 **Set password secrets.** The profile never holds a password. A typed password (`saveProfile` with `password`, the tool's
 secret) is added to the credential list as root (`IDeviceAutoAdd.AddCredentialAsync`, encrypted with the master key) and
@@ -66,15 +74,18 @@ the editor closes. It never reaches the server part.
 `fileId`, never the value: the page's `storeSecret` (encrypted with `ctx.Secrets`, setting `secrets`) and `storeFile`
 (a file of the caller's own uploads, copied into `ctx.DataDirectory/files`, setting `files`) answer the ids. When a node
 runs, a file goes to its task as a system upload (`ctx.Uploads`, SDK 0.15.0), added again when the server deleted the
-last one after a day. What no profile and no session names is deleted a day after it was stored (`PruneAsync` at start,
+last one after a day. What no profile names is deleted a day after it was stored (`PruneAsync` at start,
 save and delete). The server part never reads a password of the credential list, so Users and SD card take typed ones only.
 
-**Set IP addresses.** Under one lock per server: the camera's own reservation of this session, else the first address of
-the pool that is not reserved in this session, no OADM device has (one read of the device list per take) and that answers
-neither ping nor TCP 80/443 (`AddressProbe.cs`, linked from the Network plugin). The reservation is stored before the lock
-ends; the write runs outside it, so cameras write in parallel. The Network task checks the address again, waits for the
-camera at the new address (its own 90 s) and moves the OADM record; on failure OADM keeps the camera at its old address.
-A pool that overlaps the DHCP range is a warning in the node and at Start.
+**Network addresses.** Under one lock per server: the camera's own reservation when it is in the pool, else its current
+address when that is in the pool, else the first address of the pool that is not reserved for another camera, no other
+OADM device has (one read of the device list per take) and that answers neither ping nor TCP 80/443 (`AddressProbe.cs`,
+linked from the Network plugin). The reservation (setting `reserved`, by serial number) is stored before the lock ends;
+the write runs outside it, so cameras write in parallel. A reservation stays (also across Off, On and restarts) until
+its address is an OADM device. The Network task checks the address again, waits for the camera at the new address (its
+own 90 s) and moves the OADM record; on failure OADM keeps the camera at its old address. A pool that overlaps the DHCP
+range is a warning in the node and in the status. A new Network node starts with the first three numbers of the DHCP
+range and its subnet mask (`NetworkNode.DefaultsFor`, the default of `nodeKinds`).
 
 ## Adding a node
 
@@ -90,10 +101,11 @@ validation before the first write), the node maps its outcome.
    {
        public override NodeKind Kind => NodeKind.SdCard;
        public override string Name => "SD card";
+       public override string StepName => "Set up the SD card"; // its step in the task: imperative, with the article
        public override string TaskPluginId => "oadm.edge-storage.format";
        public override object DefaultSettings => new SdCardSettings();
 
-       // One error, the same in the editor and before Start; cheap.
+       // One error, the same in the editor and before activation; cheap.
        protected override string? CheckSettings(SdCardSettings s, ProfileCheckContext context) => ...;
 
        // The task's payload JSON for this camera (its ITaskPlugin.PayloadType); the task validates it again.
@@ -111,89 +123,56 @@ validation before the first write), the node maps its outcome.
    upload; an `InvalidOperationException` is the node's Error), `TaskFor` picks another task by the settings, `RunnerFor`
    another runner (`StarterTasks`), `AfterAsync` runs a second task. A node with several tasks or with VAPIX itself
    derives from `DeviceNode<TSettings>` (`RunOnAsync`). A node that is not a task implements `IProvisioningNode` itself
-   (`RunAsync` never throws for a device problem, it returns a `NodeResult`). `NeedsDevice` (default true) makes the
-   engine refuse the node before Add to OADM gave the camera its device.
+   (`RunAsync` never throws for a device problem, it returns a `NodeResult`).
 3. Register it in `NodeRegistry.Default`.
 4. Test it with `Harness` (`tests/Oadm.Plugins.Provisioning.Tests/Fakes.cs`): Success, Warning, Error and Not needed with
    their messages, the payload, and the check. Write the spec line and the table row above.
 
-The engine is the node's `INodeHost`: `AutoAdd`, `Tasks`, `Devices`, `Time`, `Options`, `TakeAddressAsync`,
-`WaitForApprovalAsync`, `DeviceAdded`, `AddressChanged`. `TaskRuns.RunTaskAsync` starts a task and waits for its end
-(every 2 s, at most 30 minutes by default) for nodes that need more than one task.
+The service is the node's `INodeHost`: `AutoAdd`, `Tasks`, `Devices`, `Vapix`, `StarterTasks`, `Vault`, `Time`, `Options`,
+`Owner`, `TakeAddressAsync`. `TaskRuns.RunTaskAsync` starts a task and waits for its end (every 2 s, at most 30 minutes by
+default) for nodes that need more than one task.
 
-## The page
+## The client part
 
-`Oadm.Plugins.Provisioning.Client` (own cards, `ProvisioningView`):
-
-- **DHCP card**: the DHCP server's state, interface and range from `status.dhcp`; Turn on / Edit open the DHCP server's
-  own page (`OpenAsync("plugin:oadm.dhcp-server")`), never a copy of its form; the pool overlap warning below.
-- **Toolbar**: Start provisioning (disabled with the reason as tooltip: no DHCP server, no active profile, profile with
-  errors), Stop provisioning (confirmed), the active profile (choosing one calls `activateProfile`, a refusal goes back),
-  Manage profiles, then the camera actions and the search at the right end, all in one row (the buttons go into the
-  overflow menu when the flow card leaves too little room).
-- **Manage profiles** (`ProfilesWindow`, `ProfilesDialogViewModel`): the profiles with their nodes and state (Active, Has
-  errors); New and Edit (also a double click) open the profile editor over it, Activate (off for a draft or the active
-  one, the reason as tooltip), Delete (red confirmation); a refusal directly below the list.
-- **Cameras** columns: Time (`CameraRow.Seen`), IP address, MAC address, model, node, state, problem; the search also
-  matches the serial number. `listCameras` in pages of 1,000, then the batched `cameras` events applied by MAC address (a row's older
-  version never overwrites a newer one); `RangeObservableCollection`, one reset per search or batch; Run failed again,
-  Continue and Remove on the selected rows. The empty line says what to do first.
-- **A camera's flow**: the row clicked last opens a card right of the table with the session's profile
-  (`status.sessionProfile`) on the shared node canvas (`NodeChainCanvas` of the client SDK, the look of Vision Center's
-  canvas): green (Success, Not needed), yellow, red with the message below, violet while it runs, grey when not run.
-- **Profile editor** (`ProfileEditorWindow`, 1320 x 864, `WindowFit` shrinks it on small screens): the same canvas with
-  the + below the last node and the selected one (`NodeChain.CanAdd`, `NodeChainNode.CanAddAfter`, never below Set
-  password); it opens the shared node list of Vision Center (`NodePicker` over `ProfileEditorViewModel.Picker`: the kinds
-  of `nodeKinds` that are not fixed in `NodeLook.Order`, grouped by `NodeLook.Group`, each with `NodeLook.Description`)
-  and the chosen kind goes right after that node (`AddAfter`). A new profile starts with Set password, Add to OADM and Set
-  IP. Move up, Move down, Remove (never the fixed two). The side panel shows the selected node's form (`NodeForms`: one per
-  kind, the server's check field by field; choices show and hide fields), errors below the fields, a "?" with a short help
-  in every field (`NodeFieldViewModel.Help`, `ProvisioningTexts.*Help`, shown by `FormField.Help`); the time zone of Date
-  and time is the shared `TimeZoneChoice` (plugins/Shared/TimeZones.Client, with the Date and time plugin's
-  `TimeZoneCatalog` linked into the server part); `checkProfile` after
-  every change (one at a time), its error on the node, its warning below it in amber. A long chain keeps the cards
-  readable (at least 80 %) and pans the selected one into view.
-- **Drafts** (decision 2026-11-18): a profile with node errors is saved as a draft (Save on, the error on each node, the
-  tooltip says so); only the name refuses a save. Activate and Start stay refused while errors exist; the profile choice
-  marks such a profile "Has errors".
-- **Secrets and files**: a typed root password goes with Save (`SaveProfileRequest.Password`); the other passwords and
-  passphrases (Users, SD card) go to `storeSecret` once, with Save, and the node keeps the id; a stored one shows "Kept
-  on the server". Files (Configuration, Upgrade AXIS OS from files) are uploaded when chosen and kept with `storeFile`.
-  The template camera is chosen with the device choice (`DevicePickerWindow.ShowOneAsync`), stored by serial number.
-  VAPIX commands come from `vapixCommands` (the library's commands a profile can run); their values are checked with
-  the Commander's own `FieldValues.Convert`.
+`Oadm.Plugins.Provisioning.Client` holds the profile editor (`ProfileEditorWindow`, `ProfileEditorViewModel`: the shared
+node canvas `NodeChainCanvas`, the + below every node, also below Set password; the node list `NodePicker`; one form per
+kind in `NodeForms`, the Network form with Keep or From a pool) and Manage profiles (`ProfilesWindow`). Stage 2 adds the
+Devices toolbar button (Provisioning / Provisioning active), Provisioning management with the On / Off switch and the
+"Provisioning" of the Add devices page, and decides where Run again sits.
 
 A new node kind gets an entry in `NodeForms` (its fields and their rules) and `NodeLook` (icon and colour).
 
-## Page methods and events
+## Methods and events
 
-`ProvisioningContract.cs`: `getStatus`, `listProfiles`, `getProfile`, `checkProfile`, `nodeKinds`, `credentials` (ids and
-user names only), `saveProfile`, `deleteProfile`, `activateProfile`, `start`, `stop`, `listCameras` (paged), `getCamera`,
-`runFailedAgain`, `continue`, `removeCameras`, `vapixCommands` (the commands a VAPIX commands node can run, with their
-fields), `storeSecret` (the id only comes back), `storeFile` (an upload id of the
-caller). Events `status` (after Start, Stop and profile changes) and `cameras` (batched). `getStatus` and `status`
-carry the profile the session runs (`sessionProfile`: the page draws a camera's flow with it). Nothing grows with the
-device count.
+`ProvisioningContract.cs`: `state` (whether it is on; every signed-in user, also with a device group: the Add devices
+page), `getStatus` (on, who, when, the active profile, `turnOnRefusal`, the running provisioning tasks, the warnings),
+`listProfiles`, `getProfile`, `checkProfile`, `nodeKinds`, `credentials` (ids and user names only), `saveProfile`,
+`deleteProfile` (not the active one while on), `activateProfile`, `turnOn`, `turnOff`, `runAgain` (device ids: started and
+skipped), `getRun` (the last run of a camera with each node's name and result, and whether Run again would start),
+`vapixCommands`, `storeSecret` (the id only comes back), `storeFile` (an upload id of the caller). Event `status` (a
+`StatusReply`, to users with "show") after On, Off and changes of the profiles. Nothing grows with the device count.
 
 ## Rights
 
 Permissions "show" (reads) and "manage" (everything else), both off for Operator and Viewer: administrators by default.
-Every method only for users with all devices (`RequiresAllDevices`); changes are audited without the payload.
+Every method only for users with all devices (`RequiresAllDevices`) except `state` (a login only); On, Off, Run again and
+the profile changes are audited without the payload.
 
 ## Tools
 
-`oadm_provisioning_status`, `_profiles`, `_profile`, `_credentials`, `_vapix_commands`, `_cameras` (paged); changes with
-preview and run:
-`_profile_save` (secret `password` when `new_password`), `_secret_store` (secret `secret`: a node's password or
-passphrase), `_file_store` (`upload_id`), `_profile_delete`, `_profile_activate`, `_start`, `_stop`,
-`_cameras_run_failed_again`, `_cameras_continue`, `_cameras_remove`. A node's settings are snake_case at any depth (the
-values of a VAPIX command keep its field names); `NodeArgs.SettingsHelp` lists them per kind.
+`oadm_provisioning_status`, `_profiles`, `_profile`, `_credentials`, `_vapix_commands`, `_camera` (the last run of one
+camera); changes with preview and run: `_profile_save` (secret `password` when `new_password`), `_secret_store` (secret
+`secret`: a node's password or passphrase), `_file_store` (`upload_id`), `_profile_delete`, `_profile_activate`,
+`_turn_on`, `_turn_off`, `_run_again` (device ids). A node's settings are snake_case JSON text at any depth (the values of
+a VAPIX command keep its field names); `NodeArgs.SettingsHelp` lists them per kind.
 
 ## Tests
 
-`tests/Oadm.Plugins.Provisioning.Tests`: fakes for the add pipeline, the DHCP view and the address probe, a fake clock,
-gates for the 8 places and the address lock; every node with its task's outcomes (`Harness.Outcomes`, `Decide` per run),
-scripted VAPIX for Autofocus and the template camera, the vault with a marking fake protector (`VaultTests`); the Perf test takes addresses with 100,000 devices and pages 2,000 rows.
-The page (`Client/`): the view models against canned answers and the server's own profile check (no Avalonia), the
-table at 100,000 cameras (Perf, with a 1,000-row twin), headless screenshots of the page, a camera's flow, the editor and
-the empty page (`OADM_SCREENSHOT_DIR`). No hardware test yet.
+`tests/Oadm.Plugins.Provisioning.Tests`: fakes for the add pipeline (the look asks the fake camera, the add reports a
+factory-new one like the server), the DHCP view and the address probe, a fake clock; `ServiceTests` (what starts a task,
+never twice, sites, leases, the steps, Set password stopping, Continue on error, Run again, restart), `NetworkNodeTests`
+(gates for the address lock, reservations, the pool's checks), every node with its task's outcomes (`Harness.Outcomes`,
+`Decide` per run), scripted VAPIX for Autofocus and the template camera, the vault with a marking fake protector
+(`VaultTests`), the conversion of older profiles (`ProfileCheckTests`); the Perf test takes addresses and starts the tasks
+of 2,000 new cameras with 100,000 devices. The client part (`Client/`): the editor and Manage profiles against canned
+answers and the server's own profile check, headless screenshots of the editor. No hardware test yet.

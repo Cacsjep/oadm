@@ -11,10 +11,10 @@ namespace Oadm.Plugins.Provisioning.Tests;
 /// <summary>Every node with its task's fake device: Success, Warning, Error and Not needed with their messages.</summary>
 public sealed class NodeTests
 {
-    private static async Task<NodeResult> RunAloneAsync(Harness h, IProvisioningNode node, object settings, CameraRow? camera = null)
+    private static async Task<NodeResult> RunAloneAsync(Harness h, IProvisioningNode node, object settings, CameraInfo? camera = null)
     {
         var flow = Harness.Node("n", node.Kind, settings);
-        camera ??= new CameraRow { Mac = Harness.Mac(1), Serial = Harness.Serial(1), Address = "192.168.15.101", DeviceId = Guid.NewGuid() };
+        camera ??= Harness.Camera();
         var run = node.RunAsync(new NodeRun(h.Engine, camera, h.Profile(flow), flow), CancellationToken.None);
         await h.RunUntilAsync(() => run.IsCompleted, node.Name + " ended");
         return await run;
@@ -24,7 +24,6 @@ public sealed class NodeTests
     public async Task Date_and_time_starts_its_task_with_the_payload_and_maps_its_end()
     {
         await using var h = new Harness();
-        await h.StartAsync(h.Profile());
 
         var done = await RunAloneAsync(h, new DateTimeNode(), new DateTimeSettings("Europe/Vienna", ["10.0.0.17", "pool.ntp.org"]));
         Assert.Equal(NodeResult.Success("Time zone Europe/Vienna, NTP 10.0.0.17, pool.ntp.org."), done);
@@ -48,9 +47,9 @@ public sealed class NodeTests
         h.Outcomes["oadm.datetime"] = (TaskEndState.Failed, "The device does not support the time API. Nothing was changed.");
         Assert.Equal(NodeResult.Error("The device does not support the time API. Nothing was changed."), await RunAloneAsync(h, new DateTimeNode(), Harness.Time1));
 
-        // No device yet: nothing starts.
+        // No device (removed meanwhile): nothing starts.
         var count = h.Ctx.TaskRuns.Count;
-        var noDevice = await RunAloneAsync(h, new DateTimeNode(), Harness.Time1, new CameraRow { Mac = Harness.Mac(1), Serial = Harness.Serial(1), Address = "192.168.15.101" });
+        var noDevice = await RunAloneAsync(h, new DateTimeNode(), Harness.Time1, Harness.Camera() with { DeviceId = null });
         Assert.Equal(NodeResult.Error(NodeTexts.NotInOadm), noDevice);
         Assert.Equal(count, h.Ctx.TaskRuns.Count);
     }
@@ -61,7 +60,6 @@ public sealed class NodeTests
     public async Task Date_and_time_with_oadms_ntp_server_sets_the_zone_then_oadms_address()
     {
         await using var h = new Harness();
-        await h.StartAsync(h.Profile());
         var settings = new DateTimeSettings("Europe/Vienna", OadmNtp: true);
 
         Assert.Equal(NodeResult.Success("Time zone Europe/Vienna, OADM's NTP server."), await RunAloneAsync(h, new DateTimeNode(), settings));
@@ -93,7 +91,6 @@ public sealed class NodeTests
     public async Task A_task_node_that_does_not_apply_is_not_needed_without_a_task()
     {
         await using var h = new Harness();
-        await h.StartAsync(h.Profile());
 
         var result = await RunAloneAsync(h, new NoCardNode(), new DateTimeSettings("UTC"));
 
@@ -106,9 +103,8 @@ public sealed class NodeTests
     public async Task A_task_that_never_ends_is_an_error_after_the_timeout()
     {
         await using var h = new Harness(new ProvisioningOptions { TaskTimeout = TimeSpan.FromMinutes(5) });
-        await h.StartAsync(h.Profile());
         var flow = Harness.Node("n", NodeKind.DateTime, Harness.Time1);
-        var camera = new CameraRow { Mac = Harness.Mac(1), Serial = Harness.Serial(1), Address = "192.168.15.101", DeviceId = Guid.NewGuid() };
+        var camera = Harness.Camera();
 
         var run = new DateTimeNode().RunAsync(new NodeRun(h.Engine, camera, h.Profile(flow), flow), CancellationToken.None);
         await Eventually.TrueAsync(() =>
@@ -152,41 +148,40 @@ public sealed class NodeTests
     }
 
     [Fact]
-    public async Task Add_to_oadm_says_why_a_camera_was_not_added()
+    public async Task Set_password_sets_it_and_waits_until_oadm_read_the_camera()
     {
         await using var h = new Harness();
-        await h.StartAsync(h.Profile());
-        h.AutoAdd.Cam(Harness.Serial(1)); // still without a password
-        var camera = new CameraRow { Mac = Harness.Mac(1), Serial = Harness.Serial(1), Address = "192.168.15.101" };
+        var (cam, device) = h.NewCamera(1);
 
-        var result = await RunAloneAsync(h, new AddToOadmNode(), new AddToOadmSettings(["Lobby"]), camera);
+        var result = await RunAloneAsync(h, new SetPasswordNode(), new SetPasswordSettings(h.AutoAdd.Root), Harness.Camera(deviceId: device!.Id));
 
-        Assert.Equal(NodeResult.Error("The camera still has no password."), result);
-        var device = h.Devices.BySerial(Harness.Serial(1));
-        Assert.Equal(["Lobby"], device!.Tags);
+        Assert.Equal(NodeResult.Success(SetPasswordNode.PasswordSet), result);
+        Assert.Equal(1, cam.PasswordWrites);
+        Assert.Equal(DeviceStatus.Ok, h.Device(1).Status);
     }
 
     [Fact]
-    public async Task Add_to_oadm_waits_until_oadm_read_the_camera_and_warns_when_it_did_not()
+    public async Task Set_password_warns_when_oadm_has_not_read_the_camera_within_two_minutes()
     {
         await using var h = new Harness();
-        await h.StartAsync(h.Profile());
-        h.AutoAdd.Cam(Harness.Serial(1), hasPassword: true);
-        h.Devices.Add(new FakeDevice { Serial = Harness.Serial(1), Address = "192.168.15.101", Status = DeviceStatus.Unknown }); // added, not read yet
-        var camera = new CameraRow { Mac = Harness.Mac(1), Serial = Harness.Serial(1), Address = "192.168.15.101" };
+        h.AutoAdd.ReadsAfterPassword = false;
+        var (_, device) = h.NewCamera(1);
 
-        var result = await RunAloneAsync(h, new AddToOadmNode(), new AddToOadmSettings(), camera);
+        var result = await RunAloneAsync(h, new SetPasswordNode(), new SetPasswordSettings(h.AutoAdd.Root), Harness.Camera(deviceId: device!.Id));
 
-        Assert.Equal(NodeState.Warning, result.State);
-        Assert.Equal("OADM manages this camera already. OADM has not read the camera yet; the next nodes may fail.", result.Message);
+        Assert.Equal(NodeResult.Warning(SetPasswordNode.PasswordSet + " " + SetPasswordNode.NotReadYet), result);
     }
 
-    [Theory]
-    [InlineData(new[] { "Lobby", "lobby" }, "The tag lobby is there twice.")]
-    [InlineData(new[] { " " }, "Enter a name for every tag.")]
-    [InlineData(new[] { "Lobby" }, null)]
-    public void Add_to_oadm_checks_the_tags(string[] tags, string? error) =>
-        Assert.Equal(error, new AddToOadmNode().Check(Harness.Json(new AddToOadmSettings(tags)), ProfileCheckContext.Empty));
+    [Fact]
+    public async Task Set_password_says_why_the_camera_refused_it()
+    {
+        await using var h = new Harness();
+        var (_, device) = h.NewCamera(1, configure: c => c.RefusesPassword = true);
+
+        var result = await RunAloneAsync(h, new SetPasswordNode(), new SetPasswordSettings(h.AutoAdd.Root), Harness.Camera(deviceId: device!.Id));
+
+        Assert.Equal(NodeResult.Error("The device rejected the password: too short."), result);
+    }
 
     /// <summary>A task node that does not apply to the camera (like SD card without a card).</summary>
     private sealed class NoCardNode : TaskNode<DateTimeSettings>
@@ -194,6 +189,8 @@ public sealed class NodeTests
         public override NodeKind Kind => NodeKind.DateTime;
 
         public override string Name => "SD card";
+
+        public override string StepName => "Set up the SD card";
 
         public override string TaskPluginId => "oadm.edge-storage";
 
