@@ -102,6 +102,21 @@ internal sealed class FakePageContext : ICorePluginClientContext
 
     public HashSet<string> Denied { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>The managed devices (the template camera's choice).</summary>
+    public List<IDeviceInfo> DeviceList { get; } = [];
+
+    public IReadOnlyList<IDeviceInfo> Devices => DeviceList;
+
+    /// <summary>The files the page uploaded.</summary>
+    public List<UploadedFile> Uploads { get; } = [];
+
+    public Task<UploadedFile> UploadAsync(string localPath, IProgress<double>? progress, CancellationToken ct)
+    {
+        var upload = new UploadedFile("u" + (Uploads.Count + 1), Path.GetFileName(localPath), 1234, "abc");
+        Uploads.Add(upload);
+        return Task.FromResult(upload);
+    }
+
     public bool ConfirmAnswer { get; set; } = true;
 
     /// <summary>Holds every call until it completes (a loading test).</summary>
@@ -161,8 +176,19 @@ internal static class Samples
 
     public static JsonSerializerOptions Json => ProvisioningJson.Options;
 
+    /// <summary>The node kinds with the VAPIX Commander library of the repository.</summary>
+    public static readonly NodeRegistry Registry =
+        NodeRegistry.Create(VapixCommander.CommandLibrary.Load(Oadm.Tests.Shared.TestRepository.Path("plugins", "Oadm.Plugins.VapixCommander", "Library")));
+
+    /// <summary>The commands a profile can run (as the plugin lists them).</summary>
+    public static IReadOnlyList<ProfileCommand> Commands =>
+        [.. ((VapixCommandsNode)Registry.Find(NodeKind.VapixCommands)!).Library.Commands
+            .Where(c => !c.Dangerous && !c.Fields.Any(f => f.IsSecret || f.IsFile))
+            .OrderBy(c => c.Category, StringComparer.OrdinalIgnoreCase).ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(c => new ProfileCommand(c.Id, c.Name, c.Category, c.Description, c.Fields))];
+
     public static IReadOnlyList<NodeKindInfo> Kinds =>
-        [.. NodeRegistry.Default.All.Select(n => new NodeKindInfo(n.Kind, n.Name, n.IsFixed, n.AlwaysStops, NodeSettings.Write(n.DefaultSettings)))];
+        [.. Registry.All.Select(n => new NodeKindInfo(n.Kind, n.Name, n.IsFixed, n.AlwaysStops, NodeSettings.Write(n.DefaultSettings)))];
 
     public static readonly IReadOnlyList<DeviceCredentialName> Credentials =
         [new(RootCredential, "root"), new(Guid.Parse("0d0d0d0d-3333-4c2d-9e8f-0a1b2c3d4e5f"), "operator")];
@@ -185,6 +211,41 @@ internal static class Samples
                 Settings = NodeSettings.Write(new SetIpSettings("192.168.15.10", "192.168.15.50", "255.255.255.0", "192.168.15.1", ["192.168.15.1"])),
             },
             new FlowNode { Id = "n5", Kind = NodeKind.DateTime, Settings = NodeSettings.Write(new DateTimeSettings("Europe/Vienna", ["10.0.0.17"])) },
+        ],
+    };
+
+    public static readonly Guid FullProfileId = Guid.Parse("8b8b8b8b-5555-4c2d-9e8f-0a1b2c3d4e5f");
+
+    /// <summary>A realistic profile with eleven nodes (the editor's full screenshot).</summary>
+    public static Profile FullProfile => new()
+    {
+        Id = FullProfileId,
+        Name = "Parking garage",
+        Nodes =
+        [
+            new FlowNode { Id = "n1", Kind = NodeKind.SetPassword, ContinueOnError = false, Settings = NodeSettings.Write(new SetPasswordSettings(RootCredential)) },
+            new FlowNode { Id = "n2", Kind = NodeKind.AddToOadm, Settings = NodeSettings.Write(new AddToOadmSettings(["Parking", "Level 1"])) },
+            new FlowNode { Id = "n3", Kind = NodeKind.UpgradeOnline, Settings = NodeSettings.Write(new UpgradeOnlineSettings(OsTarget.LatestLts, "12.6.95")) },
+            new FlowNode { Id = "n4", Kind = NodeKind.NetworkSettings, Settings = NodeSettings.Write(new NetworkSettingsSettings("park-{n}", 1, ["10.0.0.1"], "site.local")) },
+            new FlowNode { Id = "n5", Kind = NodeKind.DateTime, Settings = NodeSettings.Write(new DateTimeSettings("Europe/Vienna", [], OadmNtp: true)) },
+            new FlowNode
+            {
+                Id = "n6", Kind = NodeKind.Configuration,
+                Settings = JsonSerializer.SerializeToElement(new { source = "file", fileId = "1f1f1f1f-6666-4c2d-9e8f-0a1b2c3d4e5f", fileName = "parking-p3265.json", parameters = true, actionRules = true, schedules = false }),
+            },
+            new FlowNode
+            {
+                Id = "n7", Kind = NodeKind.Users,
+                Settings = NodeSettings.Write(new UsersSettings([new UserAccount("operator1", CameraRole.Operator, false, Guid.Parse("2e2e2e2e-7777-4c2d-9e8f-0a1b2c3d4e5f"))])),
+            },
+            new FlowNode { Id = "n8", Kind = NodeKind.Certificate, Settings = NodeSettings.Write(new CertificateSettings()) },
+            new FlowNode { Id = "n9", Kind = NodeKind.SdCard, Settings = NodeSettings.Write(new SdCardSettings(true, false, null, 30)) },
+            new FlowNode { Id = "n10", Kind = NodeKind.Autofocus, Settings = NodeSettings.Write(new AutofocusSettings()) },
+            new FlowNode
+            {
+                Id = "n11", Kind = NodeKind.SetIp, ContinueOnError = false,
+                Settings = NodeSettings.Write(new SetIpSettings("192.168.20.10", "192.168.20.80", "255.255.255.0", "192.168.20.1", ["192.168.20.1"])),
+            },
         ],
     };
 
@@ -260,11 +321,18 @@ internal static class Samples
         var rows = cameras ?? Cameras();
         var sortedRows = rows.OrderBy(r => r.Mac, StringComparer.Ordinal).ToList();
         var counts = Counts(rows);
-        var stored = new Dictionary<Guid, Profile> { [ProfileId] = Profile };
+        var stored = new Dictionary<Guid, Profile> { [ProfileId] = Profile, [FullProfileId] = FullProfile };
         ctx.Answers[ProvisioningMethods.GetStatus] = _ => Serialize(status ?? Status());
         ctx.Answers[ProvisioningMethods.ListProfiles] = _ => Serialize(profiles ?? Profiles());
         ctx.Answers[ProvisioningMethods.NodeKinds] = _ => Serialize(Kinds);
         ctx.Answers[ProvisioningMethods.Credentials] = _ => Serialize(Credentials);
+        ctx.Answers[ProvisioningMethods.VapixCommands] = _ => Serialize(Commands);
+        ctx.Answers[ProvisioningMethods.StoreSecret] = _ => Serialize(new SecretReply(Guid.NewGuid()));
+        ctx.Answers[ProvisioningMethods.StoreFile] = payload =>
+        {
+            var upload = ctx.Uploads.Single(u => u.Id == JsonSerializer.Deserialize<FileRequest>(payload!, Json)!.UploadId);
+            return Serialize(new StoredFile(Guid.NewGuid(), upload.Name, upload.Size, upload.Sha256, DateTimeOffset.UnixEpoch));
+        };
         ctx.Answers[ProvisioningMethods.ListCameras] = payload =>
         {
             var request = JsonSerializer.Deserialize<CamerasRequest>(payload!, Json)!;
@@ -311,7 +379,7 @@ internal static class Samples
 
     /// <summary>The server's own check, with the sample credential list and DHCP server.</summary>
     public static ProfileCheckResult Check(Profile profile) =>
-        ProfileCheck.Check(profile, NodeRegistry.Default, new ProfileCheckContext(Credentials.ToDictionary(c => c.Id, c => c.UserName), Dhcp()));
+        ProfileCheck.Check(profile, Registry, new ProfileCheckContext(Credentials.ToDictionary(c => c.Id, c => c.UserName), Dhcp()));
 
     public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Json);
 }

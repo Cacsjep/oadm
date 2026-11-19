@@ -133,11 +133,19 @@ The engine is the node's `INodeHost`: `AutoAdd`, `Tasks`, `Devices`, `Time`, `Op
   (`status.sessionProfile`) on the shared node canvas (`NodeChainCanvas` of the client SDK, the look of Vision Center's
   canvas): green (Success, Not needed), yellow, red with the message below, violet while it runs, grey when not run.
 - **Profile editor** (`ProfileEditorWindow`): the same canvas, Add node (the kinds of `nodeKinds` that are not fixed),
-  Move up, Move down, Remove (never the fixed two). The side panel shows the selected node's fields (`NodeForms`: a form per
-  kind; a kind without one gets a field per key of its default settings), errors below the fields; `checkProfile` after
-  every change (one at a time), its error on the node, its warning below it in amber. Save stays off with the reason as
-  tooltip while any error shows. A typed root password goes with Save only (`SaveProfileRequest.Password`) and is
-  forgotten after it.
+  Move up, Move down, Remove (never the fixed two). The side panel shows the selected node's form (`NodeForms`: one per
+  kind, the server's check field by field; choices show and hide fields), errors below the fields; `checkProfile` after
+  every change (one at a time), its error on the node, its warning below it in amber. A long chain keeps the cards
+  readable (at least 80 %) and pans the selected one into view.
+- **Drafts** (decision 2026-11-18): a profile with node errors is saved as a draft (Save on, the error on each node, the
+  tooltip says so); only the name refuses a save. Activate and Start stay refused while errors exist; the profile choice
+  marks such a profile "Has errors".
+- **Secrets and files**: a typed root password goes with Save (`SaveProfileRequest.Password`); the other passwords and
+  passphrases (Users, SD card) go to `storeSecret` once, with Save, and the node keeps the id; a stored one shows "Kept
+  on the server". Files (Configuration, Upgrade AXIS OS from files) are uploaded when chosen and kept with `storeFile`.
+  The template camera is chosen with the device choice (`DevicePickerWindow.ShowOneAsync`), stored by serial number.
+  VAPIX commands come from `vapixCommands` (the library's commands a profile can run); their values are checked with
+  the Commander's own `FieldValues.Convert`.
 
 A new node kind gets an entry in `NodeForms` (its fields and their rules) and `NodeLook` (icon and colour).
 
@@ -145,7 +153,8 @@ A new node kind gets an entry in `NodeForms` (its fields and their rules) and `N
 
 `ProvisioningContract.cs`: `getStatus`, `listProfiles`, `getProfile`, `checkProfile`, `nodeKinds`, `credentials` (ids and
 user names only), `saveProfile`, `deleteProfile`, `activateProfile`, `start`, `stop`, `listCameras` (paged), `getCamera`,
-`runFailedAgain`, `continue`, `removeCameras`, `storeSecret` (the id only comes back), `storeFile` (an upload id of the
+`runFailedAgain`, `continue`, `removeCameras`, `vapixCommands` (the commands a VAPIX commands node can run, with their
+fields), `storeSecret` (the id only comes back), `storeFile` (an upload id of the
 caller). Events `status` (after Start, Stop and profile changes) and `cameras` (batched). `getStatus` and `status`
 carry the profile the session runs (`sessionProfile`: the page draws a camera's flow with it). Nothing grows with the
 device count.
@@ -157,7 +166,8 @@ Every method only for users with all devices (`RequiresAllDevices`); changes are
 
 ## Tools
 
-`oadm_provisioning_status`, `_profiles`, `_profile`, `_credentials`, `_cameras` (paged); changes with preview and run:
+`oadm_provisioning_status`, `_profiles`, `_profile`, `_credentials`, `_vapix_commands`, `_cameras` (paged); changes with
+preview and run:
 `_profile_save` (secret `password` when `new_password`), `_secret_store` (secret `secret`: a node's password or
 passphrase), `_file_store` (`upload_id`), `_profile_delete`, `_profile_activate`, `_start`, `_stop`,
 `_cameras_run_failed_again`, `_cameras_continue`, `_cameras_remove`. A node's settings are snake_case at any depth (the

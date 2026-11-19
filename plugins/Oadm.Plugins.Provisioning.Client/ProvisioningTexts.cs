@@ -140,6 +140,103 @@ public static class ProvisioningTexts
     public const string ContinueOnErrorTip = "The next nodes run after an error";
     public const string AlwaysStopsHint = "An error here always stops the camera's flow.";
     public const string NoSettings = "This node has no settings.";
+
+    public const string EnterMask = "Enter a subnet mask.";
+    public const string UnknownNode = "This version of OADM cannot change this node.";
+    public const string StoredSecret = "Kept on the server";
+    public const string StoredFile = "A file chosen before";
+    public const string ChooseFiles = "Choose files";
+
+    public static string TypeIt(string label) => $"Type the {label.ToLowerInvariant()}.";
+
+    public static string ChooseIt(string label) => $"Choose the {label.ToLowerInvariant()}.";
+
+    public static string FileCount(int count) => count == 1 ? "1 file" : count.ToString("N0", CultureInfo.CurrentCulture) + " files";
+
+    // Upgrade AXIS OS online and from files
+    public const string OsTarget = "Install";
+    public const string OwnTrack = "Newest of the camera's own track";
+    public const string LatestLts = "Newest LTS";
+    public const string LatestActive = "Newest of the active track";
+    public const string OnlyIfOlder = "Only if older than";
+    public const string MyAxisHint = "Downloads from axis.com with the MyAxis sign-in of who starts provisioning.";
+    public const string OsFiles = "AXIS OS files";
+    public const string ChooseOsFiles = "Choose the AXIS OS files.";
+    public const string OsFilesHint = "Each camera gets the file for its model. A file older than the camera's AXIS OS is never installed.";
+
+    // Network settings
+    public const string HostName = "Host name";
+    public const string HostNameHint = "{model}, {serial}, {mac} and {n} are filled in. Optional";
+    public const string StartNumber = "First number";
+    public const string SearchDomain = "Search domain";
+
+    // Date and time
+    public const string TimeSource = "Time from";
+    public const string NtpFromDhcp = "The NTP servers DHCP gives";
+    public const string NtpOwn = "These NTP servers";
+    public const string NtpOadm = "OADM's NTP server";
+
+    // Configuration
+    public const string ConfigSource = "Settings from";
+    public const string ConfigFromFile = "A configuration file";
+    public const string ConfigFromCamera = "A template camera";
+    public const string ConfigFile = "Configuration file";
+    public const string ConfigFileRule = "Choose a file of Export configuration (.json).";
+    public const string TemplateCamera = "Template camera";
+    public const string ChooseCamera = "Choose camera";
+    public const string ChooseTemplate = "Choose the template camera.";
+    public const string ChooseTemplateHeading = "Choose the template camera";
+    public const string Apply = "Apply";
+    public const string Parameters = "Parameters";
+    public const string ActionRules = "Action rules";
+    public const string Schedules = "Schedules";
+    public const string ChooseAreas = "Choose what to apply.";
+
+    // Users
+    public const string Accounts = "Accounts";
+    public const string AddAccount = "Add account";
+    public const string AddAccountFirst = "Add an account.";
+    public const string AccountName = "User name";
+    public const string AccountPassword = "Password";
+    public const string Role = "Role";
+    public const string Ptz = "PTZ control";
+    public const string EnterAccountName = "Enter a user name.";
+    public const string AccountNameRule = "Use 1 to 14 letters and digits.";
+    public const string RootIsSetPassword = "root is the account of Set password.";
+    public const string RemoveAccount = "Remove the account";
+    public const string RemoveFile = "Remove the file";
+
+    // Certificate, 802.1X, Autofocus
+    public const string CertificateMode = "Certificate";
+    public const string CertificatePolicy = "From PKI's HTTPS certificate policy";
+    public const string CertificateEst = "EST enrollment (OADM PRO)";
+    public const string Dot1xHint = "Uses the certificate and CA of PKI's 802.1X policy.";
+    public const string Dot1xLine = "PKI's 802.1X policy";
+    public const string AutofocusHint = "Starts the autofocus and waits until it is done. Cameras without remote focus skip it.";
+    public const string AutofocusLine = "Finds the focus";
+
+    // SD card
+    public const string SdCardDo = "Prepare";
+    public const string Format = "Format";
+    public const string Encrypt = "Encrypt";
+    public const string Passphrase = "Passphrase";
+    public const string KeepDays = "Delete recordings older than (days)";
+    public const string KeepDaysHint = "Optional";
+    public const string ChooseSdCard = "Choose what to do with the SD card.";
+
+    // VAPIX commands
+    public const string Commands = "Commands";
+    public const string AddCommand = "Add command";
+    public const string AddCommandFirst = "Add a command.";
+    public const string Command = "Command";
+    public const string ChooseCommand = "Choose a command.";
+    public const string RemoveCommand = "Remove the command";
+    public const string EnterValue = "Enter a value.";
+    public const string EnterNumber = "Enter a number.";
+
+    // Drafts
+    public const string DraftTip = "Saves a draft: the profile cannot be active until its errors are fixed";
+    public const string HasErrors = "Has errors";
     public const string WaitHint = "The camera waits here until you press Continue on its row.";
     public const string ChooseNode = "Choose a node to change its settings.";
     public const string Save = "Save";

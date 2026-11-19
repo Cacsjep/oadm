@@ -71,6 +71,9 @@ public static class ProvisioningMethods
     /// <summary><see cref="FileRequest"/> -> <see cref="Engine.StoredFile"/>: a file the caller uploaded, kept for a node.</summary>
     public const string StoreFile = "storeFile";
 
+    /// <summary>() -> the VAPIX Commander commands a VAPIX commands node can run (<see cref="ProfileCommand"/>): no dangerous ones, none with a password or a file.</summary>
+    public const string VapixCommands = "vapixCommands";
+
     /// <summary>Event: <see cref="StatusReply"/> after Start, Stop and changes of the profiles.</summary>
     public const string StatusTopic = "status";
 
@@ -79,8 +82,11 @@ public static class ProvisioningMethods
 
     /// <summary>The methods that only read.</summary>
     public static bool IsRead(string method) =>
-        method is GetStatus or ListProfiles or GetProfile or CheckProfile or NodeKinds or Credentials or ListCameras or GetCamera;
+        method is GetStatus or ListProfiles or GetProfile or CheckProfile or NodeKinds or Credentials or VapixCommands or ListCameras or GetCamera;
 }
+
+/// <summary>A command of the VAPIX Commander library for a VAPIX commands node: its id, name, category and fields.</summary>
+public sealed record ProfileCommand(string Id, string Name, string Category, string? Description, IReadOnlyList<VapixCommander.CommandField> Fields);
 
 public sealed record IdRequest(Guid Id);
 

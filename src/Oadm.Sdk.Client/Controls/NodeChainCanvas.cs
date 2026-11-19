@@ -93,6 +93,9 @@ public sealed class NodeChainCanvas : Control
     /// <summary>Fit view leaves at most this much above the first card (screen pixels).</summary>
     public const double TopRoom = 24;
 
+    /// <summary>Fit view never makes the cards smaller than this: a long chain is panned instead.</summary>
+    public const double MinFitZoom = 0.8;
+
     private readonly List<Rect> _cards = [];
     private Rect _content;
     private int _fittedCount = -1;
@@ -152,6 +155,11 @@ public sealed class NodeChainCanvas : Control
         }
         else
         {
+            if (e.PropertyName == nameof(NodeChain.SelectedIndex) && Chain is { } selected)
+            {
+                BringIntoView(selected);
+            }
+
             InvalidateVisual();
         }
     }
@@ -201,7 +209,33 @@ public sealed class NodeChainCanvas : Control
         {
             _fittedCount = _cards.Count;
             _fittedRequest = chain.FitRequest;
-            chain.View = NodeCanvasGeometry.Fit(_content, Bounds.Size, TopRoom);
+            var view = NodeCanvasGeometry.Fit(_content, Bounds.Size, TopRoom);
+            if (view.Zoom < MinFitZoom)
+            {
+                // A long chain stays readable: its top in the view, the rest a drag or the wheel away.
+                view = new CanvasView(MinFitZoom, (Bounds.Width / 2) - (_content.Center.X * MinFitZoom), TopRoom - (_content.Y * MinFitZoom));
+            }
+
+            chain.View = view;
+            BringIntoView(chain);
+        }
+    }
+
+    /// <summary>Pans the selected card into the view when it is outside (a long chain).</summary>
+    private void BringIntoView(NodeChain chain)
+    {
+        if (chain.SelectedIndex < 0 || chain.SelectedIndex >= _cards.Count || Bounds.Height <= 0)
+        {
+            return;
+        }
+
+        var view = chain.View;
+        var card = _cards[chain.SelectedIndex];
+        var top = (card.Top * view.Zoom) + view.PanY;
+        var bottom = (card.Bottom * view.Zoom) + view.PanY;
+        if (top < 0 || bottom > Bounds.Height)
+        {
+            chain.View = view with { PanY = (Bounds.Height / 2) - (card.Center.Y * view.Zoom) };
         }
     }
 

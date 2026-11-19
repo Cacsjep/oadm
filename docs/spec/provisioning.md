@@ -53,7 +53,8 @@ server's settings.
 
 A profile is a name and a **straight chain of nodes** on the top-to-bottom canvas of Vision Center (no branches, no
 loops). Nodes are added from a list, moved up and down, removed (except the two fixed ones) and configured in the side
-panel. The profile is checked before it can be active (one error per node, the same check in the editor).
+panel. The profile is checked before it can be active (one error per node, the same check in the editor); a profile
+with errors is saved as a draft and cannot be active or started until they are fixed.
 
 Every node ends **Success**, **Warning** or **Error** with a plain message ("AXIS OS 12.6.95 installed.", "No file for
 this model.", "The camera did not answer at 10.0.0.120 within 2 minutes."). A node that does not apply (no SD card, no

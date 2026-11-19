@@ -37,6 +37,10 @@ internal static class ProvisioningTools
             new("credentials", "Credential list names", "The credential list entries (id and user name, never a password) Set password can use."),
             ProvisioningMethods.Credentials,
             async (plugin, _, _, ct) => new CredentialsAnswer([.. (await plugin.CredentialsAsync(ct).ConfigureAwait(false)).Select(c => new CredentialRow(c.Id, c.UserName))]))
+        .Read<NoArgs, CommandsAnswer>(
+            new("vapix_commands", "Provisioning VAPIX commands", "The VAPIX Commander commands a VAPIX commands node can run, with their fields (name, type, required, options)."),
+            ProvisioningMethods.VapixCommands,
+            (plugin, _, _, _) => Task.FromResult(new CommandsAnswer(plugin.VapixCommands())))
         .Read<NoArgs, CamerasAnswer>(
             new("cameras", "Provisioning cameras", "The cameras of the session by MAC address: model, address, state, the node it is on and its message.") { Paged = true },
             ProvisioningMethods.ListCameras,
@@ -259,6 +263,8 @@ internal sealed record CountAnswer([property: Description("How many cameras.")] 
 internal sealed record CredentialRow(Guid Id, string UserName);
 
 internal sealed record CredentialsAnswer(IReadOnlyList<CredentialRow> Credentials);
+
+internal sealed record CommandsAnswer(IReadOnlyList<ProfileCommand> Commands);
 
 internal sealed record StatusAnswer(
     bool Started,

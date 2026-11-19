@@ -376,7 +376,7 @@ with every node of the spec (each starts the existing task of its area; Autofocu
   for a new Start. Dangerous VAPIX commands and commands with a password or file are refused in a profile.
 - Rights: "show" and "manage", both off for Operator and Viewer; every method for users with all devices only; changes
   audited without the payload.
-- MCP ([mcp.md](mcp.md)): `oadm_provisioning_status`, `_profiles`, `_profile`, `_credentials`, `_cameras` and the page's
+- MCP ([mcp.md](mcp.md)): `oadm_provisioning_status`, `_profiles`, `_profile`, `_credentials`, `_vapix_commands`, `_cameras` and the page's
   changes with preview and run; `_secret_store` (the person enters a node's password) and `_file_store` (an uploaded
   file) answer the ids a node's settings name.
 

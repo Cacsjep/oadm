@@ -29,7 +29,8 @@ public sealed class ProfileEditorTests
         Assert.Equal(ProvisioningTexts.DefaultName, editor.Name);
         Assert.Equal([NodeKind.SetPassword, NodeKind.AddToOadm], editor.Nodes.Select(n => n.Kind));
         Assert.All(editor.Nodes, n => Assert.True(n.IsFixed));
-        Assert.Equal(["Wait for approval", "Set IP", "Date and time"], editor.AddableKinds.Select(k => k.Name));
+        Assert.Equal(Samples.Kinds.Where(k => !k.IsFixed).Select(k => k.Name), editor.AddableKinds.Select(k => k.Name));
+        Assert.Contains("VAPIX commands", editor.AddableKinds.Select(k => k.Name));
         var password = Assert.IsType<PasswordFieldViewModel>(Assert.Single(editor.Nodes[0].Fields));
         Assert.Equal("root", Assert.Single(password.Credentials).UserName); // only the root entries
         Assert.Equal(Samples.RootCredential, password.SelectedCredential?.Id);
@@ -79,7 +80,7 @@ public sealed class ProfileEditorTests
     }
 
     [Fact]
-    public async Task Field_errors_show_below_the_field_once_edited_and_block_save_with_the_reason()
+    public async Task Field_errors_show_below_the_field_once_edited_and_save_stores_a_draft()
     {
         var (editor, _) = await OpenAsync(null);
         editor.AddNode(Kind(NodeKind.SetIp));
@@ -89,8 +90,9 @@ public sealed class ProfileEditorTests
 
         Assert.Null(first.ErrorOf(nameof(TextFieldViewModel.Text))); // untouched: no error shown
         Assert.False(setIp.IsValid);
-        Assert.False(editor.SaveCommand.CanExecute(null));
-        Assert.Equal("Set IP: " + ProvisioningTexts.EnterAddress, editor.SaveTip);
+        Assert.True(editor.SaveCommand.CanExecute(null)); // a draft: saved, never active until fixed
+        Assert.True(editor.IsDraft);
+        Assert.Equal(ProvisioningTexts.DraftTip, editor.SaveTip);
 
         first.Text = "192.168.15.10";
         last.Text = "192.168.15";
@@ -132,7 +134,7 @@ public sealed class ProfileEditorTests
         await editor.CheckTask;
         var dateTime = editor.SelectedNode!;
         Assert.Equal("Choose a time zone.", dateTime.FirstError);
-        Assert.False(editor.SaveCommand.CanExecute(null));
+        Assert.True(editor.IsDraft); // Save stays on: a draft
     }
 
     [Fact]
@@ -156,7 +158,7 @@ public sealed class ProfileEditorTests
         password.Password = "Secret-123";
         password.Confirm = "Secret-12";
         Assert.Equal(ProvisioningTexts.PasswordsDiffer, password.ErrorOf(nameof(PasswordFieldViewModel.Confirm)));
-        Assert.False(editor.SaveCommand.CanExecute(null));
+        Assert.True(editor.IsDraft);
         password.Confirm = "Secret-123";
         await editor.CheckTask;
 
@@ -215,27 +217,6 @@ public sealed class ProfileEditorTests
         await editor.SaveCommand.ExecuteAsync(null);
         Assert.Equal("The active profile must have no errors.", editor.ErrorText);
         Assert.False(closed);
-    }
-
-    [Fact]
-    public void A_kind_without_a_form_gets_one_field_per_setting()
-    {
-        var defaults = JsonSerializer.SerializeToElement(new { hostNamePattern = "axis-{serial}", startNumber = 1, dnsServers = new[] { "10.0.0.1" }, keepDomains = true });
-        var node = new NodeEditorViewModel(
-            new FlowNode { Id = "n7", Kind = (NodeKind)99, Settings = defaults },
-            new NodeKindInfo((NodeKind)99, "Network settings", false, false, defaults),
-            []);
-
-        Assert.Equal("Network settings", node.Name);
-        Assert.Equal(["Host name pattern", "Start number", "Dns servers", "Keep domains"], node.Fields.Select(f => f.Label));
-        var number = (TextFieldViewModel)node.Fields[1];
-        number.Text = "x";
-        Assert.Equal("Enter a number.", number.ErrorOf(nameof(TextFieldViewModel.Text)));
-        number.Text = "5";
-        var settings = JsonNode.Parse(node.ToFlowNode().Settings!.Value.GetRawText())!;
-        Assert.Equal(5, (double)settings["startNumber"]!);
-        Assert.True((bool)settings["keepDomains"]!);
-        Assert.Equal("axis-{serial}", (string?)settings["hostNamePattern"]);
     }
 
     [Fact]

@@ -164,7 +164,7 @@ public sealed class PluginTests : IAsyncLifetime
     public async Task The_tools_cover_the_page_and_a_preview_changes_nothing()
     {
         var names = _plugin.Tools.Select(t => t.Name).ToList();
-        Assert.Equal(["status", "profiles", "profile", "credentials", "cameras", "profile_save", "secret_store", "file_store", "profile_delete", "profile_activate", "start", "stop", "cameras_run_failed_again", "cameras_continue", "cameras_remove"], names);
+        Assert.Equal(["status", "profiles", "profile", "credentials", "vapix_commands", "cameras", "profile_save", "secret_store", "file_store", "profile_delete", "profile_activate", "start", "stop", "cameras_run_failed_again", "cameras_continue", "cameras_remove"], names);
         Assert.All(_plugin.Tools, t => Assert.True(t.Name.Length <= PluginTool.MaxNameLength));
 
         var saved = await CallAsync<ProfileReply>(ProvisioningMethods.SaveProfile, new SaveProfileRequest(NewProfile(), Password));

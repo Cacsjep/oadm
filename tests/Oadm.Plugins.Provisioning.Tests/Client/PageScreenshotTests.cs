@@ -93,10 +93,49 @@ public sealed class PageScreenshotTests
 
             Assert.True(window.FindControl<StackPanel>("NodeForm")!.IsEffectivelyVisible);
             Assert.False(window.FindControl<StackPanel>("ProfileForm")!.IsEffectivelyVisible);
-            Assert.False(window.FindControl<Button>("SaveButton")!.IsEffectivelyEnabled);
+            Assert.True(window.FindControl<Button>("SaveButton")!.IsEffectivelyEnabled); // a draft
             Assert.Equal(1, window.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && b.Classes.Contains("primary")));
             Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == ProvisioningTexts.NotAnAddress);
             Headless.Capture(window, $"provisioning-editor-{suffix}.png");
+            window.Close();
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task The_profile_editor_renders_a_full_profile_with_the_configuration_selected()
+    {
+        var suffix = Headless.Appearance;
+        await await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = Samples.Context();
+            var editor = new ProfileEditorViewModel(ctx, Samples.FullProfileId);
+            var window = new ProfileEditorWindow();
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Attach(editor);
+            window.Show();
+            await editor.LoadAsync();
+            await editor.CheckTask;
+            editor.SelectedNode = editor.Nodes.Single(n => n.Kind == NodeKind.Configuration);
+            await editor.CheckTask;
+            Headless.Pump();
+
+            Assert.Equal(11, editor.Nodes.Count);
+            Assert.All(editor.Nodes, n => Assert.Null(n.CanvasError));
+            Assert.False(editor.IsDraft);
+            Assert.True(window.FindControl<Button>("SaveButton")!.IsEffectivelyEnabled);
+            Assert.Equal("parking-p3265.json", editor.SelectedNode.Field<FileFieldViewModel>("fileId").FileName);
+            Assert.Contains(window.GetVisualDescendants().OfType<CheckBox>(), c => c.IsEffectivelyVisible && Equals(c.Content, ProvisioningTexts.ActionRules) && c.IsChecked == true);
+            Headless.Capture(window, $"provisioning-editor-full-{suffix}.png");
+
+            // The forms with lists and secrets: Users with a second account, the SD card with its passphrase.
+            editor.SelectedNode = editor.Nodes.Single(n => n.Kind == NodeKind.Users);
+            editor.SelectedNode.Field<UsersFieldViewModel>("accounts").AddAccountCommand.Execute(null);
+            Headless.Pump();
+            Headless.Capture(window, $"provisioning-editor-users-{suffix}.png");
+            editor.SelectedNode = editor.Nodes.Single(n => n.Kind == NodeKind.SdCard);
+            editor.SelectedNode.Fields.OfType<CheckGroupFieldViewModel>().Single().Items[1].IsChecked = true;
+            Headless.Pump();
+            Headless.Capture(window, $"provisioning-editor-sdcard-{suffix}.png");
             window.Close();
         }, CancellationToken.None);
     }

@@ -5,6 +5,7 @@ using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Plugins.Provisioning.Engine;
 using Oadm.Plugins.Provisioning.Model;
 using Oadm.Plugins.Provisioning.Nodes;
 using Oadm.Sdk.Client;
@@ -15,18 +16,30 @@ using Oadm.Sdk.Plugins;
 
 namespace Oadm.Plugins.Provisioning.Client;
 
+/// <summary>What the editor window does for the view model (pickers); tests fake it.</summary>
+public interface IProfileEditorUi
+{
+    /// <summary>The local files the user chose; empty when closed.</summary>
+    Task<IReadOnlyList<string>> PickFilesAsync(string title, bool multiple, IReadOnlyList<string> patterns);
+
+    /// <summary>The device the user chose among <paramref name="devices"/>, or null when closed (the device choice).</summary>
+    Task<Guid?> PickDeviceAsync(IReadOnlyList<IDeviceInfo> devices, Guid? selected);
+}
+
 /// <summary>
 /// The profile editor (spec "Profiles: the flow"): the name, the straight chain of nodes on the canvas (add from the list,
 /// move up and down, remove; never the two fixed nodes), the selected node's settings in the side panel with their errors
 /// below the fields, the profile check of the server (one error per node, on the node) after every change, Save. A password
-/// typed for Set password goes to the server once, with Save.
+/// typed for Set password and the passwords and passphrases of other nodes go to the server once, with Save; files when
+/// chosen. A profile with node errors is saved as a draft.
 /// </summary>
-public sealed partial class ProfileEditorViewModel : ValidatingViewModel
+public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeFormServices
 {
     private readonly ICorePluginClientContext _ctx;
     private readonly Guid? _profileId;
     private Dictionary<NodeKind, NodeKindInfo> _kinds = [];
     private IReadOnlyList<CredentialChoice> _credentials = [];
+    private IReadOnlyList<ProfileCommand> _commands = [];
     private Guid _id;
     private bool _checking;
     private bool _checkAgain;
@@ -47,6 +60,9 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel
             : null);
         Validation.Validate();
     }
+
+    /// <summary>Set by the window.</summary>
+    public IProfileEditorUi? Ui { get; set; }
 
     public string Title { get; }
 
@@ -101,14 +117,18 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel
     /// <summary>The check that runs now (tests wait for it).</summary>
     public Task CheckTask => _check;
 
-    /// <summary>Why Save is disabled, or what it does.</summary>
-    public string SaveTip => SaveBlockedReason ?? ProvisioningTexts.SaveTip;
+    /// <summary>Why Save is disabled, that it saves a draft, or what it does.</summary>
+    public string SaveTip => SaveBlockedReason ?? (IsDraft ? ProvisioningTexts.DraftTip : ProvisioningTexts.SaveTip);
 
-    private string? SaveBlockedReason =>
-        FormError
-        ?? Nodes.Select(n => n.FirstError is { } e ? n.Name + ": " + e : null).FirstOrDefault(e => e is not null)
-        ?? ProfileError
-        ?? Nodes.Select(n => n.CanvasError is { } e ? n.Name + ": " + e : null).FirstOrDefault(e => e is not null);
+    /// <summary>A node has an error: Save stores a draft, which cannot be active until it is fixed (decision 2026-11-18).</summary>
+    public bool IsDraft => Nodes.Any(n => n.CanvasError is not null);
+
+    /// <summary>Only the profile's own errors (its name) refuse a save; the server refuses them too.</summary>
+    private string? SaveBlockedReason => FormError ?? ProfileError;
+
+    IReadOnlyList<CredentialChoice> INodeFormServices.Credentials => _credentials;
+
+    IReadOnlyList<ProfileCommand> INodeFormServices.Commands => _commands;
 
     /// <summary>Reads the node kinds, the credential list and the profile (or starts a new one with the two fixed nodes).</summary>
     public async Task LoadAsync(CancellationToken ct = default)
@@ -122,6 +142,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel
             var credentials = PluginJson.Parse<List<DeviceCredentialName>>(await _ctx.InvokeAsync(ProvisioningMethods.Credentials, null, ct).ConfigureAwait(true), json);
             _kinds = kinds.ToDictionary(k => k.Kind);
             _credentials = FieldRules.RootEntries(credentials);
+            _commands = PluginJson.Parse<List<ProfileCommand>>(await _ctx.InvokeAsync(ProvisioningMethods.VapixCommands, null, ct).ConfigureAwait(true), json);
             AddableKinds.Clear();
             foreach (var kind in kinds.Where(k => !k.IsFixed))
             {
@@ -257,6 +278,14 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel
         try
         {
             var json = ProvisioningJson.Options;
+            // Typed passwords and passphrases go to the server once; the nodes keep their ids only.
+            foreach (var secret in Nodes.SelectMany(n => n.Secrets).Where(s => s.Pending is not null).ToList())
+            {
+                var stored = PluginJson.Parse<SecretReply>(
+                    await _ctx.InvokeAsync(ProvisioningMethods.StoreSecret, PluginJson.Serialize(new SecretRequest(secret.Pending), json), CancellationToken.None).ConfigureAwait(true), json);
+                secret.Stored(stored.Id);
+            }
+
             var password = Nodes.Select(n => n.TypedPassword).FirstOrDefault(p => p is not null);
             var reply = PluginJson.Parse<ProfileReply>(
                 await _ctx.InvokeAsync(ProvisioningMethods.SaveProfile, PluginJson.Serialize(new SaveProfileRequest(ToProfile(), password), json), CancellationToken.None).ConfigureAwait(true),
@@ -277,6 +306,39 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel
 
     [RelayCommand]
     public void Cancel() => CloseRequested?.Invoke(this, false);
+
+    async Task<IReadOnlyList<StoredFile>> INodeFormServices.ChooseFilesAsync(string title, bool multiple, IReadOnlyList<string> patterns)
+    {
+        if (Ui is not { } ui)
+        {
+            return [];
+        }
+
+        var stored = new List<StoredFile>();
+        foreach (var path in await ui.PickFilesAsync(title, multiple, patterns).ConfigureAwait(true))
+        {
+            var upload = await _ctx.UploadAsync(path, null, CancellationToken.None).ConfigureAwait(true);
+            stored.Add(PluginJson.Parse<StoredFile>(
+                await _ctx.InvokeAsync(ProvisioningMethods.StoreFile, PluginJson.Serialize(new FileRequest(upload.Id), ProvisioningJson.Options), CancellationToken.None).ConfigureAwait(true),
+                ProvisioningJson.Options));
+        }
+
+        return stored;
+    }
+
+    async Task<string?> INodeFormServices.ChooseCameraAsync(string? serial)
+    {
+        var devices = _ctx.Devices.Where(d => d.HasVideo).ToList();
+        var selected = devices.FirstOrDefault(d => string.Equals(d.Serial, serial, StringComparison.OrdinalIgnoreCase))?.Id;
+        return Ui is { } ui && await ui.PickDeviceAsync(devices, selected).ConfigureAwait(true) is { } id
+            ? devices.FirstOrDefault(d => d.Id == id)?.Serial
+            : null;
+    }
+
+    string? INodeFormServices.CameraText(string serial) =>
+        _ctx.Devices.FirstOrDefault(d => string.Equals(d.Serial, serial, StringComparison.OrdinalIgnoreCase)) is { } d
+            ? string.Join(", ", new[] { d.Model, d.Address }.Where(p => !string.IsNullOrEmpty(p)))
+            : null;
 
     /// <summary>Every node in the view again.</summary>
     [RelayCommand]
@@ -319,7 +381,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel
 
     private NodeEditorViewModel Add(int index, FlowNode node)
     {
-        var editor = new NodeEditorViewModel(node, _kinds.GetValueOrDefault(node.Kind), _credentials);
+        var editor = new NodeEditorViewModel(node, _kinds.GetValueOrDefault(node.Kind), this);
         editor.Changed += OnNodeChanged;
         Nodes.Insert(index, editor);
         return editor;
@@ -440,6 +502,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel
     private void Refresh()
     {
         OnPropertyChanged(nameof(SaveTip));
+        OnPropertyChanged(nameof(IsDraft));
         OnPropertyChanged(nameof(CanMoveUp));
         OnPropertyChanged(nameof(CanMoveDown));
         SaveCommand.NotifyCanExecuteChanged();

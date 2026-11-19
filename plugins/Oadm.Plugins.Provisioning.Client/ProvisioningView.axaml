@@ -44,7 +44,10 @@
                         PlaceholderText="{x:Static vm:ProvisioningTexts.NoProfile}" IsEnabled="{Binding MayManage}">
                 <ComboBox.ItemTemplate>
                   <DataTemplate x:DataType="contract:ProfileSummary">
-                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                      <ui:StatusChip IsWarning="True" Text="{x:Static vm:ProvisioningTexts.HasErrors}" IsVisible="{Binding !IsValid}" VerticalAlignment="Center" />
+                    </StackPanel>
                   </DataTemplate>
                 </ComboBox.ItemTemplate>
               </ComboBox>

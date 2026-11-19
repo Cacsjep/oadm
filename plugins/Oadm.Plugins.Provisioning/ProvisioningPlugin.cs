@@ -188,6 +188,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
             ProvisioningMethods.CheckProfile => PluginJson.Serialize(await CheckAsync(PluginJson.Parse<ProfileRequest>(payloadJson, json).Profile, ct).ConfigureAwait(false), json),
             ProvisioningMethods.NodeKinds => PluginJson.Serialize(NodeKinds(), json),
             ProvisioningMethods.Credentials => PluginJson.Serialize(await CredentialsAsync(ct).ConfigureAwait(false), json),
+            ProvisioningMethods.VapixCommands => PluginJson.Serialize(VapixCommands(), json),
             ProvisioningMethods.SaveProfile => PluginJson.Serialize(await SaveProfileAsync(PluginJson.Parse<SaveProfileRequest>(payloadJson, json), ct).ConfigureAwait(false), json),
             ProvisioningMethods.DeleteProfile => PluginJson.Serialize(await DeleteProfileAsync(PluginJson.Parse<IdRequest>(payloadJson, json).Id, ct).ConfigureAwait(false), json),
             ProvisioningMethods.ActivateProfile => PluginJson.Serialize(await ActivateAsync(PluginJson.Parse<IdRequest>(payloadJson, json).Id, ct).ConfigureAwait(false), json),
@@ -274,6 +275,15 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(profile);
         return ProfileCheck.Check(ProfileStore.Normalize(profile, _registry), _registry, await ContextAsync(ct).ConfigureAwait(false), RunningProfiles.Book.Profiles);
     }
+
+    /// <summary>The commands a VAPIX commands node can run, by category and name.</summary>
+    internal IReadOnlyList<ProfileCommand> VapixCommands() =>
+        _registry.Find(NodeKind.VapixCommands) is VapixCommandsNode node
+            ? [.. node.Library.Commands
+                .Where(c => !c.Dangerous && !c.Fields.Any(f => f.IsSecret || f.IsFile))
+                .OrderBy(c => c.Category, StringComparer.OrdinalIgnoreCase).ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(c => new ProfileCommand(c.Id, c.Name, c.Category, c.Description, c.Fields))]
+            : [];
 
     internal IReadOnlyList<NodeKindInfo> NodeKinds() =>
         [.. _registry.All.Select(n => new NodeKindInfo(n.Kind, n.Name, n.IsFixed, n.AlwaysStops, NodeSettings.Write(n.DefaultSettings)))];
