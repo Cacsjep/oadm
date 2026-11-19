@@ -74,7 +74,7 @@ public static class NodeLook
         NodeKind.AddToOadm => "Adds the camera to OADM with tags",
         NodeKind.UpgradeOnline => "The newest AXIS OS from axis.com",
         NodeKind.UpgradeFiles => "AXIS OS from your files, per model",
-        NodeKind.NetworkSettings => "Host name, DNS servers and search domain",
+        NodeKind.NetworkSettings => "DNS servers and search domain",
         NodeKind.DateTime => "Time zone and NTP servers",
         NodeKind.Configuration => "Settings from a file or a template camera",
         NodeKind.Users => "Adds user accounts",

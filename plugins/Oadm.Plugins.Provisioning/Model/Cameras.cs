@@ -104,7 +104,4 @@ public sealed record Session
 
     /// <summary>The last DHCP acknowledgement read.</summary>
     public long AckAfter { get; init; }
-
-    /// <summary>The cameras' numbers of this session (the host name's {n}), by MAC address, from 0.</summary>
-    public IReadOnlyDictionary<string, int> Numbers { get; init; } = new Dictionary<string, int>();
 }

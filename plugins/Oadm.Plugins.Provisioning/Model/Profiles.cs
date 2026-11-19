@@ -26,7 +26,7 @@ public enum NodeKind
     /// <summary>Upgrade AXIS OS from files: each camera the file for its model.</summary>
     UpgradeFiles = 6,
 
-    /// <summary>Network settings: host name from a pattern, DNS servers and search domain.</summary>
+    /// <summary>Network settings: DNS servers and search domain.</summary>
     NetworkSettings = 7,
 
     /// <summary>Configuration: a configuration file or a template camera, the chosen areas.</summary>
@@ -134,10 +134,8 @@ public sealed record OsFile(Guid? FileId = null, string? Name = null);
 /// <summary>Settings of Upgrade AXIS OS from files: the files (one per model); an older file than the camera's is never installed.</summary>
 public sealed record UpgradeFilesSettings(IReadOnlyList<OsFile>? Files = null);
 
-/// <summary>Settings of Network settings: the host name pattern with its first number, the DNS servers and the search domain.</summary>
+/// <summary>Settings of Network settings: the DNS servers and the search domain (older profiles' hostName and startNumber are ignored).</summary>
 public sealed record NetworkSettingsSettings(
-    string? HostName = null,
-    int StartNumber = 1,
     IReadOnlyList<string>? DnsServers = null,
     string? SearchDomain = null);
 

@@ -268,38 +268,21 @@ public static class NodeForms
         },
     ];
 
-    private static IReadOnlyList<NodeFieldViewModel> NetworkSettings(JsonObject s)
-    {
-        var host = new TextFieldViewModel("hostName", ProvisioningTexts.HostName, Text(s["hostName"]), FieldRules.HostNamePattern)
+    private static IReadOnlyList<NodeFieldViewModel> NetworkSettings(JsonObject s) =>
+    [
+        new ListFieldViewModel("dnsServers", ProvisioningTexts.DnsServers, Strings(s["dnsServers"]), FieldRules.AddressItem, NetworkSettingsNode.MaxDns,
+            $"Enter at most {NetworkSettingsNode.MaxDns} DNS servers.", NetworkSettingsNode.EnterDns)
         {
-            Placeholder = "e.g. cam-{serial}",
-            Help = ProvisioningTexts.HostNameHelp,
-            Hint = ProvisioningTexts.HostNameHint,
-        };
-        return
-        [
-            host,
-            new TextFieldViewModel("startNumber", ProvisioningTexts.StartNumber, NumberText.Of(s["startNumber"]) is { Length: > 0 } n ? n : "1",
-                FieldRules.Whole(0, 99_999, "Enter 0 to 99999."))
-            {
-                IsInteger = true,
-                ShownWhen = () => host.Text.Contains("{n}", StringComparison.OrdinalIgnoreCase),
-                Help = ProvisioningTexts.StartNumberHelp,
-            },
-            new ListFieldViewModel("dnsServers", ProvisioningTexts.DnsServers, Strings(s["dnsServers"]), FieldRules.AddressItem, NetworkSettingsNode.MaxDns,
-                $"Enter at most {NetworkSettingsNode.MaxDns} DNS servers.")
-            {
-                WritesEmpty = true,
-                Help = ProvisioningTexts.DnsHelp,
-            },
-            new TextFieldViewModel("searchDomain", ProvisioningTexts.SearchDomain, Text(s["searchDomain"]), FieldRules.Domain)
-            {
-                Placeholder = "e.g. site.example.com",
-                Help = ProvisioningTexts.SearchDomainHelp,
-                Hint = ProvisioningTexts.Optional,
-            },
-        ];
-    }
+            WritesEmpty = true,
+            Help = ProvisioningTexts.DnsHelp,
+        },
+        new TextFieldViewModel("searchDomain", ProvisioningTexts.SearchDomain, Text(s["searchDomain"]), FieldRules.Domain)
+        {
+            Placeholder = "e.g. site.example.com",
+            Help = ProvisioningTexts.SearchDomainHelp,
+            Hint = ProvisioningTexts.Optional,
+        },
+    ];
 
     private static IReadOnlyList<NodeFieldViewModel> Configuration(JsonObject s, INodeFormServices services)
     {
@@ -390,7 +373,7 @@ public static class NodeForms
                 var files = node.Field<FilesFieldViewModel>("files").Count;
                 return files == 0 ? string.Empty : ProvisioningTexts.FileCount(files);
             case NodeKind.NetworkSettings:
-                return Of("hostName") is { Length: > 0 } pattern ? pattern : Of("dnsServers") is { Length: > 0 } dns ? "DNS " + dns : string.Empty;
+                return Of("dnsServers") is { Length: > 0 } dns ? "DNS " + dns : string.Empty;
             case NodeKind.Configuration:
                 var from = node.Field<ChoiceFieldViewModel>("source");
                 var areas = node.Fields.OfType<CheckGroupFieldViewModel>().First().Items.Where(i => i.IsChecked).Select(i => i.Label.ToLowerInvariant()).ToList();

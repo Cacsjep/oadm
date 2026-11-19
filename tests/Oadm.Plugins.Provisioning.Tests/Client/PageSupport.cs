@@ -226,7 +226,7 @@ internal static class Samples
             new FlowNode { Id = "n1", Kind = NodeKind.SetPassword, ContinueOnError = false, Settings = NodeSettings.Write(new SetPasswordSettings(RootCredential)) },
             new FlowNode { Id = "n2", Kind = NodeKind.AddToOadm, Settings = NodeSettings.Write(new AddToOadmSettings(["Parking", "Level 1"])) },
             new FlowNode { Id = "n3", Kind = NodeKind.UpgradeOnline, Settings = NodeSettings.Write(new UpgradeOnlineSettings(OsTarget.LatestLts, "12.6.95")) },
-            new FlowNode { Id = "n4", Kind = NodeKind.NetworkSettings, Settings = NodeSettings.Write(new NetworkSettingsSettings("park-{n}", 1, ["10.0.0.1"], "site.local")) },
+            new FlowNode { Id = "n4", Kind = NodeKind.NetworkSettings, Settings = NodeSettings.Write(new NetworkSettingsSettings(["10.0.0.1"], "site.local")) },
             new FlowNode { Id = "n5", Kind = NodeKind.DateTime, Settings = NodeSettings.Write(new DateTimeSettings("Europe/Vienna", [], OadmNtp: true)) },
             new FlowNode
             {

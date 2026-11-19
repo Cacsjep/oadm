@@ -82,8 +82,8 @@ Set password).
 4. **Upgrade AXIS OS from files**: several uploaded AXIS OS files; each camera gets the file for its model. No file for
    the model: **Warning**. Never a downgrade: a file older than the camera's AXIS OS is skipped with Success "Already
    12.6.95.".
-5. **Network settings**: host name from a pattern (`{model}`, `{serial}`, `{mac}`, `{n}` with a start number), DNS
-   servers and search domain.
+5. **Network settings**: DNS servers (required) and search domain. Provisioning never sets a camera's host name
+   (decision 2026-11-19); older profiles with `hostName` and `startNumber` still load, the two are ignored.
 6. **Date and time**: NTP servers (NTS where the camera has it) or OADM's NTP server (its address filled in), and the
    time zone, chosen from the time zones of AXIS OS like in the Date and time task (the shared `TimeZoneChoice`; the
    server still checks the id).
@@ -131,4 +131,5 @@ Not at sites in the first version: the DHCP server and the flows run on the serv
 - At most 8 cameras run at once (gates, no timing); more are Queued.
 - Every node with its task's fake device: Success, Warning, Error and Not needed with their messages.
 - The profile check: one error per node, the same in the editor and before activation.
+- Network settings never writes a host name; settings of an older profile with a host name still load.
 - 100,000 devices in OADM: the free-address check and the camera table stay fast.

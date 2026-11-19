@@ -163,13 +163,17 @@ public sealed partial class ListFieldViewModel : NodeFieldViewModel
     private readonly Func<string, string?>? _itemRule;
     private readonly int _max;
 
-    public ListFieldViewModel(string key, string label, IEnumerable<string>? items, Func<string, string?>? itemRule = null, int max = int.MaxValue, string? maxError = null)
+    /// <param name="emptyError">The error of an empty list; null when the list may stay empty.</param>
+    public ListFieldViewModel(
+        string key, string label, IEnumerable<string>? items, Func<string, string?>? itemRule = null, int max = int.MaxValue, string? maxError = null,
+        string? emptyError = null)
         : base(key, label)
     {
         _itemRule = itemRule;
         _max = max;
         Text = string.Join(", ", items ?? []);
-        Rule(nameof(Text), () => Items.Count > _max ? maxError
+        Rule(nameof(Text), () => Items.Count == 0 && emptyError is not null ? emptyError
+            : Items.Count > _max ? maxError
             : _itemRule is null ? null
             : Items.Select(_itemRule).FirstOrDefault(e => e is not null));
         Ready();
@@ -656,8 +660,6 @@ public sealed partial class CameraFieldViewModel : NodeFieldViewModel
 /// <summary>The rules of the fields (the server checks the node again: one error per node, shown on the canvas).</summary>
 public static class FieldRules
 {
-    private static readonly string[] UniqueTokens = ["{n}", "{serial}", "{mac}"];
-
     public static string? RequiredAddress(string text) =>
         text.Length == 0 ? ProvisioningTexts.EnterAddress : Ipv4.TryParse(text, out _) ? null : ProvisioningTexts.NotAnAddress;
 
@@ -687,25 +689,6 @@ public static class FieldRules
 
     public static string? Version(string text) =>
         text.Length == 0 || Nodes.NodeRules.IsVersion(text) ? null : "Enter a version like 12.6.95.";
-
-    /// <summary>The host name pattern of Network settings, as the server checks it.</summary>
-    public static string? HostNamePattern(string text)
-    {
-        if (text.Length == 0)
-        {
-            return null;
-        }
-
-        if (!UniqueTokens.Any(u => text.Contains(u, StringComparison.OrdinalIgnoreCase)))
-        {
-            return "Use {n}, {serial} or {mac}, else every camera gets the same name.";
-        }
-
-        var sample = Nodes.NetworkSettingsNode.Render(text, "M5000-G-ABCDE", "ACCC8E012345", 99_999);
-        return sample is not null && Nodes.NodeRules.IsHostName(sample)
-            ? null
-            : "Use letters, digits, hyphens and {model}, {serial}, {mac}, {n}: at most 63 characters.";
-    }
 
     public static string? Domain(string text) =>
         text.Length == 0 || Nodes.NodeRules.IsDomainName(text) ? null : $"{text} is not a domain name.";

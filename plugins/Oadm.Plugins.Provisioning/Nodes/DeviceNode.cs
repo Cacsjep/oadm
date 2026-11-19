@@ -55,17 +55,11 @@ public abstract class DeviceNode<TSettings> : IProvisioningNode
 /// <summary>Small rules several nodes share.</summary>
 public static partial class NodeRules
 {
-    [GeneratedRegex(@"^[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?$")]
-    private static partial Regex HostLabel();
-
     [GeneratedRegex(@"^[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?)*$")]
     private static partial Regex DomainName();
 
     [GeneratedRegex(@"[^A-Za-z0-9\-]+")]
     private static partial Regex NotHostCharacters();
-
-    /// <summary>A host name of one label: letters, digits and hyphens, 1 to 63 characters, no hyphen first or last.</summary>
-    public static bool IsHostName(string? name) => name is not null && HostLabel().IsMatch(name);
 
     /// <summary>A domain name ("site.example.com").</summary>
     public static bool IsDomainName(string? name) => name is { Length: <= 253 } && DomainName().IsMatch(name);

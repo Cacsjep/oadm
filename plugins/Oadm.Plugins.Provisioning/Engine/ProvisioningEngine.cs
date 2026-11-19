@@ -674,25 +674,6 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
         return set;
     }
 
-    public async Task<int> NumberAsync(string mac, CancellationToken ct)
-    {
-        int number;
-        lock (_gate)
-        {
-            var current = _session ?? throw new OperationCanceledException(StoppedText);
-            if (current.Numbers.TryGetValue(mac, out var known))
-            {
-                return known;
-            }
-
-            number = current.Numbers.Count;
-            _session = current with { Numbers = new Dictionary<string, int>(current.Numbers, StringComparer.Ordinal) { [mac] = number } };
-        }
-
-        await SaveSessionAsync(ct).ConfigureAwait(false);
-        return number;
-    }
-
     public async Task<string> WaitForApprovalAsync(string mac, CancellationToken ct)
     {
         var approval = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -151,37 +151,48 @@ public sealed class StageTwoNodeTests
     // ---- Network settings ----
 
     [Fact]
-    public async Task Network_settings_numbers_the_cameras_in_order_and_writes_name_and_dns()
+    public async Task Network_settings_writes_the_dns_servers_and_never_the_host_name()
     {
         await using var h = await StartedAsync();
         var first = Camera(Device(h, i: 1), 1);
-        var second = Camera(Device(h, model: "AXIS M3086-V", i: 2), 2);
-        var settings = new NetworkSettingsSettings("{model}-{n}", 10, ["10.0.0.1"], "site.local");
+        var settings = new NetworkSettingsSettings(["10.0.0.1"], "site.local");
         var node = new NetworkSettingsNode();
 
-        Assert.Equal(NodeResult.Success("Host name P3265-LVE-10, DNS 10.0.0.1, search domain site.local."), await RunAsync(h, node, settings, first));
-        Assert.Equal(NodeResult.Success("Host name M3086-V-11, DNS 10.0.0.1, search domain site.local."), await RunAsync(h, node, settings, second));
-        Assert.Equal("Host name P3265-LVE-10, DNS 10.0.0.1, search domain site.local.", (await RunAsync(h, node, settings, first)).Message); // its number stays
+        Assert.Equal(NodeResult.Success("DNS 10.0.0.1, search domain site.local."), await RunAsync(h, node, settings, first));
+        Assert.Equal(NodeResult.Success("DNS 10.0.0.1."), await RunAsync(h, node, new NetworkSettingsSettings(["10.0.0.1"]), first));
 
         var payload = Payload(h.Ctx.TaskRuns[0]);
         Assert.Equal("oadm.network", h.Ctx.TaskRuns[0].PluginId);
-        Assert.False(payload.GetProperty("hostName").GetProperty("useDhcp").GetBoolean());
-        Assert.Equal("P3265-LVE-10", payload.GetProperty("devices").GetProperty(first.DeviceId!.Value.ToString()).GetProperty("hostName").GetString());
+        Assert.False(payload.TryGetProperty("hostName", out _));
+        Assert.False(payload.TryGetProperty("devices", out _));
+        Assert.False(payload.GetProperty("dns").GetProperty("useDhcp").GetBoolean());
+        Assert.Equal("10.0.0.1", payload.GetProperty("dns").GetProperty("servers")[0].GetString());
         Assert.Equal("site.local", payload.GetProperty("dns").GetProperty("searchDomains")[0].GetString());
+        Assert.True(Payload(h.Ctx.TaskRuns[1]).GetProperty("dns").GetProperty("keepDomains").GetBoolean());
 
         h.Outcomes["oadm.network"] = (TaskEndState.Failed, "DNS: enter at least one DNS server or use DNS from DHCP. Nothing was changed.");
         Assert.Equal(NodeResult.Error("DNS: enter at least one DNS server or use DNS from DHCP. Nothing was changed."), await RunAsync(h, node, settings, first));
     }
 
     [Theory]
-    [InlineData("camera", null, null, "Use {n}, {serial} or {mac} in the host name, else every camera gets the same name.")]
-    [InlineData("cam_{n}", null, null, "Use letters, digits, hyphens and {model}, {serial}, {mac}, {n}: at most 63 characters.")]
-    [InlineData("cam-{n}", null, "site.local", "Enter the DNS servers for the search domain.")]
-    [InlineData("", null, null, "Enter a host name or DNS servers.")]
-    [InlineData("", "10.0.0.300", null, "10.0.0.300 is not an IPv4 address.")]
-    [InlineData("{model}-{serial}", "10.0.0.1", "site.local", null)]
-    public void Network_settings_checks_the_pattern_and_dns(string pattern, string? dns, string? domain, string? error) =>
-        Assert.Equal(error, new NetworkSettingsNode().Check(Harness.Json(new NetworkSettingsSettings(pattern, 1, dns is null ? [] : [dns], domain)), ProfileCheckContext.Empty));
+    [InlineData(null, null, "Enter the DNS servers.")]
+    [InlineData(null, "site.local", "Enter the DNS servers.")]
+    [InlineData("10.0.0.300", null, "10.0.0.300 is not an IPv4 address.")]
+    [InlineData("10.0.0.1", "site_local", "site_local is not a domain name.")]
+    [InlineData("10.0.0.1", "site.local", null)]
+    [InlineData("10.0.0.1", null, null)]
+    public void Network_settings_checks_the_dns(string? dns, string? domain, string? error) =>
+        Assert.Equal(error, new NetworkSettingsNode().Check(Harness.Json(new NetworkSettingsSettings(dns is null ? [] : [dns], domain)), ProfileCheckContext.Empty));
+
+    [Fact]
+    public void Network_settings_of_an_older_profile_load_and_ignore_the_host_name()
+    {
+        using var old = JsonDocument.Parse("""{"hostName":"{model}-{n}","startNumber":10,"dnsServers":["10.0.0.1"],"searchDomain":"site.local"}""");
+        var settings = NodeSettings.Read<NetworkSettingsSettings>(old.RootElement);
+        Assert.Equal(["10.0.0.1"], settings!.DnsServers!);
+        Assert.Equal("site.local", settings.SearchDomain);
+        Assert.Null(new NetworkSettingsNode().Check(old.RootElement, ProfileCheckContext.Empty));
+    }
 
     // ---- Configuration ----
 

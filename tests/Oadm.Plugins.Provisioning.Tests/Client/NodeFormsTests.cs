@@ -123,29 +123,24 @@ public sealed class NodeFormsTests
     }
 
     [Fact]
-    public async Task Network_settings_check_the_host_name_pattern_like_the_server()
+    public async Task Network_settings_need_the_dns_servers_and_have_no_host_name()
     {
         var (editor, ctx, _, node) = await AddAsync(NodeKind.NetworkSettings);
-        var host = node.Field<TextFieldViewModel>("hostName");
-        var start = node.Field<TextFieldViewModel>("startNumber");
-        Assert.False(start.IsShown);
-        host.Text = "lobby";
-        Assert.Equal("Use {n}, {serial} or {mac}, else every camera gets the same name.", host.ErrorOf(nameof(TextFieldViewModel.Text)));
-        host.Text = "lobby-{n}";
-        Assert.True(start.IsShown);
-        start.Text = "-1";
-        Assert.Equal("Enter 0 to 99999.", start.ErrorOf(nameof(TextFieldViewModel.Text)));
-        start.Text = "10";
-        node.Field<ListFieldViewModel>("dnsServers").Text = "10.0.0.1, 10.0.0.2, 10.0.0.3";
+        Assert.Equal(["dnsServers", "searchDomain"], node.Fields.Select(f => f.Key));
+        var dns = node.Field<ListFieldViewModel>("dnsServers");
+        dns.Text = "10.0.0.1";
+        dns.Text = string.Empty;
+        Assert.Equal("Enter the DNS servers.", dns.ErrorOf(nameof(ListFieldViewModel.Text)));
+        dns.Text = "10.0.0.1, 10.0.0.2, 10.0.0.3";
         Assert.Equal("Enter at most 2 DNS servers.", node.FirstError);
-        node.Field<ListFieldViewModel>("dnsServers").Text = "10.0.0.1";
+        dns.Text = "10.0.0.1";
         node.Field<TextFieldViewModel>("searchDomain").Text = "site.local";
         await NoErrorAsync(editor, node);
 
         var settings = await SaveAsync(editor, ctx, NodeKind.NetworkSettings);
-        Assert.Equal("lobby-{n}", (string?)settings["hostName"]);
-        Assert.Equal(10, (int)settings["startNumber"]!);
+        Assert.Equal(["10.0.0.1"], settings["dnsServers"]!.AsArray().Select(d => (string?)d));
         Assert.Equal("site.local", (string?)settings["searchDomain"]);
+        Assert.False(settings.ContainsKey("hostName"));
     }
 
     [Fact]

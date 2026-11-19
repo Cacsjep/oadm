@@ -95,9 +95,6 @@ public interface INodeHost
     /// <summary>Waits outside the camera's place until Continue is pressed on its row; returns who pressed it.</summary>
     Task<string> WaitForApprovalAsync(string mac, CancellationToken ct);
 
-    /// <summary>The camera's number in this session, from 0 in the order the cameras ask (the host name's {n}); kept until Stop.</summary>
-    Task<int> NumberAsync(string mac, CancellationToken ct);
-
     /// <summary>The camera is an OADM device now.</summary>
     void DeviceAdded(string mac, Guid deviceId, string? model);
 
@@ -114,9 +111,6 @@ public sealed record NodeRun(INodeHost Host, CameraRow Camera, Profile Profile, 
     /// <summary>The node's settings as <typeparamref name="T"/> (missing: the defaults; unreadable: null).</summary>
     public T? SettingsAs<T>()
         where T : class => NodeSettings.Read<T>(Node.Settings);
-
-    /// <summary>A value the node keeps between building its payload and its message (the host name it wrote).</summary>
-    public string? Detail { get; set; }
 
     /// <summary>The credential list entry of the profile's Set password node.</summary>
     public Guid? CredentialId =>

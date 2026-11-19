@@ -147,9 +147,6 @@ public static class ProvisioningTexts
     public const string OsFilesHint = "Each camera gets the file for its model. A file older than the camera's AXIS OS is never installed.";
 
     // Network settings
-    public const string HostName = "Host name";
-    public const string HostNameHint = "{model}, {serial}, {mac} and {n} are filled in. Enter a host name, DNS servers or both.";
-    public const string StartNumber = "First number";
     public const string SearchDomain = "Search domain";
 
     // Date and time
@@ -286,8 +283,6 @@ public static class ProvisioningTexts
     public const string OsTargetHelp = "The AXIS OS version each camera gets";
     public const string OnlyIfOlderHelp = "Cameras with this version or newer skip it";
     public const string OsFilesHelp = "One file per camera model";
-    public const string HostNameHelp = "The camera's name on the network";
-    public const string StartNumberHelp = "{n} counts up from this number";
     public const string SearchDomainHelp = "Added to short host names";
     public const string ConfigSourceHelp = "Where the settings are copied from";
     public const string ConfigFileHelp = "A file of Export configuration";

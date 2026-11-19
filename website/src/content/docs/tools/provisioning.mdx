@@ -127,18 +127,12 @@ Results:
 
 ### Network settings
 
-Sets the host name, the DNS servers and the search domain. Parts you leave empty stay as they are. Enter at least a host
-name or DNS servers.
+Sets the DNS servers and the search domain. The camera's host name is never changed.
 
-- **Host name**: a pattern: `{model}`, `{serial}`, `{mac}` and `{n}` are filled in, for example
-  `cam-{serial}`. Use `{n}`, `{serial}` or `{mac}`, else every camera gets the same name. Letters, digits and hyphens,
-  at most 63 characters.
-- **First number**: shows when the pattern has `{n}`. The number of the first camera, 0 to 99999. Each camera of the
-  session gets the next number, in the order they arrive.
-- **DNS servers**: at most 2, separated by commas.
-- **Search domain**: optional, for example site.example.com. Needs DNS servers.
+- **DNS servers**: 1 or 2, separated by commas.
+- **Search domain**: optional, for example site.example.com. Left empty, the camera keeps its search domains.
 
-Ends with "Host name cam-ACCC8E012345, DNS 10.0.0.1, search domain site.example.com." or an error with the reason.
+Ends with "DNS 10.0.0.1, search domain site.example.com." or an error with the reason.
 
 ### Date and time
 
