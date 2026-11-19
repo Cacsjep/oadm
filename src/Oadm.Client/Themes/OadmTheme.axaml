@@ -1,6 +1,7 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:c="using:Oadm.Client.Controls"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
         xmlns:tags="using:Oadm.Client.Tags"
         xmlns:collections="using:Avalonia.Collections"
         xmlns:dgp="using:Avalonia.Controls.Primitives">
@@ -34,5 +35,72 @@
   </Style>
   <Style Selector="c|TagColorPicker">
     <Setter Property="Spacing" Value="6" />
+  </Style>
+
+  <!-- The Settings page (docs/spec/settings-backup.md "Settings page"): a column of groups, a group a heading with its rows
+       4 px apart, a row an icon, title and hint left and its control right -->
+  <Style Selector="c|SettingsList">
+    <Setter Property="Spacing" Value="12" />
+  </Style>
+  <Style Selector="c|SettingsGroup">
+    <Setter Property="Spacing" Value="4" />
+  </Style>
+  <Style Selector="TextBlock.settingsGroupTitle">
+    <Setter Property="Margin" Value="0,4,0,4" />
+  </Style>
+  <Style Selector="c|SettingsCard">
+    <Setter Property="Background" Value="{DynamicResource Oadm.CardBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Oadm.CardCornerRadius}" />
+    <Setter Property="Padding" Value="16,10" />
+    <Setter Property="MinHeight" Value="56" />
+  </Style>
+  <!-- Rows of a group: a larger icon in the accent -->
+  <Style Selector="c|SettingsCard ui|OadmIcon.settingsIcon">
+    <Setter Property="Width" Value="20" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Foreground" Value="{DynamicResource Oadm.AccentHoverBrush}" />
+  </Style>
+  <Style Selector="c|SettingsCard TextBlock.settingsHint">
+    <Setter Property="FontSize" Value="{DynamicResource Oadm.FontSizeSmall}" />
+    <Setter Property="Foreground" Value="{DynamicResource Oadm.TextSecondaryBrush}" />
+  </Style>
+  <!-- An expander: the open header loses its lower corners, the rows hang below it in one frame with lines between -->
+  <Style Selector="c|SettingsCard.header.expanded">
+    <Setter Property="CornerRadius" Value="8,8,0,0" />
+    <Setter Property="BorderThickness" Value="1,1,1,0" />
+  </Style>
+  <Style Selector="Border.settingsExpanderBody">
+    <Setter Property="Background" Value="{DynamicResource Oadm.CardBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1,0,1,1" />
+    <Setter Property="CornerRadius" Value="0,0,8,8" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="Border.settingsExpanderBody c|SettingsCard">
+    <Setter Property="Background" Value="{DynamicResource Oadm.TransparentBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="MinHeight" Value="52" />
+  </Style>
+  <!-- Rows inside an expander: the normal icon size in the icon colour -->
+  <Style Selector="Border.settingsExpanderBody c|SettingsCard ui|OadmIcon.settingsIcon">
+    <Setter Property="Width" Value="{DynamicResource Oadm.IconSize}" />
+    <Setter Property="Height" Value="{DynamicResource Oadm.IconSize}" />
+    <Setter Property="Foreground" Value="{DynamicResource Oadm.IconBrush}" />
+  </Style>
+  <!-- The unit inside a number field -->
+  <Style Selector="c|UnitBadge">
+    <Setter Property="Background" Value="{DynamicResource Oadm.AccentBrush}" />
+    <Setter Property="CornerRadius" Value="3" />
+    <Setter Property="Padding" Value="6,0" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Margin" Value="0,0,4,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="c|UnitBadge TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Oadm.TextOnAccentBrush}" />
+    <Setter Property="FontSize" Value="{DynamicResource Oadm.FontSizeSmall}" />
   </Style>
 </Styles>
