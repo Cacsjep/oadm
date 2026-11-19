@@ -14,7 +14,7 @@ public static class CredentialTexts
     /// <summary>The start of the error when the eye could not load a stored password; the server's reason follows.</summary>
     public const string ShowFailed = "Showing the password failed: ";
 
-    /// <summary>"Added 18.11.2026 14:02": when an entry was added, in local time and the user's format.</summary>
+    /// <summary>"Added 2026-11-18 14:02": when an entry was added, in local time, 24 h.</summary>
     /// <param name="added">When the entry was added.</param>
-    public static string Added(DateTimeOffset added) => "Added " + added.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+    public static string Added(DateTimeOffset added) => "Added " + added.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 }
