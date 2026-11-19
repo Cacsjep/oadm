@@ -19,7 +19,7 @@ public static class ProvisioningInfo
 /// <summary>Backend methods (<c>InvokeAsync</c>) of the client part and live event topics.</summary>
 public static class ProvisioningMethods
 {
-    /// <summary>() -> <see cref="StateReply"/>: whether provisioning is on. Every signed-in user (the Add devices page).</summary>
+    /// <summary>() -> <see cref="StateReply"/>: whether provisioning is on and a new camera gets its task. Every signed-in user (the Add devices page).</summary>
     public const string State = "state";
 
     /// <summary>() -> <see cref="StatusReply"/>: on or off, who turned it on, the active profile, why On is refused, the warnings.</summary>
@@ -109,8 +109,11 @@ public sealed record DeviceIdsRequest(IReadOnlyList<Guid> DeviceIds);
 /// <summary>One camera by its OADM device id.</summary>
 public sealed record DeviceIdRequest(Guid DeviceId);
 
-/// <summary>Whether provisioning is on.</summary>
-public sealed record StateReply(bool On);
+/// <summary>
+/// Whether provisioning is on, and whether a factory-new camera gets its task now (<paramref name="Ready"/>: on and the active
+/// profile has no errors; the Add devices page shows Ready for provisioning only then).
+/// </summary>
+public sealed record StateReply(bool On, bool Ready);
 
 /// <summary>
 /// The last provisioning run of a camera: the profile, whether the camera passed the check that it is new, each node's name

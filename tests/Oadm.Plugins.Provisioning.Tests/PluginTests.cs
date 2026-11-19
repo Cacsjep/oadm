@@ -18,6 +18,7 @@ public sealed class PluginTests : IAsyncLifetime
 
     private readonly SafeDevices _devices = new();
     private readonly FakeDhcp _dhcp = new();
+    private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 11, 18, 8, 0, 0, TimeSpan.Zero));
     private FakeAutoAdd _autoAdd = null!;
     private FakeCoreContext _ctx = null!;
     private ProvisioningPlugin _plugin = null!;
@@ -27,7 +28,7 @@ public sealed class PluginTests : IAsyncLifetime
     {
         _autoAdd = new FakeAutoAdd(_devices);
         _ctx = new FakeCoreContext { AutoAdd = _autoAdd, Secrets = new FakeSecrets(), DataDirectory = _data };
-        _plugin = new ProvisioningPlugin(new ProvisioningOptions(), new FakeTimeProvider(), new FakeProbe());
+        _plugin = new ProvisioningPlugin(new ProvisioningOptions(), _time, new FakeProbe());
         await _plugin.StartAsync(_ctx, CancellationToken.None);
         _admin = _ctx.CallAsAllDevices();
     }
@@ -105,6 +106,36 @@ public sealed class PluginTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Saving_an_edited_profile_keeps_what_a_waiting_task_or_a_failed_run_still_needs()
+    {
+        var secret = await CallAsync<SecretReply>(ProvisioningMethods.StoreSecret, new SecretRequest("Op-Pass-77"));
+        var upload = ((FakeUploadedFiles)_admin.Uploads).Add("P3265-LVE_12_6_95.bin", [1, 2, 3]);
+        var file = await CallAsync<StoredFile>(ProvisioningMethods.StoreFile, new FileRequest(upload.Id));
+        var saved = await CallAsync<ProfileReply>(ProvisioningMethods.SaveProfile, new SaveProfileRequest(NewProfile(
+            Harness.Node("users", NodeKind.Users, new UsersSettings([new UserAccount("op1", CameraRole.Operator, SecretId: secret.Id)])),
+            Harness.Node("os", NodeKind.UpgradeFiles, new UpgradeFilesSettings([new OsFile(file.Id, file.Name)]))), Password));
+        Assert.True(saved.Check.IsValid);
+        await CallAsync<StatusReply>(ProvisioningMethods.TurnOn);
+        var camera = _ctx.Add(new FakeDevice { Address = "192.168.15.101", Serial = "ACCC8E000001" });
+        Assert.Equal(1, await _plugin.Service!.StartForAsync([camera.Id], CancellationToken.None)); // queued: it has not run yet
+
+        // The profile no longer names them, and a day has passed: the queued task still needs both.
+        await CallAsync<ProfileReply>(ProvisioningMethods.SaveProfile, new SaveProfileRequest(saved.Profile with { Nodes = [saved.Profile.Nodes[0]] }, null));
+        _time.Advance(NodeVault.KeepUnnamed + TimeSpan.FromMinutes(1));
+        await CallAsync<ProfileReply>(ProvisioningMethods.SaveProfile, new SaveProfileRequest(saved.Profile with { Nodes = [saved.Profile.Nodes[0]], Name = "Lobby 2" }, null));
+        Assert.Contains(secret.Id, _plugin.RunningVault.SecretIds);
+        Assert.True(_plugin.RunningVault.Files.ContainsKey(file.Id));
+
+        // The run ended well: nothing names them any more, the next save lets them go.
+        var run = (await _plugin.Service.ReadRunAsync(camera.Id, CancellationToken.None))!;
+        var done = run with { Looked = true, Results = [.. run.Results.Select(_ => NodeResult.Success("Done."))] };
+        await _ctx.PluginRecords.SetManyAsync(ProvisioningService.RunsCollection, [new(camera.Id.ToString("N"), JsonSerializer.Serialize(done, ProvisioningJson.Options))], CancellationToken.None);
+        await CallAsync<ProfileReply>(ProvisioningMethods.SaveProfile, new SaveProfileRequest(saved.Profile with { Nodes = [saved.Profile.Nodes[0]] }, null));
+        Assert.DoesNotContain(secret.Id, _plugin.RunningVault.SecretIds);
+        Assert.False(_plugin.RunningVault.Files.ContainsKey(file.Id));
+    }
+
+    [Fact]
     public async Task The_editors_check_is_the_check_of_activation()
     {
         var profile = NewProfile(Harness.Node("time", NodeKind.DateTime, new DateTimeSettings()));
@@ -136,8 +167,17 @@ public sealed class PluginTests : IAsyncLifetime
         Assert.Null(on.TurnOnRefusal);
         Assert.Equal(["The pool overlaps the DHCP server's range 192.168.15.100 to 192.168.15.200."], on.Warnings);
         Assert.Contains(_ctx.PublishedEvents, e => e.Topic == ProvisioningMethods.StatusTopic && e.Audience == PluginEventAudience.AllDevices);
-        Assert.True((await CallAsync<StateReply>(ProvisioningMethods.State)).On);
+        Assert.Equal(new StateReply(On: true, Ready: true), await CallAsync<StateReply>(ProvisioningMethods.State));
         Assert.Equal("Turned provisioning on", _plugin.AuditDetail(ProvisioningMethods.TurnOn, null));
+
+        // The active profile has errors by now (its password left the credential list): on, but no camera gets a task.
+        var credentials = _autoAdd.Credentials.ToArray();
+        _autoAdd.Credentials.Clear();
+        Assert.Equal(new StateReply(On: true, Ready: false), await CallAsync<StateReply>(ProvisioningMethods.State));
+        foreach (var credential in credentials)
+        {
+            _autoAdd.Credentials[credential.Key] = credential.Value;
+        }
 
         var again = await Assert.ThrowsAsync<InvalidOperationException>(() => CallAsync<StatusReply>(ProvisioningMethods.TurnOn));
         Assert.Equal(ProvisioningService.AlreadyOn, again.Message);
@@ -146,7 +186,7 @@ public sealed class PluginTests : IAsyncLifetime
 
         var turnedOff = await CallAsync<StatusReply>(ProvisioningMethods.TurnOff);
         Assert.False(turnedOff.On);
-        Assert.False((await CallAsync<StateReply>(ProvisioningMethods.State)).On);
+        Assert.Equal(new StateReply(On: false, Ready: false), await CallAsync<StateReply>(ProvisioningMethods.State));
         Assert.Equal("Turned provisioning off", _plugin.AuditDetail(ProvisioningMethods.TurnOff, null));
         await CallAsync<ProfilesReply>(ProvisioningMethods.DeleteProfile, new IdRequest(saved.Profile.Id)); // off: the active one goes too
     }

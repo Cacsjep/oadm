@@ -74,8 +74,9 @@ public interface INodeHost
     IVapixClientFactory Vapix { get; }
 
     /// <summary>
-    /// The tasks of the administrator who turned provisioning on, with their MyAxis sign-in (Upgrade AXIS OS online); null
-    /// after a server restart until provisioning is turned on again.
+    /// The tasks of the administrator who turned provisioning on, with their MyAxis sign-in (Upgrade AXIS OS online); kept
+    /// after Off for the tasks that still run and for Run again, replaced by the next On; null after a server restart until
+    /// provisioning is turned on again.
     /// </summary>
     ITaskRunner? StarterTasks { get; }
 
@@ -91,6 +92,9 @@ public interface INodeHost
 
     /// <summary>Takes and reserves the next free address of the pool for the camera (or the one it has already).</summary>
     Task<AddressTake> TakeAddressAsync(CameraInfo camera, NetworkNode.Pool pool, CancellationToken ct);
+
+    /// <summary>Releases the camera's reservation of <paramref name="address"/>: the camera refused it before any change.</summary>
+    Task ReleaseAddressAsync(CameraInfo camera, string address, CancellationToken ct);
 }
 
 /// <summary>An address of a Network pool: the address, or null when the pool is used up, and the addresses skipped as in use.</summary>

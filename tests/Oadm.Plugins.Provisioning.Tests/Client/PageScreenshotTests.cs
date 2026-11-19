@@ -293,7 +293,7 @@ public sealed class PageScreenshotTests
         {
             var plugin = Samples.Context(Samples.Status(on: false));
             var on = false;
-            plugin.Answers[ProvisioningMethods.State] = _ => Samples.Serialize(new StateReply(on));
+            plugin.Answers[ProvisioningMethods.State] = _ => Samples.Serialize(new StateReply(on, on));
             var ctx = new FakeToolbarContext(plugin);
             var entries = new Oadm.Sdk.Client.IToolbarPlugin[]
             {

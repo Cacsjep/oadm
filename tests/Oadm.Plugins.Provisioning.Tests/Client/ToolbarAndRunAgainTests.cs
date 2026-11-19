@@ -76,7 +76,7 @@ public sealed class ToolbarAndRunAgainTests
     private static FakePageContext Context(bool on)
     {
         var ctx = Samples.Context(Samples.Status(on));
-        ctx.Answers[ProvisioningMethods.State] = _ => Samples.Serialize(new StateReply(on));
+        ctx.Answers[ProvisioningMethods.State] = _ => Samples.Serialize(new StateReply(on, on));
         return ctx;
     }
 

@@ -62,6 +62,50 @@ public sealed class ServiceTests
     }
 
     [Fact]
+    public async Task A_failed_run_is_kept_for_run_again_unless_the_camera_was_reset_since()
+    {
+        await using var h = new Harness();
+        await h.StartAsync(h.Profile());
+        var (_, device) = h.NewCamera(1, configure: c => c.RefusesPassword = true);
+        h.AutoAdd.Report(device!);
+        await Eventually.TrueAsync(() => h.ProvisionRuns.Count == 1, "the task started");
+        Assert.NotNull((await h.ExecuteLastAsync()).Failure);
+        var failed = (await h.Engine.ReadRunAsync(device!.Id, CancellationToken.None))!;
+
+        // Still Password not set after a time offline, and a new lease: no second task, the failed run stays for Run again.
+        h.AutoAdd.Report(device, added: false);
+        h.Ack(1);
+        await Eventually.TrueAsync(() => h.Engine.ReportsDone && h.Engine.PendingLooks == 0, "the report and the lease were handled");
+        Assert.Single(h.ProvisionRuns);
+        Assert.Equal(failed.TaskId, (await h.Engine.ReadRunAsync(device.Id, CancellationToken.None))!.TaskId);
+
+        // It had a password in between (reset to factory default): a new task.
+        h.AutoAdd.Report(device, added: false, hadPassword: true);
+        await Eventually.TrueAsync(() => h.ProvisionRuns.Count == 2, "the task of the reset camera started");
+    }
+
+    [Fact]
+    public async Task The_prune_of_old_runs_never_deletes_the_snapshot_of_a_task_that_starts_meanwhile()
+    {
+        await using var h = new Harness();
+        await h.StartAsync(h.Profile());
+        var (_, device) = h.NewCamera(1);
+        h.Records.ListGateCollection = ProvisioningService.SnapshotsCollection;
+        h.Records.ListGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var prune = h.Engine.PruneRunsAsync(CancellationToken.None);
+        await h.Records.ListEntered.Task.WaitAsync(Eventually.DefaultTimeout); // the runs are read, the snapshots not yet
+        var start = h.Engine.StartForAsync([device!.Id], CancellationToken.None);
+        await Eventually.StaysTrueAsync(() => !start.IsCompleted, "the start waits for the prune", TimeSpan.FromMilliseconds(200));
+        h.Records.ListGate.SetResult();
+        await prune;
+
+        Assert.Equal(1, await start);
+        var run = await h.Engine.ReadRunAsync(device.Id, CancellationToken.None);
+        Assert.NotNull(await h.Ctx.PluginRecords.GetAsync(ProvisioningService.SnapshotsCollection, run!.Snapshot, CancellationToken.None)); // its snapshot is there
+    }
+
+    [Fact]
     public async Task A_camera_at_a_site_gets_no_task()
     {
         await using var h = new Harness();

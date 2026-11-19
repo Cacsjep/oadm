@@ -43,6 +43,9 @@ internal sealed class SafeDevices : IDeviceRepository
 
     public void Add(IDeviceInfo device) => _devices[device.Id] = device;
 
+    /// <summary>The device is removed from OADM.</summary>
+    public void Remove(Guid id) => _devices.TryRemove(id, out _);
+
     public void AddRange(IEnumerable<IDeviceInfo> devices)
     {
         foreach (var device in devices)
@@ -116,7 +119,7 @@ internal sealed class FakeAutoAdd : IDeviceAutoAdd
     }
 
     /// <summary>The server reports a device that needs its first password (the device adder, the polling).</summary>
-    public void Report(FakeDevice device, bool added = true)
+    public void Report(FakeDevice device, bool added = true, bool hadPassword = false)
     {
         Action<FactoryNewDevice>[] watchers;
         lock (_gate)
@@ -126,7 +129,7 @@ internal sealed class FakeAutoAdd : IDeviceAutoAdd
 
         foreach (var watcher in watchers)
         {
-            watcher(new FactoryNewDevice(device.Id, device.Serial, device.Address, device.SiteId is not null, added));
+            watcher(new FactoryNewDevice(device.Id, device.Serial, device.Address, device.SiteId is not null, added) { HadPassword = hadPassword });
         }
     }
 
@@ -384,7 +387,25 @@ internal sealed class FlakyRecords(IPluginRecords inner) : IPluginRecords
         set => Volatile.Write(ref _failWrites, value);
     }
 
-    public Task<IReadOnlyDictionary<string, string>> ListAsync(string collection, CancellationToken ct) => inner.ListAsync(collection, ct);
+    /// <summary>The collection whose list waits for <see cref="ListGate"/>.</summary>
+    public string? ListGateCollection { get; set; }
+
+    /// <summary>While set and not completed, a list of <see cref="ListGateCollection"/> waits for it.</summary>
+    public TaskCompletionSource? ListGate { get; set; }
+
+    /// <summary>Completed when a list of <see cref="ListGateCollection"/> reached the gate.</summary>
+    public TaskCompletionSource ListEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public async Task<IReadOnlyDictionary<string, string>> ListAsync(string collection, CancellationToken ct)
+    {
+        if (ListGate is { } gate && collection == ListGateCollection)
+        {
+            ListEntered.TrySetResult();
+            await gate.Task.WaitAsync(ct);
+        }
+
+        return await inner.ListAsync(collection, ct);
+    }
 
     public Task SetManyAsync(string collection, IReadOnlyCollection<KeyValuePair<string, string?>> records, CancellationToken ct)
     {

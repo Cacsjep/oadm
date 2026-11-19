@@ -193,7 +193,8 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(caller);
         if (method == ProvisioningMethods.State)
         {
-            return PluginJson.Serialize(new StateReply(RunningService.IsOn), ProvisioningJson.Options);
+            var on = RunningService.IsOn;
+            return PluginJson.Serialize(new StateReply(on, on && await RunnableProfileAsync(ct).ConfigureAwait(false) is not null), ProvisioningJson.Options);
         }
 
         if (!caller.HasAllDevices)
@@ -507,15 +508,18 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         return await RunningVault.AddFileAsync(upload.Name, stream, ct).ConfigureAwait(false);
     }
 
-    /// <summary>The secrets and files no profile names go after a day.</summary>
+    /// <summary>
+    /// The secrets and files nothing names go after a day: neither a stored profile nor the profile of a queued or running task
+    /// or of a run Run again starts (their snapshots), so saving or deleting a profile never takes what a task still needs.
+    /// </summary>
     private async Task PruneAsync(CancellationToken ct)
     {
-        if (_vault is not { } vault || _profiles is not { } profiles)
+        if (_vault is not { } vault || _profiles is not { } profiles || _service is not { } service)
         {
             return;
         }
 
-        await vault.PruneAsync(profiles.Book.Profiles, ct).ConfigureAwait(false);
+        await service.WithProfilesInUseAsync((inUse, token) => vault.PruneAsync([.. profiles.Book.Profiles, .. inUse], token), ct).ConfigureAwait(false);
     }
 
     private async Task<ProfileCheckContext> ContextAsync(CancellationToken ct)

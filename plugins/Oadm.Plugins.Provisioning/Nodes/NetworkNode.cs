@@ -37,6 +37,9 @@ public sealed class NetworkNode : IProvisioningNode
 
     public const string DnsForDomain = "Enter the DNS servers for the search domain.";
 
+    /// <summary>The end of a task's refusal before its first write ("... is already in use. Nothing was changed.").</summary>
+    private const string NothingChanged = "Nothing was changed.";
+
     public NodeKind Kind => NodeKind.Network;
 
     public string Name => "Network";
@@ -133,15 +136,15 @@ public sealed class NetworkNode : IProvisioningNode
             return NodeResult.Error(take.InUse.Count == 0 ? PoolUsedUp : InUseText(take.InUse) + ". " + PoolUsedUp);
         }
 
-        if (string.Equals(run.Camera.Address, address, StringComparison.Ordinal))
-        {
-            parts.Insert(0, $"The camera is at {address} already.");
-            return NodeResult.Success(string.Join(" ", parts));
-        }
-
+        // Always written as a fixed address, also when the camera has it already (a lease of a DHCP server).
         var assigned = (take.InUse.Count == 0 ? string.Empty : InUseText(take.InUse) + ", ") + $"{address} assigned.";
         var written = await TaskRuns.RunTaskAsync(run.Host, AssignIpTaskId, deviceId, AddressPayload(pool, deviceId, address, dns), ct).ConfigureAwait(false);
         var message = string.IsNullOrWhiteSpace(written?.Message) ? null : written!.Message!.Trim();
+        if (written?.State is not (TaskEndState.Done or TaskEndState.DoneWithWarnings) && message?.Contains(NothingChanged, StringComparison.Ordinal) == true)
+        {
+            await run.Host.ReleaseAddressAsync(run.Camera, address, ct).ConfigureAwait(false); // never written: free for the next camera
+        }
+
         parts.Insert(0, assigned);
         return written?.State switch
         {

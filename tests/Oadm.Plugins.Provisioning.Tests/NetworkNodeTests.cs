@@ -132,18 +132,55 @@ public sealed class NetworkNodeTests
     }
 
     [Fact]
-    public async Task A_camera_at_an_address_of_the_pool_keeps_it()
+    public async Task A_camera_at_an_address_of_the_pool_keeps_it_as_a_fixed_address()
     {
         await using var h = new Harness();
         var device = new FakeDevice { Serial = Harness.Serial(1), Address = "192.168.15.20" };
         h.AutoAdd.Cam(device.Serial, hasPassword: true);
         h.Devices.Add(device);
-        h.Probe.Answering["192.168.15.20"] = true; // the camera itself answers there
+        h.Probe.Answering["192.168.15.20"] = true; // the camera itself answers there (a lease of a DHCP server)
 
         var result = await RunEndedAsync(h, new CameraInfo(device.Serial, device.Address, null, device.Id), Harness.Pool());
 
-        Assert.Equal(NodeResult.Success("The camera is at 192.168.15.20 already."), result);
-        Assert.Empty(h.Ctx.TaskRuns);
+        Assert.Equal(NodeResult.Success("192.168.15.20 assigned."), result);
+        var run = Assert.Single(h.Ctx.TaskRuns); // written as a fixed address, never left to the DHCP server
+        Assert.Equal(NetworkNode.AssignIpTaskId, run.PluginId);
+        using var payload = JsonDocument.Parse(run.PayloadJson!);
+        Assert.Equal("static", payload.RootElement.GetProperty("ipv4").GetProperty("mode").GetString());
+        Assert.Equal("192.168.15.20", payload.RootElement.GetProperty("devices").GetProperty(device.Id.ToString()).GetProperty("ipv4Address").GetString());
+    }
+
+    [Fact]
+    public async Task An_address_the_camera_refused_before_any_change_is_released()
+    {
+        await using var h = new Harness();
+        h.Outcomes[NetworkNode.AssignIpTaskId] = (TaskEndState.Failed, "192.168.15.10 is already in use (ping). Nothing was changed.");
+        var (camera, _) = Camera(h, 1);
+
+        Assert.Equal(NodeState.Error, (await RunEndedAsync(h, camera, Harness.Pool())).State);
+
+        Assert.False(h.Engine.Reserved.ContainsKey(camera.Serial));
+    }
+
+    [Fact]
+    public async Task A_reservation_stays_while_its_task_runs_and_goes_once_its_camera_left_oadm()
+    {
+        await using var h = new Harness();
+        var (camera, device) = Camera(h, 1);
+        var profile = h.Profile(Harness.Node("net", NodeKind.Network, Harness.Pool()));
+        var payload = JsonSerializer.Serialize(new RunPayload { Profile = profile, Nodes = [1], Look = false }, ProvisioningJson.Options);
+        var task = h.Engine.ExecuteAsync(new IdTaskContext(new FakeTaskContext(new ScriptedVapix()), Guid.NewGuid()), device, payload, CancellationToken.None);
+        await Eventually.TrueAsync(() => h.Ctx.TaskRuns.Any(r => r.PluginId == NetworkNode.AssignIpTaskId), "the address is being written");
+        Assert.Equal("192.168.15.10", h.Engine.Reserved[camera.Serial]);
+
+        // Removed from OADM while its task writes the address: the address stays reserved.
+        h.Devices.Remove(device.Id);
+        Assert.Equal("192.168.15.11", (await h.Engine.TakeAddressAsync(Camera(h, 2).Camera, Harness.CheckedPool(), CancellationToken.None)).Address);
+
+        // Its task ended and it is no OADM device: released at the next take.
+        await h.RunUntilAsync(() => task.IsCompleted, "the task ended");
+        Assert.Equal("192.168.15.10", (await h.Engine.TakeAddressAsync(Camera(h, 3).Camera, Harness.CheckedPool(), CancellationToken.None)).Address);
+        Assert.False(h.Engine.Reserved.ContainsKey(camera.Serial));
     }
 
     [Theory]

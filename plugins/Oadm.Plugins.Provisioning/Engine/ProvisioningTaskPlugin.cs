@@ -13,7 +13,8 @@ namespace Oadm.Plugins.Provisioning.Engine;
 /// </summary>
 public sealed class ProvisioningTaskPlugin(Func<ProvisioningService?> service, int maxParallel) : ITaskPlugin
 {
-    public const string NotRunning = "Provisioning is not running. Turn the Provisioning plugin on.";
+    /// <summary>The plugin is always on: it is not running only while the server starts or stops, or when it failed to start.</summary>
+    public const string NotRunning = "Provisioning is not running. Restart the OADM server, then choose Run again.";
 
     public string Id => ProvisioningInfo.TaskPluginId;
 

@@ -67,11 +67,13 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
     private readonly Dictionary<Guid, Guid> _active = [];
     private readonly HashSet<Guid> _starting = [];
     private readonly HashSet<string> _looking = new(StringComparer.Ordinal);
-    private readonly Channel<Guid> _found = Channel.CreateUnbounded<Guid>(new UnboundedChannelOptions { SingleReader = true });
+    private readonly Channel<(Guid Id, bool Reset)> _found = Channel.CreateUnbounded<(Guid, bool)>(new UnboundedChannelOptions { SingleReader = true });
     private readonly Channel<(string Serial, string Address)> _leases = Channel.CreateUnbounded<(string, string)>();
     private readonly SemaphoreSlim _addressLock = new(1, 1);
     private readonly SemaphoreSlim _stateWrite = new(1, 1);
     private readonly SemaphoreSlim _runWrite = new(1, 1);
+    private readonly SemaphoreSlim _snapshots = new(1, 1);
+    private readonly HashSet<string> _runningSerials = new(StringComparer.Ordinal);
     private readonly CancellationTokenSource _life = new();
     private CancellationTokenSource _onCts = new();
     private ProvisioningState _state = new();
@@ -224,7 +226,10 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
         }
     }
 
-    /// <summary>Turns provisioning off: no new task starts; running tasks run to their end (a person cancels them in the tasks pane).</summary>
+    /// <summary>
+    /// Turns provisioning off: no new task starts; running and queued tasks run to their end (a person cancels them in the tasks
+    /// pane) and Run again still works, so the starter's tasks stay for their nodes until the next On replaces them.
+    /// </summary>
     public async Task TurnOffAsync(CancellationToken ct)
     {
         CancellationTokenSource on;
@@ -239,7 +244,6 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
             on = _onCts;
         }
 
-        Volatile.Write(ref _starterTasks, null);
         await on.CancelAsync().ConfigureAwait(false); // the checks of leases stop
         await SaveStateAsync(ct).ConfigureAwait(false);
         LogTurnedOff();
@@ -247,7 +251,10 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
 
     // ---- what starts a task ----
 
-    /// <summary>The server stored a device as Password not set, or a managed one turned Password not set: queued, never blocks.</summary>
+    /// <summary>
+    /// The server stored a device as Password not set, or a managed one turned Password not set: queued, never blocks. A device
+    /// whose last run failed keeps that run for Run again unless it was just added or had a password in between (reset).
+    /// </summary>
     public void OnFactoryNew(FactoryNewDevice device)
     {
         ArgumentNullException.ThrowIfNull(device);
@@ -255,7 +262,7 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
         {
             // Sites: no provisioning in the first version.
             Interlocked.Increment(ref _queuedReports);
-            if (!_found.Writer.TryWrite(device.DeviceId))
+            if (!_found.Writer.TryWrite((device.DeviceId, device.Added || device.HadPassword)))
             {
                 Interlocked.Decrement(ref _queuedReports); // stopping
             }
@@ -366,6 +373,29 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
     }
 
     /// <summary>
+    /// An automatic start (a report, a lease): a device whose last run failed or did not end keeps that run for Run again, unless
+    /// its camera was reset since (<c>Reset</c>: just added, or it had a password in between). The others start as
+    /// <see cref="StartForAsync"/> starts them.
+    /// </summary>
+    private async Task<int> StartFoundAsync(List<(Guid Id, bool Reset)> found, CancellationToken ct)
+    {
+        var ids = new List<Guid>(found.Count);
+        foreach (var (id, reset) in found)
+        {
+            if (reset || await ReadRunAsync(id, ct).ConfigureAwait(false) is not { } run || !run.CanRunAgain())
+            {
+                ids.Add(id);
+            }
+            else
+            {
+                LogKeptFailedRun(id);
+            }
+        }
+
+        return await StartForAsync(ids, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Run again: for each device whose last provisioning run failed and whose task does not run, a new task with the same
     /// profile that runs only the red nodes and those that never ran, in order (a camera that failed the first check is
     /// checked and run again whole). Works while provisioning is off too: a person asks for it.
@@ -454,13 +484,22 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
 
             try
             {
-                var snapshot = await SnapshotAsync(profile, ct).ConfigureAwait(false);
-                if (!looked)
+                // The snapshot and the runs that name it under one lock: the prune never sees the one without the other.
+                await _snapshots.WaitAsync(ct).ConfigureAwait(false);
+                try
                 {
-                    var now = Time.GetUtcNow();
-                    var fresh = new RunRecord { Snapshot = snapshot, ProfileName = profile.Name, Results = new NodeResult?[profile.Nodes.Count], Started = now };
-                    var json = JsonSerializer.Serialize(fresh, ProvisioningJson.Options);
-                    await WriteRunsAsync([.. ids.Select(id => new KeyValuePair<string, string?>(Key(id), json))], ct).ConfigureAwait(false);
+                    var snapshot = await SnapshotAsync(profile, ct).ConfigureAwait(false);
+                    if (!looked)
+                    {
+                        var now = Time.GetUtcNow();
+                        var fresh = new RunRecord { Snapshot = snapshot, ProfileName = profile.Name, Results = new NodeResult?[profile.Nodes.Count], Started = now };
+                        var json = JsonSerializer.Serialize(fresh, ProvisioningJson.Options);
+                        await WriteRunsAsync([.. ids.Select(id => new KeyValuePair<string, string?>(Key(id), json))], ct).ConfigureAwait(false);
+                    }
+                }
+                finally
+                {
+                    _snapshots.Release();
                 }
 
                 var taskIds = await Tasks.RunAsync(ProvisioningInfo.TaskPluginId, ids, payload, Owner, ct).ConfigureAwait(false);
@@ -548,6 +587,7 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
         lock (_gate)
         {
             _active[device.Id] = ctx.TaskId;
+            _runningSerials.Add(device.Serial);
         }
 
         try
@@ -563,6 +603,7 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
                     _active.Remove(device.Id);
                 }
 
+                _runningSerials.Remove(device.Serial);
                 if (_starting.Contains(device.Id))
                 {
                     _ended.Add(ctx.TaskId); // ended before its start was noted: the start must not note it as running
@@ -583,9 +624,8 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
 
         ctx.PlanSteps([.. steps]);
         var record = await ReadRunAsync(device.Id, ct).ConfigureAwait(false) is { } stored && stored.Results.Count == profile.Nodes.Count
-            ? stored
-            : new RunRecord { Snapshot = await SnapshotAsync(profile, ct).ConfigureAwait(false), ProfileName = profile.Name, Results = new NodeResult?[profile.Nodes.Count], Started = Time.GetUtcNow() };
-        record = record with { TaskId = ctx.TaskId };
+            ? stored with { TaskId = ctx.TaskId }
+            : await NewRunAsync(device.Id, ctx.TaskId, profile, ct).ConfigureAwait(false);
 
         if (run.Look)
         {
@@ -652,6 +692,29 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
     }
 
     public const string UnknownNode = "This OADM version does not know this node.";
+
+    /// <summary>The run of a task that found none of its own: its snapshot and the run stored at once, under the snapshot lock.</summary>
+    private async Task<RunRecord> NewRunAsync(Guid deviceId, Guid taskId, Profile profile, CancellationToken ct)
+    {
+        await _snapshots.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var record = new RunRecord
+            {
+                TaskId = taskId,
+                Snapshot = await SnapshotAsync(profile, ct).ConfigureAwait(false),
+                ProfileName = profile.Name,
+                Results = new NodeResult?[profile.Nodes.Count],
+                Started = Time.GetUtcNow(),
+            };
+            await SaveRunAsync(deviceId, record, ct).ConfigureAwait(false);
+            return record;
+        }
+        finally
+        {
+            _snapshots.Release();
+        }
+    }
 
     /// <summary>The step name of a node ("Set the network settings").</summary>
     public string StepNameOf(FlowNode node)
@@ -736,7 +799,9 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
     /// Under a short lock: the camera's own reservation when it is in the pool, else its current address when that is in the
     /// pool, else the first address of the pool that is not reserved for another camera, no other OADM device has and that
     /// answers neither ping nor TCP 80/443. It is reserved (and stored) before the lock ends, so two cameras never get the same
-    /// address; the write runs outside. Reservations of addresses that are OADM devices by now are dropped.
+    /// address; the write runs outside. A reservation stays while a provisioning task runs for its camera or while its camera
+    /// is an OADM device that does not have the address yet; the others are released here (the camera has it now, was removed
+    /// from OADM, or was never added).
     /// </summary>
     public async Task<AddressTake> TakeAddressAsync(CameraInfo camera, NetworkNode.Pool pool, CancellationToken ct)
     {
@@ -745,19 +810,21 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
         await _addressLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            var managed = await ManagedAddressesAsync(camera.DeviceId, ct).ConfigureAwait(false);
-            Dictionary<string, string> reserved;
-            lock (_gate)
+            // The devices read once per take (O(n) at 100,000 devices).
+            var devices = await _services.Devices.ListAsync(ct).ConfigureAwait(false);
+            var managed = new HashSet<string>(devices.Count, StringComparer.OrdinalIgnoreCase);
+            var addressBySerial = new Dictionary<string, string>(devices.Count, StringComparer.OrdinalIgnoreCase);
+            foreach (var device in devices)
             {
-                // Given addresses stay reserved until they are OADM devices.
-                foreach (var done in _reserved.Where(r => managed.Contains(r.Value)).Select(r => r.Key).ToList())
+                addressBySerial[device.Serial] = device.Address;
+                if (device.Id != camera.DeviceId)
                 {
-                    _reserved.Remove(done);
+                    managed.Add(device.Address);
                 }
-
-                reserved = new Dictionary<string, string>(_reserved, StringComparer.Ordinal);
             }
 
+            await ReleaseDoneAsync(addressBySerial, ct).ConfigureAwait(false);
+            var reserved = Reserved;
             var others = reserved.Where(r => r.Key != camera.Serial).Select(r => r.Value).ToHashSet(StringComparer.Ordinal);
             if (reserved.TryGetValue(camera.Serial, out var mine) && pool.Contains(mine))
             {
@@ -810,20 +877,67 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
         }
     }
 
-    /// <summary>The addresses of every OADM device but <paramref name="except"/>, read once per take (O(n) at 100,000 devices).</summary>
-    internal async Task<HashSet<string>> ManagedAddressesAsync(Guid? except, CancellationToken ct)
+    /// <summary>
+    /// The Network node did not write <paramref name="address"/> (the camera refused before any change): its reservation is
+    /// released, so the address is free for the next camera.
+    /// </summary>
+    public async Task ReleaseAddressAsync(CameraInfo camera, string address, CancellationToken ct)
     {
-        var devices = await _services.Devices.ListAsync(ct).ConfigureAwait(false);
-        var set = new HashSet<string>(devices.Count, StringComparer.OrdinalIgnoreCase);
-        foreach (var device in devices)
+        ArgumentNullException.ThrowIfNull(camera);
+        await _addressLock.WaitAsync(ct).ConfigureAwait(false);
+        try
         {
-            if (device.Id != except)
+            string? json = null;
+            lock (_gate)
             {
-                set.Add(device.Address);
+                if (_reserved.TryGetValue(camera.Serial, out var mine) && string.Equals(mine, address, StringComparison.Ordinal))
+                {
+                    _reserved.Remove(camera.Serial);
+                    json = JsonSerializer.Serialize(_reserved, ProvisioningJson.Options);
+                }
+            }
+
+            if (json is not null)
+            {
+                await _services.Settings.SetAsync(ReservedKey, json, ct).ConfigureAwait(false);
+                LogReleased(address, camera.Serial);
+            }
+        }
+        finally
+        {
+            _addressLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Drops (and stores) the reservations that are done: no provisioning task runs for the camera and it is no OADM device
+    /// (removed, never added) or has the address by now. Called under the address lock.
+    /// </summary>
+    private async Task ReleaseDoneAsync(Dictionary<string, string> addressBySerial, CancellationToken ct)
+    {
+        string? json = null;
+        lock (_gate)
+        {
+            var done = _reserved
+                .Where(r => !_runningSerials.Contains(r.Key)
+                    && (!addressBySerial.TryGetValue(r.Key, out var now) || string.Equals(now, r.Value, StringComparison.OrdinalIgnoreCase)))
+                .Select(r => r.Key)
+                .ToList();
+            foreach (var serial in done)
+            {
+                _reserved.Remove(serial);
+            }
+
+            if (done.Count > 0)
+            {
+                json = JsonSerializer.Serialize(_reserved, ProvisioningJson.Options);
             }
         }
 
-        return set;
+        if (json is not null)
+        {
+            await _services.Settings.SetAsync(ReservedKey, json, ct).ConfigureAwait(false);
+        }
     }
 
     private async Task ReserveAsync(string serial, string address, CancellationToken ct)
@@ -842,7 +956,7 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
 
     private async Task FoundLoopAsync(CancellationToken ct)
     {
-        var batch = new List<Guid>();
+        var batch = new List<(Guid Id, bool Reset)>();
         while (!ct.IsCancellationRequested)
         {
             try
@@ -856,13 +970,13 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
                 Interlocked.Increment(ref _startingReports);
                 try
                 {
-                    while (batch.Count < 5_000 && _found.Reader.TryRead(out var id))
+                    while (batch.Count < 5_000 && _found.Reader.TryRead(out var found))
                     {
-                        batch.Add(id);
+                        batch.Add(found);
                         Interlocked.Decrement(ref _queuedReports);
                     }
 
-                    await StartForAsync(batch, ct).ConfigureAwait(false);
+                    await StartFoundAsync(batch, ct).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -970,7 +1084,7 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
                     await Task.Delay(Options.AnswerRetry, Time, ct).ConfigureAwait(false);
                     continue;
                 case DeviceLookResult.FactoryNew when look.DeviceId is { } managed:
-                    await StartForAsync([managed], ct).ConfigureAwait(false);
+                    await StartFoundAsync([(managed, false)], ct).ConfigureAwait(false);
                     return;
                 case DeviceLookResult.FactoryNew:
                     var added = await AutoAdd.AddAsync(address, serial, Owner, ct).ConfigureAwait(false);
@@ -1051,7 +1165,46 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Runs <paramref name="use"/> (the vault's prune) with the profiles tasks may still need: the snapshot of every run that did
+    /// not end well (a queued or running task, a run Run again starts). Under the snapshot lock, so no task starts meanwhile with
+    /// a snapshot <paramref name="use"/> does not see.
+    /// </summary>
+    public async Task WithProfilesInUseAsync(Func<IReadOnlyList<Profile>, CancellationToken, Task> use, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(use);
+        await _snapshots.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var runs = await _services.Records.ListAsync(RunsCollection, ct).ConfigureAwait(false);
+            var keys = runs.Values.Select(v => PluginJson.TryParse<RunRecord>(v, ProvisioningJson.Options)).OfType<RunRecord>()
+                .Where(r => r.CanRunAgain()).Select(r => r.Snapshot).ToHashSet(StringComparer.Ordinal);
+            var snapshots = await _services.Records.ListAsync(SnapshotsCollection, ct).ConfigureAwait(false);
+            var profiles = snapshots.Where(s => keys.Contains(s.Key)).Select(s => PluginJson.TryParse<Profile>(s.Value, ProvisioningJson.Options))
+                .OfType<Profile>().ToList();
+            await use(profiles, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _snapshots.Release();
+        }
+    }
+
     private async Task PruneRunsCoreAsync(CancellationToken ct)
+    {
+        // Under the snapshot lock: a task that starts meanwhile writes its snapshot after the prune, never between its two lists.
+        await _snapshots.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await PruneRunsLockedAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _snapshots.Release();
+        }
+    }
+
+    private async Task PruneRunsLockedAsync(CancellationToken ct)
     {
         var devices = (await _services.Devices.ListAsync(ct).ConfigureAwait(false)).Select(d => Key(d.Id)).ToHashSet(StringComparer.Ordinal);
         var runs = await _services.Records.ListAsync(RunsCollection, ct).ConfigureAwait(false);
@@ -1097,6 +1250,7 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
         _addressLock.Dispose();
         _stateWrite.Dispose();
         _runWrite.Dispose();
+        _snapshots.Dispose();
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Provisioning turned on by {User}")]
@@ -1125,6 +1279,12 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Provisioning: {Address} reserved for {Serial}")]
     private partial void LogReserved(string address, string serial);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Provisioning: {Address} released for {Serial}, the camera did not take it")]
+    private partial void LogReleased(string address, string serial);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Provisioning: device {DeviceId} gets no new task, its last run failed (Run again)")]
+    private partial void LogKeptFailedRun(Guid deviceId);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Provisioning: {Serial} left out, {Max} leases wait to be checked already")]
     private partial void LogTooMany(string serial, int max);

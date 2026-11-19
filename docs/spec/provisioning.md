@@ -55,8 +55,10 @@ changes nothing by itself: provisioning itself is **Off** until an Administrator
   active.
 - **What starts a task** while provisioning is on: every factory-new Axis camera OADM finds by Discovery (also the
   background discovery), Network range, Add manually, Import or a lease of OADM's DHCP server. The camera is added to
-  OADM (status Password not set) and its task starts. On the Add devices page such a camera shows **Provisioning**
-  instead of Set password (not at a site) and is added without a password; its setup runs afterwards.
+  OADM (status Password not set) and its task starts. On the Add devices page such a camera shows **Ready for
+  provisioning** instead of Set password (not at a site) and is added without a password; its setup runs afterwards. The
+  page asks the plugin's `state` when it opens and again right before Add: only while a camera gets its task (`ready`: on
+  and the active profile without errors); else such a camera is a factory-new row as usual (Set password).
 - **Progress**: the tasks pane. There is no camera list or flow view of its own: the task's named steps and its log show
   each node's result. The task engine has no Run again of its own ([tasks.md](tasks.md): no retry), so Provisioning has
   one: **Run again** in the tasks pane's header while a failed "Provision with" task is selected (`RunAgainTaskAction`, an
@@ -69,7 +71,11 @@ changes nothing by itself: provisioning itself is **Off** until an Administrator
 - **One hook in the server**: `IDeviceAutoAdd.WatchFactoryNew` (SDK 0.15.0) reports every managed device that needs its
   first password: a device the device adder stores as Password not set (the add page's Add, an import, the waiting list,
   the automatic add of the DHCP server, an agent's add) and a managed device whose status the polling turns Password not
-  set (reset to factory default). While provisioning is on, each local one gets its task (found together: one batch).
+  set (reset to factory default): only when it had a password when OADM last reached it, or OADM does not know (offline
+  since the server started); a camera that was Password not set before it went offline is not reported again. While
+  provisioning is on, each local one gets its task (found together: one batch).
+- **A failed run stays for Run again**: a report or a lease never starts a new task for a camera whose last run failed or
+  did not end, unless the camera was just added or had a password in between (reset to factory default).
 - **A lease of OADM's DHCP server** to an Axis MAC address: the camera is asked whether it is new (no answer: asked again
   for 2 minutes); a new one is added (Password not set, which starts its task) or, when OADM manages it already, gets its
   task at once; a camera with a password is neither added nor changed. On also checks the cameras that hold a lease at
@@ -77,11 +83,14 @@ changes nothing by itself: provisioning itself is **Off** until an Administrator
 - Cameras OADM manages as Password not set when provisioning is turned on get no task by that (they get one when they are
   found again: a lease, a reset).
 - **Off** starts nothing new; running and queued provisioning tasks run to their end (a person cancels them in the tasks
-  pane). On, who turned it on and the last lease read survive a restart; the administrator's MyAxis sign-in does not
-  (Upgrade AXIS OS online then asks to turn provisioning off and on again).
+  pane) and Run again still works, with the MyAxis sign-in of the administrator who turned it on until the next On. On,
+  who turned it on and the last lease read survive a restart; the administrator's MyAxis sign-in does not (Upgrade AXIS
+  OS online then asks to turn provisioning off and on again).
 - **The task**: `oadm.provisioning.run`, hidden from the menus (only Provisioning starts it), at most 8 at once (its
   `MaxParallelDevices`, the server setting can only lower it). Its payload (memory only) is the active profile as it was
-  when the task started; editing the profile changes later tasks only. Steps: "Check that the camera is new" (the camera
+  when the task started; editing the profile changes later tasks only. A password or file a node names stays while a
+  stored profile, a queued or running task or a run Run again starts names it (never deleted by saving a profile);
+  what nothing names goes after a day. Steps: "Check that the camera is new" (the camera
   itself, the server waits while it is starting), then one per node: "Set the password", "Set the network settings",
   "Upgrade AXIS OS from axis.com", "Upgrade AXIS OS from a file", "Set the date and time", "Apply the configuration", "Add
   the users", "Install the certificate", "Turn on 802.1X", "Set up the SD card", "Run the autofocus", "Run the VAPIX
@@ -114,9 +123,12 @@ this model."). A node that does not apply (no SD card, no remote focus) is Succe
 2. **Network**: the camera's network settings, every part optional but at least one set:
    - **IP address**: **Keep** (as it is now, for example from DHCP) or **From a pool**: first and last address, subnet
      mask, default router. It takes the next address of the pool that is free (rule 5): not reserved by provisioning, no
-     OADM device has it, no answer to ping and TCP 80/443. A taken address is skipped and the step says so
-     ("192.168.15.12 is in use, 192.168.15.13 assigned."). Pool used up: Error "No free address left in the pool." Given
-     addresses stay reserved until they are OADM devices. A pool overlapping the range of OADM's DHCP server is a warning
+     OADM device has it, no answer to ping and TCP 80/443 (a camera already at an address of the pool keeps it). A taken
+     address is skipped and the step says so ("192.168.15.12 is in use, 192.168.15.13 assigned."). Pool used up: Error
+     "No free address left in the pool." The address is always written as a fixed address, also when the camera has it
+     already. A given address stays reserved while the camera's provisioning task runs or while the camera is an OADM
+     device without that address; it is released when the camera refused it before any change, has it now, or is no OADM
+     device (removed, never added) and no provisioning task runs for it. A pool overlapping the range of OADM's DHCP server is a warning
      in the node, never an error. A new Network node starts with the first three numbers of that DHCP range
      ("192.168.15.") and its subnet mask when OADM's DHCP server is set up, else empty with 255.255.255.0.
    - **DNS servers** and **search domain**.
@@ -163,12 +175,19 @@ Not at sites in the first version: cameras found through a site node are added a
   only the failed steps, in order.
 - Network pool: parallel cameras never get the same address (gates); the next free address skips reservations, OADM
   devices and answering addresses; overlap with the DHCP range is a warning; a used-up pool is an Error; no answer at the
-  new address within 2 minutes is an Error and the camera stays reachable; Keep never writes an address. Given addresses
-  stay reserved (also across Off, On and restarts) until they are OADM devices.
+  new address within 2 minutes is an Error and the camera stays reachable; Keep never writes an address, a pool always
+  writes a fixed one (also the camera's current address). Given addresses stay reserved (also across Off, On and
+  restarts) while their task runs or their camera is an OADM device without the address; released when refused before any
+  change or when the camera left OADM.
+- A camera that was Password not set before it went offline gets no second task; a failed run is replaced only after a
+  reset. Saving a profile keeps the passwords and files of queued tasks and of runs Run again starts. The prune of old
+  runs never drops the snapshot of a task that starts meanwhile (gates). Off keeps the starter's sign-in for running tasks
+  and Run again.
 - At most 8 at once (gates, no timing).
 - Every node with its fake device: Success, Warning, Error and Not needed with their messages.
 - Older profiles load with the nodes converted as above.
 - 100,000 devices in OADM: the free-address check and starting tasks for a burst of new cameras stay fast.
 - Client: the toolbar button follows the `status` event and opens the dialog for administrators only; a refused On
-  stays Off with the reason below the switch; the Add devices page shows Provisioning instead of Set password (a device at
-  a site keeps Set password) and adds without a password; Run again only on failed provisioning tasks.
+  stays Off with the reason below the switch; the Add devices page shows Ready for provisioning instead of Set password
+  (a device at a site keeps Set password) only while `state` says ready, asks again before Add and adds without a
+  password; Run again only on failed provisioning tasks.

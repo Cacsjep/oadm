@@ -89,6 +89,12 @@ public sealed record RunRecord
 
     public DateTimeOffset Started { get; init; }
 
+    /// <summary>
+    /// The run did not end well: the camera did not pass the check yet, or a node is red or never ran (also while its task
+    /// waits or runs). Run again can start it; an automatic start keeps it unless the camera was reset since.
+    /// </summary>
+    public bool CanRunAgain() => !Looked || Failed().Count > 0;
+
     /// <summary>The nodes Run again runs: the red ones and those that never ran, in order.</summary>
     public IReadOnlyList<int> Failed()
     {

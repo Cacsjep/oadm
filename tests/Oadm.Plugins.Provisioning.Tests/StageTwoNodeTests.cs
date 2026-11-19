@@ -78,6 +78,22 @@ public sealed class StageTwoNodeTests
     }
 
     [Fact]
+    public async Task Upgrade_online_still_runs_as_the_starter_after_off_until_the_next_on_replaces_them()
+    {
+        await using var h = await StartedAsync();
+        var camera = Camera(Device(h));
+
+        // Off: queued and running tasks run to their end, Run again still works; they need the starter's sign-in.
+        await h.Engine.TurnOffAsync(CancellationToken.None);
+        Assert.Equal(NodeResult.Success("AXIS OS from axis.com installed."), await RunAsync(h, new UpgradeOnlineNode(), new UpgradeOnlineSettings(OsTarget.LatestLts), camera));
+        Assert.Equal("oadm.firmware", Assert.Single(h.Ctx.TaskRuns).PluginId);
+
+        var next = new FakeCoreContext();
+        await h.Engine.TurnOnAsync("admin2", next, CancellationToken.None);
+        Assert.Same(next, h.Engine.StarterTasks);
+    }
+
+    [Fact]
     public async Task Upgrade_online_skips_a_camera_that_is_not_older_and_needs_the_starter_after_a_restart()
     {
         await using var h = await StartedAsync(withStarter: false);

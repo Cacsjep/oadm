@@ -6,7 +6,7 @@ OADM finds gets one task "Provision with <profile>" that runs the active profile
 
 Built (redesign of 2026-11-19): the server part, the task, every node of the spec, the methods and the tools (stage 1);
 the client part: the Devices toolbar button, Provisioning management with the profile editor, Run again in the tasks
-pane (stage 2). The Add devices page's "Provisioning" is the host's (it reads `state`).
+pane (stage 2). The Add devices page's Ready for provisioning is the host's (it reads `state`: `ready`).
 
 ## How it works
 
@@ -19,10 +19,14 @@ pane (stage 2). The Add devices page's "Provisioning" is the host's (it reads `s
   Network node; `NodeKind` keeps their names only for that.
 - **On and Off** (`Engine/ProvisioningService.cs`, setting `state`: on, who, when, the last DHCP acknowledgement read).
   On needs an active profile without errors; it keeps the caller's tasks in memory (`INodeHost.StarterTasks`, their
-  MyAxis sign-in, null after a restart). Off starts nothing new; running tasks run to their end.
+  MyAxis sign-in, null after a restart). Off starts nothing new; running and queued tasks run to their end and Run again
+  still works, so Off keeps the starter's tasks; the next On replaces them.
 - **What starts a task**: `IDeviceAutoAdd.WatchFactoryNew` (SDK 0.15.0): the server reports a device its device adder
   stored as Password not set and a managed device the polling turned Password not set (`FactoryNewDeviceNotices`,
-  `DeviceAdder`, `DevicePollingService`). The report only queues; a loop starts the tasks of everything queued in one
+  `DeviceAdder`, `DevicePollingService`). The polling reports a device only when it had a password when a poll last
+  reached it (`HadPassword`) or OADM does not know (offline since the server started); a camera that was Password not set
+  before it went offline is not reported again. An automatic start (a report, a lease) never replaces a run that did not
+  end well (`RunRecord.CanRunAgain`: Run again repeats it) unless the device was just added or `HadPassword`. The report only queues; a loop starts the tasks of everything queued in one
   `RunAsync` (one task per device). Devices at a site get none. The DHCP server's acknowledgements (`IDhcpServerLeases`,
   read every 2 s while on; On also takes the active leases) of Axis MAC blocks (`AxisOui`, linked from the DHCP server)
   are looked at, at most 8 at once: `IDeviceAutoAdd.LookAsync` (the camera itself, the server waits while it is
@@ -42,7 +46,8 @@ pane (stage 2). The Add devices page's "Provisioning" is the host's (it reads `s
   run of each device with each node's result, written after every step. **Run again** (`runAgain`) starts, per camera
   whose task is not active and whose last run has a red node or one that never ran, a task with the same profile that
   runs only those nodes in order and skips the check; a camera that failed the check runs everything again. Runs of
-  removed devices and snapshots no run names go when the plugin starts (in the background).
+  removed devices and snapshots no run names go when the plugin starts (in the background, under the snapshot lock that a
+  start also holds from its snapshot to its runs, so the prune never drops the snapshot of a task that starts meanwhile).
 - **Restart**: the task engine fails the running and queued tasks (their payload is gone); Run again repeats them.
 
 ## Nodes
@@ -50,8 +55,8 @@ pane (stage 2). The Add devices page's "Provisioning" is the host's (it reads `s
 | Node | How | Results |
 |---|---|---|
 | Set password (fixed, first, always stops) | `IDeviceAutoAdd.SetFirstPasswordAsync` with a credential list entry of root: the add page's and the context menu's path, serial and "no password yet" checked right before writing; the device keeps the password as its login. Then it waits until OADM read the camera (status Ok, API list; 2 minutes) | "Password set.", Warning "Password set. OADM has not read the camera yet; the next steps may fail.", or the camera's refusal |
-| Network | DNS servers and search domain first with Network settings (`oadm.network`; none: the camera keeps its domains), then the address with "Assign IP address" (`oadm.network.assign-ip`, static, the same DNS servers, domains kept): the next free address of the pool, taken under a lock (`TakeAddressAsync`); Keep writes no address; never the host name. A failed DNS write writes no address | "192.168.15.12 is in use, 192.168.15.13 assigned. DNS 10.0.0.1, search domain site.local.", "The camera is at 192.168.15.20 already.", "No free address left in the pool.", on failure both addresses |
-| Upgrade AXIS OS online | Upgrade AXIS OS (`oadm.firmware`) with `"latest":{"target"}` (own track, latest LTS, latest active; the task picks the version on axis.com for the camera's model), started with the tasks of the administrator who turned provisioning on (`INodeHost.StarterTasks`: their MyAxis sign-in; null after a restart). Only if older than: the device's version first, no task | "AXIS OS from axis.com installed.", "Already 12.6.95.", Error "Sign in to MyAxis." (no or expired sign-in), "Turn provisioning off and on again: ..." |
+| Network | DNS servers and search domain first with Network settings (`oadm.network`; none: the camera keeps its domains), then the address with "Assign IP address" (`oadm.network.assign-ip`, static, the same DNS servers, domains kept): the next free address of the pool, taken under a lock (`TakeAddressAsync`); Keep writes no address; never the host name. A failed DNS write writes no address | "192.168.15.12 is in use, 192.168.15.13 assigned. DNS 10.0.0.1, search domain site.local.", "192.168.15.20 assigned." (its current address, written as a fixed one), "No free address left in the pool.", on failure both addresses |
+| Upgrade AXIS OS online | Upgrade AXIS OS (`oadm.firmware`) with `"latest":{"target"}` (own track, latest LTS, latest active; the task picks the version on axis.com for the camera's model), started with the tasks of the administrator who turned provisioning on (`INodeHost.StarterTasks`: their MyAxis sign-in, kept after Off; null after a restart). Only if older than: the device's version first, no task | "AXIS OS from axis.com installed.", "Already 12.6.95.", Error "Sign in to MyAxis." (no or expired sign-in), "Turn provisioning off and on again: ..." |
 | Upgrade AXIS OS from files | Upgrade AXIS OS with every file of the node as an upload (`files`), the task takes the file whose product is the camera's model; never a downgrade (`allowDowngrade` false: the task refuses an older file before any write, the node maps that refusal to Success) | "AXIS OS 12.6.95 installed.", "Already 12.6.95." (same or newer AXIS OS on the camera), Warning "No file for this model.", Error "The file is no longer on the server. Choose it again." |
 | Configuration | Import configuration (`oadm.device-config.import`) of the file, or of the template camera's export read now (`GET /config/rest/$export`, read only, uploaded for the task, never kept); the areas `param.v2`, `action-rules.v2`, `event-schedules.v2`; the task leaves out device-specific values | "Parameters and action rules applied.", Warning with the task's list of settings the camera lacks, Not needed "this is the template camera.", Error "The template camera ... is not in OADM." |
 | Users | One Users task (`oadm.users`, mode add) per account, the password from the vault in the payload; the task protects OADM's account | "Added op1 and view1.", Warning or Error per account ("op1: ...") |
@@ -74,15 +79,19 @@ the editor closes. It never reaches the server part.
 `fileId`, never the value: the page's `storeSecret` (encrypted with `ctx.Secrets`, setting `secrets`) and `storeFile`
 (a file of the caller's own uploads, copied into `ctx.DataDirectory/files`, setting `files`) answer the ids. When a node
 runs, a file goes to its task as a system upload (`ctx.Uploads`, SDK 0.15.0), added again when the server deleted the
-last one after a day. What no profile names is deleted a day after it was stored (`PruneAsync` at start,
-save and delete). The server part never reads a password of the credential list, so Users and SD card take typed ones only.
+last one after a day. What nothing names is deleted a day after it was stored (`PruneAsync` at start, save and delete):
+neither a stored profile nor the snapshot of a run that did not end well (a queued or running task, a run Run again
+starts; `WithProfilesInUseAsync`, under the snapshot lock). The server part never reads a password of the credential list, so Users and SD card take typed ones only.
 
 **Network addresses.** Under one lock per server: the camera's own reservation when it is in the pool, else its current
 address when that is in the pool, else the first address of the pool that is not reserved for another camera, no other
 OADM device has (one read of the device list per take) and that answers neither ping nor TCP 80/443 (`AddressProbe.cs`,
 linked from the Network plugin). The reservation (setting `reserved`, by serial number) is stored before the lock ends;
-the write runs outside it, so cameras write in parallel. A reservation stays (also across Off, On and restarts) until
-its address is an OADM device. The Network task checks the address again, waits for the camera at the new address (its
+the write runs outside it, so cameras write in parallel. The address is always written as a fixed one, also when the
+camera has it already (a DHCP lease in the pool). A reservation stays (also across Off, On and restarts) while a
+provisioning task runs for its camera or while its camera is an OADM device that does not have the address yet; the next
+take releases the others (the camera has it, was removed from OADM or never added). A write the camera refused before any
+change ("Nothing was changed.") releases it at once (`ReleaseAddressAsync`). The Network task checks the address again, waits for the camera at the new address (its
 own 90 s) and moves the OADM record; on failure OADM keeps the camera at its old address. A pool that overlaps the DHCP
 range is a warning in the node and in the status. A new Network node starts with the first three numbers of the DHCP
 range and its subnet mask (`NetworkNode.DefaultsFor`, the default of `nodeKinds`).
@@ -155,7 +164,7 @@ A new node kind gets an entry in `NodeForms` (its fields and their rules) and `N
 
 ## Methods and events
 
-`ProvisioningContract.cs`: `state` (whether it is on; every signed-in user, also with a device group: the Add devices
+`ProvisioningContract.cs`: `state` (whether it is on, and `ready`: on and the active profile without errors; every signed-in user, also with a device group: the Add devices
 page), `getStatus` (on, who, when, the active profile, `turnOnRefusal`, the running provisioning tasks, the warnings),
 `listProfiles`, `getProfile`, `checkProfile`, `nodeKinds`, `credentials` (ids and user names only), `saveProfile`,
 `deleteProfile` (not the active one while on), `activateProfile`, `turnOn`, `turnOff`, `runAgain` (device ids: started and

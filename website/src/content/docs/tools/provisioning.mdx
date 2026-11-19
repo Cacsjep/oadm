@@ -40,8 +40,8 @@ task shows in the tasks pane like every other task.
 <Image src={dialog} alt="Provisioning: the switch On with who turned it on, the active profile, a warning, and the profile list with New, Edit, Activate and Delete" class="screen" />
 
 While provisioning is on, the toolbar button reads **Provisioning active** with a green icon. It stays on, also when the
-server restarts, until you turn the switch to **Off**. Off starts no new task; running tasks run to their end. Cancel
-them in the tasks pane if needed.
+server restarts, until you turn the switch to **Off**. Off starts no new task; running and queued tasks run to their
+end and **Run again** still works. Cancel them in the tasks pane if needed.
 
 The switch stays off when no profile is active or the active profile has errors. The reason shows below the switch.
 
@@ -60,10 +60,12 @@ A camera gets its task when OADM finds it factory-new (no password yet):
 
 OADM asks the camera itself right before the first change. A camera that is still starting is asked again for up to 2
 minutes. A camera that has a password is never changed. A camera gets no second task while its task runs. Up to 8
-cameras run at once; the others wait as **Queued**.
+cameras run at once; the others wait as **Queued**. A camera whose task failed gets no new task when OADM finds it again:
+use **Run again**, or reset the camera to factory default.
 
-On the Add devices page a factory-new camera shows **Provisioning** instead of **Set password**. Add it as usual: it is
-added without a password and its task sets it up.
+On the Add devices page a factory-new camera shows **Ready for provisioning** instead of **Set password** while
+provisioning is on and the active profile has no errors. Add it as usual: it is added without a password and its task
+sets it up.
 
 <Image src={add} alt="The Add devices page with provisioning on: Provisioning in the Action column of a factory-new camera, Set password for one at a site" class="screen" />
 
@@ -148,12 +150,14 @@ How addresses are given:
 - Each camera gets the next free address of the pool. An address is skipped when a device in OADM has it, it answers on
   the network, or another camera got it already.
 - Two cameras never get the same address, also when they run at the same time.
-- A given address stays reserved until the camera is in OADM with it, also when provisioning is turned off and on.
+- The address is always set as a fixed address, also when the camera has it already.
+- A given address stays reserved while the camera's task runs and until the camera is in OADM with it, also when
+  provisioning is turned off and on. It is free again when the camera refused it or was removed from OADM.
 - Keep the pool outside the DHCP server's range. An overlap is a warning in the node and in Provisioning.
 
 Results:
 
-- Success: "192.168.15.12 is in use, 192.168.15.13 assigned." or "The camera is at 192.168.15.13 already."
+- Success: "192.168.15.12 is in use, 192.168.15.13 assigned."
 - Error: "The camera did not take 192.168.15.13: " with the reason. OADM keeps the camera at the address that answers.
 - Error: "No free address left in the pool."
 
