@@ -10,8 +10,8 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Added
 
 - DHCP server: set the lease time, from 1 hour to 30 days.
-- Provisioning: factory-new cameras on the DHCP server get their password, AXIS OS, settings and address by a profile you build as a flow.
-- Plugin SDK 0.15.0: the first set up of factory-new cameras, the DHCP server's leases, a plugin's own files for its tasks and the node canvas.
+- Provisioning: turn it on in the Devices toolbar and every factory-new camera OADM finds gets its password, AXIS OS, settings and address by a profile you build as a flow.
+- Plugin SDK 0.15.0: the first set up of factory-new cameras, the DHCP server's leases, a plugin's own files for its tasks, the node canvas and commands on a task in the tasks pane.
 - Set password of factory-default devices: administrators can pick a saved password of root from the credential list, with an eye to show it.
 
 ### Fixed

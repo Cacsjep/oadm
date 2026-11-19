@@ -1,11 +1,10 @@
 # Zero-touch provisioning
 
-Status: **redesign agreed 2026-11-19; the server side is built (stage 1), the client side is not built yet** (stage 2:
-the Devices toolbar button, Provisioning management, the Add devices page; the build of 2026-11-18, a rail page with its
+Status: **redesign agreed 2026-11-19; built** (stage 1 the server, stage 2 the client: the Devices toolbar button,
+Provisioning management, the Add devices page, Run again in the tasks pane; the build of 2026-11-18, a rail page with its
 own camera list and flow view for cameras of OADM's DHCP server, is replaced by this). Open (ask the maintainer): Users
 and SD card take a typed password only; SD card formats with the camera's own file system and sets only the maximum age;
-Configuration applies parameters, action rules and schedules (a configuration file has no stream profiles); where the
-client offers Run again (below).
+Configuration applies parameters, action rules and schedules (a configuration file has no stream profiles).
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
@@ -39,21 +38,30 @@ page. On by default changes nothing by itself: provisioning itself is **Off** un
 
 ## Where it lives
 
-- **Devices toolbar**: a **Provisioning** button right of Export opens **Provisioning management**. While provisioning is
-  on, the button is green and reads **Provisioning active**.
-- **Provisioning management** (dialog): the **On / Off** switch, the **active profile** (one at a time) and the profile
-  list (every profile with its number of nodes and its state, Active or Has errors; New and Edit open the profile editor,
-  Activate, Delete with a red confirmation). On needs an active profile without errors. While no profile is active, the
-  first one saved without errors becomes active.
+- **Devices toolbar**: a **Provisioning** button right of Export (`ProvisioningToolbarPlugin`, an `IToolbarPlugin` of the
+  plugin's client part, group Manage, order 20; it gets the plugin's context through `IToolbarContext.CorePluginContext`,
+  SDK 0.15.0) opens **Provisioning management**. While provisioning is on, the button reads **Provisioning active** and its
+  icon is green (the theme's `Button.toolbar.ok`, as the title bar's MyAxis cloud), live from the `status` event (read with
+  `state` first). Users with "show" see the button; only an Administrator with "manage" opens the dialog (the others: the
+  button is disabled, its tooltip says so).
+- **Provisioning management** (dialog `ProvisioningWindow`): the **On / Off** switch (the theme's `ToggleSwitch`; a refused
+  On shows `TurnOnRefusal` or the server's reason directly below the switch and the switch stays Off; who turned it on and
+  when beside it), the **active profile** (a choice of the profiles without errors; choosing one activates it, a refusal
+  below the choice), the warnings, and the profile list (every profile with its number of nodes and its state, Active or
+  Has errors; New and Edit open the profile editor with the status's DHCP server for a new Network node, Activate, Delete
+  with a red confirmation). One card for the switch, one for the list, a lone Close; it follows the `status` event while
+  open. On needs an active profile without errors. While no profile is active, the first one saved without errors becomes
+  active.
 - **What starts a task** while provisioning is on: every factory-new Axis camera OADM finds by Discovery (also the
   background discovery), Network range, Add manually, Import or a lease of OADM's DHCP server. The camera is added to
   OADM (status Password not set) and its task starts. On the Add devices page such a camera shows **Provisioning**
-  instead of Set password and is added like any other; its setup runs afterwards.
-- **Progress**: the tasks pane. There is no camera list or flow view of its own. The task engine has no Run again of its
-  own ([tasks.md](tasks.md): no retry), so Provisioning has one: **Run again** on a failed "Provision with" task starts a
-  new task for that camera with the same profile that runs only the failed steps and those that never ran, in order (a
-  camera that failed the check that it is new is checked again and runs everything). Where the client offers it (the
-  task's row in the tasks pane, the task details) is decided with stage 2.
+  instead of Set password (not at a site) and is added without a password; its setup runs afterwards.
+- **Progress**: the tasks pane. There is no camera list or flow view of its own: the task's named steps and its log show
+  each node's result. The task engine has no Run again of its own ([tasks.md](tasks.md): no retry), so Provisioning has
+  one: **Run again** in the tasks pane's header while a failed "Provision with" task is selected (`RunAgainTaskAction`, an
+  `ITaskAction`, SDK 0.15.0; right "manage") starts a new task for that camera with the same profile that runs only the
+  failed steps and those that never ran, in order (a camera that failed the check that it is new is checked again and runs
+  everything). Nothing started: a message says so.
 
 ### How a task starts (stage 1, 2026-11-19)
 
@@ -160,3 +168,6 @@ Not at sites in the first version: cameras found through a site node are added a
 - Every node with its fake device: Success, Warning, Error and Not needed with their messages.
 - Older profiles load with the nodes converted as above.
 - 100,000 devices in OADM: the free-address check and starting tasks for a burst of new cameras stay fast.
+- Client: the toolbar button follows the `status` event and opens the dialog for administrators only; a refused On
+  stays Off with the reason below the switch; the Add devices page shows Provisioning instead of Set password (a device at
+  a site keeps Set password) and adds without a password; Run again only on failed provisioning tasks.

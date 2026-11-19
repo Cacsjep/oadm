@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+using Avalonia;
+using Avalonia.Headless;
 using Avalonia.VisualTree;
 
 using Oadm.Plugins.Provisioning.Client;
@@ -221,32 +223,111 @@ public sealed class PageScreenshotTests
     }
 
     [Fact]
-    public async Task Manage_profiles_renders_the_list_with_its_states()
+    public async Task Provisioning_management_renders_the_switch_the_active_profile_the_warnings_and_the_list()
     {
         var suffix = Headless.Appearance;
         await Headless.Session.Dispatch(async () =>
         {
-            var ctx = Samples.Context(profiles: new ProfilesReply(
+            var profiles = new ProfilesReply(
             [
                 new ProfileSummary(Samples.ProfileId, "Lobby cameras", 5, true, true),
                 new ProfileSummary(Samples.FullProfileId, "Parking garage", 11, false, true),
                 new ProfileSummary(Guid.Parse("9c9c9c9c-8888-4c2d-9e8f-0a1b2c3d4e5f"), "Warehouse (draft)", 4, false, false),
-            ], Samples.ProfileId));
-            var dialog = new ProfilesDialogViewModel(ctx);
-            var window = new ProfilesWindow();
+            ], Samples.ProfileId);
+            var ctx = Samples.Context(profiles: profiles);
+            var dialog = new ProvisioningDialogViewModel(ctx);
+            var window = new ProvisioningWindow();
             Oadm.Client.App.ApplyCrispText(window);
             window.Attach(dialog);
             window.Show();
-            await dialog.LoadAsync();
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => dialog.Rows.Count == 3 && !dialog.IsLoading, "the profiles");
             dialog.Selected = dialog.Rows[1];
             Headless.Pump();
 
-            Assert.Equal(3, dialog.Rows.Count);
+            var toggle = window.FindControl<ToggleSwitch>("OnSwitch")!;
+            Assert.True(toggle.IsChecked);
+            Assert.Equal("Lobby cameras", window.FindControl<ComboBox>("ActiveProfileChoice")!.SelectedItem is ProfileRow row ? row.Name : null);
             Assert.True(window.FindControl<Button>("ActivateButton")!.IsEffectivelyEnabled);
             Assert.DoesNotContain(window.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && b.Classes.Contains("primary"));
             Assert.Contains(window.GetVisualDescendants().OfType<StatusChip>(), c => c.IsEffectivelyVisible && c.Text == ProvisioningTexts.HasErrors);
-            Headless.Capture(window, $"provisioning-profiles-{suffix}.png");
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Classes.Contains("warning") && t.Text == Samples.Status().Warnings[0]);
+            Headless.Capture(window, $"provisioning-dialog-{suffix}.png");
             window.Close();
+
+            // Off without an active profile: a click on the switch shows the reason right below it and the switch stays off.
+            var offCtx = Samples.Context(Samples.Status(on: false) with { ActiveProfileId = null, ActiveProfileName = null, TurnOnRefusal = ProvisioningPlugin.ChooseActiveFirst, Warnings = [] },
+                new ProfilesReply([new ProfileSummary(Guid.Parse("9c9c9c9c-8888-4c2d-9e8f-0a1b2c3d4e5f"), "Warehouse (draft)", 4, false, false)], null));
+            var offDialog = new ProvisioningDialogViewModel(offCtx);
+            var offWindow = new ProvisioningWindow();
+            Oadm.Client.App.ApplyCrispText(offWindow);
+            offWindow.Attach(offDialog);
+            offWindow.Show();
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => offDialog.Rows.Count == 1 && !offDialog.IsLoading, "the profiles");
+            Headless.Pump();
+            var offToggle = offWindow.FindControl<ToggleSwitch>("OnSwitch")!;
+            Assert.False(offToggle.IsChecked);
+            var center = offToggle.TranslatePoint(new Avalonia.Point(offToggle.Bounds.Width / 4, offToggle.Bounds.Height / 2), offWindow)!.Value;
+            offWindow.MouseDown(center, Avalonia.Input.MouseButton.Left);
+            offWindow.MouseUp(center, Avalonia.Input.MouseButton.Left);
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => offDialog.HasSwitchError, "the refusal");
+            Headless.Pump();
+            Assert.False(offToggle.IsChecked); // the switch shows the server's state again
+            Assert.Equal(0, offCtx.CallsOf(ProvisioningMethods.TurnOn));
+            var field = offToggle.FindAncestorOfType<FormField>()!;
+            Assert.True(field.HasError);
+            Assert.Contains(field.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == ProvisioningPlugin.ChooseActiveFirst);
+            Headless.Capture(offWindow, $"provisioning-dialog-refused-{suffix}.png");
+            offWindow.Close();
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task The_devices_toolbar_shows_provisioning_right_of_export_and_green_while_on()
+    {
+        var suffix = Headless.Appearance;
+        await Headless.Session.Dispatch(async () =>
+        {
+            var plugin = Samples.Context(Samples.Status(on: false));
+            var on = false;
+            plugin.Answers[ProvisioningMethods.State] = _ => Samples.Serialize(new StateReply(on));
+            var ctx = new FakeToolbarContext(plugin);
+            var entries = new Oadm.Sdk.Client.IToolbarPlugin[]
+            {
+                new Oadm.Client.Devices.Toolbar.AddToolbarPlugin(),
+                new Oadm.Client.Devices.Toolbar.RemoveToolbarPlugin(),
+                new Oadm.Client.Devices.Toolbar.RefreshToolbarPlugin(),
+                new Oadm.Client.Devices.Toolbar.ExportToolbarPlugin(),
+                new ProvisioningToolbarPlugin { Dialogs = new FakeProvisioningDialogs() },
+            };
+            var bar = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 4 };
+            foreach (var entry in entries)
+            {
+                if (entry.Group == Oadm.Sdk.Client.ToolbarGroup.Manage && entry.Order == 0)
+                {
+                    bar.Children.Add(new ToolbarSeparator());
+                }
+
+                bar.Children.Add(entry.CreateControl(ctx));
+            }
+
+            var window = new Window { Width = 760, Height = 90, Content = new Border { Padding = new Avalonia.Thickness(16), Child = new Border { Classes = { "card" }, Padding = new Avalonia.Thickness(12, 8), Child = bar } } };
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Show();
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => plugin.CallsOf(ProvisioningMethods.State) >= 1, "the state");
+            Headless.Pump();
+            var button = (ToolbarButton)bar.Children[^1];
+            Assert.Equal(Oadm.Sdk.Client.DeviceTexts.Provisioning, button.Text);
+            Assert.DoesNotContain("ok", button.Classes);
+            Assert.True(button.IsEffectivelyEnabled);
+            Headless.Capture(window, $"provisioning-toolbar-off-{suffix}.png");
+
+            on = true;
+            plugin.Push(ProvisioningMethods.StatusTopic, Samples.Status(on: true));
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => { Headless.Pump(); return button.Classes.Contains("ok"); }, "green");
+            Assert.Equal(ProvisioningTexts.ButtonActive, button.Text);
+            Headless.Capture(window, $"provisioning-toolbar-on-{suffix}.png");
+            window.Close(); // the watch ends with the button
             return true;
         }, CancellationToken.None);
     }

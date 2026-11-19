@@ -1,21 +1,53 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:sdk="using:Oadm.Sdk.Client"
         xmlns:vm="using:Oadm.Plugins.Provisioning.Client"
-        x:Class="Oadm.Plugins.Provisioning.Client.ProfilesWindow"
-        x:DataType="vm:ProfilesDialogViewModel"
-        Title="{x:Static vm:ProvisioningTexts.ManageProfiles}"
-        Width="760" Height="520"
+        x:Class="Oadm.Plugins.Provisioning.Client.ProvisioningWindow"
+        x:DataType="vm:ProvisioningDialogViewModel"
+        Title="{x:Static sdk:DeviceTexts.Provisioning}"
+        Width="760" Height="600"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         CanResize="False"
         WindowDecorations="BorderOnly">
-  <!-- Manage profiles (docs/spec/provisioning.md "The page"): the profile list in one card with its command buttons
-       (New, Edit, Activate; Delete in red, apart), the server's refusal below the list, a lone Close. -->
-  <Grid RowDefinitions="Auto,*,Auto">
-    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:ProvisioningTexts.ManageProfiles}" />
+  <!-- Provisioning management (docs/spec/provisioning.md "Where it lives"): a card with the On / Off switch (its refusal
+       directly below it), the active profile and the warnings; a card with the profile list and its command buttons (New,
+       Edit, Activate; Delete in red, apart), the server's refusal below the list; a lone Close. -->
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static sdk:DeviceTexts.Provisioning}" Subtitle="{x:Static vm:ProvisioningTexts.Subtitle}" />
 
-    <Border Grid.Row="1" Classes="card" Margin="16,0">
+    <Border Grid.Row="1" Classes="card" Margin="16,0,16,16">
+      <StackPanel Classes="form">
+        <ui:FormField Label="{x:Static sdk:DeviceTexts.Provisioning}" Error="{Binding SwitchError}">
+          <StackPanel Orientation="Horizontal" Spacing="16">
+            <ToggleSwitch x:Name="OnSwitch" IsChecked="{Binding IsOn, Mode=OneWay}" Command="{Binding ToggleCommand}"
+                          OnContent="{x:Static vm:ProvisioningTexts.On}" OffContent="{x:Static vm:ProvisioningTexts.Off}"
+                          ToolTip.Tip="{Binding SwitchTip}" />
+            <TextBlock Classes="secondary" VerticalAlignment="Center" Text="{Binding OnText}" IsVisible="{Binding HasOnText}" />
+          </StackPanel>
+        </ui:FormField>
+        <ui:FormField Label="{x:Static vm:ProvisioningTexts.ActiveProfile}" Error="{Binding ActiveError}">
+          <ComboBox x:Name="ActiveProfileChoice" ItemsSource="{Binding ActiveChoices}" SelectedItem="{Binding ActiveChoice}"
+                    IsEnabled="{Binding IsIdle}" PlaceholderText="{x:Static vm:ProvisioningTexts.NoValidProfile}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:ProfileRow">
+                <TextBlock Text="{Binding Name}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </ui:FormField>
+        <ItemsControl x:Name="Warnings" ItemsSource="{Binding Warnings}" IsVisible="{Binding HasWarnings}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="x:String">
+              <TextBlock Classes="warning" Text="{Binding}" TextWrapping="Wrap" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="2" Classes="card" Margin="16,0">
       <Grid RowDefinitions="Auto,*,Auto" RowSpacing="8">
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
           <ui:ToolbarOverflowPanel Spacing="4">
@@ -49,13 +81,14 @@
           </DataGrid>
           <TextBlock Classes="secondary" Text="{x:Static vm:ProvisioningTexts.NoProfiles}" IsVisible="{Binding ShowEmpty}"
                      HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
-          <ui:LoadingOverlay Text="{x:Static vm:ProvisioningTexts.ReadingProfiles}" IsVisible="{Binding IsLoading}" />
         </Panel>
 
         <TextBlock Grid.Row="2" Classes="fieldMessage error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
       </Grid>
     </Border>
 
-    <ui:DialogFooter Grid.Row="2" CancelText="{x:Static vm:ProvisioningTexts.Close}" CancelCommand="{Binding CloseCommand}" />
+    <ui:LoadingOverlay Grid.Row="1" Grid.RowSpan="2" Text="{x:Static vm:ProvisioningTexts.Reading}" IsVisible="{Binding IsLoading}" />
+
+    <ui:DialogFooter Grid.Row="3" CancelText="{x:Static vm:ProvisioningTexts.Close}" CancelCommand="{Binding CloseCommand}" />
   </Grid>
 </Window>

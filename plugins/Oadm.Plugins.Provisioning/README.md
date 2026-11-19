@@ -4,9 +4,9 @@ Core plugin `oadm.provisioning`, free, on by default, no rail page. While provis
 OADM finds gets one task "Provision with <profile>" that runs the active profile. The spec is
 [`docs/spec/provisioning.md`](../../docs/spec/provisioning.md); this file holds the decisions of the code.
 
-Built (redesign of 2026-11-19, stage 1): the server part, the task, every node of the spec, the methods and the tools.
-The client part `Oadm.Plugins.Provisioning.Client` holds the profile editor and Manage profiles; the Devices toolbar
-button, Provisioning management and the Add devices page's "Provisioning" are stage 2.
+Built (redesign of 2026-11-19): the server part, the task, every node of the spec, the methods and the tools (stage 1);
+the client part: the Devices toolbar button, Provisioning management with the profile editor, Run again in the tasks
+pane (stage 2). The Add devices page's "Provisioning" is the host's (it reads `state`).
 
 ## How it works
 
@@ -134,11 +134,22 @@ default) for nodes that need more than one task.
 
 ## The client part
 
-`Oadm.Plugins.Provisioning.Client` holds the profile editor (`ProfileEditorWindow`, `ProfileEditorViewModel`: the shared
-node canvas `NodeChainCanvas`, the + below every node, also below Set password; the node list `NodePicker`; one form per
-kind in `NodeForms`, the Network form with Keep or From a pool) and Manage profiles (`ProfilesWindow`). Stage 2 adds the
-Devices toolbar button (Provisioning / Provisioning active), Provisioning management with the On / Off switch and the
-"Provisioning" of the Add devices page, and decides where Run again sits.
+`Oadm.Plugins.Provisioning.Client` holds:
+
+- `ProvisioningToolbarPlugin` (`IToolbarPlugin`, group Manage, order 20: right of Export; right "show") with
+  `ProvisioningButtonViewModel`: reads `state`, then follows the `status` event while the button is in the window (the
+  watch ends when it leaves); "Provisioning active" with the theme's `ok` class while on. Opens Provisioning management
+  only for an Administrator with "manage". The plugin's context comes from `IToolbarContext.CorePluginContext` (SDK 0.15.0).
+- Provisioning management (`ProvisioningWindow`, `ProvisioningDialogViewModel`): the switch (`ToggleCommand`; a known
+  `TurnOnRefusal` is shown without a call; the switch is told to show the server's state again after every flip), the
+  active profile's choice (profiles without errors; a choice activates), the warnings, the profile list (New, Edit,
+  Activate, Delete). It reads `getStatus` and `listProfiles` and follows the `status` event while open; the status's DHCP
+  server goes to the editor for a new Network node.
+- `RunAgainTaskAction` (`ITaskAction`, SDK 0.15.0; right "manage"): Run again in the tasks pane for a failed
+  `oadm.provisioning.run` task; `runAgain` with its camera, a message when nothing started.
+- The profile editor (`ProfileEditorWindow`, `ProfileEditorViewModel`: the shared node canvas `NodeChainCanvas`, the +
+  below every node, also below Set password; the node list `NodePicker`; one form per kind in `NodeForms`, the Network
+  form with Keep or From a pool).
 
 A new node kind gets an entry in `NodeForms` (its fields and their rules) and `NodeLook` (icon and colour).
 
@@ -174,5 +185,6 @@ never twice, sites, leases, the steps, Set password stopping, Continue on error,
 (gates for the address lock, reservations, the pool's checks), every node with its task's outcomes (`Harness.Outcomes`,
 `Decide` per run), scripted VAPIX for Autofocus and the template camera, the vault with a marking fake protector
 (`VaultTests`), the conversion of older profiles (`ProfileCheckTests`); the Perf test takes addresses and starts the tasks
-of 2,000 new cameras with 100,000 devices. The client part (`Client/`): the editor and Manage profiles against canned
-answers and the server's own profile check, headless screenshots of the editor. No hardware test yet.
+of 2,000 new cameras with 100,000 devices. The client part (`Client/`): the editor, Provisioning management, the toolbar
+button and Run again against canned answers and the server's own profile check; headless screenshots of the editor,
+the dialog (a refused On by a real click on the switch) and the toolbar. No hardware test yet.
