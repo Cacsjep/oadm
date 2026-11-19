@@ -55,6 +55,8 @@
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.LoadTest\Oadm.Plugins.LoadTest.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.SnapshotReport\Oadm.Plugins.SnapshotReport.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.LiveView\Oadm.Plugins.LiveView.csproj" Aliases="liveview" />
+    <!-- It compiles in sources of the Network, DHCP server and VAPIX Commander plugins: used only through the alias. -->
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Provisioning\Oadm.Plugins.Provisioning.csproj" Aliases="provisioning" />
     <!-- The optional plugins' tools: their schemas are checked without starting them (no model, no graphics card). -->
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Ocr\Oadm.Plugins.Ocr.csproj" Aliases="ocr" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.Vision\Oadm.Plugins.Vision.csproj" Aliases="vision" />

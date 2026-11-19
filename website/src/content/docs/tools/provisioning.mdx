@@ -1,0 +1,141 @@
+---
+title: Provisioning
+description: Set up factory-new cameras as soon as you plug them in, with a profile of steps that runs on each one.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import page from '../../../assets/screens/provisioning-page.png';
+import flow from '../../../assets/screens/provisioning-flow.png';
+import editor from '../../../assets/screens/provisioning-editor.png';
+
+Plug factory-new cameras into the switch and let OADM set them up. Each camera gets an address from OADM's
+[DHCP server](../dhcp-server/), then the active profile runs on it: password, AXIS OS, configuration, time, certificate,
+fixed IP address and more. The table shows how far each camera got.
+
+<Image src={page} alt="The Provisioning page: the DHCP server card, Stop provisioning with the start time, the active profile and the cameras with their state" class="screen" />
+
+## Before you start
+
+- The [DHCP server](../dhcp-server/) runs on the network the cameras are plugged into. The **DHCP server** card at the
+  top shows its state. **Turn on** or **Edit** opens the DHCP server page.
+- You are an administrator with all devices. Operators and viewers do not see the page by default.
+- For **Set password** from the credential list: a password of the user root on the
+  [Credentials page](../../admin/users/#credentials-page). You can also type one in the profile.
+
+## Build a profile
+
+A profile is a chain of nodes that runs from top to bottom on each camera.
+
+<Image src={editor} alt="The profile editor: the chain of nodes on the left, the selected Set IP node's form on the right with an error below Last address" class="screen" />
+
+<Steps>
+
+1. Open **Provisioning** under **Automation** in the navigation rail.
+2. Click **New profile** and enter a **Name**.
+3. Click **Add node** and choose a node. It is added below the selected node.
+4. Click a node to see its form on the right. **Move up** and **Move down** change the order, **Remove** deletes it.
+5. Click **Save**.
+
+</Steps>
+
+Every profile starts with two fixed nodes. They cannot be moved or removed:
+
+- **Set password**: the root password, from the credential list or typed. A typed password is added to the credential
+  list when you save and is never shown again.
+- **Add to OADM**: adds the camera with that password. Optional **Tags** put it into the right device groups.
+
+The nodes you can add:
+
+| Node | What it does |
+|---|---|
+| **Upgrade AXIS OS online** | Installs AXIS OS from axis.com: the newest of the camera's own track, the newest LTS or the newest of the active track. Optional **Only if older than**. Needs the MyAxis sign-in of the administrator who starts provisioning |
+| **Upgrade AXIS OS from files** | Each camera gets the file for its model from the files you choose. No file for the model: a warning. A file older than the camera's AXIS OS is never installed |
+| **Network settings** | Host name from a pattern with `{model}`, `{serial}`, `{mac}` and `{n}` (a number per camera, from **First number**), DNS servers and search domain |
+| **Date and time** | Time zone and the time source: the NTP servers DHCP gives, servers you enter, or OADM's [NTP server](../ntp-server/) |
+| **Configuration** | Parameters, action rules and schedules from a file of Export configuration or from a template camera. Addresses, host names, certificates and passwords are never copied |
+| **Users** | More accounts with user name, role and password. OADM's own account is never touched |
+| **Certificate** | A certificate from the HTTPS certificate policy of [PKI](../pki/), or EST enrollment so the camera renews by itself ([EST server](../est-server/), OADM PRO) |
+| **802.1X** | Turns on 802.1X with the certificate and CA of PKI's 802.1X policy |
+| **SD card** | Format, encrypt with a passphrase, delete recordings after a number of days. No SD card: skipped |
+| **Autofocus** | Starts the autofocus and waits until it is done. No remote focus: skipped |
+| **VAPIX commands** | Commands of the [VAPIX Commander](../vapix-commander/) library with their values. A command the camera lacks: a warning |
+| **Wait for approval** | The camera waits here until you press **Continue** on its row, for example before Set IP |
+| **Set IP** | A fixed address from a pool, see [Set IP](#set-ip) |
+
+**Continue on error** is on for every node except Set password: after an error the next nodes still run. Turn it off to
+stop the camera's flow at that node. An error at Set password always stops the flow.
+
+### Drafts
+
+Errors show below the field and on the node in the chain. You can still save the profile as a draft. A draft shows
+**Has errors** in the profile list and cannot be the active profile or start until you fix it.
+
+## Start and stop
+
+<Steps>
+
+1. Choose the active **Profile** in the toolbar.
+2. Click **Start provisioning**. It stays off with the reason in its tooltip while the DHCP server is off, no profile is
+   chosen or the profile has errors.
+3. Plug in factory-new cameras. They show in the table when they get an address.
+4. When you are done, click **Stop provisioning**. Cameras that run a node finish that node first.
+
+</Steps>
+
+Provisioning stays started until you stop it, also when the server restarts. A change to the profile applies at the next
+Start. Up to 8 cameras run at once; the others wait as **Queued**.
+
+## Cameras
+
+The table has one row per camera that got an address while provisioning was started: MAC address, model, serial
+number, IP address, profile, state, the node it is on and the problem of a failed node.
+
+| State | Meaning |
+|---|---|
+| **Queued** | Waits for one of the 8 places |
+| **Running** | Runs the node in the **Node** column |
+| **Waiting for approval** | Stopped at Wait for approval until you press **Continue** |
+| **Done** | Every node ended fine |
+| **Done with warnings** | At least one node ended with a warning |
+| **Failed** | At least one node ended with an error |
+| **Not new, left as it is** | The camera already has a password. OADM changed nothing |
+
+Click a row to see the camera's flow next to the table: green nodes ended fine or were not needed, yellow ones have a
+warning, red ones an error with its message, grey ones did not run.
+
+<Image src={flow} alt="A failed camera's flow next to the table: Set password and Wait for approval green, Add to OADM yellow, Set IP red with its message, Date and time not run" class="screen" />
+
+Select rows and use the buttons above the table:
+
+- **Run failed again** runs only the red nodes and the ones that did not run, in their order.
+- **Continue** lets cameras go on past Wait for approval.
+- **Remove** removes the rows. The cameras stay in OADM.
+
+## Set IP
+
+Set IP gives each camera a fixed address from a pool of its own: **First address**, **Last address**, **Subnet mask**,
+**Default router** and optional **DNS servers**.
+
+- Each camera gets the next free address of the pool, starting at the first. An address is skipped when a device in OADM
+  has it, it answers on the network, or another camera of this session got it. The node says so: "192.168.15.12 is in use,
+  192.168.15.13 assigned."
+- Two cameras never get the same address, also when they run at the same time.
+- The addresses given stay reserved until **Stop provisioning**. The next start begins at the first address again and
+  skips the cameras OADM manages by then.
+- Keep the pool outside the DHCP server's range. An overlap is a warning in the node and on the page, not an error.
+- If the camera does not answer at its new address, the node is red with both addresses and OADM keeps the camera at the
+  address that answers.
+- No free address left: the node is red with "No free address left in the pool."
+
+## What it never does
+
+- It never changes a camera that already has a password, and never a camera that did not get its address from OADM's
+  DHCP server. Such cameras show as **Not new, left as it is** or do not show at all.
+- It never changes the DHCP server's settings.
+- It never removes or demotes the account OADM uses on the camera.
+- It does not run at [sites](../../sites/overview/): only on the server's own network.
+
+<Aside>
+Related: [DHCP server](../dhcp-server/), [Upgrade AXIS OS](../../tasks/firmware/), [Device configuration](../../tasks/device-configuration/).
+</Aside>

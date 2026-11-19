@@ -2,6 +2,7 @@ extern alias actionrules;
 extern alias appmanagement;
 extern alias devicetriggers;
 extern alias liveview;
+extern alias provisioning;
 
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
@@ -293,6 +294,7 @@ public sealed class McpPluginToolTests
         registry.RegisterCorePlugin(new actionrules::Oadm.Plugins.ActionRules.ActionRulesPlugin(), new PluginOrigin(actionrules::Oadm.Plugins.ActionRules.ActionRulesInfo.PluginId, "1.0.0", null) { DisplayName = "Action Rule Editor" });
         registry.RegisterCorePlugin(new devicetriggers::Oadm.Plugins.DeviceTriggers.DeviceTriggersPlugin(), new PluginOrigin(devicetriggers::Oadm.Plugins.DeviceTriggers.DeviceTriggersPluginInfo.PluginId, "1.0.0", null) { DisplayName = "Device triggers" });
         registry.RegisterCorePlugin(new liveview::Oadm.Plugins.LiveView.LiveViewPlugin(), new PluginOrigin("oadm.live-view", "1.0.0", null) { DisplayName = "Live View" });
+        registry.RegisterCorePlugin(new provisioning::Oadm.Plugins.Provisioning.ProvisioningPlugin(), new PluginOrigin(provisioning::Oadm.Plugins.Provisioning.ProvisioningInfo.PluginId, "1.0.0", null) { DisplayName = "Provisioning" });
         var deviceConfig = new PluginOrigin(Oadm.Plugins.DeviceConfig.DeviceConfigIds.PackageId, "1.0.0", null) { DisplayName = "Device configuration", AlwaysOn = true };
         registry.RegisterCorePlugin(new Oadm.Plugins.DeviceConfig.Tools.DeviceConfigToolsPlugin(), deviceConfig);
         registry.RegisterTaskPlugin(new Oadm.Plugins.DeviceConfig.Configure.ConfigureDevicesTask(), deviceConfig);

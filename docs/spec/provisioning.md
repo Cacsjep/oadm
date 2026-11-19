@@ -1,7 +1,7 @@
 # Zero-touch provisioning
 
-Status: **draft spec; built** (every node below, the page methods and tools, the page with the canvas and the profile
-editor). Flow design of 2026-11-18; replaces the step list of 2026-10-27. Open (ask the maintainer): Users and SD card take
+Status: **built** (every node below, the page methods and tools, the page with the canvas and the profile editor, the
+user page `website/src/content/docs/tools/provisioning.mdx`); no hardware run yet. Flow design of 2026-11-18; replaces the step list of 2026-10-27. Open (ask the maintainer): Users and SD card take
 a typed password only (a plugin never reads a password of the credential list); SD card formats with the camera's own
 file system and sets only the maximum age (Edge storage has no file system choice and no cleanup level); Configuration
 applies parameters, action rules and schedules (a configuration file has no stream profiles).
@@ -14,7 +14,7 @@ configuration, time, certificate and fixed address. The same canvas is the edito
 result: every node green, yellow or red with its message.
 
 Core plugin `plugins/Oadm.Plugins.Provisioning` (+ `.Client`), id `oadm.provisioning`, rail page **Provisioning** (group
-Devices), **free, on by default**. On by default changes nothing by itself: a camera starts a flow only while
+Automation), **free, on by default**. On by default changes nothing by itself: a camera starts a flow only while
 provisioning is started on the page and a profile is active. Every node uses the existing task of its area (with that task's
 checks); provisioning adds the order, the per-camera result and the fixed address pool. It never changes the DHCP
 server's settings.

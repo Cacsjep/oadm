@@ -531,6 +531,33 @@ and runs after the user agreed.
 | `oadm_plugins_optional_restart_preview` | Preview | Shows the optional plugins whose new version waits for a restart of the server; nothing is changed. Then call oadm_plugins_optional_restart_run with the handle. |
 | `oadm_plugins_optional_restart_run` | Run (changes) | Restarts the server so the waiting optional plugins start their new version. Every client and agent loses its connection for a moment. |
 
+## Provisioning
+
+| Tool | Kind | What it does |
+| --- | --- | --- |
+| `oadm_provisioning_cameras` | Read | The cameras of the session by MAC address: model, address, state, the node it is on and its message. |
+| `oadm_provisioning_cameras_continue_preview` | Preview | Presses Continue for cameras that wait for approval. Nothing is changed. Call oadm_provisioning_cameras_continue_run with the handle to apply it. |
+| `oadm_provisioning_cameras_continue_run` | Run (changes) | Applies the plan of oadm_provisioning_cameras_continue_preview, which checks everything again. |
+| `oadm_provisioning_cameras_remove_preview` | Preview | Removes rows from the camera table; the cameras stay in OADM. Nothing is changed. Call oadm_provisioning_cameras_remove_run with the handle to apply it. |
+| `oadm_provisioning_cameras_remove_run` | Run (changes) | Applies the plan of oadm_provisioning_cameras_remove_preview, which checks everything again. |
+| `oadm_provisioning_cameras_run_failed_again_preview` | Preview | Runs the red nodes of failed cameras again, in flow order. Nothing is changed. Call oadm_provisioning_cameras_run_failed_again_run with the handle to apply it. |
+| `oadm_provisioning_cameras_run_failed_again_run` | Run (changes) | Applies the plan of oadm_provisioning_cameras_run_failed_again_preview, which checks everything again. |
+| `oadm_provisioning_credentials` | Read | The credential list entries (id and user name, never a password) Set password can use. |
+| `oadm_provisioning_file_store_preview` | Preview | Keeps a file the caller uploaded (an AXIS OS file, a configuration file of Export configuration) for a node; the answer is its file_id for the node's settings. Nothing is changed. Call oadm_provisioning_file_store_run with the handle to apply it. |
+| `oadm_provisioning_file_store_run` | Run (changes) | Applies the plan of oadm_provisioning_file_store_preview, which checks everything again. |
+| `oadm_provisioning_profile_activate_preview` | Preview | Makes a profile without errors the active one; the next Start runs it. Nothing is changed. Call oadm_provisioning_profile_activate_run with the handle to apply it. |
+| `oadm_provisioning_profile_activate_run` | Run (changes) | Applies the plan of oadm_provisioning_profile_activate_preview, which checks everything again. |
+| `oadm_provisioning_profile_delete_preview` | Preview | Deletes a profile. A running session keeps its own copy. Nothing is changed. Call oadm_provisioning_profile_delete_run with the handle to apply it. |
+| `oadm_provisioning_profile_delete_run` | Run (changes) | Applies the plan of oadm_provisioning_profile_delete_preview, which checks everything again. |
+| `oadm_provisioning_profiles` | Read | The profiles: id, name, number of nodes, whether active and whether without errors. |
+| `oadm_provisioning_secret_store_preview` | Preview | The person enters a password of a Users account or the SD card passphrase; the answer is its secret_id for the node's settings. The password never comes back. Nothing is changed. Call oadm_provisioning_secret_store_run with the handle to apply it. |
+| `oadm_provisioning_secret_store_run` | Run (changes) | Applies the plan of oadm_provisioning_secret_store_preview, which checks everything again. |
+| `oadm_provisioning_start_preview` | Preview | Starts provisioning with the active profile: every factory-new camera that gets an address from OADM's DHCP server runs it. Nothing is changed. Call oadm_provisioning_start_run with the handle to apply it. |
+| `oadm_provisioning_start_run` | Run (changes) | Applies the plan of oadm_provisioning_start_preview, which checks everything again. |
+| `oadm_provisioning_status` | Read | Whether provisioning is started, the active profile, the DHCP server, the camera counts and the warnings. |
+| `oadm_provisioning_stop_preview` | Preview | Stops provisioning: running flows stop waiting, the reserved addresses are free again. Nothing is changed. Call oadm_provisioning_stop_run with the handle to apply it. |
+| `oadm_provisioning_stop_run` | Run (changes) | Applies the plan of oadm_provisioning_stop_preview, which checks everything again. |
+
 ## Selection
 
 | Tool | Kind | What it does |

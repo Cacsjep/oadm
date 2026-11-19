@@ -70,7 +70,7 @@ plugins/               folders, build and tests of a bundled plugin: plugins/REA
   Oadm.Plugins.Pki(.Client)/    also holds the core plugins EST server (Est/) and 802.1X server (Radius/)
   Oadm.Plugins.Ocr(.Client)/    optional plugin (add-on, not in the installers): Text recognition (docs/spec/ocr.md)
   Oadm.Plugins.Vision(.Client)/ optional plugin (add-on, not in the installers): Vision Center (docs/spec/vision-center.md)
-  Oadm.Plugins.Provisioning/    Provisioning (docs/spec/provisioning.md): profiles of nodes for factory-new cameras of
+  Oadm.Plugins.Provisioning(.Client)/ Provisioning (docs/spec/provisioning.md): profiles of nodes for factory-new cameras of
                                 OADM's DHCP server; nodes in Nodes/ ("Adding a node" in its README)
   Oadm.Plugins.VpnFleet(.Client)/ community plugin VPN Fleet (docs/spec/vpn-fleet.md); GitHubHttp.cs is its only HTTP
                                 outside the host: the apps' releases on github.com
@@ -220,11 +220,11 @@ must never break.
   is the only write and always goes back.
 - **[Help](docs/spec/help.md)**: the user docs of oadm.app shipped with the client and shown in a Help window with the
   embedded browser, served on 127.0.0.1 only; never loads oadm.app; client only.
-- **[Zero-touch provisioning](docs/spec/provisioning.md)** (draft spec, server part built; core plugin `oadm.provisioning`, free,
+- **[Zero-touch provisioning](docs/spec/provisioning.md)** (built; core plugin `oadm.provisioning`, rail group Automation, free,
   on by default): a profile is a straight flow of nodes on the Vision Center canvas, run on factory-new cameras with an
   OADM DHCP lease only, while provisioning is started; Set password first and it stops on error, every other node
   continues by default; Set IP gives the next free address of its own pool (never the same twice, the DHCP server is
-  never changed); at most 8 cameras at once; Administrator only.
+  never changed); a profile with errors is a draft that cannot be active; at most 8 cameras at once; Administrator only.
 - **[Application management](docs/spec/app-management.md)** (core plugin `oadm.app-management`, free, off by default):
   the chosen devices and the applications of the selected ones; every change is a task of `oadm.acap` with its checks
   and permissions; reads only on demand, kept in server memory.
