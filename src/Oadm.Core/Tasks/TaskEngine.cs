@@ -94,7 +94,18 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     /// says, and the backstop applies: a caller with a device group runs only on devices of the view (the whole run is
     /// refused otherwise, <see cref="DevicesNotAvailableException"/>), never without <see cref="Views"/>.
     /// </remarks>
-    public async Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct)
+    public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct) =>
+        RunSystemAsync(pluginId, deviceIds, payloadJson, owner, null, ct);
+
+    /// <inheritdoc />
+    /// <remarks>The system runner as above, with the audit entry of <see cref="Audit"/> (none without it).</remarks>
+    public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskAudit audit, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        return AuditedAsync(audit, deviceIds, watch => RunSystemAsync(pluginId, deviceIds, payloadJson, owner, watch, ct));
+    }
+
+    private async Task<IReadOnlyList<Guid>> RunSystemAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskBatchWatch? watch, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         ArgumentNullException.ThrowIfNull(deviceIds);
@@ -104,19 +115,36 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             // The backstop: a user with a device group never reaches the system runner's full device list.
             var views = Views ?? throw new DevicesNotAvailableException(Math.Max(1, deviceIds.Distinct().Count()));
             var view = await views.ForAsync(current, ct).ConfigureAwait(false);
-            return await RunAsync(pluginId, await view.GetAsync(deviceIds, ct).ConfigureAwait(false), payloadJson, TaskCaller.Of(current), ct).ConfigureAwait(false);
+            var viewed = await view.GetAsync(deviceIds, ct).ConfigureAwait(false);
+            return await RunViewedAsync(pluginId, viewed, payloadJson, TaskCaller.Of(current), watch, ct).ConfigureAwait(false);
         }
 
         var caller = current is null ? null : TaskCaller.Of(current);
-        return await RunCoreAsync(pluginId, deviceIds, payloadJson, current?.Owner ?? owner, caller, caller is null ? null : Views, ct).ConfigureAwait(false);
+        return await RunCoreAsync(pluginId, deviceIds, payloadJson, current?.Owner ?? owner, caller, caller is null ? null : Views, watch, ct).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Writes the audit entry of a run with its outcome (docs/spec/security.md "Task outcome"). Set by the server; without it
+    /// a run with a <see cref="TaskAudit"/> writes no entry.
+    /// </summary>
+    public TaskRunAudit? Audit { get; init; }
+
+    private Task<IReadOnlyList<Guid>> AuditedAsync(TaskAudit? audit, IReadOnlyList<Guid> deviceIds, Func<TaskBatchWatch?, Task<IReadOnlyList<Guid>>> run) =>
+        audit is null || Audit is null ? run(null) : Audit.RunAsync(audit, deviceIds, watch => run(watch));
 
     /// <summary>
     /// Runs on devices of the caller's view (gRPC Run, <c>call.Tasks</c>): one task per device as above, owned by
     /// <paramref name="caller"/>. Each task checks the caller's current view again when it leaves the queue: a device that
     /// left it (or a user who lost it) fails with <see cref="DeviceMessages.NoLongerAvailable"/>, nothing is sent to it.
     /// </summary>
-    public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, DeviceGroups.ViewedDevices devices, string? payloadJson, TaskCaller caller, CancellationToken ct)
+    /// <param name="audit">The audit entry of the run with its outcome (gRPC Run); null: none.</param>
+    public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, DeviceGroups.ViewedDevices devices, string? payloadJson, TaskCaller caller, CancellationToken ct, TaskAudit? audit = null)
+    {
+        ArgumentNullException.ThrowIfNull(devices);
+        return AuditedAsync(audit, devices.Ids, watch => RunViewedAsync(pluginId, devices, payloadJson, caller, watch, ct));
+    }
+
+    private Task<IReadOnlyList<Guid>> RunViewedAsync(string pluginId, DeviceGroups.ViewedDevices devices, string? payloadJson, TaskCaller caller, TaskBatchWatch? watch, CancellationToken ct)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pluginId);
         ArgumentNullException.ThrowIfNull(devices);
@@ -127,7 +155,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             throw new DeviceAccessRefusedException(DeviceAccessRefusedException.PluginNeedsAllDevices);
         }
 
-        return RunCoreAsync(pluginId, devices.Ids, payloadJson, caller.Owner, caller, devices.View.Factory, ct);
+        return RunCoreAsync(pluginId, devices.Ids, payloadJson, caller.Owner, caller, devices.View.Factory, watch, ct);
     }
 
     /// <summary>
@@ -207,7 +235,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         }
     }
 
-    private async Task<IReadOnlyList<Guid>> RunCoreAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskCaller? caller, DeviceGroups.DeviceViewFactory? views, CancellationToken ct)
+    private async Task<IReadOnlyList<Guid>> RunCoreAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskCaller? caller, DeviceGroups.DeviceViewFactory? views, TaskBatchWatch? watch, CancellationToken ct)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         Interlocked.Increment(ref _starting);
@@ -219,7 +247,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
                 throw new TasksHeldException(held);
             }
 
-            return await RunUnheldAsync(pluginId, deviceIds, payloadJson, owner, caller, views, ct).ConfigureAwait(false);
+            return await RunUnheldAsync(pluginId, deviceIds, payloadJson, owner, caller, views, watch, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -227,7 +255,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         }
     }
 
-    private async Task<IReadOnlyList<Guid>> RunUnheldAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskCaller? caller, DeviceGroups.DeviceViewFactory? views, CancellationToken ct)
+    private async Task<IReadOnlyList<Guid>> RunUnheldAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskCaller? caller, DeviceGroups.DeviceViewFactory? views, TaskBatchWatch? watch, CancellationToken ct)
     {
 
         var distinct = deviceIds.Distinct().ToArray();
@@ -243,7 +271,8 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 
         var batchId = Guid.NewGuid();
         var name = TaskNameFor(registration, payloadJson);
-        var start = new TaskStart(registration, batchId, payloadJson, owner, name, caller, caller is null ? null : views);
+        var start = new TaskStart(registration, batchId, payloadJson, owner, name, caller, caller is null ? null : views, watch);
+        watch?.Expect(distinct.Length); // before any task of the run can end
         if (distinct.Length == 1)
         {
             return [await StartTaskAsync(start, distinct[0], ct).ConfigureAwait(false)];
@@ -253,7 +282,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
     }
 
     /// <summary>What every task of one Run shares.</summary>
-    private sealed record TaskStart(RegisteredTaskPlugin Registration, Guid BatchId, string? PayloadJson, string Owner, string Name, TaskCaller? Caller, DeviceGroups.DeviceViewFactory? Views);
+    private sealed record TaskStart(RegisteredTaskPlugin Registration, Guid BatchId, string? PayloadJson, string Owner, string Name, TaskCaller? Caller, DeviceGroups.DeviceViewFactory? Views, TaskBatchWatch? Watch);
 
     private RunningTask NewTask(TaskStart start, Guid deviceId, DateTimeOffset created) =>
         new(
@@ -270,6 +299,7 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
         {
             Caller = start.Caller,
             Views = start.Views,
+            Watch = start.Watch,
         };
 
     /// <summary>
@@ -1016,7 +1046,23 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
             LogTaskFinished(task.Id, final.PluginId, final.State);
             _active.TryRemove(task.Id, out _);
             task.Completion.TrySetResult();
+            EndOfRun(task, final);
             task.Dispose();
+        }
+    }
+
+    /// <summary>Tells the run's watch (the audit outcome, O(1) per task) that this task has ended; never fails the engine.</summary>
+    private void EndOfRun(RunningTask task, TaskRecord final)
+    {
+        try
+        {
+            task.Watch?.Ended(final);
+        }
+#pragma warning disable CA1031 // The engine must never crash the host.
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            LogEngineFault(ex, task.Id);
         }
     }
 

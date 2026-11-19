@@ -168,8 +168,47 @@ public sealed partial class AuditLog(IDbContextFactory<OadmDbContext> dbFactory,
     }
 
     /// <summary>
+    /// Writes several entries of one user, action and target in one transaction (one per task of a run,
+    /// <c>TaskAudit.EachTask</c>) and returns their ids in order, or null when they could not be written.
+    /// </summary>
+    public async Task<IReadOnlyList<long>?> AddManyAsync(string userName, string clientAddress, string action, string target, IReadOnlyList<string> details, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(details);
+        try
+        {
+            var now = time.GetUtcNow().UtcDateTime;
+            var entries = details.Select(detail => new AuditEntryEntity
+            {
+                TimeUtc = now,
+                UserName = Cut(userName),
+                ClientAddress = Cut(clientAddress),
+                Action = Cut(action),
+                Target = Cut(target),
+                Detail = Cut(detail),
+            }).ToList();
+            await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            db.AuditEntries.AddRange(entries);
+            await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            if (entries.Count > 0)
+            {
+                LogWritten(entries[0].UserName, entries[0].Action, entries[0].Target);
+            }
+
+            return [.. entries.Select(e => e.Id)];
+        }
+#pragma warning disable CA1031 // The audit log must never fail the action it records.
+        catch (Exception ex) when (ex is not OperationCanceledException)
+#pragma warning restore CA1031
+        {
+            LogWriteFailed(ex, action);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// A new detail for an entry that stands for several events of one kind (the failed logins with unknown user names of
-    /// one address: one entry a minute with their count). Failures are logged, never thrown.
+    /// one address: one entry a minute with their count), or that gets its outcome later (a task run). Failures are logged,
+    /// never thrown.
     /// </summary>
     public async Task SetDetailAsync(long id, string detail, CancellationToken ct = default)
     {

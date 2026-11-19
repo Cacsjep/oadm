@@ -208,6 +208,9 @@ public sealed record FakeTaskRun(string PluginId, IReadOnlyList<Guid> DeviceIds,
 {
     /// <summary>The ids of the run's tasks, one per device in device order.</summary>
     public IReadOnlyList<Guid> TaskIds { get; init; } = [];
+
+    /// <summary>The audit entry the run asked for (SDK 0.15.0); null for a run without one.</summary>
+    public TaskAudit? Audit { get; init; }
 }
 
 /// <summary>An event a plugin published through <see cref="FakeCoreContext"/>, with its audience (the old publish: all devices).</summary>
@@ -427,6 +430,14 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
         return Run(pluginId, deviceIds, payloadJson, owner);
     }
 
+    /// <inheritdoc />
+    /// <remarks>Recorded with its <see cref="FakeTaskRun.Audit"/>; the fake writes no audit log.</remarks>
+    public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskAudit audit, CancellationToken ct)
+    {
+        Check("Tasks");
+        return Run(pluginId, deviceIds, payloadJson, owner, audit: audit);
+    }
+
     /// <summary>Cancels a task the plugin started: true when it was still active. It ends at once (the host's ends when its run stops).</summary>
     bool ITaskRunner.Cancel(Guid taskId)
     {
@@ -550,7 +561,7 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     }
 
     /// <summary>Records a task run without the call checks; <paramref name="startedBy"/> is the user of a call, null for the context.</summary>
-    internal Task<IReadOnlyList<Guid>> Run(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, string? startedBy = null)
+    internal Task<IReadOnlyList<Guid>> Run(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, string? startedBy = null, TaskAudit? audit = null)
     {
         ArgumentNullException.ThrowIfNull(deviceIds);
         IReadOnlyList<Guid> ids = [.. deviceIds.Select(_ => Guid.NewGuid())];
@@ -561,7 +572,7 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
 
         lock (TaskRuns)
         {
-            TaskRuns.Add(new FakeTaskRun(pluginId, deviceIds, payloadJson, owner) { TaskIds = ids });
+            TaskRuns.Add(new FakeTaskRun(pluginId, deviceIds, payloadJson, owner) { TaskIds = ids, Audit = audit });
         }
 
         return Task.FromResult(ids);
@@ -652,6 +663,12 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
         {
             core.Check("System.Tasks", system: true);
             return core.Run(pluginId, deviceIds, payloadJson, owner);
+        }
+
+        public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskAudit audit, CancellationToken ct)
+        {
+            core.Check("System.Tasks", system: true);
+            return core.Run(pluginId, deviceIds, payloadJson, owner, audit: audit);
         }
 
         public bool Cancel(Guid taskId)

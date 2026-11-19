@@ -10,6 +10,15 @@ public interface ITaskRunner
     Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct);
 
     /// <summary>
+    /// SDK 0.15.0: runs like <see cref="RunAsync(string, IReadOnlyList{Guid}, string?, string, CancellationToken)"/> and writes
+    /// the audit entry "Started task" for the run (<paramref name="audit"/>): the device count while it runs, the outcome once
+    /// every task of the run has ended (how many done, done with warnings, failed, cancelled, the first failures). Default
+    /// (older hosts): the run without an entry.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskAudit audit, CancellationToken ct) =>
+        RunAsync(pluginId, deviceIds, payloadJson, owner, ct);
+
+    /// <summary>
     /// Requests cancellation of a task (queued: ends Cancelled before start; running: its token is cancelled).
     /// Returns false when the task is not active or the host cannot cancel.
     /// </summary>
@@ -53,6 +62,20 @@ public interface ITaskRunner
     /// for the tasks of devices in the user's view, null for the others. Default (older hosts): null.
     /// </summary>
     Task<TaskOutcome?> GetOutcomeAsync(Guid taskId, CancellationToken ct) => Task.FromResult<TaskOutcome?>(null);
+}
+
+/// <summary>
+/// The audit entry of a run (<see cref="ITaskRunner.RunAsync(string, IReadOnlyList{Guid}, string?, string, TaskAudit, CancellationToken)"/>,
+/// SDK 0.15.0).
+/// </summary>
+/// <param name="Target">What the entry names as its target ("Provision with Lobby").</param>
+public sealed record TaskAudit(string Target)
+{
+    /// <summary>Who the entry names ("Provisioning (admin)"); null: the user of the current call, "system" outside one.</summary>
+    public string? UserName { get; init; }
+
+    /// <summary>One entry per task with its device ("10.0.0.12 (ACCC8E012345)") instead of one entry for the run.</summary>
+    public bool EachTask { get; init; }
 }
 
 /// <summary>How a task ended (<see cref="ITaskRunner.GetOutcomeAsync"/>, SDK 0.7.0).</summary>

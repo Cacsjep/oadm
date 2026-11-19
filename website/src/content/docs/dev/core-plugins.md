@@ -276,6 +276,13 @@ public IReadOnlyList<ITaskPlugin> TaskPlugins { get; }   // e.g. [new RolloutTas
 var ids = await caller.Tasks.RunAsync(RolloutTask.PluginId, deviceIds, payloadJson, caller.UserName, ct);
 ```
 
+- **Audit.** Pass a `TaskAudit` (SDK 0.15.0) to write one audit entry "Started task" for the run. OADM adds how it
+  ended once the last task has ended ("3 devices: 2 done, 1 failed (...)"):
+
+```csharp
+var ids = await caller.Tasks.RunAsync(RolloutTask.PluginId, deviceIds, payloadJson, caller.UserName, new TaskAudit("Rollout"), ct);
+```
+
 - **Page tasks.** Give such a task no public constructor, so the loader never registers it on its own. A task that is
   hidden from the menus and declares no `Permissions` of its own is a page task: only `caller.Tasks.RunAsync` of a page
   method of its own package (or that method's job) starts it, and the method's `RequiredPermission` is the role check.

@@ -69,6 +69,9 @@ internal sealed class RunningTask : IDisposable
     /// <summary>Reads the <see cref="Caller"/>'s current view when the task leaves the queue; null without a caller.</summary>
     public DeviceGroups.DeviceViewFactory? Views { get; init; }
 
+    /// <summary>Counts how the tasks of the task's run end (the audit outcome); null when nobody asked.</summary>
+    public TaskBatchWatch? Watch { get; init; }
+
     public DateTimeOffset Created { get; }
 
     public IReadOnlyList<Guid> DeviceIds => _deviceOrder;

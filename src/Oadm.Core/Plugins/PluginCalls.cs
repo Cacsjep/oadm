@@ -161,7 +161,13 @@ internal sealed class HostCallContext : ICallContext
     /// <summary>The call's runner over another <see cref="ITaskRunner"/> than the engine (tests, tools).</summary>
     private sealed class ViewTasks(HostCallContext call, ITaskRunner inner, CallTaskOwners owners, PluginRegistry? registry, string? packageId) : ITaskRunner
     {
-        public async Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct)
+        public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, CancellationToken ct) =>
+            RunCheckedAsync(pluginId, deviceIds, payloadJson, null, ct);
+
+        public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskAudit audit, CancellationToken ct) =>
+            RunCheckedAsync(pluginId, deviceIds, payloadJson, audit, ct);
+
+        private async Task<IReadOnlyList<Guid>> RunCheckedAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, TaskAudit? audit, CancellationToken ct)
         {
             ArgumentNullException.ThrowIfNull(deviceIds);
 
@@ -176,7 +182,9 @@ internal sealed class HostCallContext : ICallContext
             // The whole run is refused when any device is outside the view (nothing starts in part). The owner is the caller,
             // never what the plugin says.
             _ = await call.Caller.View.GetAsync(deviceIds, ct).ConfigureAwait(false);
-            var ids = await inner.RunAsync(pluginId, deviceIds, payloadJson, call.Caller.Caller.Owner, ct).ConfigureAwait(false);
+            var ids = audit is null
+                ? await inner.RunAsync(pluginId, deviceIds, payloadJson, call.Caller.Caller.Owner, ct).ConfigureAwait(false)
+                : await inner.RunAsync(pluginId, deviceIds, payloadJson, call.Caller.Caller.Owner, audit, ct).ConfigureAwait(false);
             owners.Add(ids, call.UserId);
             return ids;
         }
@@ -511,6 +519,12 @@ internal sealed partial class PluginCallGuard(string pluginId, ILogger logger)
         {
             guard.Check(Member, system);
             return inner.RunAsync(pluginId, deviceIds, payloadJson, owner, ct);
+        }
+
+        public Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskAudit audit, CancellationToken ct)
+        {
+            guard.Check(Member, system);
+            return inner.RunAsync(pluginId, deviceIds, payloadJson, owner, audit, ct);
         }
 
         public bool Cancel(Guid taskId)

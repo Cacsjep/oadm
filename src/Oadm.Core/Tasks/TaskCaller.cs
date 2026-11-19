@@ -137,6 +137,14 @@ internal sealed class ViewTaskRunner(TaskEngine engine, DeviceView view, TaskCal
         return await engine.RunAsync(pluginId, devices, payloadJson, caller, ct).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<Guid>> RunAsync(string pluginId, IReadOnlyList<Guid> deviceIds, string? payloadJson, string owner, TaskAudit audit, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(deviceIds);
+        TaskRunPermissions.Require(engine.Plugins, pluginId, payloadJson, caller.Permissions, refuseUnknown: true, pagePackageId);
+        var devices = await view.GetAsync(deviceIds, ct).ConfigureAwait(false);
+        return await engine.RunAsync(pluginId, devices, payloadJson, caller, ct, audit).ConfigureAwait(false);
+    }
+
     public bool Cancel(Guid taskId) => view.HasAllDevices ? engine.Cancel(taskId) : engine.CancelOwn(taskId, caller.UserId);
 
     public bool? IsActive(Guid taskId) => view.HasAllDevices ? engine.IsActive(taskId) : engine.IsActiveOwn(taskId, caller.UserId);

@@ -11,6 +11,8 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
   (`AcapPayload.ParseShared`), Import configuration (`ImportPayload.ParseShared`), Delete and Install certificates
   (`PkiJson.DeserializeShared`, `InstallPayload.FilesFor`), the Action Rule Editor (`RuleTaskPlugin.ParsedRun`). The
   parsed payload is shared between the tasks and never changed.
+- **The audit log says how a run ended**: one entry "Started task" per run, its detail the outcome once the last task of
+  the run has ended ([security.md](security.md) "Task outcome"; the engine's `TaskBatchWatch`, O(1) per task end).
 - States: Queued, Running, Done, Failed, Cancelled, DoneWithWarnings (the plugin called
   `ReportWarning`; a failure wins over a warning). Persisted, visible in the tasks pane, history
   kept until the user deletes it or the retention removes it (finished tasks older than

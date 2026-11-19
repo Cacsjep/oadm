@@ -453,6 +453,12 @@ public static partial class OadmServerHost
             {
                 // A queued task checks its owner's current view when it leaves the queue.
                 Views = sp.GetRequiredService<Core.DeviceGroups.DeviceViewFactory>(),
+
+                // The audit entry of a run gets the run's outcome when its last task ends (docs/spec/security.md).
+                Audit = new TaskRunAudit(
+                    sp.GetRequiredService<Core.Auth.AuditLog>(),
+                    sp.GetRequiredService<Sdk.Devices.IDeviceRepository>(),
+                    sp.GetRequiredService<ILogger<TaskRunAudit>>()),
             };
             // A raised limit starts queued tasks at once; a lowered one lets running tasks finish.
             sp.GetRequiredService<TaskParallelismSetting>().Changed += (_, _) => engine.RescheduleQueued();

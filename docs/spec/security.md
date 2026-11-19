@@ -198,13 +198,28 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
 - **Audit log**: table `AuditEntries` (TimeUtc, UserName, ClientAddress, Action, Target, Detail), 365 days or 200,000
   entries. Logged: login ok / failed, logout, user changes, roles ("Created role", "Changed role" with "+Web View: Open
   devices, -Restart", "Deleted role"), settings changes, credential list add / remove / reveal, PKI
-  actions, DHCP / NTP save, task runs (plugin, device count), Delete all, device remove, device login and first password
+  actions, DHCP / NTP save, task runs (plugin, device count, then the outcome: "Task outcome" below), Delete all, device remove, device login and first password
   (counts), devices added or moved automatically (user "system"), the waiting list (kept, removed), tags ("Tagged 12 devices: +Building A -PTZ"), plugins
   on / off, event rules, VAPIX Commander send / rollout, Web View ("Opened web interface", the device), zoom and focus ("Changed zoom or
   focus", "Zoom 1.50"), RTSP port ("Changed RTSP port in OADM"), server updates ("Started server update" with the
   version it came from, then "Updated server" or "Server update failed" with from, to and the reason, written once by the
   server that completes the record). The Logs page has an **Audit** tab (Admin only, newest 10,000,
-  virtualized, search).
+  virtualized, search; `wrapRows`: a long detail and user name wrap, a detail longer than 200 characters has itself as
+  tooltip; a changed detail shows on Refresh).
+- **Task outcome** (decision 2026-11-19): every audited task run says whether it worked. One entry "Started task" per run
+  (target the plugin's name, detail "3 devices" while it runs), never one per device or step; when the last task of the
+  run has ended its detail becomes the outcome, written once: "3 devices: 2 done, 1 done with warnings, 1 failed, 1
+  cancelled (10.0.0.12, ACCC8E012345: The password is wrong)" (one device: "1 device: failed (...)"). The first 3 failed
+  tasks are named (address, serial, the task's message cut to 120 characters, `AuditLog.Clean`), then "and N more".
+  Covers `TaskService.Run`, so also the MCP task tools and the Assistant. The hook: `TaskRunAudit` hands a
+  `TaskBatchWatch` to the engine with the run; the engine passes each task's final snapshot to it when the task ends
+  (`TaskEngine.EndOfRun`, O(1): counts and the first 3 failures, nothing kept per task, no read of the task history), and
+  the watch completes when every task of the run has ended. A plugin asks for the same entry with
+  `ITaskRunner.RunAsync(..., TaskAudit, ct)` (SDK 0.15.0; `TaskAudit.UserName` names someone other than the caller, without
+  a client address; `EachTask`: one entry per task with "10.0.0.12 (ACCC8E012345)", then "...: done", "...: done with
+  warnings: <message>", "...: failed at <step>: <message>", "...: cancelled"). The outcome lives in memory until it is
+  written: a run the server stops keeps the detail it had ("3 devices"), the tasks themselves fail as the engine records
+  them (tests `TaskRunAuditTests`).
 
 ## Client: login and users
 

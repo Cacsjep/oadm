@@ -411,12 +411,9 @@ public sealed partial class TaskGrpcService(
 
         try
         {
-            var taskIds = await engine.RunAsync(request.PluginId, devices, payload, TaskCaller.Of(caller), context.CancellationToken).ConfigureAwait(false);
-            await audit.WriteAsync(
-                AuditActions.TaskRun,
-                registry.TryGetTaskPlugin(request.PluginId, out var plugin) ? plugin.DisplayName : request.PluginId,
-                taskIds.Count == 1 ? "1 device" : $"{taskIds.Count} devices",
-                context.CancellationToken).ConfigureAwait(false);
+            // One audit entry "Started task" for the run ("3 devices"), its outcome once every task of the run has ended.
+            var taskAudit = new Sdk.Tasks.TaskAudit(task.DisplayName);
+            var taskIds = await engine.RunAsync(request.PluginId, devices, payload, TaskCaller.Of(caller), context.CancellationToken, taskAudit).ConfigureAwait(false);
             var reply = new Proto.RunTaskReply();
             reply.TaskIds.AddRange(taskIds.Select(t => t.ToString()));
             if (taskIds.Count > 0 && await engine.GetAsync(taskIds[0], context.CancellationToken).ConfigureAwait(false) is { } started)
