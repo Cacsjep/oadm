@@ -33,7 +33,6 @@ public sealed class PageViewModelTests
         Assert.EndsWith(" by anna", vm.StateText, StringComparison.Ordinal);
         Assert.Equal("Lobby cameras", vm.ActiveProfile?.Name);
         Assert.Equal(8, vm.Rows.Count);
-        Assert.Equal("8 cameras: 1 done, 1 with warnings, 2 running, 1 waiting, 1 queued, 1 failed, 1 not new", vm.SummaryText);
         Assert.False(vm.ShowEmpty);
         Assert.False(vm.IsLoading);
 

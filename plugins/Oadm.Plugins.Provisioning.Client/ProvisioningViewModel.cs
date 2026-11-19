@@ -127,9 +127,6 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
     [ObservableProperty]
     public partial string SearchText { get; set; } = string.Empty;
 
-    [ObservableProperty]
-    public partial string SummaryText { get; private set; } = string.Empty;
-
     /// <summary>The camera whose flow the canvas shows (the row clicked last).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasFlow), nameof(FlowTitle), nameof(FlowSubtitle))]
@@ -487,7 +484,6 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
             : string.Empty;
         DhcpRangeText = dhcp?.RangeStart is { Length: > 0 } start ? "Range " + start + " to " + dhcp.RangeEnd : string.Empty;
         WarningText = status.Warnings.Count == 0 ? null : string.Join(Environment.NewLine, status.Warnings);
-        SummaryText = ProvisioningTexts.Summary(status.Counts);
         UpdateFlow();
         Notify();
     }
@@ -511,7 +507,6 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
         }
 
         _selected = [.. _selected.Select(s => _byMac.GetValueOrDefault(s.Mac)).OfType<CameraRowViewModel>()];
-        SummaryText = ProvisioningTexts.Summary(counts);
         ApplyFilter();
     }
 
@@ -545,7 +540,6 @@ public sealed partial class ProvisioningViewModel : ObservableObject, IDisposabl
             Rows.AddRange(search.Length == 0 ? added : added.Where(r => r.SearchKey.Contains(search, StringComparison.Ordinal)));
         }
 
-        SummaryText = ProvisioningTexts.Summary(e.Counts);
         if (FlowCamera is not null)
         {
             UpdateFlow();

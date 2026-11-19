@@ -102,35 +102,6 @@ public static class ProvisioningTexts
     public static string Started(DateTimeOffset at, string? by) =>
         "Started " + at.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) + (string.IsNullOrEmpty(by) ? string.Empty : " by " + by);
 
-    /// <summary>"12 cameras: 8 done, 2 running, 1 failed".</summary>
-    public static string Summary(CameraCounts counts)
-    {
-        ArgumentNullException.ThrowIfNull(counts);
-        if (counts.Total == 0)
-        {
-            return string.Empty;
-        }
-
-        var parts = new List<string>();
-        Add(counts.Done, "done");
-        Add(counts.DoneWithWarnings, "with warnings");
-        Add(counts.Running, "running");
-        Add(counts.Waiting, "waiting");
-        Add(counts.Queued, "queued");
-        Add(counts.Failed, "failed");
-        Add(counts.NotNew, "not new");
-        var total = counts.Total == 1 ? "1 camera" : counts.Total.ToString("N0", CultureInfo.CurrentCulture) + " cameras";
-        return parts.Count == 0 ? total : total + ": " + string.Join(", ", parts);
-
-        void Add(int count, string what)
-        {
-            if (count > 0)
-            {
-                parts.Add(count.ToString("N0", CultureInfo.CurrentCulture) + " " + what);
-            }
-        }
-    }
-
     // ---- A camera's flow ----
     public const string NotRun = "Not run";
     public const string WaitsForContinue = "Waits for Continue";

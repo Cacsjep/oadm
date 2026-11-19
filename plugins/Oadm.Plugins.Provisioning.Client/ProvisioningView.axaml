@@ -56,7 +56,7 @@
             <ui:StatusChip x:Name="StateChip" Grid.Column="4" VerticalAlignment="Center" Text="{Binding StateText}" IsOk="{Binding IsStarted}" />
           </Grid>
 
-          <!-- The cameras: the actions on the selected rows left, the counts, the search right. -->
+          <!-- The cameras: the actions on the selected rows left, the search right. -->
           <Grid Grid.Row="1" Classes="titleRow" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="12" Margin="{DynamicResource Oadm.GapTop}">
             <TextBlock Grid.Column="0" Classes="sectionTitle" Text="{x:Static vm:ProvisioningTexts.Cameras}" VerticalAlignment="Center" />
             <ui:ToolbarOverflowPanel Grid.Column="1" Spacing="4" IsVisible="{Binding MayManage}">
@@ -68,7 +68,6 @@
               <ui:ToolbarButton Classes="danger" IconKey="remove" Text="{x:Static vm:ProvisioningTexts.Remove}" Command="{Binding RemoveCommand}"
                                 ToolTip.Tip="{x:Static vm:ProvisioningTexts.RemoveTip}" />
             </ui:ToolbarOverflowPanel>
-            <TextBlock Grid.Column="2" Classes="secondary" Text="{Binding SummaryText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             <ui:SearchBox Grid.Column="3" Width="240" Text="{Binding SearchText}" Placeholder="{x:Static vm:ProvisioningTexts.SearchCameras}" />
           </Grid>
 
