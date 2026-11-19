@@ -45,9 +45,14 @@ pane (stage 2). The Add devices page's Ready for provisioning is the host's (it 
 - **Runs** (records `runs`, key the device id; records `snapshots`, key the SHA-256 of the profile's JSON): the last
   run of each device with each node's result, written after every step. **Run again** (`runAgain`) starts, per camera
   whose task is not active and whose last run has a red node or one that never ran, a task with the same profile that
-  runs only those nodes in order and skips the check; a camera that failed the check runs everything again. Runs of
+  runs only those nodes in order and skips the check; a camera that failed the check runs everything again. All cameras of
+  one profile are one run (each camera's nodes in `RunPayload.Plans`), so the audit log has one entry for the Run again.
+  Runs of
   removed devices and snapshots no run names go when the plugin starts (in the background, under the snapshot lock that a
   start also holds from its snapshot to its runs, so the prune never drops the snapshot of a task that starts meanwhile).
+- **Audit**: the automatic starts ask for one entry per task (`TaskAudit` with `EachTask`, user `AuditUserOf(OnBy)`:
+  "Provisioning (admin)", target `ProvisioningTaskPlugin.TaskNameOf`); Run again asks for one entry of the caller. The
+  host adds the outcome when the tasks end (docs/spec/provisioning.md rule 2).
 - **Restart**: the task engine fails the running and queued tasks (their payload is gone); Run again repeats them.
 
 ## Nodes

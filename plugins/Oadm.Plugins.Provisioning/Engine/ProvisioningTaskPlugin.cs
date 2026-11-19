@@ -18,7 +18,10 @@ public sealed class ProvisioningTaskPlugin(Func<ProvisioningService?> service, i
 
     public string Id => ProvisioningInfo.TaskPluginId;
 
-    public string DisplayName => "Provision";
+    /// <summary>The plugin's name, also the task name of a profile without a name.</summary>
+    public const string DefaultName = "Provision";
+
+    public string DisplayName => DefaultName;
 
     public string? IconKey => ProvisioningInfo.IconKey;
 
@@ -35,9 +38,14 @@ public sealed class ProvisioningTaskPlugin(Func<ProvisioningService?> service, i
 
     /// <summary>"Provision with Lobby".</summary>
     public string GetTaskName(string? payloadJson) =>
-        PluginJson.TryParse<RunPayload>(payloadJson, ProvisioningJson.Options)?.Profile.Name?.Trim() is { Length: > 0 } name
-            ? "Provision with " + name
-            : DisplayName;
+        PluginJson.TryParse<RunPayload>(payloadJson, ProvisioningJson.Options)?.Profile is { } profile ? TaskNameOf(profile) : DisplayName;
+
+    /// <summary>"Provision with Lobby": the task name and the target of its audit entry.</summary>
+    public static string TaskNameOf(Profile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        return profile.Name?.Trim() is { Length: > 0 } name ? "Provision with " + name : DefaultName;
+    }
 
     public Task ExecuteAsync(ITaskExecutionContext ctx, IDeviceInfo device, string? payloadJson, CancellationToken ct) =>
         (service() ?? throw new InvalidOperationException(NotRunning)).ExecuteAsync(ctx, device, payloadJson, ct);

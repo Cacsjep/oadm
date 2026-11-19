@@ -66,6 +66,26 @@ public sealed record RunPayload
 
     /// <summary>Check first that the camera has no password yet (false for Run again after the check passed).</summary>
     public bool Look { get; init; } = true;
+
+    /// <summary>
+    /// Run again: the nodes and the check of each camera by device id (one run, one audit entry, for every camera of the same
+    /// profile); null: <see cref="Nodes"/> and <see cref="Look"/> for every camera.
+    /// </summary>
+    public IReadOnlyDictionary<Guid, DevicePlan>? Plans { get; init; }
+
+    /// <summary>The payload of one camera: its own plan when it has one.</summary>
+    public RunPayload For(Guid deviceId) =>
+        Plans is not null && Plans.TryGetValue(deviceId, out var plan) ? this with { Nodes = plan.Nodes, Look = plan.Look, Plans = null } : this;
+}
+
+/// <summary>What Run again runs on one camera (<see cref="RunPayload.Plans"/>).</summary>
+public sealed record DevicePlan
+{
+    /// <summary>The nodes to run; null: all, in order.</summary>
+    public IReadOnlyList<int>? Nodes { get; init; }
+
+    /// <summary>Check first that the camera has no password yet.</summary>
+    public bool Look { get; init; } = true;
 }
 
 /// <summary>

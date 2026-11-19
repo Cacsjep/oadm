@@ -368,8 +368,10 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
             return 0;
         }
 
+        // One audit entry per task, in the name of the administrator who turned provisioning on.
         var payload = JsonSerializer.Serialize(new RunPayload { Profile = profile }, ProvisioningJson.Options);
-        return await StartAsync([(Payload: payload, Profile: profile, Ids: Take(deviceIds), Looked: false)], ct).ConfigureAwait(false);
+        var audit = new TaskAudit(ProvisioningTaskPlugin.TaskNameOf(profile)) { UserName = AuditUserOf(State.OnBy), EachTask = true };
+        return await StartAsync([(Payload: payload, Profile: profile, Ids: Take(deviceIds), Kept: null, Audit: audit)], ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -400,10 +402,12 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
     /// profile that runs only the red nodes and those that never ran, in order (a camera that failed the first check is
     /// checked and run again whole). Works while provisioning is off too: a person asks for it.
     /// </summary>
+    /// One run per profile (normally one) with each camera's plan in its payload, so the user's audit entry "Started task" stands
+    /// for the whole Run again and gets its outcome when the last of its tasks has ended.
     public async Task<RunAgainReply> RunAgainAsync(IReadOnlyCollection<Guid> deviceIds, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(deviceIds);
-        var groups = new Dictionary<string, (Profile Profile, List<Guid> Ids, bool Looked)>(StringComparer.Ordinal);
+        var groups = new Dictionary<string, (Profile Profile, List<Guid> Ids, Dictionary<Guid, DevicePlan> Plans, HashSet<Guid> Kept)>(StringComparer.Ordinal);
         var skipped = 0;
         foreach (var id in deviceIds.Distinct())
         {
@@ -414,16 +418,26 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
                 continue;
             }
 
-            var payload = JsonSerializer.Serialize(new RunPayload { Profile = again.Profile, Nodes = again.Nodes, Look = !again.Looked }, ProvisioningJson.Options);
-            if (!groups.TryGetValue(payload, out var group))
+            var key = JsonSerializer.Serialize(again.Profile, ProvisioningJson.Options);
+            if (!groups.TryGetValue(key, out var group))
             {
-                groups[payload] = group = (again.Profile, [], again.Looked);
+                groups[key] = group = (again.Profile, [], [], []);
             }
 
             group.Ids.Add(id);
+            group.Plans[id] = new DevicePlan { Nodes = again.Nodes, Look = !again.Looked };
+            if (again.Looked)
+            {
+                group.Kept.Add(id); // its stored run stays: only the failed nodes run again
+            }
         }
 
-        var batches = groups.Select(g => (Payload: g.Key, g.Value.Profile, Ids: Take(g.Value.Ids), g.Value.Looked)).ToList();
+        var batches = groups.Values.Select(g => (
+            Payload: JsonSerializer.Serialize(new RunPayload { Profile = g.Profile, Plans = g.Plans }, ProvisioningJson.Options),
+            g.Profile,
+            Ids: Take(g.Ids),
+            Kept: (IReadOnlySet<Guid>?)g.Kept,
+            Audit: new TaskAudit(ProvisioningTaskPlugin.TaskNameOf(g.Profile)))).ToList();
         var requested = groups.Values.Sum(g => g.Ids.Count);
         var started = await StartAsync(batches, ct).ConfigureAwait(false);
         return new RunAgainReply(started, skipped + requested - started);
@@ -472,10 +486,12 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
     }
 
     /// <summary>Stores the run of each device, then starts one task per device for each batch.</summary>
-    private async Task<int> StartAsync(IReadOnlyList<(string Payload, Profile Profile, List<Guid> Ids, bool Looked)> batches, CancellationToken ct)
+    /// <c>Kept</c>: the devices whose stored run stays (Run again after the check passed); every other device gets a new run.
+    /// <c>Audit</c>: the run's audit entry (the host adds the outcome).
+    private async Task<int> StartAsync(IReadOnlyList<(string Payload, Profile Profile, List<Guid> Ids, IReadOnlySet<Guid>? Kept, TaskAudit Audit)> batches, CancellationToken ct)
     {
         var started = 0;
-        foreach (var (payload, profile, ids, looked) in batches)
+        foreach (var (payload, profile, ids, kept, audit) in batches)
         {
             if (ids.Count == 0)
             {
@@ -489,12 +505,13 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
                 try
                 {
                     var snapshot = await SnapshotAsync(profile, ct).ConfigureAwait(false);
-                    if (!looked)
+                    var renewed = kept is null ? ids : [.. ids.Where(id => !kept.Contains(id))];
+                    if (renewed.Count > 0)
                     {
                         var now = Time.GetUtcNow();
                         var fresh = new RunRecord { Snapshot = snapshot, ProfileName = profile.Name, Results = new NodeResult?[profile.Nodes.Count], Started = now };
                         var json = JsonSerializer.Serialize(fresh, ProvisioningJson.Options);
-                        await WriteRunsAsync([.. ids.Select(id => new KeyValuePair<string, string?>(Key(id), json))], ct).ConfigureAwait(false);
+                        await WriteRunsAsync([.. renewed.Select(id => new KeyValuePair<string, string?>(Key(id), json))], ct).ConfigureAwait(false);
                     }
                 }
                 finally
@@ -502,7 +519,7 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
                     _snapshots.Release();
                 }
 
-                var taskIds = await Tasks.RunAsync(ProvisioningInfo.TaskPluginId, ids, payload, Owner, ct).ConfigureAwait(false);
+                var taskIds = await Tasks.RunAsync(ProvisioningInfo.TaskPluginId, ids, payload, Owner, audit, ct).ConfigureAwait(false);
                 lock (_gate)
                 {
                     for (var i = 0; i < Math.Min(ids.Count, taskIds.Count); i++)
@@ -540,6 +557,9 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
     }
 
     private readonly HashSet<Guid> _ended = [];
+
+    /// <summary>The user the audit log names for the tasks provisioning starts by itself: "Provisioning (admin)".</summary>
+    public static string AuditUserOf(string? onBy) => string.IsNullOrWhiteSpace(onBy) ? OwnerName : OwnerName + " (" + onBy.Trim() + ")";
 
     private bool IsBusy(Guid deviceId)
     {
@@ -582,7 +602,7 @@ public sealed partial class ProvisioningService : INodeHost, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(ctx);
         ArgumentNullException.ThrowIfNull(device);
-        var run = PluginJson.TryParse<RunPayload>(payloadJson, ProvisioningJson.Options) ?? throw new InvalidOperationException("The task has no profile.");
+        var run = (PluginJson.TryParse<RunPayload>(payloadJson, ProvisioningJson.Options) ?? throw new InvalidOperationException("The task has no profile.")).For(device.Id);
         var profile = run.Profile;
         lock (_gate)
         {

@@ -24,7 +24,12 @@ changes nothing by itself: provisioning itself is **Off** until an Administrator
    default after it was added is new again). A camera that is still starting up is asked again until it says whether it
    needs setup (at most 2 minutes), never taken as configured. Any other camera is never changed.
 2. **Off by default, Administrator only.** Only an Administrator turns provisioning on or off and edits profiles
-   (provisioning writes to every new camera it finds, on every network OADM sees). On and off are audited.
+   (provisioning writes to every new camera it finds, on every network OADM sees). On and off are audited, and so is
+   every task: one entry "Started task" per provisioning task, user "Provisioning (<the administrator who turned it on>)",
+   target "Provision with <profile>", detail "10.0.0.12 (ACCC8E012345)", at its end "...: done", "...: done with
+   warnings: <message>", "...: failed at <step>: <message>" or "...: cancelled"; Run again is one entry of the user who
+   pressed it for all its cameras ("2 devices", then "2 devices: 1 done, 1 failed (...)"). The host writes them
+   (`TaskAudit`, SDK 0.15.0; [security.md](security.md) "Task outcome").
 3. **Set password first, and it stops.** Every profile starts with the fixed node Set password. If it fails, nothing
    after it runs for that camera. Every other node continues on error by default.
 4. **One task per camera.** The task "Provision with <profile>" has one named step per node; it follows the task rules

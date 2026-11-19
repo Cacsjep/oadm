@@ -55,6 +55,7 @@ public sealed class ServiceTests
         Assert.Equal("Lobby", PayloadOf(run).Profile.Name);
         Assert.True(PayloadOf(run).Look);
         Assert.Null(PayloadOf(run).Nodes);
+        Assert.Equal(new TaskAudit("Provision with Lobby") { UserName = "Provisioning (admin)", EachTask = true }, run.Audit); // one entry per task
 
         // Once the task ended, the camera can get a task again (reset to factory default later).
         await h.ExecuteAsync(run, device.Id);
@@ -336,8 +337,9 @@ public sealed class ServiceTests
         vienna = false;
         var reply = await h.Engine.RunAgainAsync([device.Id, Guid.NewGuid()], CancellationToken.None);
         Assert.Equal(new RunAgainReply(1, 1), reply);
-        var again = PayloadOf(h.ProvisionRuns[^1]);
+        var again = PayloadOf(h.ProvisionRuns[^1]).For(device.Id);
         Assert.False(again.Look);
+        Assert.Equal(new TaskAudit("Provision with Lobby"), h.ProvisionRuns[^1].Audit); // the entry of the user who pressed it
         var result = await h.ExecuteLastAsync();
 
         Assert.Null(result.Failure);
@@ -359,11 +361,39 @@ public sealed class ServiceTests
 
         cam.Starting = false;
         Assert.Equal(new RunAgainReply(1, 0), await h.Engine.RunAgainAsync([device.Id], CancellationToken.None));
-        var again = PayloadOf(h.ProvisionRuns[^1]);
+        var again = PayloadOf(h.ProvisionRuns[^1]).For(device.Id);
         Assert.True(again.Look);
         Assert.Null(again.Nodes);
         Assert.Null((await h.ExecuteLastAsync()).Failure);
         Assert.Equal(1, cam.PasswordWrites);
+    }
+
+    [Fact]
+    public async Task Run_again_of_cameras_that_failed_at_different_nodes_is_one_run_with_one_audit_entry()
+    {
+        await using var h = new Harness();
+        await h.StartAsync(h.Profile(
+            Harness.Node("vienna", NodeKind.DateTime, Harness.Time1),
+            Harness.Node("berlin", NodeKind.DateTime, Harness.Time1 with { TimeZone = "Europe/Berlin" })));
+        var (_, first) = h.NewCamera(1);
+        var (_, second) = h.NewCamera(2);
+        h.Decide = run => run.DeviceIds.Contains(first!.Id)
+            ? (run.PayloadJson!.Contains("Europe/Vienna", StringComparison.Ordinal) ? (TaskEndState.Failed, "No time API.") : null)
+            : (run.PayloadJson!.Contains("Europe/Berlin", StringComparison.Ordinal) ? (TaskEndState.Failed, "No time API.") : null);
+        await h.Engine.StartForAsync([first!.Id], CancellationToken.None);
+        await h.ExecuteLastAsync();
+        await h.Engine.StartForAsync([second!.Id], CancellationToken.None);
+        await h.ExecuteLastAsync();
+        var runs = h.ProvisionRuns.Count;
+
+        Assert.Equal(new RunAgainReply(2, 0), await h.Engine.RunAgainAsync([first.Id, second.Id], CancellationToken.None));
+
+        var again = Assert.Single(h.ProvisionRuns.Skip(runs));
+        Assert.Equal([first.Id, second.Id], again.DeviceIds);
+        Assert.Equal(new TaskAudit("Provision with Lobby"), again.Audit);
+        Assert.Equal([1], PayloadOf(again).For(first.Id).Nodes!);
+        Assert.Equal([2], PayloadOf(again).For(second.Id).Nodes!);
+        Assert.All(new[] { first.Id, second.Id }, id => Assert.False(PayloadOf(again).For(id).Look));
     }
 
     [Fact]
