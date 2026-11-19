@@ -39,7 +39,7 @@ public sealed class AutofocusNode : DeviceNode<AutofocusSettings>
         {
             var vapix = await run.Host.Vapix.CreateAsync(deviceId, linked.Token).ConfigureAwait(false);
             var apis = await vapix.GetApiListAsync(linked.Token).ConfigureAwait(false);
-            if (!apis.Any(a => string.Equals(a.Id, OpticsApi, StringComparison.Ordinal)))
+            if (!apis.Supports(OpticsApi, "1.0")) // a different major version is a different API
             {
                 return NodeResult.NotNeeded("no remote focus.");
             }

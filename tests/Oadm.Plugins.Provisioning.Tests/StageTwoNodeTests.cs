@@ -375,6 +375,10 @@ public sealed class StageTwoNodeTests
         Assert.Equal(NodeResult.NotNeeded("no remote focus."), await RunAsync(h, node, new AutofocusSettings(), camera));
         Assert.Empty(client.Requests); // no optics API: nothing is sent
 
+        client.Apis = [new DeviceApi("optics-control", "2.0")]; // another major version is another API
+        Assert.Equal(NodeResult.NotNeeded("no remote focus."), await RunAsync(h, node, new AutofocusSettings(), camera));
+        Assert.Empty(client.Requests);
+
         client.Apis = [new DeviceApi("optics-control", "1.3")];
         client.Handler = (_, _, _) => Task.FromResult(ScriptedVapix.Json("""{"apiVersion": "1.3", "method": "getCapabilities", "data": {"numberOfOptics": 1,"optics": [{"opticsId": "0", "capabilities": ["irCutFilter"]}]}}"""));
         Assert.Equal(NodeResult.NotNeeded("no remote focus."), await RunAsync(h, node, new AutofocusSettings(), camera));

@@ -64,6 +64,7 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
     private readonly SemaphoreSlim _addressLock = new(1, 1);
     private readonly SemaphoreSlim _sessionWrite = new(1, 1);
     private readonly SemaphoreSlim _flushLock = new(1, 1);
+    private readonly SemaphoreSlim _control = new(1, 1); // Start and Stop one at a time
     private readonly CancellationTokenSource _life = new();
     private CancellationTokenSource _sessionCts = new();
     private Session? _session;
@@ -194,6 +195,19 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
     public async Task StartAsync(Profile profile, string startedBy, ITaskRunner? starterTasks, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(profile);
+        await _control.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await StartLockedAsync(profile, startedBy, starterTasks, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _control.Release();
+        }
+    }
+
+    private async Task StartLockedAsync(Profile profile, string startedBy, ITaskRunner? starterTasks, CancellationToken ct)
+    {
         if (Session is not null)
         {
             throw new InvalidOperationException(StartedAlready);
@@ -242,6 +256,19 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
 
     /// <summary>Ends the session: flows stop waiting (a running task of a node runs to its end), the reservations go.</summary>
     public async Task StopAsync(CancellationToken ct)
+    {
+        await _control.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await StopLockedAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _control.Release();
+        }
+    }
+
+    private async Task StopLockedAsync(CancellationToken ct)
     {
         Task[] running;
         CancellationTokenSource cts;
@@ -318,7 +345,7 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
         {
             lock (_gate)
             {
-                if (_session is { } current)
+                if (_session is { } current && current.StartedAt == session.StartedAt)
                 {
                     _session = current with { AckAfter = after };
                 }
@@ -330,7 +357,7 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
 
     /// <summary>
     /// The DHCP server acknowledged <paramref name="address"/> to <paramref name="mac"/>: a new Axis camera gets a row and its
-    /// flow (Queued until a place is free); a known one only follows its address while it is not new.
+    /// flow (Queued until a place is free); a known one only follows its address.
     /// </summary>
     public void OnAck(string mac, string address)
     {
@@ -348,7 +375,8 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
 
             if (_rows.TryGetValue(text, out var known))
             {
-                if (known.State == CameraState.NotNew && known.Address != address)
+                // A camera on DHCP follows its address (a restart after an upgrade); a fixed IP gets no acknowledgement.
+                if (known.Address != address)
                 {
                     SetRow(known with { Address = address });
                 }
@@ -542,7 +570,29 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
             var records = changed.Select(r => new KeyValuePair<string, string?>(Key(r.Mac), JsonSerializer.Serialize(r, ProvisioningJson.Options)))
                 .Concat(removed.Select(m => new KeyValuePair<string, string?>(Key(m), null)))
                 .ToList();
-            await _services.Records.SetManyAsync(CamerasCollection, records, ct).ConfigureAwait(false);
+            try
+            {
+                await _services.Records.SetManyAsync(CamerasCollection, records, ct).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Not stored: the rows stay dirty for the next round (a newer change or removal wins).
+                lock (_gate)
+                {
+                    foreach (var row in changed.Where(r => _rows.ContainsKey(r.Mac) && !_removed.Contains(r.Mac)))
+                    {
+                        _dirty.Add(row.Mac);
+                    }
+
+                    foreach (var mac in removed.Where(m => !_rows.ContainsKey(m)))
+                    {
+                        _removed.Add(mac);
+                    }
+                }
+
+                throw;
+            }
+
             foreach (var part in changed.Chunk(500).DefaultIfEmpty([]))
             {
                 _services.Events?.Publish(CamerasTopic, JsonSerializer.Serialize(new CamerasEvent(part, removed, counts, version), ProvisioningJson.Options));
@@ -727,6 +777,7 @@ public sealed partial class ProvisioningEngine : INodeHost, IAsyncDisposable
         _addressLock.Dispose();
         _sessionWrite.Dispose();
         _flushLock.Dispose();
+        _control.Dispose();
     }
 
     // ---- flows ----

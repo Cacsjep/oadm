@@ -299,6 +299,34 @@ internal sealed class FakeVapixFactory : IVapixClientFactory
         Clients.TryGetValue(deviceId, out var client) ? Task.FromResult<IVapixClient>(client) : throw new InvalidOperationException("The device is not reachable.");
 }
 
+/// <summary>Plugin records whose writes fail while <see cref="FailWrites"/> is above 0 (each failure counts it down).</summary>
+internal sealed class FlakyRecords(IPluginRecords inner) : IPluginRecords
+{
+    private int _failWrites;
+
+    public int FailWrites
+    {
+        get => Volatile.Read(ref _failWrites);
+        set => Volatile.Write(ref _failWrites, value);
+    }
+
+    public Task<IReadOnlyDictionary<string, string>> ListAsync(string collection, CancellationToken ct) => inner.ListAsync(collection, ct);
+
+    public Task SetManyAsync(string collection, IReadOnlyCollection<KeyValuePair<string, string?>> records, CancellationToken ct)
+    {
+        int left;
+        do
+        {
+            left = FailWrites;
+        }
+        while (left > 0 && Interlocked.CompareExchange(ref _failWrites, left - 1, left) != left);
+
+        return left > 0 ? Task.FromException(new IOException("The database is busy.")) : inner.SetManyAsync(collection, records, ct);
+    }
+
+    public Task ClearAsync(string collection, CancellationToken ct) => inner.ClearAsync(collection, ct);
+}
+
 /// <summary>
 /// An engine on fakes with a fake clock: <see cref="Ack"/> hands a lease to it, <see cref="EndTasks"/> ends the tasks the
 /// nodes started with the outcomes of <see cref="Outcomes"/>, <see cref="RunUntilAsync"/> moves the clock until a condition holds.
@@ -346,6 +374,11 @@ internal sealed class Harness : IAsyncDisposable
 
     public FakeProbe Probe { get; } = new();
 
+    /// <summary>The context's records; <see cref="FlakyRecords.FailWrites"/> makes the next writes fail.</summary>
+    public FlakyRecords Records => _records ??= new FlakyRecords(Ctx.PluginRecords);
+
+    private FlakyRecords? _records;
+
     public ProvisioningOptions Options { get; }
 
     public ProvisioningEngine Engine { get; private set; }
@@ -358,7 +391,7 @@ internal sealed class Harness : IAsyncDisposable
 
     /// <summary>A new engine on the same stores (a server restart).</summary>
     public ProvisioningEngine NewEngine() => new(
-        new EngineServices(AutoAdd, Ctx, Devices, Ctx.PluginSettings, Ctx.PluginRecords, Ctx, () => Dhcp, Probe, Vapix, Vault),
+        new EngineServices(AutoAdd, Ctx, Devices, Ctx.PluginSettings, Records, Ctx, () => Dhcp, Probe, Vapix, Vault),
         NodeRegistry.Default,
         Options,
         Time);

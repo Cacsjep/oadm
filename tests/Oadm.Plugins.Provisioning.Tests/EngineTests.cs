@@ -167,6 +167,37 @@ public sealed class EngineTests
     }
 
     [Fact]
+    public async Task A_camera_on_dhcp_follows_its_new_address()
+    {
+        await using var h = new Harness();
+        await h.StartAsync(h.Profile());
+        h.Ack(1, configure: c => c.Answers = false);
+        await h.RunUntilAsync(() => h.Row(1).State == CameraState.Failed, "the camera failed");
+
+        h.Engine.OnAck(Harness.Mac(1), "192.168.15.140"); // a new lease after a restart of the camera
+
+        Assert.Equal("192.168.15.140", h.Row(1).Address);
+    }
+
+    [Fact]
+    public async Task Rows_that_could_not_be_stored_are_stored_with_the_next_write()
+    {
+        await using var h = new Harness();
+        await h.StartAsync(h.Profile());
+        h.Ack(1, hasPassword: true);
+        await h.RunUntilAsync(() => h.Row(1).State == CameraState.NotNew, "the camera was looked at");
+
+        h.Records.FailWrites = int.MaxValue;
+        h.Engine.OnAck(Harness.Mac(1), "192.168.15.150");
+        await Assert.ThrowsAsync<IOException>(() => h.Engine.FlushAsync(CancellationToken.None));
+        h.Records.FailWrites = 0;
+        await h.Engine.FlushAsync(CancellationToken.None);
+
+        var stored = await h.Ctx.PluginRecords.ListAsync(ProvisioningEngine.CamerasCollection, CancellationToken.None);
+        Assert.Contains(stored.Values, json => json.Contains("192.168.15.150", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Stop_ends_the_flows_and_the_session_and_rows_stay_until_the_next_start()
     {
         await using var h = new Harness();
