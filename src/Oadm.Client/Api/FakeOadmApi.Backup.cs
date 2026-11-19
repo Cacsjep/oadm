@@ -9,7 +9,7 @@ using Oadm.Contracts.V1;
 namespace Oadm.Client.Api;
 
 /// <summary>
-/// Fake BackupService so <c>--fake</c> shows the Settings page's backup card: two backups kept on the server, a schedule,
+/// Fake BackupService so <c>--fake</c> shows backup and restore on the Settings page: two backups kept on the server, a schedule,
 /// the password "wrong" is refused, a backup "from a newer OADM" is any file named "future*", and a restore only answers
 /// (nothing restarts).
 /// </summary>
@@ -25,14 +25,28 @@ public sealed partial class FakeOadmApi
     /// <summary>What <see cref="RestoreBackupAsync"/> was asked (tests).</summary>
     public List<RestoreRequest> Restores { get; } = [];
 
+    /// <summary>Whether the automatic backups have a stored password (tests: turned on without one).</summary>
+    public bool BackupHasPassword { get; set; } = true;
+
+    /// <summary>How often the schedule of the automatic backups was saved (tests).</summary>
+    public int BackupScheduleSaves { get; private set; }
+
+    /// <summary>The error of the last automatic backup the fake reports (tests: the red chip of the Settings page).</summary>
+    public string? LastAutomaticError { get; set; }
+
+    /// <summary>The report of the last restore the fake reports (tests: the restore chip of the Settings page).</summary>
+    public RestoreReport? LastRestore { get; set; }
+
     private BackupState FakeBackupState()
     {
         var state = new BackupState
         {
             Schedule = _backupSchedule.Clone(),
-            HasPassword = true,
+            HasPassword = BackupHasPassword,
             Folder = @"C:\ProgramData\OADM\backups",
             LastAutomatic = Timestamp.FromDateTimeOffset(new DateTimeOffset(2026, 10, 13, 0, 0, 3, TimeSpan.Zero)),
+            LastAutomaticError = LastAutomaticError ?? "",
+            LastRestore = LastRestore?.Clone(),
         };
         state.Schedule.Password = "";
         state.Backups.AddRange(_serverBackups);
@@ -50,6 +64,7 @@ public sealed partial class FakeOadmApi
         }
 
         _backupSchedule = schedule.Clone();
+        BackupScheduleSaves++;
         return Task.FromResult(FakeBackupState());
     }
 

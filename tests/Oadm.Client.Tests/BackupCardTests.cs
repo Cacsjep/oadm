@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 using NSubstitute;
 
@@ -11,7 +12,7 @@ using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Tests;
 
-/// <summary>The Settings page's backup card and the restore dialog against the fake backend.</summary>
+/// <summary>Backup and restore of the Settings page and the restore dialog against the fake backend.</summary>
 public sealed class BackupCardTests
 {
     private static (BackupViewModel Vm, FakeOadmApi Api, IDialogService Dialogs) Create()
@@ -50,7 +51,7 @@ public sealed class BackupCardTests
             await vm.LoadAsync();
             vm.TimeOfDay = "25:00";
             Assert.Equal("Enter a time like 02:00.", vm.ErrorOf(nameof(vm.TimeOfDay)));
-            Assert.False(vm.SaveScheduleCommand.CanExecute(null));
+            Assert.False(vm.IsFormValid); // the page's Save stays disabled
 
             vm.TimeOfDay = "03:30";
             vm.SchedulePassword = "short";
@@ -60,9 +61,10 @@ public sealed class BackupCardTests
             Assert.Equal("The passwords do not match.", vm.ErrorOf(nameof(vm.ScheduleConfirmPassword)));
             vm.ScheduleConfirmPassword = "a new password";
 
-            await vm.SaveScheduleCommand.ExecuteAsync(null);
+            Assert.True(vm.IsScheduleChanged);
+            await vm.SaveScheduleAsync(CancellationToken.None);
 
-            Assert.Equal("Automatic backups saved.", vm.Status);
+            Assert.False(vm.IsScheduleChanged);
             Assert.Equal("03:30", vm.TimeOfDay);
             Assert.Empty(vm.SchedulePassword); // never kept in the form
         }
@@ -175,27 +177,26 @@ public sealed class BackupCardTests
     }
 
     [Fact]
-    public async Task The_card_and_the_restore_dialog_render()
+    public async Task The_backup_rows_and_the_restore_dialog_render()
     {
         var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var done = await HeadlessSession.Shared.Dispatch(async () =>
         {
-            using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
+            using var page = await SettingsPageTests.SettingsPage.OpenAsync(UserRole.Admin);
+            var vm = page.Vm.Backup!;
+            Assert.Equal(2, vm.Backups.Count); // loaded with the page
+            Assert.Equal("2 backups", vm.BackupCountText);
+            page.CaptureFile("client-page-settings.png", height: 1000); // the website's Settings page: every expander closed
+            page.Expander("Automatic backups").IsExpanded = true;
+            page.Expander("Backups on the server").IsExpanded = true;
+            SettingsPageTests.SettingsPage.Pump();
+            Assert.Equal(2, page.Expander("Backups on the server").GetVisualDescendants().OfType<Oadm.Client.Controls.SettingsCard>().Count(c => c.Hint?.StartsWith("Automatic, ", StringComparison.Ordinal) == true));
+            page.Vm.Filter = "backup";
+            page.CaptureFile("settings-backup.png", height: 1000);
+            page.Vm.Filter = "";
+
             var dialogs = Substitute.For<IDialogService>();
-            var vm = new BackupViewModel(api, dialogs);
-            await vm.LoadAsync();
-            var window = new Window { Width = 820, Height = 900, Content = new ScrollViewer { Content = new BackupCardView { DataContext = vm, Margin = new Avalonia.Thickness(16) } } };
-            window.Show();
-            Pump();
-            foreach (var card in Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<Oadm.Client.Controls.CollapsibleCard>())
-            {
-                card.IsExpanded = true; // the card starts closed; the screenshot shows it open, as a user opens it
-            }
-
-            Pump();
-            Save(window, outDir, "settings-backup.png");
-            window.Close();
-
+            using var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
             var restore = new RestoreViewModel(api, dialogs, new RestoreRequest { Name = vm.Backups[0].Name }, vm.Backups[0].Name, 2) { Password = "correct horse" };
             await restore.CheckCommand.ExecuteAsync(null);
             var dialog = new RestoreWindow();
@@ -204,43 +205,6 @@ public sealed class BackupCardTests
             Pump();
             Save(dialog, outDir, "settings-restore.png");
             dialog.Close();
-            return true;
-        }, CancellationToken.None);
-        Assert.True(done);
-    }
-
-    [Fact]
-    public async Task The_settings_page_shows_backup_and_restore_in_a_second_column()
-    {
-        var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
-        var done = await HeadlessSession.Shared.Dispatch(async () =>
-        {
-            var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
-            using var f = new DevicesFixture(api);
-            using var connection = new Oadm.Client.Shell.ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Shell.ServerConnection>.Instance);
-            var session = new Oadm.Client.Shell.UserSession();
-            session.SignIn(new UserInfo { UserName = "anna", Role = UserRole.Admin }, "fake");
-            var settings = new Oadm.Client.Settings.SettingsViewModel(f.Api, connection, Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Settings.SettingsViewModel>.Instance,
-                session, backup: new BackupViewModel(api, Substitute.For<IDialogService>()),
-                license: new Oadm.Client.Licensing.LicenseViewModel(api, Substitute.For<IDialogService>(), session: session),
-                support: new Oadm.Client.Support.SupportViewModel(api, Substitute.For<IDialogService>(), Path.GetTempPath())); // every card, as the app builds the page (website screenshot)
-            await settings.LoadAsync();
-            Assert.True(settings.ShowBackup);
-            Assert.Equal(2, settings.Backup!.Backups.Count); // loaded with the page
-            var window = new Window { Width = 1520, Height = 1000, Content = new Oadm.Client.Settings.SettingsView { DataContext = settings, Margin = new Avalonia.Thickness(24) } };
-            window.Show();
-            Pump();
-            Save(window, outDir, "client-page-settings.png");
-            var card = System.Linq.Enumerable.Single(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<BackupCardView>());
-            Assert.True(card.Bounds.Width > 600); // its own column, not squeezed
-            window.Width = 2200;
-            Pump();
-            Save(window, outDir, "client-page-settings-wide.png");
-            window.Width = 1520;
-            window.Height = 1350;
-            Pump();
-            Save(window, outDir, "client-page-settings-server.png"); // the Server card with the server ID
-            window.Close();
             return true;
         }, CancellationToken.None);
         Assert.True(done);

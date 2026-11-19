@@ -14,7 +14,7 @@ using Oadm.Sdk.Client;
 namespace Oadm.Client.Support;
 
 /// <summary>
-/// The Settings page's card "Support" (administrators): Create support report saves one ZIP on this computer with the
+/// The support report of the Settings page (administrators): Create support report saves one ZIP on this computer with the
 /// server's report (its logs and summary.txt) and this client's log files under <c>client-logs/</c>. The server's ZIP is
 /// downloaded to a temporary file first, then both are written into the chosen file; nothing large is held in memory.
 /// </summary>

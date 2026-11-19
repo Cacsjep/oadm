@@ -6,185 +6,314 @@
              xmlns:backup="using:Oadm.Client.Backup"
              xmlns:licensing="using:Oadm.Client.Licensing"
              xmlns:support="using:Oadm.Client.Support"
+             xmlns:lic="using:Oadm.Sdk.Licensing"
              x:Class="Oadm.Client.Settings.SettingsView"
              x:DataType="settings:SettingsViewModel">
-  <!-- Every labeled input is a ui:FormField: its error appears directly below the input. Fields are grouped under
-       small headings; Save and Reload sit below the server cards. Operators see the values as plain text, without Save. -->
-  <Grid RowDefinitions="Auto,*" RowSpacing="16">
+  <!-- The Settings page (docs/spec/settings-backup.md "Settings page"): search and the one Save on top, then one column of
+       setting rows in the groups Client, General, Server, Support, each group and expander in alphabetical order. Rows
+       with more behind them are expanders and start closed; one opens by itself while an input inside shows an error.
+       Operators see the server values as plain text, without Save, backups and Support. -->
+  <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
     <c:PageTitleBar Title="Settings" Subtitle="How the server polls, scans and runs tasks, and how OADM looks and shows video on this computer." />
-    <ScrollViewer Grid.Row="1">
-      <!-- Two columns: this computer and the server settings left, backup and restore (administrators) and the license right. -->
-      <!-- Each column grows to 760 px; on a wider window the space stays on the right (the page starts at the left).
-           On a narrow window backup and restore moves below the server settings (SettingsView.axaml.cs). -->
-      <Grid x:Name="Columns" RowDefinitions="Auto,Auto">
+
+    <!-- Search left, the one Save right; its result directly left of it -->
+    <Grid Grid.Row="1" Margin="0,0,16,0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" MaxWidth="980" />
+        <ColumnDefinition Width="0.001*" />
+      </Grid.ColumnDefinitions>
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+        <ui:SearchBox x:Name="Search" Width="320" Placeholder="Find a setting" Text="{Binding Filter}" />
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12">
+          <TextBlock x:Name="SaveResult" VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="480" Text="{Binding ServerMessage}"
+                     Classes.error="{Binding ServerMessageIsError}" Classes.secondary="{Binding !ServerMessageIsError}"
+                     IsVisible="{Binding ServerMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <Button x:Name="SaveButton" Classes="primary" Content="Save" Command="{Binding SaveCommand}" IsVisible="{Binding IsAdmin}"
+                  ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
+        </StackPanel>
+      </Grid>
+    </Grid>
+
+    <ScrollViewer Grid.Row="2">
+      <!-- One column up to 980 px, left-aligned; on a wider window the space stays on the right. -->
+      <Grid Margin="0,0,16,16">
         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="*" MaxWidth="760" />
-          <ColumnDefinition Width="16" />
-          <ColumnDefinition Width="*" MaxWidth="760" />
+          <ColumnDefinition Width="*" MaxWidth="980" />
           <ColumnDefinition Width="0.001*" />
         </Grid.ColumnDefinitions>
-      <StackPanel Spacing="16">
-        <!-- This computer: saved at once, for every user (client-settings.json) -->
-        <c:CollapsibleCard Title="Client">
-          <StackPanel Classes="form">
-            <ui:FormField Classes="wide" Label="Live view" Hint="{Binding GpuDecodingHint}">
-              <CheckBox IsChecked="{Binding GpuDecoding}" Content="Decode video on the graphics card" />
-            </ui:FormField>
-            <ui:FormField Classes="wide">
-              <CheckBox IsChecked="{Binding Video.ShowDetails}" Content="Show video details over the picture" />
-            </ui:FormField>
-            <ui:FormField Label="Frame rate (adaptive quality)" Hint="Frames per second when the resolution follows the size">
-              <NumericUpDown Minimum="1" Maximum="30" Increment="1" FormatString="0" Value="{Binding Video.AdaptiveFps}" />
-            </ui:FormField>
-            <ui:FormField Label="Appearance" Hint="{Binding AppearanceHint}">
-              <ComboBox ItemsSource="{Binding Appearances}" SelectedItem="{Binding Appearance}" />
-            </ui:FormField>
-            <ui:FormField Classes="wide" Label="New versions">
-              <CheckBox IsChecked="{Binding TellAboutNewVersions}" Content="Tell me about new versions" />
-            </ui:FormField>
-          </StackPanel>
-        </c:CollapsibleCard>
-        <!-- Server settings in five cards; administrators edit them (saved together, Save below the last card), operators read
-             them as plain text. -->
-        <TextBlock Classes="secondary" TextWrapping="Wrap" Text="Only administrators can change server settings." IsVisible="{Binding IsOperator}" />
-        <c:CollapsibleCard Title="Polling">
-          <StackPanel Classes="form">
-            <StackPanel Classes="form" IsVisible="{Binding IsAdmin}">
-              <ui:FormField Label="Allowed clock difference (s)">
-                <NumericUpDown Minimum="1" Maximum="3600" Increment="1" FormatString="0" Value="{Binding ClockToleranceSeconds}" />
-              </ui:FormField>
-            </StackPanel>
-            <StackPanel Classes="form" IsVisible="{Binding IsOperator}">
-              <ui:FormField Label="Allowed clock difference (s)">
-                <TextBlock Text="{Binding ClockToleranceSeconds}" />
-              </ui:FormField>
-            </StackPanel>
-          </StackPanel>
-        </c:CollapsibleCard>
+        <StackPanel Spacing="12">
+          <TextBlock Classes="secondary" Text="No setting matches." IsVisible="{Binding !#List.HasMatches}" />
+          <c:SettingsList x:Name="List" Filter="{Binding Filter}">
 
-        <c:CollapsibleCard Title="Discovery">
-          <StackPanel Classes="form">
-            <StackPanel Classes="form" IsVisible="{Binding IsAdmin}">
-              <ui:FormField Label="Addresses scanned at once">
-                <NumericUpDown Minimum="1" Maximum="256" FormatString="0" Value="{Binding ScanParallelism}" />
-              </ui:FormField>
-              <ui:FormField Label="Scan timeout (ms)" Hint="Network range and imports wait this long for an address to answer">
-                <NumericUpDown Minimum="100" Maximum="30000" Increment="100" FormatString="0" Value="{Binding ScanTimeoutMs}" />
-              </ui:FormField>
-              <ui:FormField Label="Discovery duration (s)"
-                            Hint="Discovery on the add devices page ends after this time; Scan again starts it again">
-                <NumericUpDown Minimum="5" Maximum="300" Increment="5" FormatString="0" Value="{Binding ZeroConfSeconds}" />
-              </ui:FormField>
-              <ui:FormField Label="Try waiting devices every (min)" Hint="Devices of an import that did not answer">
-                <NumericUpDown Minimum="1" Maximum="1440" Increment="5" FormatString="0" Value="{Binding WaitingRetryMinutes}" />
-              </ui:FormField>
-            </StackPanel>
-            <StackPanel Classes="form" IsVisible="{Binding IsOperator}">
-              <ui:FormField Label="Addresses scanned at once">
-                <TextBlock Text="{Binding ScanParallelism}" />
-              </ui:FormField>
-              <ui:FormField Label="Scan timeout (ms)">
-                <TextBlock Text="{Binding ScanTimeoutMs}" />
-              </ui:FormField>
-              <ui:FormField Label="Discovery duration (s)">
-                <TextBlock Text="{Binding ZeroConfSeconds}" />
-              </ui:FormField>
-              <ui:FormField Label="Try waiting devices every (min)">
-                <TextBlock Text="{Binding WaitingRetryMinutes}" />
-              </ui:FormField>
-            </StackPanel>
-          </StackPanel>
-        </c:CollapsibleCard>
+            <!-- This computer: saved at once, for every user (client-settings.json) -->
+            <c:SettingsGroup Title="Client">
+              <c:SettingsCard Icon="{StaticResource Icon.moon}" Title="Appearance" Hint="{Binding AppearanceHint}">
+                <ComboBox Width="110" ItemsSource="{Binding Appearances}" SelectedItem="{Binding Appearance}" />
+              </c:SettingsCard>
+              <c:SettingsExpander Icon="{StaticResource Icon.video}" Title="Live view" Hint="Decoding, video details and frame rate">
+                <c:SettingsCard Icon="{StaticResource Icon.cpu}" Title="Decode video on the graphics card" Hint="{Binding GpuDecodingHint}">
+                  <ui:OnOffSwitch IsChecked="{Binding GpuDecoding}" />
+                </c:SettingsCard>
+                <c:SettingsCard Icon="{StaticResource Icon.gauge}" Title="Frame rate (adaptive quality)" Hint="Frames per second when the resolution follows the size">
+                  <NumericUpDown Width="140" Minimum="1" Maximum="30" Increment="1" FormatString="0" DataContext="{Binding Video}" Value="{Binding AdaptiveFps}">
+                    <NumericUpDown.InnerRightContent>
+                      <c:UnitBadge Text="FPS" />
+                    </NumericUpDown.InnerRightContent>
+                  </NumericUpDown>
+                </c:SettingsCard>
+                <c:SettingsCard Icon="{StaticResource Icon.info}" Title="Show video details over the picture" Hint="Resolution, frame rate and bit rate on the live view">
+                  <ui:OnOffSwitch IsChecked="{Binding Video.ShowDetails}" />
+                </c:SettingsCard>
+              </c:SettingsExpander>
+              <c:SettingsCard Icon="{StaticResource Icon.bellRing}" Title="Tell me about new versions" Hint="A notice when a new OADM version is out">
+                <ui:OnOffSwitch IsChecked="{Binding TellAboutNewVersions}" />
+              </c:SettingsCard>
+            </c:SettingsGroup>
 
-        <c:CollapsibleCard Title="Tasks">
-          <StackPanel Classes="form">
-            <ui:FormField Label="Parallel tasks per plugin" IsVisible="{Binding IsAdmin}"
-                          Hint="How many devices a task runs on at the same time, e.g. restarts or AXIS OS upgrades.">
-              <NumericUpDown Minimum="1" Maximum="256" Increment="1" FormatString="0" Value="{Binding MaxParallelTasksPerPlugin}" />
-            </ui:FormField>
-            <ui:FormField Label="Parallel tasks per plugin" IsVisible="{Binding IsOperator}">
-              <TextBlock Text="{Binding MaxParallelTasksPerPlugin}" />
-            </ui:FormField>
-          </StackPanel>
-        </c:CollapsibleCard>
+            <!-- The server: administrators edit (the one Save), operators read the values as plain text -->
+            <c:SettingsGroup Title="General">
+              <TextBlock Classes="secondary" TextWrapping="Wrap" Text="Only administrators can change server settings." IsVisible="{Binding IsOperator}" />
+              <c:SettingsCard Icon="{StaticResource Icon.lock}" Title="Allow Basic login over HTTP" Hint="Sends passwords unencrypted. Only for devices without HTTPS.">
+                <Panel>
+                  <ui:OnOffSwitch IsChecked="{Binding AllowBasicOverHttp}" IsVisible="{Binding IsAdmin}" />
+                  <TextBlock Text="{Binding AllowBasicOverHttpText}" VerticalAlignment="Center" IsVisible="{Binding IsOperator}" />
+                </Panel>
+              </c:SettingsCard>
+              <c:SettingsCard Icon="{StaticResource Icon.clock}" Title="Allowed clock difference (NTP)" Hint="Seconds a device clock may be off before it is reported">
+                <Panel>
+                  <NumericUpDown Width="150" Minimum="1" Maximum="3600" Increment="1" FormatString="0" Value="{Binding ClockToleranceSeconds}" IsVisible="{Binding IsAdmin}">
+                    <NumericUpDown.InnerRightContent>
+                      <c:UnitBadge Text="sec" />
+                    </NumericUpDown.InnerRightContent>
+                  </NumericUpDown>
+                  <TextBlock Text="{Binding ClockToleranceSeconds, StringFormat='{}{0} sec'}" VerticalAlignment="Center" IsVisible="{Binding IsOperator}" />
+                </Panel>
+              </c:SettingsCard>
+              <c:SettingsExpander Icon="{StaticResource Icon.search}" Title="Discovery" Hint="Network range scans, discovery duration and waiting devices">
+                <c:SettingsCard Icon="{StaticResource Icon.network}" Title="Addresses scanned at once" Hint="How many addresses a network range scan tries at the same time">
+                  <Panel>
+                    <NumericUpDown Width="180" Minimum="1" Maximum="256" FormatString="0" Value="{Binding ScanParallelism}" IsVisible="{Binding IsAdmin}">
+                      <NumericUpDown.InnerRightContent>
+                        <c:UnitBadge Text="addresses" />
+                      </NumericUpDown.InnerRightContent>
+                    </NumericUpDown>
+                    <TextBlock Text="{Binding ScanParallelism, StringFormat='{}{0} addresses'}" VerticalAlignment="Center" IsVisible="{Binding IsOperator}" />
+                  </Panel>
+                </c:SettingsCard>
+                <c:SettingsCard Icon="{StaticResource Icon.hourglass}" Title="Discovery duration" Hint="Discovery on the add devices page ends after this time; Scan again starts it again">
+                  <Panel>
+                    <NumericUpDown Width="140" Minimum="5" Maximum="300" Increment="5" FormatString="0" Value="{Binding ZeroConfSeconds}" IsVisible="{Binding IsAdmin}">
+                      <NumericUpDown.InnerRightContent>
+                        <c:UnitBadge Text="sec" />
+                      </NumericUpDown.InnerRightContent>
+                    </NumericUpDown>
+                    <TextBlock Text="{Binding ZeroConfSeconds, StringFormat='{}{0} sec'}" VerticalAlignment="Center" IsVisible="{Binding IsOperator}" />
+                  </Panel>
+                </c:SettingsCard>
+                <c:SettingsCard Icon="{StaticResource Icon.timer}" Title="Scan timeout" Hint="Network range and imports wait this long for an address to answer">
+                  <Panel>
+                    <NumericUpDown Width="160" Minimum="100" Maximum="30000" Increment="100" FormatString="0" Value="{Binding ScanTimeoutMs}" IsVisible="{Binding IsAdmin}">
+                      <NumericUpDown.InnerRightContent>
+                        <c:UnitBadge Text="ms" />
+                      </NumericUpDown.InnerRightContent>
+                    </NumericUpDown>
+                    <TextBlock Text="{Binding ScanTimeoutMs, StringFormat='{}{0} ms'}" VerticalAlignment="Center" IsVisible="{Binding IsOperator}" />
+                  </Panel>
+                </c:SettingsCard>
+                <c:SettingsCard Icon="{StaticResource Icon.refresh}" Title="Try waiting devices every" Hint="Devices of an import that did not answer">
+                  <Panel>
+                    <NumericUpDown Width="150" Minimum="1" Maximum="1440" Increment="5" FormatString="0" Value="{Binding WaitingRetryMinutes}" IsVisible="{Binding IsAdmin}">
+                      <NumericUpDown.InnerRightContent>
+                        <c:UnitBadge Text="min" />
+                      </NumericUpDown.InnerRightContent>
+                    </NumericUpDown>
+                    <TextBlock Text="{Binding WaitingRetryMinutes, StringFormat='{}{0} min'}" VerticalAlignment="Center" IsVisible="{Binding IsOperator}" />
+                  </Panel>
+                </c:SettingsCard>
+              </c:SettingsExpander>
+              <c:SettingsCard Icon="{StaticResource Icon.tasks}" Title="Parallel tasks per plugin" Hint="How many devices a task runs on at the same time, e.g. restarts or AXIS OS upgrades.">
+                <Panel>
+                  <NumericUpDown Width="150" Minimum="1" Maximum="256" Increment="1" FormatString="0" Value="{Binding MaxParallelTasksPerPlugin}" IsVisible="{Binding IsAdmin}">
+                    <NumericUpDown.InnerRightContent>
+                      <c:UnitBadge Text="tasks" />
+                    </NumericUpDown.InnerRightContent>
+                  </NumericUpDown>
+                  <TextBlock Text="{Binding MaxParallelTasksPerPlugin, StringFormat='{}{0} tasks'}" VerticalAlignment="Center" IsVisible="{Binding IsOperator}" />
+                </Panel>
+              </c:SettingsCard>
+              <!-- docs/spec/vulnerabilities.md: who fetches the list of Axis CVEs online (saved with Save), the list, Check now -->
+              <c:SettingsExpander Icon="{StaticResource Icon.shield}" Title="Vulnerabilities" Hint="The list of Axis CVEs and its online update">
+                <c:SettingsExpander.HeaderContent>
+                  <TextBlock Text="{Binding VulnerabilityListText}" VerticalAlignment="Center" />
+                </c:SettingsExpander.HeaderContent>
+                <c:SettingsCard Icon="{StaticResource Icon.logs}" Title="List" Hint="The Axis CVEs OADM checks the devices against">
+                  <StackPanel Orientation="Horizontal" Spacing="12">
+                    <TextBlock Text="{Binding VulnerabilityMessage}" Classes.error="{Binding VulnerabilityMessageIsError}" Classes.secondary="{Binding !VulnerabilityMessageIsError}"
+                               VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="320"
+                               IsVisible="{Binding VulnerabilityMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <TextBlock Text="{Binding VulnerabilityListText}" VerticalAlignment="Center" />
+                    <Button Classes="secondary" Content="Check now" Command="{Binding CheckVulnerabilitiesCommand}" IsVisible="{Binding IsAdmin}" />
+                  </StackPanel>
+                </c:SettingsCard>
+                <c:SettingsCard Icon="{StaticResource Icon.cloud}" Title="Update the list online" Hint="Off: the list of the OADM release. Only the public CVE list is fetched, nothing about the devices.">
+                  <Panel>
+                    <ComboBox Width="150" ItemsSource="{x:Static settings:SettingsViewModel.VulnerabilityUpdateChoices}" SelectedIndex="{Binding VulnerabilityUpdateIndex}" IsVisible="{Binding IsAdmin}" />
+                    <TextBlock Text="{Binding VulnerabilityUpdateText}" VerticalAlignment="Center" IsVisible="{Binding IsOperator}" />
+                  </Panel>
+                </c:SettingsCard>
+              </c:SettingsExpander>
+            </c:SettingsGroup>
 
-        <c:CollapsibleCard Title="Security">
-          <StackPanel Classes="form">
-            <ui:FormField Classes="wide" Label="Device login" IsVisible="{Binding IsAdmin}"
-                          Hint="Sends passwords unencrypted. Only for devices without HTTPS.">
-              <CheckBox IsChecked="{Binding AllowBasicOverHttp}" Content="Allow Basic login over HTTP" />
-            </ui:FormField>
-            <ui:FormField Label="Allow Basic login over HTTP" IsVisible="{Binding IsOperator}">
-              <TextBlock Text="{Binding AllowBasicOverHttpText}" />
-            </ui:FormField>
-          </StackPanel>
-        </c:CollapsibleCard>
+            <c:SettingsGroup Title="Server">
+              <!-- Saved with the page's one Save; a red chip only while the last automatic backup failed -->
+              <c:SettingsExpander Icon="{StaticResource Icon.calendarClock}" Title="Automatic backups" Hint="Back up the server every day"
+                                  DataContext="{Binding Backup}" x:DataType="backup:BackupViewModel"
+                                  IsShown="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowBackup}">
+                <c:SettingsExpander.HeaderContent>
+                  <StackPanel Orientation="Horizontal" Spacing="12">
+                    <ui:StatusChip IsError="True" Text="{Binding LastAutomaticText}" MaxLines="2" MaxWidth="320" VerticalAlignment="Center"
+                                   IsVisible="{Binding LastAutomaticFailed}" />
+                    <ui:OnOffSwitch IsChecked="{Binding ScheduleEnabled}" />
+                  </StackPanel>
+                </c:SettingsExpander.HeaderContent>
+                <c:SettingsCard Icon="{StaticResource Icon.archive}" Title="Backups kept" Hint="Older automatic backups are deleted">
+                  <NumericUpDown Width="165" Minimum="1" Maximum="365" Increment="1" FormatString="0" Value="{Binding Keep}">
+                    <NumericUpDown.InnerRightContent>
+                      <c:UnitBadge Text="backups" />
+                    </NumericUpDown.InnerRightContent>
+                  </NumericUpDown>
+                </c:SettingsCard>
+                <c:SettingsCard Icon="{StaticResource Icon.lock}" Title="Password" Hint="A restore needs it.">
+                  <ui:PasswordBox Width="200" Text="{Binding SchedulePassword}" PlaceholderText="{Binding PasswordPlaceholder}" />
+                </c:SettingsCard>
+                <c:SettingsCard Icon="{StaticResource Icon.lockKeyhole}" Title="Confirm password" Hint="Type the password again">
+                  <ui:PasswordBox Width="200" Text="{Binding ScheduleConfirmPassword}" PlaceholderText="{Binding PasswordPlaceholder}" />
+                </c:SettingsCard>
+                <c:SettingsCard Icon="{StaticResource Icon.clock}" Title="Time" Hint="Server time">
+                  <TextBox Width="70" Text="{Binding TimeOfDay}" PlaceholderText="02:00" />
+                </c:SettingsCard>
+              </c:SettingsExpander>
+              <!-- Back up now and restores: progress and the outcome directly left of the buttons, the last restore as a chip -->
+              <c:SettingsCard x:Name="BackupFile" Icon="{StaticResource Icon.save}" Title="Backup file" Hint="Encrypted with a password you choose."
+                              DataContext="{Binding Backup}" x:DataType="backup:BackupViewModel"
+                              IsShown="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowBackup}">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <ui:StatusChip IsOk="{Binding !LastRestoreFailed}" IsError="{Binding LastRestoreFailed}" Text="{Binding LastRestoreText}" MaxLines="2" MaxWidth="320"
+                                 VerticalAlignment="Center" ToolTip.Tip="{Binding LastRestoreTip}" IsVisible="{Binding HasLastRestore}" />
+                  <ui:ProgressRow Width="300" VerticalAlignment="Center" Value="{Binding Progress}" Text="{Binding Status}" IsVisible="{Binding IsBusy}" />
+                  <TextBlock Text="{Binding Status}" Classes.error="{Binding StatusIsError}" Classes.secondary="{Binding !StatusIsError}" VerticalAlignment="Center"
+                             TextWrapping="Wrap" MaxWidth="320" IsVisible="{Binding ShowStatus}" />
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Classes="secondary" Command="{Binding BackUpNowCommand}">
+                      <ui:IconLabel Icon="{StaticResource Icon.save}" Text="Back up now" />
+                    </Button>
+                    <Button Classes="secondary" Command="{Binding RestoreFromFileCommand}">
+                      <ui:IconLabel Icon="{StaticResource Icon.upload}" Text="Restore from file" />
+                    </Button>
+                  </StackPanel>
+                </StackPanel>
+              </c:SettingsCard>
+              <c:SettingsExpander Icon="{StaticResource Icon.folder}" Title="Backups on the server" Hint="{Binding FolderText}"
+                                  DataContext="{Binding Backup}" x:DataType="backup:BackupViewModel"
+                                  IsShown="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowBackup}">
+                <c:SettingsExpander.HeaderContent>
+                  <TextBlock Text="{Binding BackupCountText}" VerticalAlignment="Center" />
+                </c:SettingsExpander.HeaderContent>
+                <!-- Newest first, as the server lists them -->
+                <ItemsControl ItemsSource="{Binding Backups}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="backup:ServerBackupRow">
+                      <c:SettingsCard Icon="{StaticResource Icon.fileArchive}" Title="{Binding CreatedText}" Hint="{Binding Detail}">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                          <Button Classes="toolbar iconOnly" ToolTip.Tip="Download"
+                                  Command="{Binding $parent[c:SettingsExpander].((backup:BackupViewModel)DataContext).DownloadCommand}" CommandParameter="{Binding}">
+                            <ui:OadmIcon Data="{StaticResource Icon.download}" />
+                          </Button>
+                          <Button Classes="toolbar iconOnly" ToolTip.Tip="Restore"
+                                  Command="{Binding $parent[c:SettingsExpander].((backup:BackupViewModel)DataContext).RestoreCommand}" CommandParameter="{Binding}">
+                            <ui:OadmIcon Data="{StaticResource Icon.upload}" />
+                          </Button>
+                          <Button Classes="toolbar iconOnly danger" ToolTip.Tip="Delete"
+                                  Command="{Binding $parent[c:SettingsExpander].((backup:BackupViewModel)DataContext).DeleteCommand}" CommandParameter="{Binding}">
+                            <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                          </Button>
+                        </StackPanel>
+                      </c:SettingsCard>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <c:SettingsCard Icon="{StaticResource Icon.fileArchive}" Title="No backups on the server yet" Hint="Turn on automatic backups to make one every day."
+                                IsShown="{Binding !HasBackups}" />
+              </c:SettingsExpander>
+              <c:SettingsCard Icon="{StaticResource Icon.globe}" Title="Listen URL" Hint="Takes effect after the server restarts">
+                <Panel>
+                  <TextBox Width="200" Text="{Binding ListenUrl}" PlaceholderText="https://0.0.0.0:5080" IsVisible="{Binding IsAdmin}" />
+                  <TextBlock Text="{Binding ListenUrl}" VerticalAlignment="Center" IsVisible="{Binding IsOperator}" />
+                </Panel>
+              </c:SettingsCard>
+              <!-- docs/spec/licensing.md: every user sees the state; administrators import, remove and start the trial -->
+              <c:SettingsExpander Icon="{StaticResource Icon.star}" Title="OADM PRO" Hint="{Binding Hint}"
+                                  DataContext="{Binding License}" x:DataType="licensing:LicenseViewModel"
+                                  IsShown="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowLicense}">
+                <c:SettingsExpander.HeaderContent>
+                  <Panel VerticalAlignment="Center">
+                    <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" IsVisible="{Binding !HasLicense}" />
+                    <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsActive}" IsWarning="{Binding IsTrial}" IsError="{Binding IsProblem}"
+                                   MaxLines="2" MaxWidth="360" IsVisible="{Binding HasLicense}" />
+                  </Panel>
+                </c:SettingsExpander.HeaderContent>
+                <c:SettingsCard Icon="{StaticResource Icon.key}" Title="License key" Hint="Import the key you received for this server" IsShown="{Binding IsAdmin}">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{Binding Message}" Classes.error="{Binding MessageIsError}" Classes.secondary="{Binding !MessageIsError}" VerticalAlignment="Center"
+                               TextWrapping="Wrap" MaxWidth="280" IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <Button Classes="secondary" Command="{Binding ImportCommand}">
+                      <ui:IconLabel Icon="{StaticResource Icon.key}" Text="Import license" />
+                    </Button>
+                    <ui:ToolbarButton Classes="danger" Text="Remove license" IconKey="remove" Command="{Binding RemoveCommand}" IsVisible="{Binding CanRemove}" />
+                    <Button Classes="link" Content="Activate license" Command="{Binding ActivateCommand}" IsVisible="{Binding ShowActivate}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </c:SettingsCard>
+                <!-- Once per server, while no trial ran and PRO is not active; administrators start it, others are told who can -->
+                <c:SettingsCard Icon="{StaticResource Icon.clock}" Title="Try OADM PRO for 30 days" Hint="Once per server." IsShown="{Binding ShowStartTrial}">
+                  <Panel>
+                    <StackPanel Spacing="4" IsVisible="{Binding ShowTrialButton}">
+                      <Button Classes="secondary" HorizontalAlignment="Right" Command="{Binding StartTrialCommand}">
+                        <ui:IconLabel Icon="{StaticResource Icon.clock}" Text="{x:Static lic:ProLicenseTexts.StartTrial}" />
+                      </Button>
+                      <TextBlock Classes="fieldMessage error" Text="{Binding TrialError}" MaxWidth="320" IsVisible="{Binding HasTrialError}" />
+                    </StackPanel>
+                    <TextBlock Classes="secondary" Text="{x:Static lic:ProLicenseTexts.TrialAdminLine}" VerticalAlignment="Center" IsVisible="{Binding ShowTrialAdminLine}" />
+                  </Panel>
+                </c:SettingsCard>
+              </c:SettingsExpander>
+              <c:SettingsCard Icon="{StaticResource Icon.hash}" Title="Server ID" Hint="A license key is made for this ID"
+                              DataContext="{Binding License}" x:DataType="licensing:LicenseViewModel" IsShown="{Binding HasServerId, FallbackValue=False}">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <SelectableTextBlock Classes="mono" Text="{Binding ServerId}" VerticalAlignment="Center" />
+                  <Button Classes="toolbar iconOnly" ToolTip.Tip="Copy server ID" Command="{Binding CopyServerIdCommand}">
+                    <ui:OadmIcon Data="{StaticResource Icon.copy}" />
+                  </Button>
+                </StackPanel>
+              </c:SettingsCard>
+            </c:SettingsGroup>
 
-        <!-- docs/spec/vulnerabilities.md: who fetches the list of Axis CVEs online (saved with Save), the list, Check now -->
-        <c:CollapsibleCard Title="Vulnerabilities">
-          <StackPanel Classes="form">
-            <ui:FormField Label="Update the list online" IsVisible="{Binding IsAdmin}"
-                          Hint="Off: the list of the OADM release. Only the public CVE list is fetched, nothing about the devices.">
-              <ComboBox ItemsSource="{x:Static settings:SettingsViewModel.VulnerabilityUpdateChoices}" SelectedIndex="{Binding VulnerabilityUpdateIndex}" />
-            </ui:FormField>
-            <ui:FormField Label="Update the list online" IsVisible="{Binding IsOperator}">
-              <TextBlock Text="{Binding VulnerabilityUpdateText}" />
-            </ui:FormField>
-            <ui:FormField Label="List">
-              <StackPanel Orientation="Horizontal" Spacing="12">
-                <TextBlock Text="{Binding VulnerabilityListText}" VerticalAlignment="Center" />
-                <Button Classes="secondary" Content="Check now" Command="{Binding CheckVulnerabilitiesCommand}" IsVisible="{Binding IsAdmin}" />
-              </StackPanel>
-            </ui:FormField>
-            <TextBlock Text="{Binding VulnerabilityMessage}" Classes.error="{Binding VulnerabilityMessageIsError}"
-                       Classes.secondary="{Binding !VulnerabilityMessageIsError}" TextWrapping="Wrap"
-                       IsVisible="{Binding VulnerabilityMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-          </StackPanel>
-        </c:CollapsibleCard>
+            <c:SettingsGroup Title="Support">
+              <c:SettingsCard x:Name="SupportReport" Icon="{StaticResource Icon.file}" Title="Support report" Hint="Logs and server details for a support request. No passwords are included."
+                              DataContext="{Binding Support}" x:DataType="support:SupportViewModel"
+                              IsShown="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowSupport}">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <ui:ProgressRow Width="300" VerticalAlignment="Center" Value="{Binding Progress}" Text="{Binding Status}" IsVisible="{Binding IsBusy}" />
+                  <TextBlock Text="{Binding Status}" Classes.error="{Binding StatusIsError}" Classes.secondary="{Binding !StatusIsError}" VerticalAlignment="Center"
+                             TextWrapping="Wrap" MaxWidth="320" IsVisible="{Binding ShowStatus}" />
+                  <Button Classes="secondary" Command="{Binding CreateCommand}">
+                    <ui:IconLabel Icon="{StaticResource Icon.file}" Text="Create support report" />
+                  </Button>
+                </StackPanel>
+              </c:SettingsCard>
+            </c:SettingsGroup>
 
-        <c:CollapsibleCard Title="Server">
-          <StackPanel Classes="form">
-            <StackPanel Classes="form" IsVisible="{Binding IsAdmin}">
-              <ui:FormField Label="Server name">
-                <TextBox Text="{Binding ServerName}" />
-              </ui:FormField>
-              <ui:FormField Label="Listen URL" Hint="Takes effect after the server restarts">
-                <TextBox Text="{Binding ListenUrl}" PlaceholderText="https://0.0.0.0:5080" />
-              </ui:FormField>
-            </StackPanel>
-            <StackPanel Classes="form" IsVisible="{Binding IsOperator}">
-              <ui:FormField Label="Server name">
-                <TextBlock Text="{Binding ServerName}" />
-              </ui:FormField>
-              <ui:FormField Label="Listen URL">
-                <TextBlock Text="{Binding ListenUrl}" />
-              </ui:FormField>
-            </StackPanel>
-          </StackPanel>
-        </c:CollapsibleCard>
-
-        <!-- Saves the five server cards together, so it sits below them, outside every card -->
-        <StackPanel Spacing="8">
-          <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsAdmin}">
-            <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}"
-                    ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
-            <Button Classes="secondary" Content="Reload" Command="{Binding LoadCommand}" />
-            <TextBlock Classes="secondary" VerticalAlignment="Center" Margin="4,0,0,0" Text="Saves Polling, Discovery, Tasks, Security, Vulnerabilities and Server" />
-          </StackPanel>
-          <TextBlock Text="{Binding ServerMessage}" Classes.error="{Binding ServerMessageIsError}" Classes.secondary="{Binding !ServerMessageIsError}"
-                     TextWrapping="Wrap" IsVisible="{Binding ServerMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </c:SettingsList>
         </StackPanel>
-      </StackPanel>
-
-      <!-- Right column: backup and restore (administrators), the license (every user), then support (administrators) -->
-      <StackPanel x:Name="RightColumn" Grid.Column="2" Spacing="16" VerticalAlignment="Top">
-        <backup:BackupCardView DataContext="{Binding Backup}"
-                               IsVisible="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowBackup}" />
-        <licensing:LicenseCardView DataContext="{Binding License}"
-                                   IsVisible="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowLicense}" />
-        <support:SupportCardView DataContext="{Binding Support}"
-                                 IsVisible="{Binding $parent[UserControl].((settings:SettingsViewModel)DataContext).ShowSupport}" />
-      </StackPanel>
       </Grid>
     </ScrollViewer>
   </Grid>

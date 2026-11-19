@@ -98,7 +98,7 @@ public sealed partial class ThemeColorsTests
         var settings = new SettingsViewModel(f.Api, connection, NullLogger<SettingsViewModel>.Instance, clientSettings: store);
         Appearance other = running == Appearance.Dark ? Appearance.Light : Appearance.Dark;
 
-        Assert.Null(settings.AppearanceHint);
+        Assert.Equal(SettingsViewModel.AppearanceDefaultHint, settings.AppearanceHint);
         int saves = store.SaveCount;
 
         settings.Appearance = other;
@@ -107,7 +107,7 @@ public sealed partial class ThemeColorsTests
         Assert.Equal(SettingsViewModel.AppearanceRestartHint, settings.AppearanceHint);
 
         settings.Appearance = running;
-        Assert.Null(settings.AppearanceHint);
+        Assert.Equal(SettingsViewModel.AppearanceDefaultHint, settings.AppearanceHint);
     }
 
     private static HashSet<string> ColorKeys(string appearance) =>

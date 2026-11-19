@@ -231,35 +231,36 @@ public sealed class FormValidationTests
             Assert.False(vm.HasErrors); // loaded values: nothing shown
             Assert.True(vm.SaveCommand.CanExecute(null));
 
-            var window = new Window { Width = 900, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
+            var window = new Window { Width = 1100, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
             window.Show();
             vm.ClockToleranceSeconds = null;
-            vm.ServerName = " ";
+            vm.ScanParallelism = 0;
             vm.ListenUrl = "ftp://server";
             Dispatcher.UIThread.RunJobs();
 
             Assert.Equal("Enter a whole number from 1 to 3600.", vm.ErrorOf(nameof(vm.ClockToleranceSeconds)));
-            Assert.Equal("Enter a server name.", vm.ErrorOf(nameof(vm.ServerName)));
+            Assert.Equal("Enter a whole number from 1 to 256.", vm.ErrorOf(nameof(vm.ScanParallelism)));
             Assert.Equal("Enter a URL like https://0.0.0.0:5080.", vm.ErrorOf(nameof(vm.ListenUrl)));
             Assert.False(vm.SaveCommand.CanExecute(null));
             Assert.Equal("Enter a whole number from 1 to 3600.", vm.SaveBlockedReason);
 
-            // The cards with an error opened by themselves (closed by default); the others stay closed.
-            Dictionary<string, Oadm.Client.Controls.CollapsibleCard> cards = Cards(window);
-            Assert.True(cards["Polling"].IsExpanded);
-            Assert.True(cards["Server"].IsExpanded);
-            Assert.False(cards["Discovery"].IsExpanded);
-            Assert.False(cards["Tasks"].IsExpanded);
+            // The expander with an error opened by itself (closed by default); the others stay closed.
+            Dictionary<string, Oadm.Client.Controls.SettingsExpander> expanders = Expanders(window);
+            Assert.True(expanders["Discovery"].IsExpanded);
+            Assert.False(expanders["Live view"].IsExpanded);
+            Assert.False(expanders["Vulnerabilities"].IsExpanded);
 
-            List<FormField> fields = window.GetVisualDescendants().OfType<FormField>().Where(x => x.IsEffectivelyVisible).ToList(); // the admin form
-            Assert.True(fields.Single(x => x.Label == "Listen URL").HasError);
-            Assert.True(fields.Single(x => x.Label == "Allowed clock difference (s)").HasError);
-            // No settings for these: status and device details run in rounds with a fixed pause.
-            Assert.DoesNotContain(fields, x => x.Label is "Status polling interval (s)" or "Read device details every (min)");
+            // Each error directly below its own input.
+            Assert.True(RowHasError(window, "Listen URL"));
+            Assert.True(RowHasError(window, "Allowed clock difference (NTP)"));
+            Assert.True(RowHasError(window, "Addresses scanned at once"));
+            Assert.False(RowHasError(window, "Scan timeout"));
+            // No settings for these: status and device details run in rounds with a fixed pause; the server name is not changed.
+            Assert.DoesNotContain(Rows(window), x => x.Title is "Status polling interval" or "Read device details every" or "Server name");
             Capture(window, outDir, "client-settings-errors.png");
 
             vm.ClockToleranceSeconds = 2;
-            vm.ServerName = "acs";
+            vm.ScanParallelism = 32;
             vm.ListenUrl = "http://*:5080";
             Assert.True(vm.SaveCommand.CanExecute(null));
             Assert.Null(vm.SaveBlockedReason);
@@ -269,7 +270,7 @@ public sealed class FormValidationTests
     }
 
     [Fact]
-    public async Task Stored_values_in_range_load_clean_and_a_refused_one_opens_its_card()
+    public async Task Stored_values_in_range_load_clean_and_a_refused_one_opens_its_expander()
     {
         HeadlessUnitTestSession session = HeadlessSession.Shared;
         await session.Dispatch(async () =>
@@ -280,10 +281,10 @@ public sealed class FormValidationTests
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Shell.ServerConnection>.Instance);
             var vm = new Oadm.Client.Settings.SettingsViewModel(f.Api, connection,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Settings.SettingsViewModel>.Instance);
-            var window = new Window { Width = 900, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
+            var window = new Window { Width = 1100, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
             window.Show();
 
-            // An hour of allowed clock difference is within the server's range (1..3600 s): Save works with every card closed.
+            // An hour of allowed clock difference is within the server's range (1..3600 s): Save works with every expander closed.
             Oadm.Contracts.V1.ServerSettings stored = await api.GetSettingsAsync(CancellationToken.None);
             stored.ClockToleranceSeconds = 3600;
             await api.SetSettingsAsync(stored, CancellationToken.None);
@@ -291,20 +292,20 @@ public sealed class FormValidationTests
             Dispatcher.UIThread.RunJobs();
             Assert.False(vm.HasErrors);
             Assert.True(vm.SaveCommand.CanExecute(null));
-            Assert.All(Cards(window).Values, c => Assert.False(c.IsExpanded));
+            Assert.All(Expanders(window).Values, c => Assert.False(c.IsExpanded));
 
-            // A stored value the form refuses shows its error at once and opens its card, so Save is not blocked unseen.
+            // A stored value the form refuses shows its error at once and opens its expander, so Save is not blocked unseen.
             stored.ScanParallelism = 1000;
             await api.SetSettingsAsync(stored, CancellationToken.None);
             await vm.LoadAsync();
             Dispatcher.UIThread.RunJobs();
             Assert.Equal("Enter a whole number from 1 to 256.", vm.ErrorOf(nameof(vm.ScanParallelism)));
             Assert.False(vm.SaveCommand.CanExecute(null));
-            Dictionary<string, Oadm.Client.Controls.CollapsibleCard> cards = Cards(window);
-            Assert.True(cards["Discovery"].IsExpanded);
-            Assert.False(cards["Polling"].IsExpanded);
-            Assert.True(window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Addresses scanned at once" && x.IsEffectivelyVisible).HasError);
-            Capture(window, Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR"), "settings-card-opened-by-error.png");
+            Dictionary<string, Oadm.Client.Controls.SettingsExpander> expanders = Expanders(window);
+            Assert.True(expanders["Discovery"].IsExpanded);
+            Assert.False(expanders["Live view"].IsExpanded);
+            Assert.True(RowHasError(window, "Addresses scanned at once"));
+            Capture(window, Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR"), "settings-expander-opened-by-error.png");
             window.Close();
             return true;
         }, CancellationToken.None);
@@ -362,25 +363,26 @@ public sealed class FormValidationTests
             await vm.LoadAsync();
             Assert.Equal(16m, vm.MaxParallelTasksPerPlugin);
 
-            var window = new Window { Width = 900, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
+            var window = new Window { Width = 1100, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
             window.Show();
-            OpenCards(window); // the Settings cards are closed by default
-            FormField field = window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Parallel tasks per plugin" && x.IsEffectivelyVisible);
-            Assert.Equal("How many devices a task runs on at the same time, e.g. restarts or AXIS OS upgrades.", field.Hint);
+            Dispatcher.UIThread.RunJobs();
+            Oadm.Client.Controls.SettingsCard row = Row(window, "Parallel tasks per plugin");
+            Assert.True(row.IsEffectivelyVisible); // a row of General, not in an expander
+            Assert.Equal("How many devices a task runs on at the same time, e.g. restarts or AXIS OS upgrades.", row.Hint);
 
             foreach (decimal? bad in new decimal?[] { null, 0m, 257m, 2.5m })
             {
                 vm.MaxParallelTasksPerPlugin = bad;
                 Dispatcher.UIThread.RunJobs();
                 Assert.Equal("Enter a whole number from 1 to 256.", vm.ErrorOf(nameof(vm.MaxParallelTasksPerPlugin)));
-                Assert.True(field.HasError);
+                Assert.True(RowHasError(window, "Parallel tasks per plugin"));
                 Assert.False(vm.SaveCommand.CanExecute(null));
             }
 
             vm.MaxParallelTasksPerPlugin = 32;
             Dispatcher.UIThread.RunJobs();
             Assert.Null(vm.ErrorOf(nameof(vm.MaxParallelTasksPerPlugin)));
-            Assert.False(field.HasError);
+            Assert.False(RowHasError(window, "Parallel tasks per plugin"));
             await vm.SaveCommand.ExecuteAsync(null);
             Assert.Equal(32, (await api.GetSettingsAsync(CancellationToken.None)).MaxParallelTasksPerPlugin);
 
@@ -409,14 +411,17 @@ public sealed class FormValidationTests
             Assert.False(vm.AllowBasicOverHttp); // off by default
             Assert.Equal("Off", vm.AllowBasicOverHttpText);
 
-            var window = new Window { Width = 900, Height = 1300, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
+            var window = new Window { Width = 1100, Height = 1300, Content = new Oadm.Client.Settings.SettingsView { DataContext = vm } };
             window.Show();
-            OpenCards(window); // the Settings cards are closed by default
-            FormField field = window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Device login" && x.IsEffectivelyVisible);
-            Assert.Equal("Sends passwords unencrypted. Only for devices without HTTPS.", field.Hint);
-            Assert.Contains(field.GetVisualDescendants().OfType<CheckBox>(), c => Equals(c.Content, "Allow Basic login over HTTP"));
+            Dispatcher.UIThread.RunJobs();
+            Oadm.Client.Controls.SettingsCard row = Row(window, "Allow Basic login over HTTP");
+            Assert.Equal("Sends passwords unencrypted. Only for devices without HTTPS.", row.Hint);
+            OnOffSwitch toggle = row.GetVisualDescendants().OfType<OnOffSwitch>().Single(x => x.IsEffectivelyVisible);
+            Assert.False(toggle.IsChecked);
+            Assert.Contains(toggle.GetVisualDescendants().OfType<TextBlock>(), t => t.Text == OnOffSwitch.OffText);
 
-            vm.AllowBasicOverHttp = true;
+            toggle.IsChecked = true; // the switch writes the setting
+            Assert.True(vm.AllowBasicOverHttp);
             await vm.SaveCommand.ExecuteAsync(null);
             Assert.True((await api.GetSettingsAsync(CancellationToken.None)).AllowBasicOverHttp);
 
@@ -441,18 +446,17 @@ public sealed class FormValidationTests
         }
     }
 
-    private static Dictionary<string, Oadm.Client.Controls.CollapsibleCard> Cards(Window window) =>
-        window.GetVisualDescendants().OfType<Oadm.Client.Controls.CollapsibleCard>().Where(c => c.Title is not null)
-            .GroupBy(c => c.Title!).ToDictionary(g => g.Key, g => g.First());
+    private static Dictionary<string, Oadm.Client.Controls.SettingsExpander> Expanders(Window window) =>
+        window.GetVisualDescendants().OfType<Oadm.Client.Controls.SettingsExpander>().Where(c => c.Title is not null)
+            .ToDictionary(c => c.Title!);
 
-    /// <summary>Opens every card of the Settings page (closed by default, decision 2026-10-25).</summary>
-    private static void OpenCards(Window window)
-    {
-        foreach (var card in window.GetVisualDescendants().OfType<Oadm.Client.Controls.CollapsibleCard>().ToList())
-        {
-            card.IsExpanded = true;
-        }
+    /// <summary>The rows of the Settings page (not the headers of its expanders).</summary>
+    private static IEnumerable<Oadm.Client.Controls.SettingsCard> Rows(Window window) =>
+        window.GetVisualDescendants().OfType<Oadm.Client.Controls.SettingsCard>().Where(c => !c.Classes.Contains("header"));
 
-        Dispatcher.UIThread.RunJobs();
-    }
+    private static Oadm.Client.Controls.SettingsCard Row(Window window, string title) => Rows(window).Single(c => c.Title == title);
+
+    /// <summary>The row's input shows its validation error (red, directly below it).</summary>
+    private static bool RowHasError(Window window, string title) =>
+        Row(window, title).GetVisualDescendants().OfType<Control>().Any(DataValidationErrors.GetHasErrors);
 }

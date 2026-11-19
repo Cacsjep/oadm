@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 using NSubstitute;
 
@@ -9,11 +10,12 @@ using Oadm.Client.Backup;
 using Oadm.Client.Dialogs;
 using Oadm.Client.Licensing;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Licensing;
 
 namespace Oadm.Client.Tests;
 
-/// <summary>The Settings page's License card: the server ID, the OADM PRO state, the trial, import, remove and the oadm.app link.</summary>
+/// <summary>OADM PRO on the Settings page: the server ID, the OADM PRO state, the trial, import, remove and the oadm.app link.</summary>
 public sealed class LicenseCardTests
 {
     private static string Sign(bool trial = false, string server = FakeOadmApi.FakeServerId) =>
@@ -141,48 +143,39 @@ public sealed class LicenseCardTests
     }
 
     [Fact]
-    public async Task The_settings_page_shows_the_license_card_below_backup_and_restore()
+    public async Task The_settings_page_shows_oadm_pro_and_the_server_id()
     {
-        var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var done = await HeadlessSession.Shared.Dispatch(async () =>
         {
-            var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
-            using var f = new DevicesFixture(api);
-            using var connection = new Oadm.Client.Shell.ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Shell.ServerConnection>.Instance);
-            var session = Session(UserRole.Admin);
-            var license = new LicenseViewModel(api, Substitute.For<IDialogService>(), session: session);
-            var settings = new Oadm.Client.Settings.SettingsViewModel(f.Api, connection, Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Settings.SettingsViewModel>.Instance,
-                session, backup: new BackupViewModel(api, Substitute.For<IDialogService>()), license: license);
-            await settings.LoadAsync();
+            using var page = await SettingsPageTests.SettingsPage.OpenAsync(UserRole.Admin);
+            var license = page.Vm.License!;
             Assert.Equal(FakeOadmApi.FakeServerId, license.ServerId); // loaded with the page
-            var window = new Window { Width = 1520, Height = 1000, Content = new Oadm.Client.Settings.SettingsView { DataContext = settings, Margin = new Avalonia.Thickness(24) } };
-            window.Show();
-            Pump();
-            Assert.Single(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<LicenseCardView>(), c => c.IsEffectivelyVisible);
-            foreach (var card in Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<Oadm.Client.Controls.CollapsibleCard>().Where(c => c.Title == "License"))
-            {
-                card.IsExpanded = true; // the card opens like a user would
-            }
-
-            Pump();
-            Save(window, outDir, "client-page-settings-license-none.png"); // with Start 30-day trial
-            Assert.Contains(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<TextBlock>(),
-                t => t.IsEffectivelyVisible && t.Text == ProLicenseTexts.TrialOffer);
+            Assert.True(page.Card("Server ID").IsEffectivelyVisible);
+            Assert.Contains(page.Card("Server ID").GetVisualDescendants().OfType<SelectableTextBlock>(), t => t.Text == FakeOadmApi.FakeServerId);
+            page.Expander("OADM PRO").IsExpanded = true;
+            page.Vm.Filter = "license"; // the license rows on one screen
+            SettingsPageTests.SettingsPage.Pump();
+            page.CaptureFile("client-page-settings-license-none.png", height: 800); // with Start 30-day trial
+            Assert.Contains(page.Card("Try OADM PRO for 30 days").GetVisualDescendants().OfType<TextBlock>(),
+                t => t.IsEffectivelyVisible && t.Text == ProLicenseTexts.StartTrial);
+            Assert.Contains(page.Expander("OADM PRO").GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == ProLicenseTexts.NoLicense);
 
             await license.StartTrialCommand.ExecuteAsync(null);
-            Pump();
+            SettingsPageTests.SettingsPage.Pump();
             Assert.True(license.IsTrial);
-            Save(window, outDir, "client-page-settings-license-trial-started.png");
+            Assert.False(page.Card("Try OADM PRO for 30 days").IsVisible);
+            Assert.True(page.Expander("OADM PRO").GetVisualDescendants().OfType<StatusChip>().Single(c => c.IsEffectivelyVisible).IsWarning);
+            page.CaptureFile("client-page-settings-license-trial-started.png");
 
             await license.ImportTextAsync(Sign());
-            Pump();
-            Save(window, outDir, "client-page-settings-license-active.png");
+            SettingsPageTests.SettingsPage.Pump();
+            Assert.True(page.Expander("OADM PRO").GetVisualDescendants().OfType<StatusChip>().Single(c => c.IsEffectivelyVisible).IsOk);
+            page.CaptureFile("client-page-settings-license-active.png");
 
             await license.ImportTextAsync(Sign(trial: true));
-            Pump();
+            SettingsPageTests.SettingsPage.Pump();
             Assert.True(license.IsTrial);
-            Save(window, outDir, "client-page-settings-license-trial.png");
-            window.Close();
+            page.CaptureFile("client-page-settings-license-trial.png");
             return true;
         }, CancellationToken.None);
         Assert.True(done);

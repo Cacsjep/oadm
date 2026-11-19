@@ -13,7 +13,7 @@ using Oadm.Sdk.Licensing;
 namespace Oadm.Client.Licensing;
 
 /// <summary>
-/// The Settings page's card "License" (docs/spec/licensing.md): the server ID with a copy button, the state of the OADM PRO
+/// OADM PRO and the server ID on the Settings page (docs/spec/licensing.md): the server ID with a copy button, the state of the OADM PRO
 /// license, Start 30-day trial (once per server), Import license and Remove license (administrators) and the link to
 /// activate a bought license on oadm.app. OADM itself never depends on the license.
 /// </summary>
@@ -75,6 +75,9 @@ public sealed partial class LicenseViewModel : ObservableObject
 
     /// <summary>"Licensed to ACME GmbH" while a license is imported.</summary>
     public string CustomerText => HasLicense && State.Customer.Length > 0 ? "Licensed to " + State.Customer : "";
+
+    /// <summary>The hint of OADM PRO on the Settings page: who it is licensed to, else what it is.</summary>
+    public string Hint => CustomerText.Length > 0 ? CustomerText : "The license of this server";
 
     public bool HasLicense => State.Status != Contracts.V1.ProLicenseStatus.ProLicenseNone;
 
@@ -285,6 +288,7 @@ public sealed partial class LicenseViewModel : ObservableObject
         State = state;
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(CustomerText));
+        OnPropertyChanged(nameof(Hint));
     }
 
     private void Show(string text, bool error)

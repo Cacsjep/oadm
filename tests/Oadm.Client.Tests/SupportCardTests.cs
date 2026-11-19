@@ -3,6 +3,7 @@ using System.IO.Compression;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 using NSubstitute;
 
@@ -15,7 +16,7 @@ using Oadm.Contracts.V1;
 
 namespace Oadm.Client.Tests;
 
-/// <summary>The Settings page's Support card: the server's support report plus this computer's logs in one ZIP.</summary>
+/// <summary>The Settings page's support report: the server's support report plus this computer's logs in one ZIP.</summary>
 public sealed class SupportCardTests
 {
     private static Oadm.Client.Shell.UserSession Session(UserRole role)
@@ -69,50 +70,34 @@ public sealed class SupportCardTests
     }
 
     [Fact]
-    public async Task TheSettingsPageShowsTheSupportCardToAdministratorsOnly()
+    public async Task TheSettingsPageShowsTheSupportReportToAdministratorsOnly()
     {
-        var outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         var done = await HeadlessSession.Shared.Dispatch(async () =>
         {
-            var api = new FakeOadmApi(TimeSpan.FromMilliseconds(5));
-            using var f = new DevicesFixture(api);
-            using var connection = new Oadm.Client.Shell.ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Shell.ServerConnection>.Instance);
-            var session = Session(UserRole.Admin);
-            var support = new SupportViewModel(api, Substitute.For<IDialogService>(), Path.GetTempPath());
-            var settings = new Oadm.Client.Settings.SettingsViewModel(f.Api, connection, Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Settings.SettingsViewModel>.Instance,
-                session, backup: new BackupViewModel(api, Substitute.For<IDialogService>()),
-                license: new LicenseViewModel(api, Substitute.For<IDialogService>(), session: session), support: support);
-            await settings.LoadAsync();
-            var window = new Window { Width = 1520, Height = 1100, Content = new Oadm.Client.Settings.SettingsView { DataContext = settings, Margin = new Avalonia.Thickness(24) } };
-            window.Show();
-            Pump();
-            Assert.Single(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<SupportCardView>(), c => c.IsEffectivelyVisible);
-            Save(window, outDir, "client-page-settings-support.png");
+            using var page = await SettingsPageTests.SettingsPage.OpenAsync(UserRole.Admin);
+            Assert.True(page.Card("Support report").IsEffectivelyVisible);
+            page.CaptureFile("client-page-settings-support.png", height: 1000);
 
             var target = Path.Combine(Path.GetTempPath(), "oadm-support-shot-" + Guid.NewGuid().ToString("N") + ".zip");
             try
             {
-                await support.SaveAsync(new SavedFile("oadm-support-acs-20261022-0930.zip", new FileStream(target, FileMode.CreateNew, FileAccess.ReadWrite)));
-                Pump();
-                Save(window, outDir, "client-page-settings-support-saved.png");
+                await page.Vm.Support!.SaveAsync(new SavedFile("oadm-support-acs-20261022-0930.zip", new FileStream(target, FileMode.CreateNew, FileAccess.ReadWrite)));
+                SettingsPageTests.SettingsPage.Pump();
+                Assert.Contains(page.Card("Support report").GetVisualDescendants().OfType<TextBlock>(),
+                    t => t.IsEffectivelyVisible && t.Text == "Saved oadm-support-acs-20261022-0930.zip.");
+                page.CaptureFile("client-page-settings-support-saved.png");
             }
             finally
             {
                 File.Delete(target);
             }
 
-            window.Close();
+            using var operatorPage = await SettingsPageTests.SettingsPage.OpenAsync(UserRole.Operator);
+            Assert.False(operatorPage.Vm.ShowSupport);
+            Assert.False(operatorPage.Group("Support").IsVisible);
             return true;
         }, CancellationToken.None);
         Assert.True(done);
-
-        // Operators do not see it.
-        var api2 = new FakeOadmApi(TimeSpan.FromMilliseconds(5)); // disposed by the fixture
-        using var f2 = new DevicesFixture(api2);
-        using var connection2 = new Oadm.Client.Shell.ServerConnection(f2.Api, f2.Store, f2.Tasks, f2.Ui, Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Shell.ServerConnection>.Instance);
-        var operatorSettings = new Oadm.Client.Settings.SettingsViewModel(f2.Api, connection2, Microsoft.Extensions.Logging.Abstractions.NullLogger<Oadm.Client.Settings.SettingsViewModel>.Instance,
-            Session(UserRole.Operator), support: new SupportViewModel(api2, Substitute.For<IDialogService>(), Path.GetTempPath()));
-        Assert.False(operatorSettings.ShowSupport);
     }
 
     private static void Pump()

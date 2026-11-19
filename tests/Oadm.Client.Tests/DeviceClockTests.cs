@@ -222,7 +222,7 @@ public sealed class DeviceClockTests
     }
 
     [Fact]
-    public async Task Settings_polling_card_shows_the_allowed_clock_difference()
+    public async Task The_settings_page_shows_the_allowed_clock_difference()
     {
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         bool done = await HeadlessSession.Shared.Dispatch(async () =>
@@ -235,13 +235,15 @@ public sealed class DeviceClockTests
             var window = new Window { Width = 900, Height = 700, Content = new SettingsView { DataContext = vm } };
             window.Show();
             Dispatcher.UIThread.RunJobs();
-            CollapsibleCard polling = window.GetVisualDescendants().OfType<CollapsibleCard>().Single(c => c.Title == "Polling");
-            polling.IsExpanded = true;
             Dispatcher.UIThread.RunJobs();
 
-            FormField field = window.GetVisualDescendants().OfType<FormField>().Single(x => x.Label == "Allowed clock difference (s)" && x.IsEffectivelyVisible);
-            Assert.Equal(2m, field.GetVisualDescendants().OfType<NumericUpDown>().Single().Value);
-            Capture(window, outDir, "client-settings-polling");
+            // A row of General, in seconds (the unit inside the field), not in an expander.
+            SettingsCard row = window.GetVisualDescendants().OfType<SettingsCard>().Single(x => x.Title == "Allowed clock difference (NTP)");
+            Assert.True(row.IsEffectivelyVisible);
+            NumericUpDown input = row.GetVisualDescendants().OfType<NumericUpDown>().Single();
+            Assert.Equal(2m, input.Value);
+            Assert.Equal("sec", Assert.IsType<UnitBadge>(input.InnerRightContent).Text);
+            Capture(window, outDir, "client-settings-clock");
             window.Close();
             return true;
         }, CancellationToken.None);

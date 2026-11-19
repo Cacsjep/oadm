@@ -13,10 +13,11 @@ using Oadm.Sdk.Client.Validation;
 namespace Oadm.Client.Settings;
 
 /// <summary>
-/// Settings page: the server settings (SettingsService). Every field reports its error below itself
-/// (<see cref="ValidatingViewModel"/>); Save stays disabled while a field has an error. Operators see the values
-/// read-only. Users, the credential list and About are pages of their own. The server address of this client is set
-/// with <c>--server</c> or the client settings file.
+/// Settings page (docs/spec/settings-backup.md "Settings page"): the client settings (saved at once), the server settings
+/// (SettingsService) and, for administrators, the automatic backups, saved together by the one Save. Every field reports
+/// its error below itself (<see cref="ValidatingViewModel"/>); Save stays disabled while a field of either has an error.
+/// Operators see the server values read-only. <see cref="Filter"/> is the page's search. Users, the credential list and
+/// About are pages of their own. The server address of this client is set with <c>--server</c> or the client settings file.
 /// </summary>
 public sealed partial class SettingsViewModel : ValidatingViewModel
 {
@@ -102,26 +103,31 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         }
     }
 
-    /// <summary>Below the select while the chosen appearance is not the running one.</summary>
-    public string? AppearanceHint => _appearance == Oadm.Theme.OadmColors.Current ? null : AppearanceRestartHint;
+    /// <summary>The hint of Appearance; while the chosen appearance is not the running one, that it needs a restart.</summary>
+    public string AppearanceHint => _appearance == Oadm.Theme.OadmColors.Current ? AppearanceDefaultHint : AppearanceRestartHint;
+
+    public const string AppearanceDefaultHint = "Dark or light colors";
 
     public const string AppearanceRestartHint = "Takes effect after the client restarts";
+
+    /// <summary>The search of the page ("Find a setting"): shows the rows whose title or hint contains it.</summary>
+    [ObservableProperty] public partial string? Filter { get; set; }
 
     /// <summary>Live video on this computer: details over the picture, the adaptive frame rate.</summary>
     public LiveView.LiveVideoSettings Video { get; }
 
-    /// <summary>The card "License" (every user; administrators import and remove); null in tests without it.</summary>
+    /// <summary>OADM PRO and the server ID (every user; administrators import and remove); null in tests without it.</summary>
     public Licensing.LicenseViewModel? License { get; }
 
     public bool ShowLicense => License is not null;
 
 
-    /// <summary>The card "Backup and restore" (administrators); null without a dialog service (tests).</summary>
+    /// <summary>Backup and restore and the automatic backups (administrators); null without a dialog service (tests).</summary>
     public Oadm.Client.Backup.BackupViewModel? Backup { get; }
 
     public bool ShowBackup => Backup is not null && IsAdmin;
 
-    /// <summary>The card "Support" (administrators): the support report; null in tests without it.</summary>
+    /// <summary>The support report (administrators); null in tests without it.</summary>
     public Oadm.Client.Support.SupportViewModel? Support { get; }
 
     public bool ShowSupport => Support is not null && IsAdmin;
@@ -145,6 +151,11 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         Support = support;
         Video = video ?? new LiveView.LiveVideoSettings(clientSettings);
         Backup = backup;
+        if (backup is not null)
+        {
+            backup.PropertyChanged += OnBackupChanged;
+        }
+
         ArgumentNullException.ThrowIfNull(connection);
         _api = api;
         _logger = logger;
@@ -190,7 +201,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
                     {
                         _ = Backup!.LoadAsync();
                     }
-                    SaveCommand.NotifyCanExecuteChanged();
+                    RefreshSave();
                 }
             };
         }
@@ -202,7 +213,6 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             .Rule(nameof(ZeroConfSeconds), () => RangeError(ZeroConfSeconds, Rules.MinZeroConfSeconds, Rules.MaxZeroConfSeconds))
             .Rule(nameof(WaitingRetryMinutes), () => RangeError(WaitingRetryMinutes, Rules.MinWaitingRetryMinutes, Rules.MaxWaitingRetryMinutes))
             .Rule(nameof(MaxParallelTasksPerPlugin), () => RangeError(MaxParallelTasksPerPlugin, MinParallelTasks, MaxParallelTasks))
-            .Rule(nameof(ServerName), () => Rules.ServerNameError(ServerName))
             .Rule(nameof(ListenUrl), () => ListenUrlError(ListenUrl));
         Validation.Validate();
         Validation.Reset();
@@ -211,7 +221,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     private static readonly string[] ServerFields =
     [
         nameof(ClockToleranceSeconds), nameof(ScanParallelism), nameof(ScanTimeoutMs),
-        nameof(ZeroConfSeconds), nameof(WaitingRetryMinutes), nameof(MaxParallelTasksPerPlugin), nameof(ServerName), nameof(ListenUrl),
+        nameof(ZeroConfSeconds), nameof(WaitingRetryMinutes), nameof(MaxParallelTasksPerPlugin), nameof(ListenUrl),
     ];
 
     /// <summary>Range and default of Tasks.MaxParallelPerPlugin (same as the server).</summary>
@@ -224,13 +234,49 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     public const int MaxClockTolerance = Rules.MaxClockTolerance;
     public const int DefaultClockTolerance = 2;
 
-    /// <summary>Why Save is disabled (tooltip).</summary>
-    public string? SaveBlockedReason => Validation.FirstErrorOf(ServerFields);
+    /// <summary>Why Save is disabled (tooltip): the first error of the server settings, else of the automatic backups.</summary>
+    public string? SaveBlockedReason => Validation.FirstErrorOf(ServerFields) ?? (ShowBackup ? Backup!.FormError : null);
 
-    protected override void OnValidationChanged()
+    /// <summary>The automatic backups are saved with the server settings (administrators).</summary>
+    private bool ScheduleIsValid => !ShowBackup || Backup!.IsFormValid;
+
+    protected override void OnValidationChanged() => RefreshSave();
+
+    private void RefreshSave()
     {
         OnPropertyChanged(nameof(SaveBlockedReason));
         SaveCommand.NotifyCanExecuteChanged();
+    }
+
+    private void OnBackupChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ValidatingViewModel.FormError) or nameof(ValidatingViewModel.IsFormValid))
+        {
+            RefreshSave();
+        }
+        else if (Oadm.Client.Backup.BackupViewModel.IsScheduleField(e.PropertyName))
+        {
+            ClearSaved();
+        }
+    }
+
+    protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        base.OnPropertyChanged(e);
+        if (Array.IndexOf(ServerFields, e.PropertyName) >= 0 || e.PropertyName is nameof(AllowBasicOverHttp) or nameof(VulnerabilityUpdateIndex))
+        {
+            ClearSaved();
+        }
+    }
+
+    /// <summary>An edit after "Saved." takes the message away.</summary>
+    private void ClearSaved()
+    {
+        if (ServerMessage is not null && !ServerMessageIsError && !IsBusy)
+        {
+            ServerMessage = null;
+        }
     }
 
     /// <summary>"Enter a whole number from 5 to 86400." for an empty or out-of-range number field.</summary>
@@ -269,7 +315,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     public partial bool AllowBasicOverHttp { get; set; }
 
     /// <summary>"On" or "Off" for operators, who read the server settings as plain text.</summary>
-    public string AllowBasicOverHttpText => AllowBasicOverHttp ? "On" : "Off";
+    public string AllowBasicOverHttpText => AllowBasicOverHttp ? Oadm.Sdk.Client.Controls.OnOffSwitch.OnText : Oadm.Sdk.Client.Controls.OnOffSwitch.OffText;
 
     [ObservableProperty] public partial string? ServerMessage { get; private set; }
     [ObservableProperty] public partial bool ServerMessageIsError { get; private set; }
@@ -282,7 +328,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     public partial bool IsBusy { get; private set; }
 
-    private bool CanSave => IsLoaded && !IsBusy && IsAdmin && Validation.IsValidFor(ServerFields);
+    private bool CanSave => IsLoaded && !IsBusy && IsAdmin && Validation.IsValidFor(ServerFields) && ScheduleIsValid;
 
     [RelayCommand]
     public async Task LoadAsync()
@@ -294,7 +340,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             Validation.Reset(ServerFields); // loaded values: nothing edited yet
             if (!Validation.IsValidFor(ServerFields))
             {
-                Validation.ShowAll(ServerFields); // a stored value the form refuses: shown (its card opens), else Save stays disabled without a reason in sight
+                Validation.ShowAll(ServerFields); // a stored value the form refuses: shown (its expander opens), else Save stays disabled without a reason in sight
             }
 
             IsLoaded = true;
@@ -321,12 +367,14 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
         }
     }
 
+    /// <summary>The one Save of the page: the server settings, then (administrators) the automatic backups when they changed.</summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {
-        if (!Validation.IsValidFor(ServerFields))
+        if (!Validation.IsValidFor(ServerFields) || !ScheduleIsValid)
         {
             Validation.ShowAll(ServerFields);
+            Backup?.ShowScheduleErrors();
             return;
         }
 
@@ -340,7 +388,7 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             MaxParallelTasksPerPlugin = (int)(MaxParallelTasksPerPlugin ?? DefaultParallelTasks),
             AllowBasicOverHttp = AllowBasicOverHttp,
             VulnerabilityUpdate = VulnerabilityValue,
-            ServerName = ServerName.Trim(),
+            ServerName = ServerName.Trim(), // not on the page (decision 2026-11-19): the loaded name goes back
             ListenUrl = ListenUrl.Trim(),
         };
         try
@@ -349,8 +397,13 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             Apply(await _api.SetSettingsAsync(settings, CancellationToken.None).ConfigureAwait(true));
             await ReadVulnerabilitiesAsync().ConfigureAwait(true); // Check now follows the saved setting
             Validation.Reset(ServerFields);
+            if (ShowBackup && Backup!.IsScheduleChanged)
+            {
+                await Backup.SaveScheduleAsync(CancellationToken.None).ConfigureAwait(true);
+            }
+
             ServerMessageIsError = false;
-            ServerMessage = "Saved. A changed listen URL takes effect after the server restarts.";
+            ServerMessage = SavedText;
             LogSaved(_logger);
         }
         catch (Exception ex)
@@ -363,6 +416,9 @@ public sealed partial class SettingsViewModel : ValidatingViewModel
             IsBusy = false;
         }
     }
+
+    /// <summary>The result of Save, directly left of it.</summary>
+    public const string SavedText = "Saved.";
 
     private void Apply(ServerSettings settings)
     {

@@ -6,7 +6,7 @@ using Oadm.Sdk.Licensing;
 namespace Oadm.Client.Api;
 
 /// <summary>
-/// Fake LicenseService so <c>--fake</c> shows the Settings page's License card: no license at first; a PRO key signed with
+/// Fake LicenseService so <c>--fake</c> shows OADM PRO on the Settings page: no license at first; a PRO key signed with
 /// <see cref="SampleLicenseKeys"/> for <see cref="FakeServerId"/> is accepted (tests sign one with
 /// <see cref="ProLicenseFile.Sign"/>); Start 30-day trial runs once, like on a real server.
 /// </summary>

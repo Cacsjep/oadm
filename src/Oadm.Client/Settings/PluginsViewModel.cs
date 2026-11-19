@@ -258,10 +258,10 @@ public sealed partial class PluginsViewModel : ObservableObject
     /// <summary>OADM PRO is active on the server: PRO plugins can be turned on.</summary>
     public bool ProActive => _store.ProActive;
 
-    /// <summary>Asks the shell to open a host page (<c>HostPages</c> key): Activate opens Settings, where the License card is.</summary>
+    /// <summary>Asks the shell to open a host page (<c>HostPages</c> key): Activate opens Settings, where OADM PRO is.</summary>
     public event EventHandler<string>? NavigateRequested;
 
-    /// <summary>Activate of a PRO plugin: opens Settings (License card).</summary>
+    /// <summary>Activate of a PRO plugin: opens Settings (OADM PRO).</summary>
     [RelayCommand]
     private void ActivatePro() => NavigateRequested?.Invoke(this, Oadm.Sdk.Client.HostPages.Settings);
 

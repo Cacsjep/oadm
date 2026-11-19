@@ -10,7 +10,7 @@ using Oadm.Client.Vulnerabilities;
 namespace Oadm.Client.Settings;
 
 /// <summary>
-/// The Vulnerabilities card (docs/spec/vulnerabilities.md): who updates the list of Axis CVEs online (a server setting, saved
+/// Vulnerabilities of the Settings page (docs/spec/vulnerabilities.md): who updates the list of Axis CVEs online (a server setting, saved
 /// with the others), the list's date and where it came from, Check now.
 /// </summary>
 public sealed partial class SettingsViewModel

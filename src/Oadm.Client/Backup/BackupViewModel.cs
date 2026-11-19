@@ -25,12 +25,15 @@ public sealed record ServerBackupRow(ServerBackup Backup)
     public string KindText => Backup.Kind == "before-restore" ? "Before a restore" : "Automatic";
 
     public string SizeText => ByteSize.Text(Backup.Size);
+
+    /// <summary>"Automatic, 48.2 MB": the hint of the backup's row.</summary>
+    public string Detail => KindText + ", " + SizeText;
 }
 
 /// <summary>
-/// The Settings page's card "Backup and restore" (administrators): Back up now (password, then the file is saved on this
+/// Backup and restore on the Settings page (administrators): Back up now (password, then the file is saved on this
 /// computer), Restore from a file or from a backup the server keeps, the automatic backups (on, time, how many kept, their
-/// password) and the report of the last restore.
+/// password; saved by the page's one Save through <see cref="SaveScheduleAsync"/>) and the report of the last restore.
 /// </summary>
 public sealed partial class BackupViewModel : ValidatingViewModel
 {
@@ -45,6 +48,7 @@ public sealed partial class BackupViewModel : ValidatingViewModel
         _api = api ?? throw new ArgumentNullException(nameof(api));
         _dialogs = dialogs ?? throw new ArgumentNullException(nameof(dialogs));
         Validation.Rule(nameof(TimeOfDay), () => TimeOnly.TryParseExact(TimeOfDay, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out _) ? null : "Enter a time like 02:00.");
+        Validation.Rule(nameof(Keep), () => Oadm.Contracts.Settings.ServerSettingsRules.RangeError(Keep, MinKeep, MaxKeep));
         Validation.Rule(nameof(SchedulePassword), () =>
             string.IsNullOrEmpty(SchedulePassword)
                 ? (ScheduleEnabled && !_hasPassword ? "Enter a password for the automatic backups." : null)
@@ -53,26 +57,40 @@ public sealed partial class BackupViewModel : ValidatingViewModel
         Validation.Validate();
     }
 
+    /// <summary>Range of "Backups kept" (the server keeps at least one, at most a year of them).</summary>
+    public const int MinKeep = 1;
+    public const int MaxKeep = 365;
+
+    private static readonly string[] ScheduleFields =
+        [nameof(ScheduleEnabled), nameof(TimeOfDay), nameof(Keep), nameof(SchedulePassword), nameof(ScheduleConfirmPassword)];
+
+    /// <summary>True for the properties of the automatic backups (the page's Save saves them).</summary>
+    public static bool IsScheduleField(string? property) => property is not null && Array.IndexOf(ScheduleFields, property) >= 0;
+
     public RangeObservableCollection<ServerBackupRow> Backups { get; } = new();
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(SaveScheduleCommand))]
     public partial bool ScheduleEnabled { get; set; }
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(SaveScheduleCommand))]
     public partial string TimeOfDay { get; set; } = "02:00";
 
+    /// <summary>"Backups kept" (1 to 365; a number field, empty while the user clears it).</summary>
     [ObservableProperty]
-    public partial int Keep { get; set; } = 7;
+    public partial decimal? Keep { get; set; } = 7;
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(SaveScheduleCommand))]
     public partial string SchedulePassword { get; set; } = "";
 
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(SaveScheduleCommand))]
     public partial string ScheduleConfirmPassword { get; set; } = "";
+
+    /// <summary>The schedule as the server has it; null until it was read (nothing to save then).</summary>
+    private BackupSchedule? _loadedSchedule;
+
+    /// <summary>The automatic backups differ from the server's (the page's Save sends them only then).</summary>
+    public bool IsScheduleChanged => _loadedSchedule is { } loaded
+        && (ScheduleEnabled != loaded.Enabled || TimeOfDay != loaded.TimeOfDay || Keep != loaded.Keep || SchedulePassword.Length > 0);
 
     /// <summary>"Unchanged" while the server has a password (the field stays empty).</summary>
     [ObservableProperty]
@@ -82,7 +100,7 @@ public sealed partial class BackupViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial string? FolderText { get; private set; }
 
-    /// <summary>"Last automatic backup: 2026-10-13 02:00" or its error.</summary>
+    /// <summary>"Last automatic backup: 2026-10-13 02:00" or its error (the red chip on Automatic backups while it failed).</summary>
     [ObservableProperty]
     public partial string? LastAutomaticText { get; private set; }
 
@@ -97,10 +115,14 @@ public sealed partial class BackupViewModel : ValidatingViewModel
     public partial bool LastRestoreFailed { get; private set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LastRestoreTip))]
     public partial IReadOnlyList<string> LastRestoreLines { get; private set; } = [];
 
+    /// <summary>What the last restore brought back, one line each: the tooltip of its chip.</summary>
+    public string? LastRestoreTip => LastRestoreLines.Count == 0 ? null : string.Join(Environment.NewLine, LastRestoreLines);
+
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(BackUpNowCommand), nameof(RestoreFromFileCommand), nameof(RestoreCommand), nameof(DownloadCommand), nameof(DeleteCommand), nameof(SaveScheduleCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BackUpNowCommand), nameof(RestoreFromFileCommand), nameof(RestoreCommand), nameof(DownloadCommand), nameof(DeleteCommand))]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
     public partial bool IsBusy { get; private set; }
 
@@ -118,6 +140,9 @@ public sealed partial class BackupViewModel : ValidatingViewModel
 
     public bool HasBackups => Backups.Count > 0;
 
+    /// <summary>"3 backups": the header of Backups on the server.</summary>
+    public string BackupCountText => Backups.Count == 1 ? "1 backup" : Backups.Count.ToString("N0", CultureInfo.CurrentCulture) + " backups";
+
     /// <summary>The outcome line under the buttons (not while the progress row shows).</summary>
     public bool ShowStatus => !IsBusy && !string.IsNullOrEmpty(Status);
 
@@ -129,15 +154,17 @@ public sealed partial class BackupViewModel : ValidatingViewModel
 
     public int ActiveTasks { get; private set; }
 
-    public string? SaveScheduleBlockedReason => IsBusy ? null : Validation.FirstErrorOf([nameof(TimeOfDay), nameof(SchedulePassword), nameof(ScheduleConfirmPassword)]);
+    /// <summary>Shows every error of the automatic backups below its field (a Save was tried).</summary>
+    public void ShowScheduleErrors() => Validation.ShowAll();
 
-    protected override void OnValidationChanged()
+    partial void OnScheduleEnabledChanged(bool value)
     {
-        OnPropertyChanged(nameof(SaveScheduleBlockedReason));
-        SaveScheduleCommand.NotifyCanExecuteChanged();
+        Validation.Validate();
+        if (value && _loadedSchedule is not null && !_hasPassword)
+        {
+            Validation.ShowAll(nameof(SchedulePassword)); // turned on without a password yet: say so below the field (its expander opens)
+        }
     }
-
-    partial void OnScheduleEnabledChanged(bool value) => Validation.Validate();
 
     partial void OnSchedulePasswordChanged(string value) => Validation.Validate();
 
@@ -162,17 +189,20 @@ public sealed partial class BackupViewModel : ValidatingViewModel
         PasswordPlaceholder = state.HasPassword ? "Unchanged" : "";
         if (resetForm)
         {
+            _loadedSchedule = null; // no "turned on" message while the form takes the server's values
             ScheduleEnabled = state.Schedule?.Enabled ?? false;
             TimeOfDay = string.IsNullOrEmpty(state.Schedule?.TimeOfDay) ? "02:00" : state.Schedule.TimeOfDay;
             Keep = state.Schedule?.Keep is > 0 ? state.Schedule.Keep : 7;
             SchedulePassword = "";
             ScheduleConfirmPassword = "";
+            _loadedSchedule = new BackupSchedule { Enabled = ScheduleEnabled, TimeOfDay = TimeOfDay, Keep = (int)Keep.Value };
             Validation.Reset();
         }
 
         FolderText = string.IsNullOrEmpty(state.Folder) ? null : $"Kept in {state.Folder} on the server.";
         Backups.ReplaceAll(state.Backups.Select(b => new ServerBackupRow(b)));
         OnPropertyChanged(nameof(HasBackups));
+        OnPropertyChanged(nameof(BackupCountText));
         LastAutomaticFailed = !string.IsNullOrEmpty(state.LastAutomaticError);
         LastAutomaticText = state.LastAutomatic is null
             ? null
@@ -308,23 +338,20 @@ public sealed partial class BackupViewModel : ValidatingViewModel
         }
     }
 
-    private bool CanSaveSchedule() => !IsBusy && Validation.IsValid;
-
-    [RelayCommand(CanExecute = nameof(CanSaveSchedule))]
-    private async Task SaveScheduleAsync()
+    /// <summary>
+    /// Saves the automatic backups (the Settings page's one Save calls it after the server settings). The form must be
+    /// valid; a refusal of the server is thrown to the caller, which reports it next to Save.
+    /// </summary>
+    public async Task SaveScheduleAsync(CancellationToken ct)
     {
         Validation.ShowAll();
         if (!Validation.IsValid)
         {
-            return;
+            throw new InvalidOperationException(FormError);
         }
 
-        await RunAsync(null, async () =>
-        {
-            var schedule = new BackupSchedule { Enabled = ScheduleEnabled, TimeOfDay = TimeOfDay, Keep = Keep, Password = SchedulePassword };
-            Apply(await _api.SetBackupScheduleAsync(schedule, CancellationToken.None).ConfigureAwait(true), resetForm: true);
-            Show("Automatic backups saved.");
-        }).ConfigureAwait(true);
+        var schedule = new BackupSchedule { Enabled = ScheduleEnabled, TimeOfDay = TimeOfDay, Keep = (int)(Keep ?? 7), Password = SchedulePassword };
+        Apply(await _api.SetBackupScheduleAsync(schedule, ct).ConfigureAwait(true), resetForm: true);
     }
 
     /// <summary>Writes a backup from the server into the chosen file; a failure removes the cut file.</summary>
