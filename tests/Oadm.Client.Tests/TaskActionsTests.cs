@@ -112,7 +112,7 @@ public sealed class TaskActionsTests
         string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
         bool done = await HeadlessSession.Shared.Dispatch(async () =>
         {
-            using var fake = new FakeOadmApi(TimeSpan.FromMilliseconds(5)) { ProvisioningOn = true };
+            using var fake = new FakeOadmApi(TimeSpan.FromMilliseconds(5)) { ProvisioningReady = true };
             var page = new AddDevicesViewModel(fake, new AvaloniaUiDispatcher(), NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.Scan);
             var window = new AddDevicesWindow { DataContext = page, Width = 1040 };
             window.Show();

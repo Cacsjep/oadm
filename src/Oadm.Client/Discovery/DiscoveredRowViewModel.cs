@@ -245,18 +245,18 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     /// <summary>"Log in" link: no known credential worked.</summary>
     public bool ShowLogIn => AuthState == AuthState.LoginFailed && !IsMuted;
 
-    private bool _provisioningOn;
+    private bool _provisioningReady;
 
     /// <summary>
-    /// Provisioning is on (the page sets it for every row, docs/spec/provisioning.md): a factory-new device of the server's own
-    /// network is added without a first password and its provisioning task sets it up afterwards.
+    /// Provisioning is on and a new camera gets its task (the page sets it for every row, docs/spec/provisioning.md): a
+    /// factory-new device of the server's own network is added without a first password and its provisioning task sets it up.
     /// </summary>
-    public bool ProvisioningOn
+    public bool ProvisioningReady
     {
-        get => _provisioningOn;
+        get => _provisioningReady;
         set
         {
-            if (SetProperty(ref _provisioningOn, value))
+            if (SetProperty(ref _provisioningReady, value))
             {
                 Refresh();
             }
@@ -264,10 +264,10 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     }
 
     /// <summary>
-    /// "Provisioning" instead of Set password: a factory-new device while provisioning is on, not at a site (provisioning does
+    /// Ready for provisioning instead of Set password: a factory-new device while a new camera gets its task, not at a site (provisioning does
     /// not run at sites).
     /// </summary>
-    public bool IsProvisioned => ProvisioningOn && IsFactoryDefault && SiteName.Length == 0;
+    public bool IsProvisioned => ProvisioningReady && IsFactoryDefault && SiteName.Length == 0;
 
     /// <summary>"Set password" link: factory default without a password yet.</summary>
     public bool ShowSetPassword => IsFactoryDefault && !HasPendingPassword && !IsProvisioned;

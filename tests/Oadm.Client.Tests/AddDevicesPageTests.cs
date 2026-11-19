@@ -198,14 +198,14 @@ public sealed class AddDevicesPageTests : IDisposable
     [Fact]
     public Task While_provisioning_is_on_factory_new_devices_show_provisioning_and_are_added_without_a_password() => _ui.RunAsync(async () =>
     {
-        _api.ProvisioningOn = true;
+        _api.ProvisioningReady = true;
         AddDevicesViewModel page = Create(AddDevicesMode.Scan);
         await using (page)
         {
             await page.OpenAsync();
             await page.ProvisioningRead!;
             await TestSupport.WaitUntilAsync(() => page.Rows.Count == 11 && page.Rows.All(r => r.AuthState != AuthState.Pending));
-            Assert.True(page.ProvisioningOn);
+            Assert.True(page.ProvisioningReady);
             DiscoveredRowViewModel factoryNew = Row(page, "10.0.0.90");
             Assert.Equal(("Ready for provisioning", Oadm.Client.Devices.PillKind.Ok), (factoryNew.ChipText, factoryNew.ChipKind));
             Assert.True(factoryNew.IsProvisioned);
@@ -234,10 +234,38 @@ public sealed class AddDevicesPageTests : IDisposable
     });
 
     [Fact]
+    public Task Rows_ready_for_provisioning_fall_back_to_set_password_when_it_is_no_longer_ready_at_add() => _ui.RunAsync(async () =>
+    {
+        _api.ProvisioningReady = true;
+        AddDevicesViewModel page = Create(AddDevicesMode.Scan);
+        await using (page)
+        {
+            await page.OpenAsync();
+            await page.ProvisioningRead!;
+            await TestSupport.WaitUntilAsync(() => page.Rows.Count == 11 && page.Rows.All(r => r.AuthState != AuthState.Pending));
+            DiscoveredRowViewModel factoryNew = Row(page, "10.0.0.90");
+            Assert.True(factoryNew.IsProvisioned);
+
+            // Turned off (or its profile got errors) while the page was open: asked again right before the add.
+            _api.ProvisioningReady = false;
+            await page.AddCommand.ExecuteAsync(null);
+
+            Assert.False(page.ProvisioningReady);
+            Assert.False(factoryNew.IsProvisioned);
+            Assert.True(factoryNew.ShowSetPassword);
+            Assert.False(factoryNew.CanAdd);
+            IReadOnlyList<Device> devices = await _api.ListDevicesAsync(CancellationToken.None);
+            Assert.DoesNotContain(devices, d => d.Serial == factoryNew.Serial); // never added without a password
+        }
+    });
+
+    [Fact]
     public void The_provisioning_state_is_read_from_the_plugins_answer()
     {
-        Assert.True(AddDevicesViewModel.ParseProvisioningState("{\"on\":true}"));
-        Assert.False(AddDevicesViewModel.ParseProvisioningState("{\"on\":false}"));
+        Assert.True(AddDevicesViewModel.ParseProvisioningState("{\"on\":true,\"ready\":true}"));
+        Assert.False(AddDevicesViewModel.ParseProvisioningState("{\"on\":true,\"ready\":false}")); // the active profile has errors
+        Assert.False(AddDevicesViewModel.ParseProvisioningState("{\"on\":true}"));
+        Assert.False(AddDevicesViewModel.ParseProvisioningState("{\"on\":false,\"ready\":false}"));
         Assert.False(AddDevicesViewModel.ParseProvisioningState(null));
         Assert.False(AddDevicesViewModel.ParseProvisioningState("not json"));
         Assert.Equal("Provisioning", Oadm.Sdk.Client.DeviceTexts.Provisioning);

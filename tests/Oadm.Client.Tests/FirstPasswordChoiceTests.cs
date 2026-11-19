@@ -191,6 +191,29 @@ public sealed class FirstPasswordChoiceTests : IDisposable
     });
 
     [Fact]
+    public async Task Follow_clears_the_typed_fields_for_an_entry_and_checks_them_again_without_showing_an_error()
+    {
+        var choice = new FirstPasswordChoice(ApiWithList(), isAdministrator: true);
+        await choice.LoadAsync(CancellationToken.None);
+        var password = "typed";
+        var changed = 0;
+        var validation = new Oadm.Sdk.Client.Validation.FormValidator(_ => { });
+        validation.Rule("Password", () => choice.UsesCredential ? null : password.Length < 8 ? "Too short." : null);
+        validation.SetServerError("Password", "The device refused it.");
+        choice.Follow(validation, () => password = "", () => changed++, "Password");
+
+        choice.Select("new-root");
+        Assert.Equal(("", 1), (password, changed));
+        Assert.Null(validation["Password"]);
+        Assert.True(validation.IsValid);
+
+        choice.Select(null); // typed again: the empty field is an error, not shown before it is edited
+        Assert.Equal(2, changed);
+        Assert.Null(validation["Password"]);
+        Assert.False(validation.IsValid);
+    }
+
+    [Fact]
     public Task A_page_of_another_user_shows_no_choice() => _ui.RunAsync(async () =>
     {
         await using var page = new AddDevicesViewModel(_fake, _ui, NullLogger<AddDevicesViewModel>.Instance, AddDevicesMode.Scan) { CanSaveToCredentialList = false };

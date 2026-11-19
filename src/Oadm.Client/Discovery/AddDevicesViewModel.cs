@@ -416,7 +416,15 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             if (_passwordChoice is null)
             {
                 _passwordChoice = new Oadm.Client.Devices.FirstPasswordChoice(_api, CanSaveToCredentialList);
-                _passwordChoice.PropertyChanged += OnPasswordChoiceChanged;
+                _passwordChoice.Follow(
+                    Validation,
+                    () =>
+                    {
+                        NewPassword = "";
+                        ConfirmPassword = "";
+                    },
+                    () => OnPropertyChanged(nameof(TypesPassword)),
+                    PasswordFields);
             }
 
             return _passwordChoice;
@@ -428,25 +436,6 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     /// <summary>Password editor: the password is typed (no entry of the credential list chosen); the fields are on.</summary>
     public bool TypesPassword => _passwordChoice?.UsesCredential != true;
-
-    private void OnPasswordChoiceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName != nameof(Oadm.Client.Devices.FirstPasswordChoice.UsesCredential))
-        {
-            return;
-        }
-
-        if (!TypesPassword)
-        {
-            // A chosen entry replaces the typed password: the fields are cleared and off.
-            NewPassword = "";
-            ConfirmPassword = "";
-        }
-
-        OnPropertyChanged(nameof(TypesPassword));
-        Validation.Validate();
-        Validation.Reset(PasswordFields);
-    }
 
     /// <summary>Password editor: use the password for every factory-default device in the list.</summary>
     [ObservableProperty] public partial bool UseForAllFactoryDefault { get; set; }
@@ -474,22 +463,23 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     // ------------------------------------------------------------ provisioning
 
-    /// <summary>The core plugin Provisioning and its method that answers whether it is on (every signed-in user may call it).</summary>
+    /// <summary>The core plugin Provisioning and its method that answers whether a new camera gets its task (every signed-in user may call it).</summary>
     internal const string ProvisioningPluginId = "oadm.provisioning";
 
     internal const string ProvisioningStateMethod = "state";
 
     /// <summary>
-    /// Provisioning is on (docs/spec/provisioning.md, read when the page opens): a factory-new device shows "Provisioning"
-    /// instead of Set password and is added without a first password; its provisioning task sets it up.
+    /// Provisioning is on and its active profile has no errors, so a new camera gets its task (docs/spec/provisioning.md, read
+    /// when the page opens and again right before Add): a factory-new device shows Ready for provisioning instead of Set password
+    /// and is added without a first password; its provisioning task sets it up.
     /// </summary>
     [ObservableProperty]
-    public partial bool ProvisioningOn { get; private set; }
+    public partial bool ProvisioningReady { get; private set; }
 
-    /// <summary>The read of <see cref="ProvisioningOn"/> (tests await it).</summary>
+    /// <summary>The read of <see cref="ProvisioningReady"/> (tests await it).</summary>
     public Task? ProvisioningRead { get; private set; }
 
-    /// <summary>Asks the Provisioning plugin whether it is on; off when it does not answer (turned off, an older server).</summary>
+    /// <summary>Asks the Provisioning plugin whether a new camera gets its task; not ready when it does not answer (an older server).</summary>
     private async Task ReadProvisioningAsync()
     {
         bool on;
@@ -507,21 +497,21 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             return;
         }
 
-        if (on == ProvisioningOn)
+        if (on == ProvisioningReady)
         {
             return;
         }
 
-        ProvisioningOn = on;
+        ProvisioningReady = on;
         foreach (DiscoveredRowViewModel row in Rows)
         {
-            row.ProvisioningOn = on; // a row that changed is counted again by OnRowPropertyChanged
+            row.ProvisioningReady = on; // a row that changed is counted again by OnRowPropertyChanged
         }
 
         UpdateSummary();
     }
 
-    /// <summary>The plugin's answer <c>{"on": true}</c>; anything else is off.</summary>
+    /// <summary>The plugin's answer <c>{"on": true, "ready": true}</c>: ready only then; anything else is not ready.</summary>
     internal static bool ParseProvisioningState(string? json)
     {
         if (string.IsNullOrEmpty(json))
@@ -533,8 +523,8 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         {
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             return doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
-                && (doc.RootElement.TryGetProperty("on", out var on) || doc.RootElement.TryGetProperty("On", out on))
-                && on.ValueKind == System.Text.Json.JsonValueKind.True;
+                && (doc.RootElement.TryGetProperty("ready", out var ready) || doc.RootElement.TryGetProperty("Ready", out ready))
+                && ready.ValueKind == System.Text.Json.JsonValueKind.True;
         }
         catch (System.Text.Json.JsonException)
         {
@@ -589,7 +579,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         foreach (ImportLine line in file.Lines)
         {
             DiscoveredRowViewModel row = DiscoveredRowViewModel.ForImport(line);
-            row.ProvisioningOn = ProvisioningOn;
+            row.ProvisioningReady = ProvisioningReady;
             row.PropertyChanged += OnRowPropertyChanged;
             _rowsById.TryAdd(row.DiscoveredId, row);
             row.ListOrder = NextListOrder();
@@ -944,6 +934,22 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     private async Task AddCoreAsync(bool keepWaiting)
     {
+        if (ProvisioningReady && Rows.Any(r => r.IsSelected && r.IsProvisioned))
+        {
+            // Asked again right before the add: provisioning may be off or its profile may have errors by now. Then those rows
+            // are factory-new rows again (Set password) and are not added without a password.
+            IsBusy = true;
+            AddingText = "Adding the devices";
+            try
+            {
+                await ReadProvisioningAsync().ConfigureAwait(true);
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+
         List<DiscoveredRowViewModel> selected = Rows.Where(r => r.IsSelected && r.CanAdd).ToList();
         List<DiscoveredRowViewModel> waiting = IsImportMode && keepWaiting ? Rows.Where(r => r.CanWait).ToList() : [];
         if (selected.Count == 0 && waiting.Count == 0)
@@ -1481,7 +1487,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             }
             else if (row is null)
             {
-                row = new DiscoveredRowViewModel(found, sessionId) { ShowDnsName = ShowDnsNameChoice && UseDnsNames, ProvisioningOn = ProvisioningOn };
+                row = new DiscoveredRowViewModel(found, sessionId) { ShowDnsName = ShowDnsNameChoice && UseDnsNames, ProvisioningReady = ProvisioningReady };
                 row.PropertyChanged += OnRowPropertyChanged;
                 _rowsById.TryAdd(row.DiscoveredId, row);
                 DiscoveredRowViewModel? after = _probeRows.TryGetValue(sessionId, out List<DiscoveredRowViewModel>? earlier) ? earlier[^1] : null;

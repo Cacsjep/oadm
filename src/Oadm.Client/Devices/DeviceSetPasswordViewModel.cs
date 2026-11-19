@@ -34,11 +34,24 @@ public sealed partial class DeviceSetPasswordViewModel : ValidatingViewModel
         _api = api ?? throw new ArgumentNullException(nameof(api));
         _devices = [.. devices];
         PasswordChoice = new FirstPasswordChoice(api, isAdministrator);
-        PasswordChoice.PropertyChanged += OnPasswordChoiceChanged;
         Validation
             .Rule(nameof(Password), () => TypesPassword ? PasswordRules.PasswordError(Password, _policies) : null)
             .Rule(nameof(ConfirmPassword), () => TypesPassword ? PasswordRules.ConfirmError(Password, ConfirmPassword) : null);
         Validation.Validate();
+        PasswordChoice.Follow(
+            Validation,
+            () =>
+            {
+                Password = "";
+                ConfirmPassword = "";
+            },
+            () =>
+            {
+                OnPropertyChanged(nameof(TypesPassword));
+                OnPropertyChanged(nameof(CanType));
+            },
+            nameof(Password),
+            nameof(ConfirmPassword));
     }
 
     /// <summary>The credential choice right of the fields (Administrators; the server sets the chosen entry's password).</summary>
@@ -49,27 +62,6 @@ public sealed partial class DeviceSetPasswordViewModel : ValidatingViewModel
 
     /// <summary>The fields take input: typed password and no call running.</summary>
     public bool CanType => IsIdle && TypesPassword;
-
-    private void OnPasswordChoiceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName != nameof(FirstPasswordChoice.UsesCredential))
-        {
-            return;
-        }
-
-        if (!TypesPassword)
-        {
-            // A chosen entry replaces the typed password: the fields are cleared and off.
-            Password = "";
-            ConfirmPassword = "";
-        }
-
-        OnPropertyChanged(nameof(TypesPassword));
-        OnPropertyChanged(nameof(CanType));
-        Validation.SetServerError(nameof(Password), null);
-        Validation.Validate();
-        Validation.Reset([nameof(Password), nameof(ConfirmPassword)]);
-    }
 
     /// <summary>The devices still without a password (those that took it leave the list).</summary>
     public IReadOnlyList<DeviceRowViewModel> Devices => _devices;

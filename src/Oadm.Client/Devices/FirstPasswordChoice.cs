@@ -5,6 +5,7 @@ using Grpc.Core;
 
 using Oadm.Client.Api;
 using Oadm.Sdk.Client;
+using Oadm.Sdk.Client.Validation;
 
 namespace Oadm.Client.Devices;
 
@@ -129,6 +130,45 @@ public sealed partial class FirstPasswordChoice : ObservableObject
 #pragma warning restore CA1031
         {
         }
+    }
+
+    /// <summary>
+    /// Ties the choice to a form's typed password fields (the add page's first password editor and Set password use this one
+    /// implementation): when the choice switches between a typed password and an entry, an entry clears the fields (they are
+    /// off), <paramref name="changed"/> lets the form update what depends on it, a server error of the fields goes, and the
+    /// fields are checked again without showing an error yet.
+    /// </summary>
+    /// <param name="validation">The form's validator.</param>
+    /// <param name="clearFields">Empties the typed password and its confirmation.</param>
+    /// <param name="changed">Raises the form's own properties that follow <see cref="UsesCredential"/>.</param>
+    /// <param name="fields">The typed password fields.</param>
+    public void Follow(FormValidator validation, Action clearFields, Action changed, params string[] fields)
+    {
+        ArgumentNullException.ThrowIfNull(validation);
+        ArgumentNullException.ThrowIfNull(clearFields);
+        ArgumentNullException.ThrowIfNull(changed);
+        ArgumentNullException.ThrowIfNull(fields);
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(UsesCredential))
+            {
+                return;
+            }
+
+            if (UsesCredential)
+            {
+                clearFields();
+            }
+
+            changed();
+            foreach (var field in fields)
+            {
+                validation.SetServerError(field, null);
+            }
+
+            validation.Validate();
+            validation.Reset(fields);
+        };
     }
 
     /// <summary>Chooses the entry <paramref name="credentialId"/>, or "Type a new password" for null or an entry that is gone.</summary>
