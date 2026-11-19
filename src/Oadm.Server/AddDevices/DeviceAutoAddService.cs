@@ -239,25 +239,21 @@ public sealed partial class DeviceAutoAddService(
             throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
         }
 
-        if (await credentialList.RevealAsync(credentialId, ct).ConfigureAwait(false) is not { } credential)
+        var credential = await Devices.FirstPasswordCredential.ReadAsync(credentialList, credentialId, ct).ConfigureAwait(false);
+        if (credential.Password is not { } password)
         {
-            return new DeviceFirstPasswordOutcome(false, DeviceFirstSetupTexts.CredentialGone);
-        }
-
-        if (!string.Equals(credential.UserName, "root", StringComparison.Ordinal))
-        {
-            return new DeviceFirstPasswordOutcome(false, DeviceFirstSetupTexts.RootOnly);
+            return new DeviceFirstPasswordOutcome(false, credential.Message!);
         }
 
         DeviceFirstPasswordResult result;
         if (await devices.FindBySerialAsync(serial, ct).ConfigureAwait(false) is { } managed)
         {
-            result = (await firstPasswords.SetAsync([managed.Id], credential.Password, ct).ConfigureAwait(false))[0];
+            result = (await firstPasswords.SetAsync([managed.Id], password, ct).ConfigureAwait(false))[0];
         }
         else
         {
             var found = new DiscoveredDevice("first-password", serial, ip, null, null, null, DiscoveredDeviceStatus.PasswordNotSet, null, DiscoverySources.None, time.GetUtcNow());
-            result = await firstPasswords.SetUnmanagedAsync(found, credential.Password, ct).ConfigureAwait(false);
+            result = await firstPasswords.SetUnmanagedAsync(found, password, ct).ConfigureAwait(false);
         }
 
         var message = result.Ok ? "Password set." : result.Message ?? "The camera did not take the password.";

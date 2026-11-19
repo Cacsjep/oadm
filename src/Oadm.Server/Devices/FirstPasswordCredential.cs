@@ -42,16 +42,32 @@ internal static class FirstPasswordCredential
         }
 
         var entry = Guid.TryParse(credentialId, out var id)
-            ? await list.RevealAsync(id, context.CancellationToken).ConfigureAwait(false)
-            : null;
-        if (entry is null)
+            ? await ReadAsync(list, id, context.CancellationToken).ConfigureAwait(false)
+            : FirstPasswordEntry.Gone;
+        return entry.Problem switch
         {
-            throw GrpcGuard.NotFound(DeviceFirstSetupTexts.CredentialGone);
+            FirstPasswordProblem.None => entry.Password!,
+            FirstPasswordProblem.Gone => throw GrpcGuard.NotFound(entry.Message!),
+            _ => throw GrpcGuard.InvalidArgument(entry.Message!),
+        };
+    }
+
+    /// <summary>
+    /// The one check of a first password from the credential list (the gRPC services above and the core plugins'
+    /// <c>IDeviceAutoAdd.SetFirstPasswordAsync</c>): the entry exists, is root's, and its password fits a first password.
+    /// The caller checks who may use the list.
+    /// </summary>
+    public static async Task<FirstPasswordEntry> ReadAsync(CredentialListStore list, Guid credentialId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(list);
+        if (await list.RevealAsync(credentialId, ct).ConfigureAwait(false) is not { } entry)
+        {
+            return FirstPasswordEntry.Gone;
         }
 
         if (!string.Equals(entry.UserName, "root", StringComparison.Ordinal))
         {
-            throw GrpcGuard.InvalidArgument(DeviceFirstSetupTexts.RootOnly);
+            return new FirstPasswordEntry(null, FirstPasswordProblem.NotRoot, DeviceFirstSetupTexts.RootOnly);
         }
 
         try
@@ -60,9 +76,30 @@ internal static class FirstPasswordCredential
         }
         catch (ArgumentException)
         {
-            throw GrpcGuard.InvalidArgument(DoesNotFit);
+            return new FirstPasswordEntry(null, FirstPasswordProblem.DoesNotFit, DoesNotFit);
         }
 
-        return entry.Password;
+        return new FirstPasswordEntry(entry.Password, FirstPasswordProblem.None, null);
     }
+}
+
+/// <summary>Why an entry of the credential list cannot be a first password.</summary>
+internal enum FirstPasswordProblem
+{
+    None,
+
+    /// <summary>The entry is no longer in the credential list.</summary>
+    Gone,
+
+    /// <summary>The entry is another user's than root's.</summary>
+    NotRoot,
+
+    /// <summary>The stored password does not fit a first password.</summary>
+    DoesNotFit,
+}
+
+/// <summary>The stored password of a credential list entry checked as a first password, or the problem and its text.</summary>
+internal sealed record FirstPasswordEntry(string? Password, FirstPasswordProblem Problem, string? Message)
+{
+    public static FirstPasswordEntry Gone { get; } = new(null, FirstPasswordProblem.Gone, DeviceFirstSetupTexts.CredentialGone);
 }

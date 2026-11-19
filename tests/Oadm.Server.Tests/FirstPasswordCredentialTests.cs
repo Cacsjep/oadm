@@ -137,6 +137,11 @@ public sealed class FirstPasswordCredentialTests
         Assert.Equal(FirstPasswordCredential.DoesNotFit, ex.Status.Detail);
         Assert.DoesNotContain("badé", ex.Status.Detail, StringComparison.Ordinal);
         Assert.Equal(0, network["10.9.4.1"].PwdgrpCalls);
+
+        // The core plugins' first password (Provisioning) runs the same check.
+        var outcome = await host.Get<IDeviceAutoAdd>().SetFirstPasswordAsync("10.9.4.2", FakeSerials.Make(42), id, "Provisioning", CancellationToken.None);
+        Assert.Equal((false, FirstPasswordCredential.DoesNotFit), (outcome.Ok, outcome.Message));
+        Assert.Equal(0, network["10.9.4.2"].PwdgrpCalls);
     }
 
     [Fact]
