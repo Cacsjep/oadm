@@ -40,7 +40,7 @@ internal static class ProvisioningTools
         .Read<NoArgs, CommandsAnswer>(
             new("vapix_commands", "Provisioning VAPIX commands", "The VAPIX Commander commands a VAPIX commands node can run, with their fields (name, type, required, options)."),
             ProvisioningMethods.VapixCommands,
-            (plugin, _, _, _) => Task.FromResult(new CommandsAnswer(plugin.VapixCommands())))
+            (plugin, _, _, _) => Task.FromResult(CommandsAnswer.Of(plugin.VapixCommands())))
         .Read<NoArgs, CamerasAnswer>(
             new("cameras", "Provisioning cameras", "The cameras of the session by MAC address: model, address, state, the node it is on and its message.") { Paged = true },
             ProvisioningMethods.ListCameras,
@@ -168,12 +168,15 @@ internal sealed record MacsArgs(
 internal sealed record NodeArgs(
     [property: Description("The node's id in the profile: letters, digits and hyphens."), MaxLength(32)] string Id,
     [property: Description("set_password, add_to_oadm, wait_for_approval, upgrade_online, upgrade_files, network_settings, date_time, configuration, users, certificate, dot1x, sd_card, autofocus, vapix_commands or set_ip.")] NodeKind Kind,
-    [property: Description(NodeArgs.SettingsHelp)] JsonElement? Settings = null,
+    [property: Description(NodeArgs.SettingsHelp), MaxLength(NodeArgs.MaxSettingsLength)] string? Settings = null,
     [property: Description("Go on with the next node after an error (ignored for set_password, which always stops).")] bool ContinueOnError = true)
 {
+    /// <summary>Longest settings text of one node.</summary>
+    public const int MaxSettingsLength = 20_000;
+
     /// <summary>The settings of every kind, for agents (the secrets and files by the ids of secret_store and file_store).</summary>
     public const string SettingsHelp =
-        "Settings of the kind. set_password: credential_id. add_to_oadm: tags. "
+        "The node's settings as the text of a JSON object (leave out for the defaults). set_password: credential_id. add_to_oadm: tags. "
         + "upgrade_online: target (ownTrack, latestLts, latestActive), only_if_older_than (e.g. 12.6.95). "
         + "upgrade_files: files [{file_id, name}] (one AXIS OS file per model; never a downgrade). "
         + "network_settings: host_name ({model}, {serial}, {mac}, {n}), start_number, dns_servers, search_domain. "
@@ -202,10 +205,51 @@ internal sealed record SaveArgs(
         NewPassword ? password : null);
 
     /// <summary>
-    /// The settings of a tool (snake_case) as the page writes them (camelCase), at any depth (the accounts of Users); the
-    /// values of a VAPIX command keep the names of its fields.
+    /// The settings of a tool (JSON text, snake_case) as the page writes them (camelCase), at any depth (the accounts of
+    /// Users); the values of a VAPIX command keep the names of its fields. Not a JSON object: an input error.
     /// </summary>
-    private static JsonElement? Snake(JsonElement? settings) => settings is { } element ? Camel(element) : null;
+    private static JsonElement? Snake(string? settings)
+    {
+        if (string.IsNullOrWhiteSpace(settings))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(settings);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                ? Camel(document.RootElement)
+                : throw new PluginToolInputException("nodes.settings", "Give the settings as a JSON object.");
+        }
+        catch (JsonException)
+        {
+            throw new PluginToolInputException("nodes.settings", "The settings are no valid JSON.");
+        }
+    }
+
+    /// <summary>Stored settings (camelCase) as the tools show them: snake_case JSON text, the values of a VAPIX command as they are.</summary>
+    public static string? SnakeText(JsonElement? settings) => settings is { } element ? JsonSerializer.Serialize(SnakeOf(element)) : null;
+
+    private static JsonElement SnakeOf(JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                var map = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+                foreach (var property in element.EnumerateObject())
+                {
+                    var name = string.Concat(property.Name.Select((c, i) => char.IsUpper(c) && i > 0 ? "_" + char.ToLowerInvariant(c) : char.ToLowerInvariant(c).ToString()));
+                    map[name] = property.Name == "values" ? property.Value : SnakeOf(property.Value);
+                }
+
+                return JsonSerializer.SerializeToElement(map);
+            case JsonValueKind.Array:
+                return JsonSerializer.SerializeToElement(element.EnumerateArray().Select(SnakeOf).ToList());
+            default:
+                return element;
+        }
+    }
 
     private static JsonElement Camel(JsonElement element)
     {
@@ -264,7 +308,42 @@ internal sealed record CredentialRow(Guid Id, string UserName);
 
 internal sealed record CredentialsAnswer(IReadOnlyList<CredentialRow> Credentials);
 
-internal sealed record CommandsAnswer(IReadOnlyList<ProfileCommand> Commands);
+internal sealed record CommandsAnswer(IReadOnlyList<CommandToolRow> Commands)
+{
+    public static CommandsAnswer Of(IReadOnlyList<ProfileCommand> commands) => new([.. commands.Select(c => new CommandToolRow(
+        c.Id,
+        c.Name,
+        c.Category,
+        c.Description,
+        [.. c.Fields.Select(f => new CommandFieldRow(
+            f.Name,
+            f.Label,
+            f.Type,
+            f.IsRequired && f.Default is null,
+            f.Default is { } value ? VapixCommander.FieldValues.TextOf(value) : null,
+            f.Min,
+            f.Max,
+            f.Unit,
+            f.Options is { Count: > 0 } options ? [.. options.Select(o => VapixCommander.FieldValues.TextOf(o.Value))] : null))]))]);
+}
+
+internal sealed record CommandToolRow(
+    [property: Description("The command_id of a vapix_commands node.")] string Id,
+    string Name,
+    string Category,
+    string? Description,
+    IReadOnlyList<CommandFieldRow> Fields);
+
+internal sealed record CommandFieldRow(
+    [property: Description("The field's name in the command's values.")] string Name,
+    string Label,
+    [property: Description("string, integer, number, boolean or enum.")] string Type,
+    [property: Description("A value must be given.")] bool Required,
+    [property: Description("The value used when none is given.")] string? Default,
+    double? Min,
+    double? Max,
+    string? Unit,
+    [property: Description("The values an enum field takes.")] IReadOnlyList<string>? Options);
 
 internal sealed record StatusAnswer(
     bool Started,
@@ -288,14 +367,14 @@ internal sealed record ProfilesAnswer(IReadOnlyList<ProfileRow> Profiles)
     public static ProfilesAnswer Of(ProfilesReply reply) => new([.. reply.Profiles.Select(p => new ProfileRow(p.Id, p.Name, p.Nodes, p.IsActive, p.IsValid))]);
 }
 
-internal sealed record NodeRow(string Id, NodeKind Kind, bool ContinueOnError, JsonElement? Settings, string? Error, string? Warning);
+internal sealed record NodeRow(string Id, NodeKind Kind, bool ContinueOnError, [property: Description("The node's settings as the text of a JSON object, as profile_save takes them.")] string? Settings, string? Error, string? Warning);
 
 internal sealed record ProfileAnswer(Guid Id, string Name, IReadOnlyList<NodeRow> Nodes, IReadOnlyList<string> ProfileErrors)
 {
     public static ProfileAnswer Of(ProfileReply reply) => new(
         reply.Profile.Id,
         reply.Profile.Name,
-        [.. reply.Profile.Nodes.Select(n => new NodeRow(n.Id, n.Kind, n.ContinueOnError, n.Settings, reply.Check.NodeErrors.GetValueOrDefault(n.Id), reply.Check.NodeWarnings.GetValueOrDefault(n.Id)))],
+        [.. reply.Profile.Nodes.Select(n => new NodeRow(n.Id, n.Kind, n.ContinueOnError, SaveArgs.SnakeText(n.Settings), reply.Check.NodeErrors.GetValueOrDefault(n.Id), reply.Check.NodeWarnings.GetValueOrDefault(n.Id)))],
         reply.Check.ProfileErrors);
 }
 

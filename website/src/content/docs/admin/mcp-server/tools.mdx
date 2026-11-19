@@ -545,10 +545,13 @@ and runs after the user agreed.
 | `oadm_provisioning_credentials` | Read | The credential list entries (id and user name, never a password) Set password can use. |
 | `oadm_provisioning_file_store_preview` | Preview | Keeps a file the caller uploaded (an AXIS OS file, a configuration file of Export configuration) for a node; the answer is its file_id for the node's settings. Nothing is changed. Call oadm_provisioning_file_store_run with the handle to apply it. |
 | `oadm_provisioning_file_store_run` | Run (changes) | Applies the plan of oadm_provisioning_file_store_preview, which checks everything again. |
+| `oadm_provisioning_profile` | Read | One profile with its nodes in order, their settings and the errors and warnings of each node. |
 | `oadm_provisioning_profile_activate_preview` | Preview | Makes a profile without errors the active one; the next Start runs it. Nothing is changed. Call oadm_provisioning_profile_activate_run with the handle to apply it. |
 | `oadm_provisioning_profile_activate_run` | Run (changes) | Applies the plan of oadm_provisioning_profile_activate_preview, which checks everything again. |
 | `oadm_provisioning_profile_delete_preview` | Preview | Deletes a profile. A running session keeps its own copy. Nothing is changed. Call oadm_provisioning_profile_delete_run with the handle to apply it. |
 | `oadm_provisioning_profile_delete_run` | Run (changes) | Applies the plan of oadm_provisioning_profile_delete_preview, which checks everything again. |
+| `oadm_provisioning_profile_save_preview` | Preview | Adds a profile, or changes the one with id. Nodes in order, Set password and Add to OADM first. With new_password the person enters the root password of Set password. Nothing is changed. Call oadm_provisioning_profile_save_run with the handle to apply it. |
+| `oadm_provisioning_profile_save_run` | Run (changes) | Applies the plan of oadm_provisioning_profile_save_preview, which checks everything again. |
 | `oadm_provisioning_profiles` | Read | The profiles: id, name, number of nodes, whether active and whether without errors. |
 | `oadm_provisioning_secret_store_preview` | Preview | The person enters a password of a Users account or the SD card passphrase; the answer is its secret_id for the node's settings. The password never comes back. Nothing is changed. Call oadm_provisioning_secret_store_run with the handle to apply it. |
 | `oadm_provisioning_secret_store_run` | Run (changes) | Applies the plan of oadm_provisioning_secret_store_preview, which checks everything again. |
@@ -557,6 +560,7 @@ and runs after the user agreed.
 | `oadm_provisioning_status` | Read | Whether provisioning is started, the active profile, the DHCP server, the camera counts and the warnings. |
 | `oadm_provisioning_stop_preview` | Preview | Stops provisioning: running flows stop waiting, the reserved addresses are free again. Nothing is changed. Call oadm_provisioning_stop_run with the handle to apply it. |
 | `oadm_provisioning_stop_run` | Run (changes) | Applies the plan of oadm_provisioning_stop_preview, which checks everything again. |
+| `oadm_provisioning_vapix_commands` | Read | The VAPIX Commander commands a VAPIX commands node can run, with their fields (name, type, required, options). |
 
 ## Selection
 

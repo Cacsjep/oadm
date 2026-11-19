@@ -488,6 +488,18 @@ public sealed class McpPluginToolTests
             Assert.Contains(expected, names);
         }
 
+        // Every tool a running bundled plugin declares is offered: one without a usable schema is left out by the server (fail
+        // closed), and that must never go unnoticed.
+        var host = server.Host.Get<CorePluginHost>();
+        foreach (var registered in server.Host.Get<PluginRegistry>().CorePlugins.Where(p => host.GetStatus(p.Id).State == CorePluginState.Running))
+        {
+            foreach (var tool in registered.Plugin.Tools ?? [])
+            {
+                var name = $"oadm_{tool.Area ?? Oadm.Server.Tools.PluginTools.AreaOf(registered.Plugin)}_{tool.Name}" + (tool.Changes ? "_preview" : string.Empty);
+                Assert.True(names.Contains(name), $"{registered.Id} declares {name}, the server does not offer it (see the server log: \"tool ... refused\").");
+            }
+        }
+
         var reply = await server.PostAsync(key, McpTestServer.Request("tools/list"));
         var listed = reply.Body!["result"]!["tools"]!.AsArray().Select(t => t!.AsObject()).ToList();
         foreach (var tool in listed.Where(t => !t["name"]!.GetValue<string>().StartsWith("oadm_notes_", StringComparison.Ordinal)))

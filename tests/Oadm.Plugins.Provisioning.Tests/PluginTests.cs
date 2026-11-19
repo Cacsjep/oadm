@@ -175,9 +175,15 @@ public sealed class PluginTests : IAsyncLifetime
         Assert.Contains("Lobby", preview, StringComparison.Ordinal);
         Assert.Null(_plugin.Engine!.Session);
 
-        var savePreview = await _ctx.InvokeAsync(_plugin, _admin, "tool.profile_save.preview", """{"name":"Gate","nodes":[{"id":"set-password","kind":"set_password","settings":{"credential_id":"00000000-0000-0000-0000-000000000001"}},{"id":"add-to-oadm","kind":"add_to_oadm"}]}""");
+        var savePreview = await _ctx.InvokeAsync(_plugin, _admin, "tool.profile_save.preview", """{"name":"Gate","nodes":[{"id":"set-password","kind":"set_password","settings":"{\"credential_id\":\"00000000-0000-0000-0000-000000000001\"}"},{"id":"add-to-oadm","kind":"add_to_oadm"}]}""");
         Assert.Contains("\"nodes_with_errors\":1", savePreview, StringComparison.Ordinal);
         Assert.Single((await CallAsync<ProfilesReply>(ProvisioningMethods.ListProfiles)).Profiles);
+
+        // The settings go both ways as JSON text in snake_case (a tool's schema has no value of any type).
+        var profile = await _ctx.InvokeAsync(_plugin, _admin, "tool.profile", $$"""{"id":"{{saved.Profile.Id}}"}""");
+        Assert.Contains("credential_id", profile, StringComparison.Ordinal);
+        var refused = await _ctx.InvokeAsync(_plugin, _admin, "tool.profile_save.preview", """{"name":"Gate","nodes":[{"id":"set-password","kind":"set_password","settings":"[1]"}]}""");
+        Assert.Contains("JSON object", refused, StringComparison.Ordinal);
 
         var status = await _ctx.InvokeAsync(_plugin, _admin, "tool.status", "{}");
         Assert.Contains("\"dhcp_running\":true", status, StringComparison.Ordinal);
