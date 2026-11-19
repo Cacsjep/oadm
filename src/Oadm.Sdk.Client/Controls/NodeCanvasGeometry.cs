@@ -11,8 +11,10 @@ namespace Oadm.Sdk.Client.Controls;
 /// </summary>
 public static class NodeCanvasGeometry
 {
+    /// <summary>The width of every card.</summary>
     public const double NodeWidth = 200;
 
+    /// <summary>The height of a card without control inputs.</summary>
     public const double NodeHeight = 62;
 
     /// <summary>A row per control input below the live line: its dot on the left edge, its label beside it.</summary>
@@ -21,6 +23,7 @@ public static class NodeCanvasGeometry
     /// <summary>The height of a card with <paramref name="controlInputs"/> control inputs.</summary>
     public static double HeightFor(int controlInputs) => controlInputs == 0 ? NodeHeight : NodeHeight + (controlInputs * ControlRowHeight) + 4;
 
+    /// <summary>The radius of an input or output dot.</summary>
     public const double PortRadius = 7;
 
     /// <summary>A control input's dot: the size of the data dots, centred on the card's left edge.</summary>
@@ -29,6 +32,7 @@ public static class NodeCanvasGeometry
     /// <summary>A press this near a port takes it.</summary>
     public const double PortReach = 11;
 
+    /// <summary>The size of the + below a card.</summary>
     public const double PlusSize = 22;
 
     /// <summary>The + sits this far below the node's bottom edge.</summary>
@@ -37,11 +41,13 @@ public static class NodeCanvasGeometry
     /// <summary>The room of an error below a node (two lines of small text): the + moves below it.</summary>
     public const double ErrorRoom = 34;
 
+    /// <summary>The size of the eye at the top right of a card.</summary>
     public const double EyeSize = 24;
 
     /// <summary>Tidy up: the gap between two cards side by side, and one column (a card and its gap).</summary>
     public const double ColumnGap = 40;
 
+    /// <summary>Tidy up: one column, a card and its gap.</summary>
     public const double ColumnStep = NodeWidth + ColumnGap;
 
     /// <summary>Tidy up: the gap between a row's tallest card and the next row: room for a link and its count.</summary>
@@ -50,15 +56,19 @@ public static class NodeCanvasGeometry
     /// <summary>Where a node added after another goes: below it, one card and one gap down.</summary>
     public const double RowStep = NodeHeight + RowGap;
 
+    /// <summary>The room around the cards when the view fits them.</summary>
     public const double Margin = 40;
 
     /// <summary>A press this near a link (screen pixels) takes it.</summary>
     public const double LinkReach = 6;
 
+    /// <summary>The smallest zoom.</summary>
     public const double MinZoom = 0.25;
 
+    /// <summary>The largest zoom.</summary>
     public const double MaxZoom = 2;
 
+    /// <summary>The card at <paramref name="x"/>, <paramref name="y"/> (its top left).</summary>
     public static Rect NodeRect(double x, double y, double height = NodeHeight) => new(x, y, NodeWidth, height);
 
     /// <summary>The output dot: the bottom centre of the card.</summary>
@@ -86,6 +96,7 @@ public static class NodeCanvasGeometry
         return new Rect(port.X - 34 - size, port.Y - (size / 2), size, size);
     }
 
+    /// <summary>The eye at the top right of the card at <paramref name="x"/>, <paramref name="y"/>.</summary>
     public static Rect EyeRect(double x, double y) => new(x + NodeWidth - EyeSize - 6, y + 5, EyeSize, EyeSize);
 
     /// <summary>The control points of a link's curve from <paramref name="from"/> (an output) down to <paramref name="to"/> (an input).</summary>
@@ -128,6 +139,7 @@ public static class NodeCanvasGeometry
         return best;
     }
 
+    /// <summary>The distance from <paramref name="a"/> to <paramref name="b"/>.</summary>
     public static double Distance(Point a, Point b) => Math.Sqrt(((a.X - b.X) * (a.X - b.X)) + ((a.Y - b.Y) * (a.Y - b.Y)));
 
     /// <summary>The distance from <paramref name="point"/> to the segment <paramref name="a"/>-<paramref name="b"/>.</summary>
@@ -172,6 +184,9 @@ public static class NodeCanvasGeometry
 }
 
 /// <summary>The view of a node canvas: screen = canvas units * <see cref="Zoom"/> + pan.</summary>
+/// <param name="Zoom">The zoom: 1 is one screen pixel per canvas unit.</param>
+/// <param name="PanX">The screen x of the canvas origin.</param>
+/// <param name="PanY">The screen y of the canvas origin.</param>
 public readonly record struct CanvasView(double Zoom, double PanX, double PanY)
 {
     /// <summary>A screen point in canvas units.</summary>

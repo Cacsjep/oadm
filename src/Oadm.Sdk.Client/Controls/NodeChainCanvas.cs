@@ -112,6 +112,7 @@ public sealed class NodeChainCanvas : Control
         ClipToBoundsProperty.OverrideDefaultValue<NodeChainCanvas>(true);
     }
 
+    /// <summary>The chain it draws: its nodes, the selected one and the view.</summary>
     public NodeChain? Chain
     {
         get => GetValue(ChainProperty);

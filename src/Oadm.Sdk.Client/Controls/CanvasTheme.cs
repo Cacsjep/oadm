@@ -13,10 +13,13 @@ public class CanvasTheme(Control control)
 {
     private readonly Control _control = control ?? throw new ArgumentNullException(nameof(control));
 
+    /// <summary>The theme's brush of <paramref name="key"/> (for example <c>Oadm.Accent</c>), grey when the theme has none.</summary>
     public IBrush Brush(string key) => Find(key) as IBrush ?? Brushes.Gray;
 
+    /// <summary>The theme's number of <paramref name="key"/> (a font size, a radius), else <paramref name="fallback"/>.</summary>
     public double Number(string key, double fallback) => Find(key) is double value ? value : fallback;
 
+    /// <summary>The theme's font family of <paramref name="key"/> at <paramref name="weight"/>, else the default font.</summary>
     public Typeface Font(string key, FontWeight weight = FontWeight.Normal) => new(Find(key) as FontFamily ?? FontFamily.Default, FontStyle.Normal, weight);
 
     /// <summary>The theme's small text (11 px), e.g. the tags and labels on a picture.</summary>
