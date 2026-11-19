@@ -212,6 +212,15 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     /// <summary>First root password for a factory-default device, set on add. Client memory only until then.</summary>
     [ObservableProperty] public partial string? PendingPassword { get; private set; }
 
+    /// <summary>
+    /// Instead of <see cref="PendingPassword"/>: the credential list entry (user root) whose stored password the server sets
+    /// on add. The password itself never reaches the client.
+    /// </summary>
+    [ObservableProperty] public partial string? PendingCredentialId { get; private set; }
+
+    /// <summary>A first password is ready for the add: typed or an entry of the credential list.</summary>
+    public bool HasPendingPassword => PendingPassword is not null || PendingCredentialId is not null;
+
     /// <summary>Checked for adding. Always false when the device cannot be added.</summary>
     [ObservableProperty] public partial bool IsSelected { get; set; }
 
@@ -237,10 +246,10 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     public bool ShowLogIn => AuthState == AuthState.LoginFailed && !IsMuted;
 
     /// <summary>"Set password" link: factory default without a password yet.</summary>
-    public bool ShowSetPassword => IsFactoryDefault && PendingPassword is null;
+    public bool ShowSetPassword => IsFactoryDefault && !HasPendingPassword;
 
     /// <summary>"Change" link next to "Password ready".</summary>
-    public bool ShowPasswordReady => IsFactoryDefault && PendingPassword is not null;
+    public bool ShowPasswordReady => IsFactoryDefault && HasPendingPassword;
 
     /// <summary>Tooltip of the chip: why the login failed, who is logged in, or the passphrase policy.</summary>
     public string ChipTooltip => AuthState switch
@@ -291,6 +300,15 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     public void SetPendingPassword(string? password)
     {
         PendingPassword = string.IsNullOrEmpty(password) ? null : password;
+        PendingCredentialId = null;
+        Refresh();
+    }
+
+    /// <summary>Stores (or clears) the credential list entry for the first password; the device becomes selectable.</summary>
+    public void SetPendingCredential(string? credentialId)
+    {
+        PendingCredentialId = string.IsNullOrEmpty(credentialId) ? null : credentialId;
+        PendingPassword = null;
         Refresh();
     }
 
@@ -299,6 +317,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
     {
         IsAdded = true;
         PendingPassword = null;
+        PendingCredentialId = null;
         Refresh();
     }
 
@@ -352,7 +371,7 @@ public sealed partial class DiscoveredRowViewModel : ObservableObject
         StatusDetail = HasImportProblem || (!IsAdded && !IsAlreadyManaged && AuthState is AuthState.LoginFailed or AuthState.Unreachable) ? AuthDetail
             : _note is not null && !IsAdded && !IsAlreadyManaged ? _note
             : "";
-        CanAdd = !IsImportPlaceholder && !IsMuted && (AuthState == AuthState.Authenticated || (AuthState == AuthState.PasswordNotSet && PendingPassword is not null));
+        CanAdd = !IsImportPlaceholder && !IsMuted && (AuthState == AuthState.Authenticated || (AuthState == AuthState.PasswordNotSet && HasPendingPassword));
         if (!CanAdd)
         {
             IsSelected = false;

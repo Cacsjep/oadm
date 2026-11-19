@@ -409,7 +409,8 @@ public sealed class DeviceGrpcService(
 
     /// <summary>
     /// "Set password" (device context menu) for devices in factory default: the first root password on every device
-    /// (bounded parallelism, needsetup re-checked right before writing), stored for those that took it. Never logged.
+    /// (bounded parallelism, needsetup re-checked right before writing), stored for those that took it. Never logged. With
+    /// <c>credential_id</c> the password is an entry of the credential list, read here (<see cref="FirstPasswordCredential"/>).
     /// </summary>
     public override async Task<Proto.SetFirstPasswordReply> SetFirstPassword(Proto.SetFirstPasswordRequest request, ServerCallContext context)
     {
@@ -420,11 +421,20 @@ public sealed class DeviceGrpcService(
             throw GrpcGuard.InvalidArgument("Select at least one device.");
         }
 
+        var fromList = !string.IsNullOrEmpty(request.CredentialId);
+        if (fromList && !string.IsNullOrEmpty(request.Password))
+        {
+            throw GrpcGuard.InvalidArgument(FirstPasswordCredential.Both);
+        }
+
+        var password = fromList
+            ? await FirstPasswordCredential.PasswordAsync(credentialList, request.CredentialId, context).ConfigureAwait(false)
+            : request.Password ?? string.Empty;
         var viewed = await (await views.ForAsync(context).ConfigureAwait(false)).GetAsync(ids, ct).ConfigureAwait(false);
         IReadOnlyList<DeviceFirstPasswordResult> results;
         try
         {
-            results = await actions.SetFirstPasswordAsync(viewed, request.Password ?? string.Empty, ct).ConfigureAwait(false);
+            results = await actions.SetFirstPasswordAsync(viewed, password, ct).ConfigureAwait(false);
         }
         catch (ArgumentException ex)
         {
@@ -439,7 +449,8 @@ public sealed class DeviceGrpcService(
 
         var okCount = results.Count(r => r.Ok);
         var devicesText = results.Count == 1 ? "1 device" : $"{results.Count} devices";
-        await audit.WriteAsync(AuditActions.FirstPasswordSet, "root", $"{devicesText}, {okCount} set", ct).ConfigureAwait(false);
+        var source = fromList ? ", from the credential list" : string.Empty;
+        await audit.WriteAsync(AuditActions.FirstPasswordSet, "root", $"{devicesText}, {okCount} set{source}", ct).ConfigureAwait(false);
         return reply;
     }
 

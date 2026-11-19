@@ -379,6 +379,13 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         return await C.Devices.SetFirstPasswordAsync(request, cancellationToken: ct);
     }
 
+    public async Task<SetFirstPasswordReply> SetFirstPasswordFromListAsync(IReadOnlyCollection<string> deviceIds, string credentialId, CancellationToken ct)
+    {
+        var request = new SetFirstPasswordRequest { CredentialId = credentialId };
+        request.DeviceIds.AddRange(deviceIds);
+        return await C.Devices.SetFirstPasswordAsync(request, cancellationToken: ct);
+    }
+
     public async Task<IReadOnlyDictionary<string, string>> GetPassphrasePoliciesAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct)
     {
         var reply = await C.Devices.GetPassphrasePoliciesAsync(ToIds(deviceIds), cancellationToken: ct);

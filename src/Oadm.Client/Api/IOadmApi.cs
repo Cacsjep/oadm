@@ -96,6 +96,12 @@ public interface IOadmApi
     /// <summary>"Set password" for factory-default devices: the first root password; one call for the selection, one result per device.</summary>
     Task<SetFirstPasswordReply> SetFirstPasswordAsync(IReadOnlyCollection<string> deviceIds, string password, CancellationToken ct);
 
+    /// <summary>
+    /// "Set password" with an entry of the credential list (user root): the server reads the stored password, which never
+    /// reaches the client. Administrators only.
+    /// </summary>
+    Task<SetFirstPasswordReply> SetFirstPasswordFromListAsync(IReadOnlyCollection<string> deviceIds, string credentialId, CancellationToken ct);
+
     /// <summary>Device id -> passphrase policy ("none", "length", "complex"; empty when unknown) for the Set password hint.</summary>
     Task<IReadOnlyDictionary<string, string>> GetPassphrasePoliciesAsync(IReadOnlyCollection<string> deviceIds, CancellationToken ct);
 

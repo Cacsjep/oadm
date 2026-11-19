@@ -50,6 +50,9 @@ message CommitRequest {
   // automatic login or RetryAuth of the session.
   repeated DeviceCredentials credentials = 5;
   map<string, string> initial_passwords = 6;   // discovered_id -> first root password (factory default)
+  // discovered_id -> an entry of the credential list (user root) whose stored password becomes the first root password;
+  // the password never reaches the client. Administrator only, the checks of DeviceService.SetFirstPassword's credential_id.
+  map<string, string> initial_credential_ids = 7;
 }
 
 message CommitResult {

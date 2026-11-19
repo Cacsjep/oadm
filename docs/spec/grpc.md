@@ -107,7 +107,12 @@ used again.
     Nothing was changed.", nothing sent), then pwdgrp.cgi add root like the add page (POST body only); a refusal is "The
     device rejected the password: <device text>."; Certificate changed devices are refused without a request. The devices
     that took it get root + password stored in one transaction, their client dropped and a full refresh queued. Reply
-    `results` {device_id, ok, message} in request order; audit "First password set" {"root", "3 devices, 2 set"}, never
+    `results` {device_id, ok, message} in request order; `credential_id = 3` instead of the password: an entry of the
+  credential list whose stored password the server reads (`Server/Devices/FirstPasswordCredential`: PERMISSION_DENIED
+  unless Administrator, NOT_FOUND `DeviceFirstSetupTexts.CredentialGone`, INVALID_ARGUMENT not root
+  (`DeviceFirstSetupTexts.RootOnly`), a stored password outside 1-64 characters or with accented letters, or both password
+  and credential_id); audit "First password set" {"root", "3 devices, 2 set"} (", from the credential list" with an
+  entry), never
     the password; INVALID_ARGUMENT without devices or for a password that is not 1-64 printable ASCII.
   - `GetPassphrasePolicies(DeviceIds)`: anonymous systemready per device, `policies` {device_id, policy none / length /
     complex, empty when unreadable}; the hint of the Set password dialog.
@@ -156,8 +161,10 @@ used again.
   save_to_credential_list, related_session_ids = 6)` (returns the updated DiscoveredDevice, also pushed to the stream; on
   success the credential is tried on the failed devices of the session and of the related sessions; NOT_FOUND,
   FAILED_PRECONDITION factory default or already added, INVALID_ARGUMENT), `Commit(session_id, discovered_ids,
-  initial_passwords map = 6, initial_root_password, use_host_name = 3)` (`use_host_name`: the page's "Use DNS names instead
-  of IP addresses"; reply `device_ids`, `results = 3` with discovered_id, device_id, status), `Prepare` (unused). All
+  initial_passwords map = 6, initial_root_password, use_host_name = 3, initial_credential_ids map = 7)` (`use_host_name`: the page's "Use DNS names instead
+  of IP addresses"; `initial_credential_ids`: discovered_id -> an entry of the credential list for the first password, the
+  checks of `SetFirstPassword.credential_id`, all before anything is added; reply `device_ids`, `results = 3` with
+  discovered_id, device_id, status), `Prepare` (unused). All
   three take only the caller's own sessions and devices on the caller's routes (else NOT_FOUND) and refuse a group of
   tags or single devices only (PERMISSION_DENIED); `related_session_ids` of other users are left out. Commit adds for a
   user with a device group only devices that land inside the group (an excepted serial: no device id in its result) and

@@ -9,9 +9,12 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 - Device credentials never leave the server; gRPC returns only "has credentials" and, for the prefill of the "Log in"
   dialog, the stored user name the selected devices share. The credential list returns ids, user names and the time an
   entry was added only; the one exception is the explicit reveal of an entry (`SettingsService.RevealCredential`): the eye
-  and copy buttons of the Credentials page and the eye of the credential choice of Provisioning's Set password node (the
-  client SDK's `ICorePluginClientContext.RevealCredentialAsync`, the same call), with the same rules in both places: Admin
-  only, every reveal in the audit log, refused while no user exists. A server plugin never reads a stored password. Credentials typed for a login (RetryAuth,
+  and copy buttons of the Credentials page, the eye of the credential choice of Provisioning's Set password node (the
+  client SDK's `ICorePluginClientContext.RevealCredentialAsync`, the same call) and the eye of the first password's
+  credential choice (the Add devices page's Set password editor and the context menu's Set password), with the same rules
+  in every place: Admin only, every reveal in the audit log, refused while no user exists. Using an entry as a first
+  password (`SetFirstPassword.credential_id`, `Commit.initial_credential_ids`) is Admin only as well; the server reads the
+  password, it never travels to the client. A server plugin never reads a stored password. Credentials typed for a login (RetryAuth,
   the context menu's "Log in") or a first password travel only client -> server.
 - MyAxis sign-ins ([myaxis.md](myaxis.md)): the session cookie of each user, AES-256-GCM like device passwords with the user
   id as associated data (table MyAxisSessions); never in a gRPC answer, a backup or the log; sent only to www.axis.com.

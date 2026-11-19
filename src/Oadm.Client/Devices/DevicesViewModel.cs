@@ -371,7 +371,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         List<DeviceRowViewModel> devices = SetPasswordTargets();
         if (devices.Count > 0)
         {
-            await _dialogs.ShowDeviceSetPasswordAsync(new DeviceSetPasswordViewModel(_api, devices)).ConfigureAwait(true);
+            await _dialogs.ShowDeviceSetPasswordAsync(new DeviceSetPasswordViewModel(_api, devices, _session?.IsAdmin ?? false)).ConfigureAwait(true);
         }
     }
 

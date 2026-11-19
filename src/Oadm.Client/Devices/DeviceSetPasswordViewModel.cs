@@ -25,15 +25,50 @@ public sealed partial class DeviceSetPasswordViewModel : ValidatingViewModel
     private List<DeviceRowViewModel> _devices;
     private IReadOnlyList<string?> _policies = [];
 
-    public DeviceSetPasswordViewModel(IOadmApi api, IReadOnlyList<DeviceRowViewModel> devices)
+    /// <param name="api">The server.</param>
+    /// <param name="devices">The devices in Password not set.</param>
+    /// <param name="isAdministrator">An Administrator also chooses a password of root from the credential list.</param>
+    public DeviceSetPasswordViewModel(IOadmApi api, IReadOnlyList<DeviceRowViewModel> devices, bool isAdministrator = false)
     {
         ArgumentNullException.ThrowIfNull(devices);
         _api = api ?? throw new ArgumentNullException(nameof(api));
         _devices = [.. devices];
+        PasswordChoice = new FirstPasswordChoice(api, isAdministrator);
+        PasswordChoice.PropertyChanged += OnPasswordChoiceChanged;
         Validation
-            .Rule(nameof(Password), () => PasswordRules.PasswordError(Password, _policies))
-            .Rule(nameof(ConfirmPassword), () => PasswordRules.ConfirmError(Password, ConfirmPassword));
+            .Rule(nameof(Password), () => TypesPassword ? PasswordRules.PasswordError(Password, _policies) : null)
+            .Rule(nameof(ConfirmPassword), () => TypesPassword ? PasswordRules.ConfirmError(Password, ConfirmPassword) : null);
         Validation.Validate();
+    }
+
+    /// <summary>The credential choice right of the fields (Administrators; the server sets the chosen entry's password).</summary>
+    public FirstPasswordChoice PasswordChoice { get; }
+
+    /// <summary>The password is typed (no entry of the credential list chosen): the fields are on.</summary>
+    public bool TypesPassword => !PasswordChoice.UsesCredential;
+
+    /// <summary>The fields take input: typed password and no call running.</summary>
+    public bool CanType => IsIdle && TypesPassword;
+
+    private void OnPasswordChoiceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(FirstPasswordChoice.UsesCredential))
+        {
+            return;
+        }
+
+        if (!TypesPassword)
+        {
+            // A chosen entry replaces the typed password: the fields are cleared and off.
+            Password = "";
+            ConfirmPassword = "";
+        }
+
+        OnPropertyChanged(nameof(TypesPassword));
+        OnPropertyChanged(nameof(CanType));
+        Validation.SetServerError(nameof(Password), null);
+        Validation.Validate();
+        Validation.Reset([nameof(Password), nameof(ConfirmPassword)]);
     }
 
     /// <summary>The devices still without a password (those that took it leave the list).</summary>
@@ -59,7 +94,7 @@ public sealed partial class DeviceSetPasswordViewModel : ValidatingViewModel
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SetPasswordCommand))]
-    [NotifyPropertyChangedFor(nameof(IsIdle))]
+    [NotifyPropertyChangedFor(nameof(IsIdle), nameof(CanType))]
     public partial bool IsBusy { get; private set; }
 
     public bool IsIdle => !IsBusy;
@@ -74,9 +109,13 @@ public sealed partial class DeviceSetPasswordViewModel : ValidatingViewModel
     /// <summary>True: every device took the password (the dialog closes); false: cancelled.</summary>
     public event EventHandler<bool>? CloseRequested;
 
-    /// <summary>Reads the devices' passphrase policies for the hint and the checks. Never fails (the device checks anyway).</summary>
+    /// <summary>
+    /// Reads the devices' passphrase policies for the hint and the checks (never fails: the device checks anyway), and for an
+    /// Administrator the credential list's passwords of root.
+    /// </summary>
     public async Task LoadAsync(CancellationToken ct)
     {
+        await PasswordChoice.LoadAsync(ct).ConfigureAwait(true);
         IsReadingRules = true;
         try
         {
@@ -119,7 +158,9 @@ public sealed partial class DeviceSetPasswordViewModel : ValidatingViewModel
         try
         {
             var byId = _devices.ToDictionary(d => d.Id);
-            SetFirstPasswordReply reply = await _api.SetFirstPasswordAsync([.. byId.Keys], Password, CancellationToken.None).ConfigureAwait(true);
+            SetFirstPasswordReply reply = PasswordChoice.CredentialId is { } credentialId
+                ? await _api.SetFirstPasswordFromListAsync([.. byId.Keys], credentialId, CancellationToken.None).ConfigureAwait(true)
+                : await _api.SetFirstPasswordAsync([.. byId.Keys], Password, CancellationToken.None).ConfigureAwait(true);
             var failed = reply.Results.Where(r => !r.Ok && byId.ContainsKey(r.DeviceId)).ToList();
             SetCount += reply.Results.Count(r => r.Ok);
             int total = _devices.Count;
@@ -132,11 +173,11 @@ public sealed partial class DeviceSetPasswordViewModel : ValidatingViewModel
             _devices = [.. failed.Select(r => byId[r.DeviceId])];
             OnPropertyChanged(nameof(Devices));
             OnPropertyChanged(nameof(Intro));
-            Validation.SetServerError(nameof(Password), ResultText(total, failed, byId));
+            ShowError(ResultText(total, failed, byId));
         }
         catch (RpcException ex)
         {
-            Validation.SetServerError(nameof(Password), "The password could not be set: " + ex.Status.Detail);
+            ShowError("The password could not be set: " + ex.Status.Detail);
         }
         finally
         {
@@ -147,7 +188,23 @@ public sealed partial class DeviceSetPasswordViewModel : ValidatingViewModel
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(this, false);
 
+    /// <summary>The dialog closed: a shown stored password is forgotten.</summary>
+    public void Forget() => PasswordChoice.Forget();
+
     private bool CanSetPassword() => !IsBusy && IsFormValid;
+
+    /// <summary>The server's answer below the field it is about: the choice for an entry of the list, else the password.</summary>
+    private void ShowError(string text)
+    {
+        if (PasswordChoice.UsesCredential)
+        {
+            PasswordChoice.ServerError = text;
+        }
+        else
+        {
+            Validation.SetServerError(nameof(Password), text);
+        }
+    }
 
     protected override void OnValidationChanged() => SetPasswordCommand.NotifyCanExecuteChanged();
 

@@ -247,7 +247,8 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 - `PasswordBox`: every password field. A TextBox with bullet mask and eye button "Show password" / "Hide password", icons
   `Icon.eye` / `Icon.eyeOff`; never a `TextBox` with `PasswordChar`.
 - `PasswordRevealButton`: the eye next to a stored password shown masked (`CredentialTexts.Masked`, 8 bullets): the
-  Credentials page's rows and the credential choice of Provisioning's Set password. Icon-only command button, `IsRevealed`
+  Credentials page's rows, the credential choice of Provisioning's Set password and the first password's
+  `FirstPasswordChoiceBox`. Icon-only command button, `IsRevealed`
   switches eye / crossed-out eye and the tooltip "Show password" / "Hide password"; the view model loads and forgets.
 - `CodeView`: every read-only code or response display. JSON and XML pretty-printed with 2 spaces and highlighted,
   param.cgi `key=value` highlighted with `# Error` lines red; `Language` Auto/Json/Xml/KeyValue/Plain with Auto from the
@@ -361,6 +362,8 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 **Client only** (`src/Oadm.Client/Controls`, prefix `c`): `PageTitleBar` (every host page header), `CollapsibleCard`
 (every card that folds: the Settings page; closed by default, opens by itself when an input inside shows a validation
 error), `TagChipList` (the tags of a device as chips), `TagColorPicker` (the color of a tag, the tags dialog), `LiveViewPanel` (the live view beside the device grid),
+`FirstPasswordChoiceBox` (the credential choice with its eye right of a first password's fields: the add page's Set
+password editor and the context menu's Set password),
 `SplashLogo` (the animated logo of the start splash), `GridSelection` (a grid's multi-item selection to its view model in
 one step), `MarkdownText` over `MarkdownDocument` (Markdown as selectable text: paragraphs, headings, lists, bold, italic,
 inline code, fenced code blocks in a `CodeView`, pipe tables; anything else stays plain; theme `StackPanel.markdown`,

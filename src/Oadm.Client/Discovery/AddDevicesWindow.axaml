@@ -228,16 +228,22 @@
         <Border Grid.Row="6" Classes="inlineEditor" IsVisible="{Binding IsPasswordEditorOpen}">
           <StackPanel Classes="form">
             <TextBlock Classes="sectionTitle" Text="{Binding EditorTitle}" />
-            <ui:FormField Label="New password" Hint="{Binding PolicyHint}">
-              <ui:PasswordBox x:Name="NewPasswordBox" Text="{Binding NewPassword}" />
-            </ui:FormField>
-            <ui:FormField Label="Confirm password">
-              <ui:PasswordBox Text="{Binding ConfirmPassword}">
-                <ui:PasswordBox.KeyBindings>
-                  <KeyBinding Gesture="Enter" Command="{Binding ApplyPasswordCommand}" />
-                </ui:PasswordBox.KeyBindings>
-              </ui:PasswordBox>
-            </ui:FormField>
+            <!-- Right of the fields: a password of root from the credential list instead (shared with Set password) -->
+            <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="{StaticResource Oadm.Gap}">
+              <StackPanel Classes="form">
+                <ui:FormField Label="New password" Hint="{Binding PolicyHint}">
+                  <ui:PasswordBox x:Name="NewPasswordBox" Text="{Binding NewPassword}" IsEnabled="{Binding TypesPassword}" />
+                </ui:FormField>
+                <ui:FormField Label="Confirm password">
+                  <ui:PasswordBox Text="{Binding ConfirmPassword}" IsEnabled="{Binding TypesPassword}">
+                    <ui:PasswordBox.KeyBindings>
+                      <KeyBinding Gesture="Enter" Command="{Binding ApplyPasswordCommand}" />
+                    </ui:PasswordBox.KeyBindings>
+                  </ui:PasswordBox>
+                </ui:FormField>
+              </StackPanel>
+              <c:FirstPasswordChoiceBox Grid.Column="1" VerticalAlignment="Top" DataContext="{Binding PasswordChoice}" />
+            </Grid>
             <ui:FormField>
               <CheckBox Content="Use for all factory-default devices" IsChecked="{Binding UseForAllFactoryDefault}" />
             </ui:FormField>

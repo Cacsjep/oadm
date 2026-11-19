@@ -105,8 +105,8 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             .Rule(nameof(ManualAddress), () => IsManualMode && ManualAddress.Trim().Length == 0 ? "Enter an IP address or host name." : null)
             .Rule(nameof(EditorUserName), () => IsLoginEditorOpen && EditorUserName.Trim().Length == 0 ? "Enter a user name." : null)
             .Rule(nameof(EditorPassword), () => IsLoginEditorOpen && EditorPassword.Length == 0 ? "Enter the password." : null)
-            .Rule(nameof(NewPassword), () => IsPasswordEditorOpen ? NewPasswordError() : null)
-            .Rule(nameof(ConfirmPassword), () => IsPasswordEditorOpen ? PasswordRules.ConfirmError(NewPassword, ConfirmPassword) : null);
+            .Rule(nameof(NewPassword), () => IsPasswordEditorOpen && TypesPassword ? NewPasswordError() : null)
+            .Rule(nameof(ConfirmPassword), () => IsPasswordEditorOpen && TypesPassword ? PasswordRules.ConfirmError(NewPassword, ConfirmPassword) : null);
         Validation.Validate();
     }
 
@@ -402,6 +402,51 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
     public bool CanSaveToCredentialList { get; init; } = true;
     [ObservableProperty] public partial string NewPassword { get; set; } = "";
     [ObservableProperty] public partial string ConfirmPassword { get; set; } = "";
+
+    private Oadm.Client.Devices.FirstPasswordChoice? _passwordChoice;
+
+    /// <summary>
+    /// Password editor: the credential choice right of the fields (Administrators: a password of root from the credential
+    /// list, set by the server on add; it never reaches the client unless the eye shows it).
+    /// </summary>
+    public Oadm.Client.Devices.FirstPasswordChoice PasswordChoice
+    {
+        get
+        {
+            if (_passwordChoice is null)
+            {
+                _passwordChoice = new Oadm.Client.Devices.FirstPasswordChoice(_api, CanSaveToCredentialList);
+                _passwordChoice.PropertyChanged += OnPasswordChoiceChanged;
+            }
+
+            return _passwordChoice;
+        }
+    }
+
+    /// <summary>The credential list is being read for the choice (tests await it).</summary>
+    public Task? PasswordChoiceLoad { get; private set; }
+
+    /// <summary>Password editor: the password is typed (no entry of the credential list chosen); the fields are on.</summary>
+    public bool TypesPassword => _passwordChoice?.UsesCredential != true;
+
+    private void OnPasswordChoiceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(Oadm.Client.Devices.FirstPasswordChoice.UsesCredential))
+        {
+            return;
+        }
+
+        if (!TypesPassword)
+        {
+            // A chosen entry replaces the typed password: the fields are cleared and off.
+            NewPassword = "";
+            ConfirmPassword = "";
+        }
+
+        OnPropertyChanged(nameof(TypesPassword));
+        Validation.Validate();
+        Validation.Reset(PasswordFields);
+    }
 
     /// <summary>Password editor: use the password for every factory-default device in the list.</summary>
     [ObservableProperty] public partial bool UseForAllFactoryDefault { get; set; }
@@ -722,6 +767,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             return;
         }
 
+        _passwordChoice?.Forget(); // a shown stored password does not outlive the page
         await _cts.CancelAsync().ConfigureAwait(false);
         foreach (string session in _sessions)
         {
@@ -853,7 +899,11 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                 foreach (DiscoveredRowViewModel row in session)
                 {
                     request.DiscoveredIds.Add(row.DiscoveredId);
-                    if (row.PendingPassword is { } password)
+                    if (row.PendingCredentialId is { } credentialId)
+                    {
+                        request.InitialCredentialIds[row.DiscoveredId] = credentialId; // the server reads the stored password
+                    }
+                    else if (row.PendingPassword is { } password)
                     {
                         request.InitialPasswords[row.DiscoveredId] = password;
                     }
@@ -997,6 +1047,8 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             ConfirmPassword = row.PendingPassword ?? "";
             PolicyHint = "User root. " + PasswordRules.Hint(row.PassphrasePolicy);
             Editor = AddEditor.Password;
+            PasswordChoice.Select(row.PendingCredentialId);
+            PasswordChoiceLoad = PasswordChoice.LoadAsync(_cts.Token); // keeps the chosen entry; new entries show
         }
 
         Validation.Reset(EditorFields); // a freshly opened editor shows no errors
@@ -1010,6 +1062,8 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         EditorPassword = "";
         NewPassword = "";
         ConfirmPassword = "";
+        _passwordChoice?.Select(null);
+        _passwordChoice?.Forget();
         Validation.Reset(EditorFields);
     }
 
@@ -1104,9 +1158,18 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
             ? Rows.Where(r => r.IsFactoryDefault).ToList()
             : [row];
 
+        string? credentialId = _passwordChoice?.CredentialId;
         foreach (DiscoveredRowViewModel target in targets)
         {
-            target.SetPendingPassword(NewPassword);
+            if (credentialId is not null)
+            {
+                target.SetPendingCredential(credentialId);
+            }
+            else
+            {
+                target.SetPendingPassword(NewPassword);
+            }
+
             target.IsSelected = true;
         }
 

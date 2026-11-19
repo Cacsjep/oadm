@@ -165,6 +165,15 @@ Every password field (login editor, first password + confirm) is `ui:PasswordBox
   device checks again), "Use for all factory-default devices". The password stays in client memory
   until Add; the server sets it (pwdgrp.cgi, HTTPS when offered, POST body only) and
   stores it as the device credential. The row shows "Password ready · Change".
+  Right of the fields the credential choice (shared `c:FirstPasswordChoiceBox` over `Devices/FirstPasswordChoice`, also in
+  the context menu's Set password; Administrators only, the credential list is theirs, hidden while it has no entry of
+  root): "Credential" with "Type a new password" first, then the entries of root, oldest first, each with
+  `CredentialTexts.Added`; the list is read each time the editor opens. A chosen entry clears and turns off the typed
+  fields (no client check: the server and the device check it); Apply and "Use for all factory-default devices" work the
+  same. The eye next to the choice shows the stored password with the Credentials page's rules ([security.md](security.md)
+  "Secrets"), forgotten on the next click, another choice or when the editor or page closes. The row keeps only the entry's
+  id; Commit sends it in `initial_credential_ids` and the server reads the stored password itself, so it never reaches the
+  client unless the eye shows it.
 
 Server: `DiscoveryAuthenticator` (Oadm.Server/AddDevices). For every device event of a watched
 session it starts the automatic login once per device state: managed serial = ALREADY_ADDED, probe

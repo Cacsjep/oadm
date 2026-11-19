@@ -181,6 +181,10 @@ message CredentialUserNameReply { string user_name = 1; }
 message SetFirstPasswordRequest {
   repeated string device_ids = 1;
   string password = 2;   // 1-64 printable ASCII; user is always root
+  // An entry of the credential list (user root) instead of password: the server reads its stored password, which never
+  // reaches the client. Administrator only (the credential list's rule); NOT_FOUND unknown entry, INVALID_ARGUMENT another
+  // user than root, a password that does not fit a first password, or both password and credential_id.
+  string credential_id = 3;
 }
 
 message SetFirstPasswordResult {

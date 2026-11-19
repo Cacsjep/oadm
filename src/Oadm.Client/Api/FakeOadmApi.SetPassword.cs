@@ -10,6 +10,20 @@ public sealed partial class FakeOadmApi
     /// <summary>The policy the fake factory-default devices report (10.0.0.40 is Password not set).</summary>
     public const string FakePassphrasePolicy = "complex";
 
+    /// <summary>The stored password of a credential list entry, set like a typed one.</summary>
+    public Task<SetFirstPasswordReply> SetFirstPasswordFromListAsync(IReadOnlyCollection<string> deviceIds, string credentialId, CancellationToken ct)
+    {
+        string password;
+        lock (_gate)
+        {
+            password = _credentialPasswords.TryGetValue(credentialId, out string? stored)
+                ? stored
+                : throw new RpcException(new Status(StatusCode.NotFound, Oadm.Sdk.Devices.DeviceFirstSetupTexts.CredentialGone));
+        }
+
+        return SetFirstPasswordAsync(deviceIds, password, ct);
+    }
+
     /// <summary>Like the server: devices in Password not set take the password, others are refused without a change.</summary>
     public async Task<SetFirstPasswordReply> SetFirstPasswordAsync(IReadOnlyCollection<string> deviceIds, string password, CancellationToken ct)
     {

@@ -15,6 +15,7 @@ public partial class DeviceSetPasswordWindow : Window
         ArgumentNullException.ThrowIfNull(viewModel);
         DataContext = viewModel;
         viewModel.CloseRequested += (_, ok) => Close(ok);
+        Closed += (_, _) => viewModel.Forget(); // the title bar's close too
     }
 
     /// <summary>Focuses the password, then reads the devices' passphrase policies for the hint.</summary>

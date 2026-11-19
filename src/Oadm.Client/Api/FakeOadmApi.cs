@@ -707,6 +707,14 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
             ThrowIfOffline();
             FakeSession session = _sessions.GetValueOrDefault(request.SessionId)
                 ?? throw new RpcException(new Status(StatusCode.NotFound, "unknown discovery session"));
+            foreach (string credentialId in request.InitialCredentialIds.Values.Where(c => c.Length > 0))
+            {
+                if (!_credentialPasswords.ContainsKey(credentialId))
+                {
+                    throw new RpcException(new Status(StatusCode.NotFound, Oadm.Sdk.Devices.DeviceFirstSetupTexts.CredentialGone));
+                }
+            }
+
             foreach (string password in request.InitialPasswords.Values.Append(request.InitialRootPassword).Where(p => p.Length > 0))
             {
                 if (password.Length > 64 || password.Any(c => c < 0x20 || c > 0x7E))
@@ -735,7 +743,8 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
                 }
 
                 DeviceCredentials? credentials = request.Credentials.FirstOrDefault(c => c.DiscoveredId == id) ?? forAll;
-                string initial = request.InitialPasswords.TryGetValue(id, out string? own) && own.Length > 0 ? own : request.InitialRootPassword;
+                string initial = request.InitialCredentialIds.TryGetValue(id, out string? listed) && listed.Length > 0 ? _credentialPasswords[listed]
+                    : request.InitialPasswords.TryGetValue(id, out string? own) && own.Length > 0 ? own : request.InitialRootPassword;
                 DeviceStatus status = found.Status switch
                 {
                     DeviceStatus.PasswordNotSet => initial.Length > 0 ? DeviceStatus.Ok : DeviceStatus.PasswordNotSet,

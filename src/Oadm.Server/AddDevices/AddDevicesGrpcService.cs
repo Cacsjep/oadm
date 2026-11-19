@@ -31,7 +31,8 @@ namespace Oadm.Server.AddDevices;
 /// <para><b>Commit</b> stores each device (serial unique; the entered address of "Add manually",
 /// else the verified DNS name when the request asks for DNS names and the device has one, else the IP), pins the certificate
 /// fingerprint from the probe, sets the initial root password on factory-default devices when one
-/// is given (per device from <c>initial_passwords</c>, else <c>initial_root_password</c>; over HTTPS
+/// is given (per device from <c>initial_credential_ids</c> (an entry of the credential list, read on the server, Administrator
+/// only), else <c>initial_passwords</c>, else <c>initial_root_password</c>; over HTTPS
 /// when the device offers it), stores credentials (initial password as root, else explicit request
 /// credentials, else the credential that worked in the session's login), verifies them with one
 /// authenticated call (wrong credentials still add the device, status CredentialsRequired) and
@@ -53,7 +54,8 @@ public sealed partial class AddDevicesGrpcService(
     DiscoverySessionOwners owners,
     AuditLog audit,
     ILogger<AddDevicesGrpcService> logger,
-    Core.Sites.ISiteStates? states = null) : Proto.AddDevicesService.AddDevicesServiceBase
+    Core.Sites.ISiteStates? states = null,
+    CredentialListStore? credentialList = null) : Proto.AddDevicesService.AddDevicesServiceBase
 {
     /// <summary>Devices handled at the same time during Prepare and Commit.</summary>
     public const int Parallelism = 8;
@@ -163,6 +165,21 @@ public sealed partial class AddDevicesGrpcService(
             throw GrpcGuard.InvalidArgument(ex.Message);
         }
 
+        // First passwords from the credential list: read here once per entry, never sent to the client.
+        var fromList = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (discoveredId, credentialId) in request.InitialCredentialIds.Where(p => p.Value.Length > 0))
+        {
+            if (request.InitialPasswords.TryGetValue(discoveredId, out var typed) && typed.Length > 0)
+            {
+                throw GrpcGuard.InvalidArgument(Devices.FirstPasswordCredential.Both);
+            }
+
+            if (!fromList.ContainsKey(credentialId))
+            {
+                fromList[credentialId] = await Devices.FirstPasswordCredential.PasswordAsync(credentialList, credentialId, context).ConfigureAwait(false);
+            }
+        }
+
         var reach = await ReachAsync(context).ConfigureAwait(false);
 
         // One read of the managed serials for "managed already" and the limit (not one query per selected device).
@@ -191,7 +208,9 @@ public sealed partial class AddDevicesGrpcService(
         await Parallel.ForEachAsync(selected, new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = ct }, async (found, token) =>
         {
             var deviceCredentials = PickCredentials(request.Credentials, found.DiscoveredId) ?? MatchedCredentials(request.SessionId, found);
-            var devicePassword = request.InitialPasswords.TryGetValue(found.DiscoveredId, out var own) && own.Length > 0 ? own : initialPassword;
+            var devicePassword = request.InitialCredentialIds.TryGetValue(found.DiscoveredId, out var listed) && listed.Length > 0 ? fromList[listed]
+                : request.InitialPasswords.TryGetValue(found.DiscoveredId, out var own) && own.Length > 0 ? own
+                : initialPassword;
             var credentialsToStore = deviceCredentials is null ? null : new DeviceCredentials(deviceCredentials.UserName, deviceCredentials.Password);
             try
             {
