@@ -262,8 +262,27 @@
                         </StackPanel>
                       </ui:FormField>
                       <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:ProvisioningTexts.Credential}" Help="{x:Static vm:ProvisioningTexts.CredentialHelp}" IsVisible="{Binding UseCredential}">
-                        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Credentials}" SelectedItem="{Binding SelectedCredential}" />
+                        <!-- The eye next to the choice, for administrators only (the Credentials page's rules) -->
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Credentials}" SelectedItem="{Binding SelectedCredential}">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate x:DataType="vm:CredentialChoice">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                  <TextBlock Text="{Binding UserName}" />
+                                  <TextBlock Classes="secondary" Text="{Binding AddedText}" />
+                                </StackPanel>
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                          <ui:PasswordRevealButton Grid.Column="1" IsRevealed="{Binding IsRevealed}" Command="{Binding ToggleRevealCommand}" IsVisible="{Binding CanReveal}"
+                                                   IsEnabled="{Binding SelectedCredential, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                        </Grid>
                       </ui:FormField>
+                      <!-- The stored password, masked like the Credentials page until the eye shows it -->
+                      <StackPanel Spacing="2" IsVisible="{Binding ShowsStoredPassword}">
+                        <TextBlock Text="{Binding PasswordText}" TextWrapping="Wrap" />
+                        <TextBlock Classes="fieldMessage error" Text="{Binding RevealError}" IsVisible="{Binding HasRevealError}" />
+                      </StackPanel>
                       <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:ProvisioningTexts.NewPassword}" Help="{x:Static vm:ProvisioningTexts.NewPasswordHelp}" IsVisible="{Binding TypesPassword}"
                                     Hint="{x:Static vm:ProvisioningTexts.PasswordStoredHint}">
                         <ui:PasswordBox Text="{Binding Password}" />

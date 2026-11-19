@@ -246,6 +246,9 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
     the page's warning days, else the row's state.
 - `PasswordBox`: every password field. A TextBox with bullet mask and eye button "Show password" / "Hide password", icons
   `Icon.eye` / `Icon.eyeOff`; never a `TextBox` with `PasswordChar`.
+- `PasswordRevealButton`: the eye next to a stored password shown masked (`CredentialTexts.Masked`, 8 bullets): the
+  Credentials page's rows and the credential choice of Provisioning's Set password. Icon-only command button, `IsRevealed`
+  switches eye / crossed-out eye and the tooltip "Show password" / "Hide password"; the view model loads and forgets.
 - `CodeView`: every read-only code or response display. JSON and XML pretty-printed with 2 spaces and highlighted,
   param.cgi `key=value` highlighted with `# Error` lines red; `Language` Auto/Json/Xml/KeyValue/Plain with Auto from the
   content type then the text; `IsFormatted` false = exact text; unparsable text plain, above 512 K characters plain;

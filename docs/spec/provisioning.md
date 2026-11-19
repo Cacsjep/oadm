@@ -2,7 +2,8 @@
 
 Status: **built** (every node below, the page methods and tools, the page with the canvas and the profile editor, the
 user page `website/src/content/docs/tools/provisioning.mdx`); no hardware run yet. Flow design of 2026-11-18; replaces the step list of 2026-10-27. Open (ask the maintainer): Users and SD card take
-a typed password only (a plugin never reads a password of the credential list); SD card formats with the camera's own
+a typed password only (the server plugin never reads a password of the credential list; only the plugin's client shows
+one, through the host's reveal of Set password); SD card formats with the camera's own
 file system and sets only the maximum age (Edge storage has no file system choice and no cleanup level); Configuration
 applies parameters, action rules and schedules (a configuration file has no stream profiles).
 
@@ -72,7 +73,13 @@ Set password).
 ## Nodes
 
 1. **Set password** (fixed, first): the root password, from OADM's credential list or typed (stored encrypted with the
-   master key, added to the credential list, never shown again).
+   master key, added to the credential list, never shown again). The choice lists the root entries with the time each was
+   added (equal user names apart). An eye next to it shows the chosen entry's stored password with the Credentials page's
+   rules (decision 2026-11-19): Administrator only (hidden for others), through the host's reveal
+   (`ICorePluginClientContext.RevealCredentialAsync` = `SettingsService.RevealCredential`, audited "Credential list
+   password of <user> revealed", never the password, refused while no user exists); masked as 8 bullets until then, masked
+   and forgotten again on the second click, another choice, Type a password and when the editor closes; never sent to the
+   server plugin, never logged.
 2. **Add to OADM** (fixed, second): adds the camera with that login; optional **tags**, so it lands in the right device
    group. OADM has no names of its own: a device shows its host name or address.
 3. **Upgrade AXIS OS online**: AXIS OS from axis.com with the MyAxis sign-in of the administrator who started

@@ -173,7 +173,7 @@ public static class NodeForms
         ArgumentNullException.ThrowIfNull(services);
         return kind switch
         {
-            NodeKind.SetPassword => [new PasswordFieldViewModel(FieldRules.ToGuid(settings["credentialId"]), services.Credentials)],
+            NodeKind.SetPassword => [new PasswordFieldViewModel(FieldRules.ToGuid(settings["credentialId"]), services.Credentials, services)],
             NodeKind.AddToOadm => [new ListFieldViewModel("tags", ProvisioningTexts.Tags, Strings(settings["tags"]), TagRule) { Hint = ProvisioningTexts.Optional, Help = ProvisioningTexts.TagsHelp }],
             NodeKind.WaitForApproval or NodeKind.Dot1x or NodeKind.Autofocus => [],
             NodeKind.SetIp => SetIp(settings),

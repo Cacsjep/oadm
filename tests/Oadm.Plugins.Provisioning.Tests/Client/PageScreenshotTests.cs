@@ -213,6 +213,68 @@ public sealed class PageScreenshotTests
     }
 
     [Fact]
+    public async Task Set_password_renders_the_eye_the_shown_password_and_the_dates_of_the_entries()
+    {
+        var suffix = Headless.Appearance;
+        await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = Samples.Context();
+            ctx.Answers[ProvisioningMethods.Credentials] = _ => Samples.Serialize(Samples.ThreeRoots);
+            ctx.StoredPasswords[Samples.RootCredential] = "Lobby-2026!";
+            var editor = new ProfileEditorViewModel(ctx, Samples.ProfileId);
+            var window = new ProfileEditorWindow();
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Attach(editor);
+            window.Show();
+            await editor.LoadAsync();
+            await editor.CheckTask;
+            editor.SelectedNode = editor.Nodes[0];
+            Headless.Pump();
+
+            var field = editor.SelectedNode.Fields.OfType<PasswordFieldViewModel>().Single();
+            var eye = window.GetVisualDescendants().OfType<PasswordRevealButton>().Single();
+            Assert.True(eye.IsEffectivelyVisible);
+            Assert.Equal(PasswordBox.ShowTip, ToolTip.GetTip(eye));
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "••••••••");
+            Headless.Capture(window, $"provisioning-editor-password-eye-{suffix}.png");
+
+            eye.Command!.Execute(null);
+            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => field.IsRevealed, "the password shows");
+            Headless.Pump();
+            Assert.Equal(PasswordBox.HideTip, ToolTip.GetTip(eye));
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "Lobby-2026!");
+            Headless.Capture(window, $"provisioning-editor-password-shown-{suffix}.png");
+
+            var choice = window.GetVisualDescendants().OfType<ComboBox>().Single(c => c.IsEffectivelyVisible && c.ItemsSource == field.Credentials);
+            choice.IsDropDownOpen = true;
+            Headless.Pump();
+            var rows = choice.GetRealizedContainers().ToList();
+            Assert.Equal(3, rows.Count);
+            Assert.Equal(3, rows.Select(r => string.Join(" ", r.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text))).Distinct().Count()); // told apart by the date
+            Headless.Capture(TopLevel.GetTopLevel(rows[0])!, $"provisioning-editor-password-list-{suffix}.png"); // the open list is a popup of its own
+            choice.IsDropDownOpen = false;
+            window.Close();
+            Assert.Null(field.RevealedPassword); // the editor closed
+
+            // Not an administrator: no eye, no password line.
+            var userCtx = Samples.Context();
+            userCtx.IsAdministrator = false;
+            var userEditor = new ProfileEditorViewModel(userCtx, Samples.ProfileId);
+            var userWindow = new ProfileEditorWindow();
+            userWindow.Attach(userEditor);
+            userWindow.Show();
+            await userEditor.LoadAsync();
+            await userEditor.CheckTask;
+            userEditor.SelectedNode = userEditor.Nodes[0];
+            Headless.Pump();
+            Assert.DoesNotContain(userWindow.GetVisualDescendants().OfType<PasswordRevealButton>(), b => b.IsEffectivelyVisible);
+            Assert.DoesNotContain(userWindow.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Text == "••••••••");
+            userWindow.Close();
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task Manage_profiles_renders_the_list_with_its_states()
     {
         var suffix = Headless.Appearance;

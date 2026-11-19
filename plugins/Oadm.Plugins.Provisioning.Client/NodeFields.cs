@@ -26,6 +26,7 @@ public abstract class NodeFieldViewModel : ValidatingViewModel
     private static readonly HashSet<string> Quiet = new(StringComparer.Ordinal)
     {
         nameof(HasErrors), nameof(IsFormValid), nameof(FormError), nameof(IsShown), "IsBusy", "Summary", "Error",
+        "RevealedPassword", "IsRevealed", "PasswordText", "RevealError", "HasRevealError", "ShowsStoredPassword",
     };
 
     protected NodeFieldViewModel(string key, string label)
@@ -266,25 +267,35 @@ public sealed partial class ChoiceFieldViewModel : NodeFieldViewModel
     public override JsonNode? Value => JsonValue.Create(Selected.Value);
 }
 
-/// <summary>An entry of the credential list (never its password).</summary>
-public sealed record CredentialChoice(Guid Id, string UserName)
+/// <summary>An entry of the credential list (never its password) and when it was added, which tells equal user names apart.</summary>
+public sealed record CredentialChoice(Guid Id, string UserName, DateTimeOffset? Added = null)
 {
-    public override string ToString() => UserName;
+    /// <summary>"Added 18.11.2026 14:02"; empty when the host cannot tell.</summary>
+    public string AddedText => Added is { } added ? CredentialTexts.Added(added) : string.Empty;
+
+    public override string ToString() => AddedText.Length == 0 ? UserName : UserName + ", " + AddedText.ToLowerInvariant();
 }
 
 /// <summary>
 /// The root password of Set password: an entry of the credential list, or a password typed here (twice). A typed password
 /// goes to the server once, with Save (<see cref="SaveProfileRequest.Password"/>), lands in the credential list and is never
-/// shown again: the node keeps only the entry's id.
+/// shown again: the node keeps only the entry's id. An administrator's eye button shows the chosen entry's stored password
+/// through the host (<see cref="INodeFormServices.RevealCredentialAsync"/>, the Credentials page's call with its audit entry);
+/// it is masked again and forgotten on the second click, on another choice and when the editor closes
+/// (<see cref="HidePassword"/>). It never goes to the server part.
 /// </summary>
 public sealed partial class PasswordFieldViewModel : NodeFieldViewModel
 {
     public const string CredentialKey = "credentialId";
 
-    public PasswordFieldViewModel(Guid? credentialId, IReadOnlyList<CredentialChoice> credentials)
+    private readonly INodeFormServices? _services;
+    private int _reveal;
+
+    public PasswordFieldViewModel(Guid? credentialId, IReadOnlyList<CredentialChoice> credentials, INodeFormServices? services = null)
         : base(CredentialKey, ProvisioningTexts.Password)
     {
         ArgumentNullException.ThrowIfNull(credentials);
+        _services = services;
         Credentials = credentials;
         SelectedCredential = credentials.FirstOrDefault(c => c.Id == credentialId)
             ?? (credentialId is null ? credentials.FirstOrDefault(c => string.Equals(c.UserName, "root", StringComparison.Ordinal)) : null);
@@ -302,7 +313,7 @@ public sealed partial class PasswordFieldViewModel : NodeFieldViewModel
 
     /// <summary>True: an entry of the credential list; false: a password typed here.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(TypesPassword))]
+    [NotifyPropertyChangedFor(nameof(TypesPassword), nameof(ShowsStoredPassword))]
     public partial bool UseCredential { get; set; }
 
     public bool TypesPassword
@@ -312,7 +323,77 @@ public sealed partial class PasswordFieldViewModel : NodeFieldViewModel
     }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsStoredPassword))]
     public partial CredentialChoice? SelectedCredential { get; set; }
+
+    /// <summary>The eye shows: an administrator (the server refuses everyone else anyway) and the host can reveal.</summary>
+    public bool CanReveal => _services?.CanRevealCredentials ?? false;
+
+    /// <summary>The chosen entry's stored password after the eye asked for it; null while masked.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRevealed), nameof(PasswordText))]
+    public partial string? RevealedPassword { get; private set; }
+
+    public bool IsRevealed => RevealedPassword is not null;
+
+    /// <summary>The masked or shown password line below the choice: an administrator with an entry chosen.</summary>
+    public bool ShowsStoredPassword => CanReveal && UseCredential && SelectedCredential is not null;
+
+    /// <summary>The stored password, or the 8 bullets of the Credentials page while masked.</summary>
+    public string PasswordText => RevealedPassword ?? CredentialTexts.Masked;
+
+    /// <summary>Why showing the password failed (below the choice), or null.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRevealError))]
+    public partial string? RevealError { get; private set; }
+
+    public bool HasRevealError => RevealError is not null;
+
+    /// <summary>The eye: loads the chosen entry's password through the host and shows it; a second click masks and forgets it.</summary>
+    [RelayCommand]
+    public async Task ToggleRevealAsync()
+    {
+        if (IsRevealed)
+        {
+            HidePassword();
+            return;
+        }
+
+        if (!CanReveal || _services is null || SelectedCredential is not { } entry)
+        {
+            return;
+        }
+
+        var attempt = ++_reveal;
+        RevealError = null;
+        try
+        {
+            var password = await _services.RevealCredentialAsync(entry.Id, CancellationToken.None).ConfigureAwait(true);
+            if (attempt == _reveal)
+            {
+                RevealedPassword = password; // a later choice or hide wins over this answer
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (attempt == _reveal)
+            {
+                RevealError = CredentialTexts.ShowFailed + ServerErrors.Message(ex);
+            }
+        }
+    }
+
+    /// <summary>Masks and forgets the shown password (another choice, the editor closes).</summary>
+    public void HidePassword()
+    {
+        _reveal++;
+        RevealedPassword = null;
+        RevealError = null;
+    }
+
+    partial void OnSelectedCredentialChanged(CredentialChoice? value) => HidePassword();
+
+    partial void OnUseCredentialChanged(bool value) => HidePassword();
 
     [ObservableProperty]
     public partial string Password { get; set; } = string.Empty;
@@ -404,6 +485,12 @@ public interface INodeFormServices
 {
     /// <summary>The credential list's root entries.</summary>
     IReadOnlyList<CredentialChoice> Credentials { get; }
+
+    /// <summary>Whether the eye of the credential choice shows (administrators only, like the Credentials page).</summary>
+    bool CanRevealCredentials { get; }
+
+    /// <summary>The stored password of a credential list entry through the host (audited on the server, never kept).</summary>
+    Task<string> RevealCredentialAsync(Guid credentialId, CancellationToken ct);
 
     /// <summary>The VAPIX commands a profile can run.</summary>
     IReadOnlyList<ProfileCommand> Commands { get; }
@@ -701,7 +788,7 @@ public static class FieldRules
 
     /// <summary>The root entries of the credential list.</summary>
     public static IReadOnlyList<CredentialChoice> RootEntries(IEnumerable<DeviceCredentialName> credentials) =>
-        [.. credentials.Where(c => string.Equals(c.UserName, "root", StringComparison.Ordinal)).Select(c => new CredentialChoice(c.Id, c.UserName))];
+        [.. credentials.Where(c => string.Equals(c.UserName, "root", StringComparison.Ordinal)).Select(c => new CredentialChoice(c.Id, c.UserName, c.Added))];
 
     /// <summary>A JSON value as a Guid, or null.</summary>
     public static Guid? ToGuid(JsonNode? node) =>

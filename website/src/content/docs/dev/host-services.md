@@ -104,7 +104,7 @@ PKI sets every CA with its key and the previous CAs, each with its chain, on sta
 | `LookAsync(address, expectedSerial, ct)` | SDK 0.15.0: what answers there without a password: the probe and the Axis check, or the record of a managed device | `DeviceLook` with `FactoryNew`, `HasPassword`, `NotAxis`, `SerialMismatch` or `Unreachable` |
 | `SetFirstPasswordAsync(address, expectedSerial, credentialId, source, ct)` | SDK 0.15.0: the first root password of a factory-new device from a credential list entry of root, like the add page (serial and "no password yet" checked right before writing) | `DeviceFirstPasswordOutcome` |
 | `AddWithLoginAsync(address, expectedSerial, credentialId, tags, source, ct)` | SDK 0.15.0: adds the device logged in with that entry and gives it the tags; a managed device gets the tags | `DeviceAutoAddOutcome`, `AlreadyManaged` with the device id |
-| `ListCredentialsAsync(ct)`, `AddCredentialAsync(userName, password, ct)` | SDK 0.15.0: the credential list's ids and user names; a typed password added to it (encrypted, never shown again) | `DeviceCredentialName` |
+| `ListCredentialsAsync(ct)`, `AddCredentialAsync(userName, password, ct)` | SDK 0.15.0: the credential list's ids, user names and when each was added; a typed password added to it (encrypted, never shown again) | `DeviceCredentialName` |
 
 Passwords never reach your plugin, and the server writes the audit entries. Both calls contact the device: run them
 from a queue with a few workers, never on the path that answers your clients.

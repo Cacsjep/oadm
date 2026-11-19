@@ -174,7 +174,8 @@ public sealed record DeviceFirstPasswordOutcome(bool Ok, string Message);
 /// <summary>A credential list entry without its password (SDK 0.15.0).</summary>
 /// <param name="Id">The entry's id.</param>
 /// <param name="UserName">Its user name.</param>
-public sealed record DeviceCredentialName(Guid Id, string UserName);
+/// <param name="Added">When it was added to the list (UTC); null when the host cannot tell. Tells equal user names apart.</param>
+public sealed record DeviceCredentialName(Guid Id, string UserName, DateTimeOffset? Added = null);
 
 /// <summary>The texts of the first set up of a device (SDK 0.15.0).</summary>
 public static class DeviceFirstSetupTexts

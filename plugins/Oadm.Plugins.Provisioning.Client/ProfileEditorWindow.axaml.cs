@@ -20,6 +20,7 @@ public partial class ProfileEditorWindow : Window, IProfileEditorUi
         DataContext = viewModel;
         viewModel.Ui = this;
         viewModel.CloseRequested += (_, _) => Close();
+        Closed += (_, _) => viewModel.ForgetRevealedPasswords(); // the title bar's close too
     }
 
     public async Task<IReadOnlyList<string>> PickFilesAsync(string title, bool multiple, IReadOnlyList<string> patterns)

@@ -341,6 +341,19 @@ public interface ICorePluginClientContext
         Task.FromException<Oadm.Sdk.Licensing.ProLicenseInfo>(new NotSupportedException("This version of OADM cannot start the trial here."));
 
     /// <summary>
+    /// SDK 0.15.0: the stored password of one credential list entry (an id of <c>IDeviceAutoAdd.ListCredentialsAsync</c>), for
+    /// an eye button like the one of the Credentials page. The same call and rules as that page: administrators only (offer
+    /// it only while <see cref="IsAdministrator"/>), every reveal in the audit log without the password, refused while no
+    /// user exists. Show it masked first (<see cref="CredentialTexts.Masked"/>), only while the user asked for it, and forget
+    /// it when hidden again; never send it to the server part or log it. Errors arrive as <c>RpcException</c> like
+    /// <see cref="InvokeAsync"/> (NOT_FOUND for an entry that is gone). Default (older hosts): <see cref="NotSupportedException"/>.
+    /// </summary>
+    /// <param name="credentialId">The entry's id.</param>
+    /// <param name="ct">Cancels the call.</param>
+    Task<string> RevealCredentialAsync(Guid credentialId, CancellationToken ct) =>
+        Task.FromException<string>(new NotSupportedException("This version of OADM cannot show a stored password here."));
+
+    /// <summary>
     /// A short text this plugin keeps on this computer (the client settings file), e.g. a page's last device choice; null
     /// when none. Not shared with other computers or users of them. Default (older hosts): nothing is kept.
     /// </summary>

@@ -168,4 +168,19 @@ public sealed class CorePluginRunTaskTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => context.UploadAsync("C:/x/hello.eap", null, CancellationToken.None));
         await host.Received(1).UploadAsync(Arg.Any<string>(), Arg.Any<IProgress<double>?>(), Arg.Any<CancellationToken>());
     }
+    [Fact]
+    public async Task A_page_shows_a_stored_password_through_the_credentials_pages_call_and_a_closed_page_shows_none()
+    {
+        var api = Substitute.For<Oadm.Client.Api.IOadmApi>();
+        var id = Guid.NewGuid();
+        api.RevealCredentialAsync(id.ToString(), Arg.Any<CancellationToken>()).Returns("Lobby-2026!");
+        var context = new CorePluginClientContext(api, "oadm.provisioning", Substitute.For<IToolbarContext>());
+
+        Assert.Equal("Lobby-2026!", await ((ICorePluginClientContext)context).RevealCredentialAsync(id, CancellationToken.None));
+        await api.Received(1).RevealCredentialAsync(id.ToString(), Arg.Any<CancellationToken>()); // SettingsService.RevealCredential: admins only, audited
+
+        context.Dispose();
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => context.RevealCredentialAsync(id, CancellationToken.None));
+        await api.Received(1).RevealCredentialAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
 }

@@ -282,4 +282,131 @@ public sealed class ProfileEditorTests
         Assert.Equal(ProvisioningTexts.WaitHint, editor.SelectedNode.Note);
         Assert.Equal(ProvisioningTexts.WaitsForContinue, editor.Chain.Nodes[3].Line); // after Set IP
     }
+    private static async Task<(ProfileEditorViewModel Editor, FakePageContext Ctx, PasswordFieldViewModel Field)> OpenThreeRootsAsync(bool admin = true)
+    {
+        var ctx = Samples.Context();
+        ctx.IsAdministrator = admin;
+        ctx.Answers[ProvisioningMethods.Credentials] = _ => Samples.Serialize(Samples.ThreeRoots);
+        ctx.StoredPasswords[Samples.RootCredential] = "First-111";
+        ctx.StoredPasswords[Samples.SecondRoot] = "Second-222";
+        var editor = new ProfileEditorViewModel(ctx, Samples.ProfileId);
+        await editor.LoadAsync();
+        await editor.CheckTask;
+        return (editor, ctx, Assert.IsType<PasswordFieldViewModel>(Assert.Single(editor.Nodes[0].Fields)));
+    }
+
+    [Fact]
+    public async Task The_credential_choice_shows_when_each_root_entry_was_added()
+    {
+        var (_, _, field) = await OpenThreeRootsAsync();
+
+        Assert.Equal(3, field.Credentials.Count);
+        Assert.All(field.Credentials, c => Assert.Equal("root", c.UserName));
+        Assert.Equal(3, field.Credentials.Select(c => c.AddedText).Distinct().Count());
+        Assert.All(field.Credentials, c => Assert.StartsWith("Added ", c.AddedText, StringComparison.Ordinal));
+        Assert.Equal(Oadm.Sdk.Client.CredentialTexts.Added(new DateTimeOffset(2026, 11, 3, 16, 40, 0, TimeSpan.Zero)), field.Credentials[1].AddedText);
+        Assert.StartsWith("root, added ", field.Credentials[2].ToString(), StringComparison.Ordinal);
+        Assert.Equal(string.Empty, new CredentialChoice(Guid.NewGuid(), "root").AddedText); // a host that cannot tell
+    }
+
+    [Fact]
+    public async Task The_eye_shows_the_stored_password_through_the_host_and_forgets_it_again()
+    {
+        var (editor, ctx, field) = await OpenThreeRootsAsync();
+        var checks = ctx.CallsOf(ProvisioningMethods.CheckProfile);
+
+        // Masked as the Credentials page until asked; nothing read before.
+        Assert.True(field.CanReveal);
+        Assert.True(field.ShowsStoredPassword);
+        Assert.False(field.IsRevealed);
+        Assert.Equal("••••••••", field.PasswordText);
+        Assert.Empty(ctx.Reveals);
+
+        await field.ToggleRevealCommand.ExecuteAsync(null);
+        Assert.Equal([Samples.RootCredential], ctx.Reveals);
+        Assert.True(field.IsRevealed);
+        Assert.Equal("First-111", field.PasswordText);
+
+        // The second click masks and forgets it.
+        await field.ToggleRevealCommand.ExecuteAsync(null);
+        Assert.False(field.IsRevealed);
+        Assert.Null(field.RevealedPassword);
+        Assert.Equal("••••••••", field.PasswordText);
+        Assert.Single(ctx.Reveals);
+
+        // Another choice masks it too; the next reveal asks for that entry.
+        await field.ToggleRevealCommand.ExecuteAsync(null);
+        field.SelectedCredential = field.Credentials[1];
+        Assert.Null(field.RevealedPassword);
+        await field.ToggleRevealCommand.ExecuteAsync(null);
+        Assert.Equal(Samples.SecondRoot, ctx.Reveals[^1]);
+        Assert.Equal("Second-222", field.PasswordText);
+
+        // Revealing is no edit: the profile is not checked again and the saved node keeps only the id.
+        await editor.CheckTask;
+        Assert.Equal(checks + 1, ctx.CallsOf(ProvisioningMethods.CheckProfile)); // the other choice only
+        await editor.SaveCommand.ExecuteAsync(null);
+        var saved = ctx.LastPayloadOf(ProvisioningMethods.SaveProfile)!;
+        Assert.DoesNotContain("Second-222", saved, StringComparison.Ordinal);
+        Assert.Contains(Samples.SecondRoot.ToString(), saved, StringComparison.Ordinal);
+        Assert.All(ctx.Calls, c => Assert.DoesNotContain("Second-222", c.Payload ?? string.Empty, StringComparison.Ordinal));
+
+        // Closing the editor forgets it.
+        Assert.Null(field.RevealedPassword);
+    }
+
+    [Fact]
+    public async Task Cancel_and_typing_a_password_forget_the_shown_one()
+    {
+        var (editor, _, field) = await OpenThreeRootsAsync();
+        await field.ToggleRevealCommand.ExecuteAsync(null);
+        field.TypesPassword = true;
+        Assert.Null(field.RevealedPassword);
+        Assert.False(field.ShowsStoredPassword);
+
+        field.UseCredential = true;
+        await field.ToggleRevealCommand.ExecuteAsync(null);
+        Assert.True(field.IsRevealed);
+        editor.Cancel();
+        Assert.Null(field.RevealedPassword);
+    }
+
+    [Fact]
+    public async Task An_answer_that_arrives_after_another_choice_is_dropped()
+    {
+        var (_, ctx, field) = await OpenThreeRootsAsync();
+        var gate = new TaskCompletionSource();
+        ctx.RevealGate = gate.Task;
+        var reveal = field.ToggleRevealCommand.ExecuteAsync(null);
+        field.SelectedCredential = field.Credentials[1];
+        gate.SetResult();
+        await reveal;
+        Assert.Null(field.RevealedPassword);
+        Assert.Equal("••••••••", field.PasswordText);
+    }
+
+    [Fact]
+    public async Task A_refused_reveal_says_why_below_the_choice()
+    {
+        var (_, ctx, field) = await OpenThreeRootsAsync();
+        field.SelectedCredential = field.Credentials[2]; // not in the fake's store: NOT_FOUND
+        await field.ToggleRevealCommand.ExecuteAsync(null);
+        Assert.False(field.IsRevealed);
+        Assert.True(field.HasRevealError);
+        Assert.StartsWith(Oadm.Sdk.Client.CredentialTexts.ShowFailed, field.RevealError, StringComparison.Ordinal);
+        Assert.Equal(Samples.ThirdRoot, ctx.Reveals[^1]);
+        field.SelectedCredential = field.Credentials[0];
+        Assert.Null(field.RevealError);
+    }
+
+    [Fact]
+    public async Task The_eye_is_hidden_for_users_who_are_not_administrators()
+    {
+        var (_, ctx, field) = await OpenThreeRootsAsync(admin: false);
+        Assert.False(field.CanReveal);
+        Assert.False(field.ShowsStoredPassword);
+        await field.ToggleRevealCommand.ExecuteAsync(null);
+        Assert.Empty(ctx.Reveals);
+        Assert.Null(field.RevealedPassword);
+    }
 }

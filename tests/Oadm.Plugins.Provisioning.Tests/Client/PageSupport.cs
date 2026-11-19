@@ -119,6 +119,31 @@ internal sealed class FakePageContext : ICorePluginClientContext
 
     public bool ConfirmAnswer { get; set; } = true;
 
+    /// <summary>The signed-in user is an administrator (the eye of the credential choice).</summary>
+    public bool IsAdministrator { get; set; } = true;
+
+    /// <summary>The stored passwords the host reveals, by credential list entry.</summary>
+    public Dictionary<Guid, string> StoredPasswords { get; } = [];
+
+    /// <summary>The entries the page asked the host to reveal, in order.</summary>
+    public List<Guid> Reveals { get; } = [];
+
+    /// <summary>Holds the next reveals until it completes.</summary>
+    public Task? RevealGate { get; set; }
+
+    public async Task<string> RevealCredentialAsync(Guid credentialId, CancellationToken ct)
+    {
+        Reveals.Add(credentialId);
+        if (RevealGate is { } gate)
+        {
+            await gate;
+        }
+
+        return StoredPasswords.TryGetValue(credentialId, out var password)
+            ? password
+            : throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.NotFound, "Credential not found."));
+    }
+
     /// <summary>Holds every call until it completes (a loading test).</summary>
     public Task? Gate { get; set; }
 
@@ -191,7 +216,19 @@ internal static class Samples
         [.. Registry.All.Select(n => new NodeKindInfo(n.Kind, n.Name, n.IsFixed, n.AlwaysStops, NodeSettings.Write(n.DefaultSettings)))];
 
     public static readonly IReadOnlyList<DeviceCredentialName> Credentials =
-        [new(RootCredential, "root"), new(Guid.Parse("0d0d0d0d-3333-4c2d-9e8f-0a1b2c3d4e5f"), "operator")];
+        [new(RootCredential, "root", new DateTimeOffset(2026, 10, 2, 9, 15, 0, TimeSpan.Zero)), new(Guid.Parse("0d0d0d0d-3333-4c2d-9e8f-0a1b2c3d4e5f"), "operator")];
+
+    public static readonly Guid SecondRoot = Guid.Parse("0e0e0e0e-4444-4c2d-9e8f-0a1b2c3d4e5f");
+
+    public static readonly Guid ThirdRoot = Guid.Parse("0f0f0f0f-5555-4c2d-9e8f-0a1b2c3d4e5f");
+
+    /// <summary>Three root entries, told apart only by when they were added (the eye's tests and screenshot).</summary>
+    public static readonly IReadOnlyList<DeviceCredentialName> ThreeRoots =
+    [
+        .. Credentials,
+        new(SecondRoot, "root", new DateTimeOffset(2026, 11, 3, 16, 40, 0, TimeSpan.Zero)),
+        new(ThirdRoot, "root", new DateTimeOffset(2026, 11, 18, 8, 5, 0, TimeSpan.Zero)),
+    ];
 
     public static DhcpServerSummary Dhcp(bool running = true) =>
         new(running, running ? "Running" : "Stopped", "Ethernet", "10.0.0.17", "255.255.255.0", "10.0.0.100", "10.0.0.199");

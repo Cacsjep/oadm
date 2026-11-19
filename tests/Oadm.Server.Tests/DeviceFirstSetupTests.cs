@@ -83,7 +83,11 @@ public sealed class DeviceFirstSetupTests
         Assert.False(refused.Ok);
         Assert.Equal(DeviceFirstSetupTexts.RootOnly, refused.Message);
         Assert.Equal(0, network["10.9.2.5"].PwdgrpCalls);
-        Assert.Contains(await autoAdd.ListCredentialsAsync(CancellationToken.None), c => c.UserName == "operator");
+        var listed = Assert.Single(await autoAdd.ListCredentialsAsync(CancellationToken.None), c => c.UserName == "operator");
+        Assert.Equal(operatorEntry.Id, listed.Id); // the ids of SettingsService.RevealCredential
+        Assert.NotNull(listed.Added); // tells equal user names apart
+        Assert.Equal(TimeSpan.Zero, listed.Added.Value.Offset);
+        Assert.Equal(operatorEntry.Added, listed.Added);
     }
 
     [Fact]

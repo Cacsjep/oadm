@@ -148,6 +148,10 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
 
     IReadOnlyList<ProfileCommand> INodeFormServices.Commands => _commands;
 
+    bool INodeFormServices.CanRevealCredentials => _ctx.IsAdministrator;
+
+    Task<string> INodeFormServices.RevealCredentialAsync(Guid credentialId, CancellationToken ct) => _ctx.RevealCredentialAsync(credentialId, ct);
+
     /// <summary>Reads the node kinds, the credential list and the profile (or starts a new one with the two fixed nodes).</summary>
     public async Task LoadAsync(CancellationToken ct = default)
     {
@@ -343,6 +347,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
                 json);
             Saved = reply.Profile;
             ForgetTypedPassword(reply.Profile);
+            ForgetRevealedPasswords();
             CloseRequested?.Invoke(this, true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -356,7 +361,20 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
     }
 
     [RelayCommand]
-    public void Cancel() => CloseRequested?.Invoke(this, false);
+    public void Cancel()
+    {
+        ForgetRevealedPasswords();
+        CloseRequested?.Invoke(this, false);
+    }
+
+    /// <summary>The editor closes: a stored password the eye showed is masked and forgotten.</summary>
+    public void ForgetRevealedPasswords()
+    {
+        foreach (var field in Nodes.SelectMany(n => n.Fields).OfType<PasswordFieldViewModel>())
+        {
+            field.HidePassword();
+        }
+    }
 
     async Task<IReadOnlyList<StoredFile>> INodeFormServices.ChooseFilesAsync(string title, bool multiple, IReadOnlyList<string> patterns)
     {

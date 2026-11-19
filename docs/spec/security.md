@@ -7,9 +7,11 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 - Device passwords: AES-256-GCM, key in `<datafolder>/master.key` (0600 on Unix), random nonce per record, stored as
   `nonce|ciphertext|tag` (no OS keyring). The credential list uses the same, with the entry id as associated data.
 - Device credentials never leave the server; gRPC returns only "has credentials" and, for the prefill of the "Log in"
-  dialog, the stored user name the selected devices share. The credential list returns ids and user names only; the one
-  exception is the explicit reveal of an entry (`SettingsService.RevealCredential`, eye and copy buttons of the Credentials
-  page): Admin only, every reveal in the audit log, refused while no user exists. Credentials typed for a login (RetryAuth,
+  dialog, the stored user name the selected devices share. The credential list returns ids, user names and the time an
+  entry was added only; the one exception is the explicit reveal of an entry (`SettingsService.RevealCredential`): the eye
+  and copy buttons of the Credentials page and the eye of the credential choice of Provisioning's Set password node (the
+  client SDK's `ICorePluginClientContext.RevealCredentialAsync`, the same call), with the same rules in both places: Admin
+  only, every reveal in the audit log, refused while no user exists. A server plugin never reads a stored password. Credentials typed for a login (RetryAuth,
   the context menu's "Log in") or a first password travel only client -> server.
 - MyAxis sign-ins ([myaxis.md](myaxis.md)): the session cookie of each user, AES-256-GCM like device passwords with the user
   id as associated data (table MyAxisSessions); never in a gRPC answer, a backup or the log; sent only to www.axis.com.

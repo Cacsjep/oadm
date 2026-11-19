@@ -282,7 +282,8 @@ used again.
   `AddCredential(user_name, password)` (INVALID_ARGUMENT, RESOURCE_EXHAUSTED over 20 entries; an identical pair returns the
   existing entry; a new entry is tried on the failed devices of every open add session), `RemoveCredential(id)`
   (NOT_FOUND), `RevealCredential(id)` (reply `RevealedCredential { password = 1 }`: the stored password of one entry for
-  the eye and copy buttons of the Credentials page; NOT_FOUND; audited "Credential list password of <user> revealed",
+  the eye and copy buttons of the Credentials page and the eye of Provisioning's Set password through
+  `ICorePluginClientContext.RevealCredentialAsync`; NOT_FOUND; audited "Credential list password of <user> revealed",
   never the password). Credential entries carry id, user name and created time, never a password.
 - **`LiveViewService`** (`liveview.proto`, `docs/spec/live-view.md`): `Watch(device_id, max_width, max_height, fps,
   accepted_codecs, camera)` (stream of encoded access units), `ListSources(device_id)` (view areas, sensors, channels),

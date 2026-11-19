@@ -56,14 +56,18 @@ Built: the server part with every node of the spec, the page methods and the too
 
 **Set password secrets.** The profile never holds a password. A typed password (`saveProfile` with `password`, the tool's
 secret) is added to the credential list as root (`IDeviceAutoAdd.AddCredentialAsync`, encrypted with the master key) and
-the node keeps the entry's id. It is never logged, audited or sent back.
+the node keeps the entry's id. It is never logged, audited or sent back. The editor's credential choice shows when
+each root entry was added (`DeviceCredentialName.Added`). Its eye (Administrators only) shows the chosen entry's stored
+password through the host (`ICorePluginClientContext.RevealCredentialAsync`, the Credentials page's call, audited by the
+server); `PasswordFieldViewModel` keeps it only while shown and forgets it on the second click, another choice and when
+the editor closes. It never reaches the server part.
 
 **Secrets and files** (`Engine/NodeVault.cs`). A node names a typed password or passphrase by `secretId` and a file by
 `fileId`, never the value: the page's `storeSecret` (encrypted with `ctx.Secrets`, setting `secrets`) and `storeFile`
 (a file of the caller's own uploads, copied into `ctx.DataDirectory/files`, setting `files`) answer the ids. When a node
 runs, a file goes to its task as a system upload (`ctx.Uploads`, SDK 0.15.0), added again when the server deleted the
 last one after a day. What no profile and no session names is deleted a day after it was stored (`PruneAsync` at start,
-save and delete). A plugin never reads a password of the credential list, so Users and SD card take typed ones only.
+save and delete). The server part never reads a password of the credential list, so Users and SD card take typed ones only.
 
 **Set IP addresses.** Under one lock per server: the camera's own reservation of this session, else the first address of
 the pool that is not reserved in this session, no OADM device has (one read of the device list per take) and that answers

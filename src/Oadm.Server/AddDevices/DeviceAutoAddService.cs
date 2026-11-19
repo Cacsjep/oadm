@@ -335,7 +335,7 @@ public sealed partial class DeviceAutoAddService(
             throw new NotSupportedException(DeviceFirstSetupTexts.NotSupported);
         }
 
-        return [.. (await credentialList.ListAsync(ct).ConfigureAwait(false)).Select(c => new DeviceCredentialName(c.Id, c.UserName))];
+        return [.. (await credentialList.ListAsync(ct).ConfigureAwait(false)).Select(c => new DeviceCredentialName(c.Id, c.UserName, AddedOf(c.CreatedUtc)))];
     }
 
     /// <summary>Adds an entry to the credential list (an equal one is reused).</summary>
@@ -348,8 +348,11 @@ public sealed partial class DeviceAutoAddService(
 
         var item = await credentialList.AddAsync(userName, password, ct).ConfigureAwait(false);
         await audit.WriteAsync(AuditActions.CredentialAdded, item.UserName, "a core plugin added it", ct).ConfigureAwait(false);
-        return new DeviceCredentialName(item.Id, item.UserName);
+        return new DeviceCredentialName(item.Id, item.UserName, AddedOf(item.CreatedUtc));
     }
+
+    /// <summary>The stored creation time (UTC, read back without its kind) as an offset.</summary>
+    private static DateTimeOffset AddedOf(DateTime createdUtc) => new(DateTime.SpecifyKind(createdUtc, DateTimeKind.Utc));
 
     private DiscoveredDevice FoundOf(IPAddress ip, string serial, Core.Vapix.VapixProbeResult probed) =>
         new DiscoveredDevice("auto", serial, ip, null, null, null, DiscoveredDeviceStatus.Unknown, null, DiscoverySources.None, time.GetUtcNow()) with

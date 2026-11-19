@@ -1250,6 +1250,16 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     public Task<Oadm.Sdk.Licensing.ProLicenseInfo> StartProTrialAsync(CancellationToken ct) =>
         _startTrial?.Invoke(ct) ?? Task.FromException<Oadm.Sdk.Licensing.ProLicenseInfo>(new NotSupportedException("This connection has no license."));
 
+    /// <summary>
+    /// The stored password of a credential list entry through the Credentials page's call (SettingsService.RevealCredential):
+    /// the server allows it for administrators only and writes the audit entry. Neither kept nor logged here; a closed page
+    /// reveals nothing.
+    /// </summary>
+    public Task<string> RevealCredentialAsync(Guid credentialId, CancellationToken ct) =>
+        _disposed
+            ? Task.FromException<string>(new ObjectDisposedException(nameof(CorePluginClientContext)))
+            : _api.RevealCredentialAsync(credentialId.ToString(), ct);
+
     /// <summary>Most bytes of one value a plugin keeps on this computer.</summary>
     public const int MaxLocalSettingLength = 64 * 1024;
 

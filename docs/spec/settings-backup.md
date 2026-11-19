@@ -63,7 +63,7 @@ for `zero_conf_seconds`). Settings page labels in quotes.
 - Rail page **Credentials** (Admin only, subtitle "Passwords OADM tries when it adds devices.",
   `Settings/CredentialsViewModel` + `CredentialsView`, one card without title): entries (key icon, user name, password
   masked as 8 bullets, eye icon button "Show password" / "Hide password" that loads it with `RevealCredential` and masks
-  and forgets it on the second click, copy icon button "Copy password" (clipboard of the window, loaded on demand, not
+  and forgets it on the second click (the shared `ui:PasswordRevealButton`; Provisioning's Set password has the same eye), copy icon button "Copy password" (clipboard of the window, loaded on demand, not
   shown), added time, Remove as a red icon button), a separator, then the add form under the heading "Add credential"
   (user name, password, "Add credential"). Stored encrypted on the server (`CredentialListStore`, table
   `CredentialListEntries`), tried on every discovered device (`docs/spec/add-devices.md`).

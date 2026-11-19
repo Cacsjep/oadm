@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -23,7 +22,7 @@ namespace Oadm.Client.Settings;
 public sealed partial class CredentialItemViewModel(string id, string userName, string addedText) : ObservableObject
 {
     /// <summary>Shown while the password is hidden; always the same length so it says nothing about the password.</summary>
-    public const string MaskedText = "••••••••";
+    public const string MaskedText = Oadm.Sdk.Client.CredentialTexts.Masked;
 
     public string Id { get; } = id;
     public string UserName { get; } = userName;
@@ -38,7 +37,8 @@ public sealed partial class CredentialItemViewModel(string id, string userName, 
 
     public string PasswordText => Password ?? MaskedText;
 
-    public string RevealTooltip => IsRevealed ? "Hide password" : "Show password";
+    /// <summary>The eye button's tooltip (<see cref="Oadm.Sdk.Client.Controls.PasswordRevealButton"/> sets the same).</summary>
+    public string RevealTooltip => IsRevealed ? Oadm.Sdk.Client.Controls.PasswordBox.HideTip : Oadm.Sdk.Client.Controls.PasswordBox.ShowTip;
 
     internal void Reveal(string password) => Password = password;
 
@@ -128,7 +128,7 @@ public sealed partial class CredentialsViewModel : ValidatingViewModel
             Credentials.Clear();
             foreach (CredentialEntry entry in entries)
             {
-                string added = entry.Created is null ? "" : "Added " + entry.Created.ToDateTime().ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+                string added = entry.Created is null ? "" : Oadm.Sdk.Client.CredentialTexts.Added(entry.Created.ToDateTimeOffset());
                 Credentials.Add(new CredentialItemViewModel(entry.Id, entry.UserName, added));
             }
 
@@ -219,7 +219,7 @@ public sealed partial class CredentialsViewModel : ValidatingViewModel
         catch (Exception ex)
         {
             CredentialMessageIsError = true;
-            CredentialMessage = "Showing the password failed: " + Detail(ex);
+            CredentialMessage = Oadm.Sdk.Client.CredentialTexts.ShowFailed + Detail(ex);
         }
     }
 

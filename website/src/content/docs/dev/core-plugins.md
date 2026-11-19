@@ -131,6 +131,7 @@ The page's context, `ICorePluginClientContext`:
 | `OpenDevicePage(deviceId, path)` | SDK 0.7.0: open a page of a device's web interface in Web View ("/local/myapp/index.html"); false when nothing opens (Web View off or not allowed, unknown device, a path that leaves the device). Web View gets it as `OpenDevicePageRequested` (`DevicePageRequest`) |
 | `LicenseOf(packageId)` | The package's license as the server checked it, e.g. to say "No license" on the page; null when the host cannot tell |
 | `IsAdministrator`, `StartProTrialAsync(ct)` | Start the 30-day OADM PRO trial from a page that needs PRO (administrators, once per server); offer it while `ProLicenseInfo.TrialAvailable` |
+| `RevealCredentialAsync(credentialId, ct)` | SDK 0.15.0: the stored password of a credential list entry (an id of `IDeviceAutoAdd.ListCredentialsAsync`) for an eye button (`PasswordRevealButton`) with the Credentials page's rules: administrators only (show the eye while `IsAdministrator`), audited by the server, refused while no user exists. Show `CredentialTexts.Masked` first, forget it when hidden again, never send it to the server part or log it |
 | `Tabs`, `TabsChanged`, `OpenTabRequested` | Pages of other core plugins shown as tabs of this page, see [Pages as tabs](#pages-as-tabs) |
 
 ### Pages as tabs
