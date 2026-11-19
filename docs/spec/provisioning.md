@@ -63,7 +63,8 @@ below Set password) opens the shared node list (`NodePicker`: search, the kinds 
 Security, Camera, Last steps, each with its coloured icon, name and one line) and the new node goes right after that node.
 Nodes are moved up and down, removed (except the two fixed ones) and configured in the side panel; every field has a
 "?" at its right with a short help as tooltip (`FormField.Help`). The profile is checked before it can be active (one error per node, the same check in the editor); a profile
-with errors is saved as a draft and cannot be active or started until they are fixed.
+with errors is saved as a draft and cannot be active or started until they are fixed. While no profile is active, the
+first one saved without errors becomes active (Start is the next click).
 
 Every node ends **Success**, **Warning** or **Error** with a plain message ("AXIS OS 12.6.95 installed.", "No file for
 this model.", "The camera did not take 10.0.0.120: it did not answer within 2 minutes. OADM keeps it at 10.0.0.131."). A node that does not apply (no SD card, no

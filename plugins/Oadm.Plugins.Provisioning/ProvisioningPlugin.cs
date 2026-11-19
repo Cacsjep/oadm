@@ -343,6 +343,12 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
         }
 
         await profiles.SaveAsync(profile, ct).ConfigureAwait(false);
+        if (profiles.Book.ActiveId is null && check.IsValid)
+        {
+            // No active profile yet (the first one): the saved profile becomes active, so Start is the next click.
+            await profiles.ActivateAsync(profile.Id, ct).ConfigureAwait(false);
+        }
+
         await PruneAsync(ct).ConfigureAwait(false);
         await PublishStatusAsync(ct).ConfigureAwait(false);
         return new ProfileReply(profile, check);

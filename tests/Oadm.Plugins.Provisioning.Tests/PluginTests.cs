@@ -67,6 +67,20 @@ public sealed class PluginTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_first_profile_without_errors_becomes_active_when_saved()
+    {
+        var draft = await CallAsync<ProfileReply>(ProvisioningMethods.SaveProfile, new SaveProfileRequest(NewProfile(Harness.Node("time", NodeKind.DateTime, new DateTimeSettings())), Password));
+        Assert.Null((await CallAsync<StatusReply>(ProvisioningMethods.GetStatus)).ActiveProfileId);
+
+        var first = await CallAsync<ProfileReply>(ProvisioningMethods.SaveProfile, new SaveProfileRequest(NewProfile() with { Name = "Parking" }, Password));
+        Assert.Equal(first.Profile.Id, (await CallAsync<StatusReply>(ProvisioningMethods.GetStatus)).ActiveProfileId);
+
+        await CallAsync<ProfileReply>(ProvisioningMethods.SaveProfile, new SaveProfileRequest(NewProfile() with { Name = "Gate" }, Password));
+        Assert.Equal(first.Profile.Id, (await CallAsync<StatusReply>(ProvisioningMethods.GetStatus)).ActiveProfileId);
+        Assert.False(draft.Check.IsValid);
+    }
+
+    [Fact]
     public async Task A_node_password_and_file_are_kept_by_id_and_checked_in_the_profile()
     {
         var secret = await CallAsync<SecretReply>(ProvisioningMethods.StoreSecret, new SecretRequest("Op-Pass-77"));
