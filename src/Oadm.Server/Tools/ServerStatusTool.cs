@@ -38,7 +38,7 @@ internal static class ServerStatusTool
             P("license", OutObject("OADM PRO.",
             [
                 P("status", Out("string", "None, Active, Expired, WrongServer or Invalid.")),
-                P("text", Out("string", "What it means, as the License card says it.")),
+                P("text", Out("string", "What it means, as the OADM PRO row of the Settings page says it.")),
                 P("plan", Out("string", "The plan; empty without one.")),
                 P("max_devices", OrNull(Out("integer", "Devices the plan covers; null: no limit."))),
                 P("expires", Out("string", "When it ends (yyyy-MM-dd); empty: never or no license.")),

@@ -47,7 +47,7 @@ internal static class AdminTools
     public static readonly string RemoveAddOnPath = InProcessCalls.PathOf(Proto.PluginService.Descriptor, "RemoveAddOn");
     public static readonly string RestartAddOnsPath = InProcessCalls.PathOf(Proto.PluginService.Descriptor, "RestartForAddOns");
 
-    /// <summary>The page where a bought license is activated for a server (the License card's Activate license).</summary>
+    /// <summary>The page where a bought license is activated for a server (Activate license in the OADM PRO row of the Settings page).</summary>
     public const string ActivatePage = "https://oadm.app/activate/?server=";
 
     public const string UnknownPlugin = "No plugin has this id. See them with oadm_server_status.";
@@ -335,7 +335,7 @@ internal static class AdminTools
     private static IEnumerable<KeyValuePair<string, JsonObject>> LicenseOutput() =>
     [
         P("status", Out("string", "None, Active, Expired, WrongServer or Invalid.")),
-        P("text", Out("string", "What it means, as the License card says it.")),
+        P("text", Out("string", "What it means, as the OADM PRO row of the Settings page says it.")),
         P("plan", Out("string", "The plan; empty without one.")),
         P("license_expires", Out("string", "When it ends (yyyy-MM-dd); empty: never or no license.")),
         P("trial", Out("boolean", "A trial.")),

@@ -34,7 +34,7 @@
           </ui:FormField>
         </StackPanel>
 
-        <!-- The new key, once: OADM keeps only its hash. Like the Server ID of the License card: the value and Copy. -->
+        <!-- The new key, once: OADM keeps only its hash. Like the Server ID row of the Settings page: the value and Copy. -->
         <ui:FormField x:Name="NewKeyBox" Label="Access key" LabelAbove="True" Classes="wide" IsVisible="{Binding HasNewKey}">
           <StackPanel Spacing="4">
             <DockPanel>
