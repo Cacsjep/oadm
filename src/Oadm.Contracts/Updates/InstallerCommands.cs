@@ -43,6 +43,7 @@ public sealed record InstallResult(InstallOutcome Outcome, string? Text, string 
 public static class InstallerCommands
 {
     public const string AptGet = "/usr/bin/apt-get";
+    public const string Dnf = "/usr/bin/dnf";
     public const string Pkexec = "/usr/bin/pkexec";
     public const string MacInstaller = "/usr/sbin/installer";
     public const string Osascript = "/usr/bin/osascript";
@@ -93,6 +94,15 @@ public static class InstallerCommands
 
             default:
             {
+                if (installer.EndsWith(".rpm", StringComparison.OrdinalIgnoreCase))
+                {
+                    // The .rpm (Fedora, RHEL): dnf installs the newer package over the installed one, its dependencies too.
+                    List<string> dnf = [Dnf, "install", "-y", installer];
+                    return mode == InstallMode.Silent
+                        ? new InstallerCommand(dnf[0], dnf[1..], logPath) { Environment = new Dictionary<string, string> { ["LC_ALL"] = "C" } }
+                        : new InstallerCommand(Pkexec, ["/usr/bin/env", "LC_ALL=C", .. dnf], logPath);
+                }
+
                 List<string> apt = [AptGet, "install", "-y", "-o", AptLockOption, installer];
                 // LC_ALL=C: apt's messages in English, so the busy package lock is recognized on every system (rule 12).
                 var environment = new Dictionary<string, string> { ["DEBIAN_FRONTEND"] = "noninteractive", ["LC_ALL"] = "C" };
@@ -128,7 +138,9 @@ public static class InstallerCommands
         if (os == UpdateOs.Linux)
         {
             if (output.Contains("Could not get lock", StringComparison.OrdinalIgnoreCase)
-                || output.Contains("Unable to acquire the dpkg frontend lock", StringComparison.OrdinalIgnoreCase))
+                || output.Contains("Unable to acquire the dpkg frontend lock", StringComparison.OrdinalIgnoreCase)
+                // rpm and dnf: "can't create transaction lock on /var/lib/rpm/.rpm.lock", "Failed to obtain rpm transaction lock".
+                || output.Contains("transaction lock", StringComparison.OrdinalIgnoreCase))
             {
                 return new InstallResult(InstallOutcome.Busy, UpdateTexts.InstallerBusy, logPath);
             }

@@ -24,6 +24,14 @@ public sealed class UpdateSharedTests
         Assert.Equal(expected, new UpdatePlatform(os, arch).InstallerName(app, V490));
 
     [Theory]
+    [InlineData(Architecture.X64, UpdateApp.Server, "oadm-server-4.9.0-1.x86_64.rpm")]
+    [InlineData(Architecture.X64, UpdateApp.Client, "oadm-client-4.9.0-1.x86_64.rpm")]
+    [InlineData(Architecture.Arm64, UpdateApp.Server, "oadm-server-4.9.0-1.aarch64.rpm")]
+    [InlineData(Architecture.Arm, UpdateApp.Client, null)]
+    public void AnRpmInstallationTakesTheRpm(Architecture arch, UpdateApp app, string? expected) =>
+        Assert.Equal(expected, new UpdatePlatform(UpdateOs.Linux, arch) { Package = LinuxPackage.Rpm }.InstallerName(app, V490));
+
+    [Theory]
     [InlineData("v4.9.0", true)]
     [InlineData("4.9.0", true)]
     [InlineData("4.9.0-rc.1", false)]
@@ -75,7 +83,7 @@ public sealed class UpdateSharedTests
         Directory.CreateDirectory(folder);
         try
         {
-            string[] names = ["OADM-4.8.0-win-x64.msi", "oadm-client_4.8.0_amd64.deb", "OADM-4.8.0-osx-x64.pkg", "OADM-4.9.0-win-x64.msi", "install.log"];
+            string[] names = ["OADM-4.8.0-win-x64.msi", "oadm-client_4.8.0_amd64.deb", "oadm-client-4.8.0-1.x86_64.rpm", "OADM-4.8.0-osx-x64.pkg", "OADM-4.9.0-win-x64.msi", "install.log"];
             foreach (var name in names)
             {
                 File.WriteAllText(Path.Combine(folder, name), "x");
@@ -117,6 +125,9 @@ public sealed class UpdateSharedTests
         Assert.True(Installation.IsServerInstalled(Facts(UpdateOs.Linux, "/opt/oadm/server", true, "/var/lib/dpkg/info/oadm-server:arm64.list")));
         Assert.False(Installation.IsServerInstalled(Facts(UpdateOs.Linux, "/opt/oadm/server/", true))); // copied there, not by dpkg
         Assert.False(Installation.IsServerInstalled(Facts(UpdateOs.Linux, "/home/me/oadm/", true, "/var/lib/dpkg/info/oadm-server.list")));
+        Assert.True(Installation.IsServerInstalled(Facts(UpdateOs.Linux, "/opt/oadm/server/", true, "/opt/oadm/server/oadm-rpm.txt", InstallerCommands.Dnf)));
+        Assert.False(Installation.IsServerInstalled(Facts(UpdateOs.Linux, "/opt/oadm/server/", true, "/opt/oadm/server/oadm-rpm.txt"))); // no dnf to update it
+        Assert.False(Installation.IsServerInstalled(Facts(UpdateOs.Linux, "/opt/oadm/server/", true, "/opt/oadm/client/oadm-rpm.txt", InstallerCommands.Dnf))); // the client's marker
         Assert.True(Installation.IsServerInstalled(Facts(UpdateOs.MacOs, "/Library/Application Support/OADM/server/", true, Installation.MacServerDaemon)));
         Assert.False(Installation.IsServerInstalled(Facts(UpdateOs.MacOs, "/Library/Application Support/OADM/server/", true)));
     }
@@ -128,6 +139,9 @@ public sealed class UpdateSharedTests
         Assert.False(Installation.CanUpdateClient(Facts(UpdateOs.Windows, @"G:\odam\src\Oadm.Client\bin\Debug\net10.0\", false))); // dotnet run
         Assert.True(Installation.CanUpdateClient(Facts(UpdateOs.Linux, "/opt/oadm/client/", false, "/var/lib/dpkg/info/oadm-client.list", "/usr/bin/pkexec")));
         Assert.False(Installation.CanUpdateClient(Facts(UpdateOs.Linux, "/opt/oadm/client/", false, "/var/lib/dpkg/info/oadm-client.list"))); // no pkexec
+        Assert.True(Installation.CanUpdateClient(Facts(UpdateOs.Linux, "/opt/oadm/client/", false, "/opt/oadm/client/oadm-rpm.txt", InstallerCommands.Dnf, InstallerCommands.Pkexec)));
+        Assert.False(Installation.CanUpdateClient(Facts(UpdateOs.Linux, "/opt/oadm/client/", false, "/opt/oadm/client/oadm-rpm.txt", InstallerCommands.Pkexec))); // no dnf
+        Assert.False(Installation.CanUpdateClient(Facts(UpdateOs.Linux, "/opt/oadm/client/", false, "/opt/oadm/client/oadm-rpm.txt", InstallerCommands.Dnf))); // no pkexec
         Assert.True(Installation.CanUpdateClient(Facts(UpdateOs.MacOs, "/Applications/OADM.app/Contents/MacOS/", false)));
         Assert.False(Installation.CanUpdateClient(Facts(UpdateOs.MacOs, "/Users/me/Downloads/OADM-Client/", false)));
     }
@@ -153,6 +167,17 @@ public sealed class UpdateSharedTests
         var pkexec = InstallerCommands.For(UpdateOs.Linux, InstallMode.Visible, "/tmp/oadm-client_4.9.0_amd64.deb", "/tmp/install.log");
         Assert.Equal(InstallerCommands.Pkexec, pkexec.FileName);
         Assert.Equal(["/usr/bin/env", "DEBIAN_FRONTEND=noninteractive", "LC_ALL=C", InstallerCommands.AptGet, "install", "-y", "-o", "DPkg::Lock::Timeout=300", "/tmp/oadm-client_4.9.0_amd64.deb"], pkexec.Arguments);
+
+        // The .rpm: dnf installs the newer package over the installed one (same paths, LC_ALL=C for the lock text).
+        var dnf = InstallerCommands.For(UpdateOs.Linux, InstallMode.Silent, "/var/lib/oadm/update/oadm-server-4.9.0-1.x86_64.rpm", "/var/lib/oadm/update/install.log");
+        Assert.Equal(InstallerCommands.Dnf, dnf.FileName);
+        Assert.Equal(["install", "-y", "/var/lib/oadm/update/oadm-server-4.9.0-1.x86_64.rpm"], dnf.Arguments);
+        Assert.Equal("C", dnf.Environment["LC_ALL"]);
+        Assert.Equal("/var/lib/oadm/update/install.log", dnf.LogPath);
+
+        var dnfPrompt = InstallerCommands.For(UpdateOs.Linux, InstallMode.Visible, "/tmp/oadm-client-4.9.0-1.aarch64.rpm", "/tmp/install.log");
+        Assert.Equal(InstallerCommands.Pkexec, dnfPrompt.FileName);
+        Assert.Equal(["/usr/bin/env", "LC_ALL=C", InstallerCommands.Dnf, "install", "-y", "/tmp/oadm-client-4.9.0-1.aarch64.rpm"], dnfPrompt.Arguments);
 
         var pkg = InstallerCommands.For(UpdateOs.MacOs, InstallMode.Silent, "/x/OADM-4.9.0-osx-x64.pkg", "/x/install.log", "/x/choices.xml");
         Assert.Equal(InstallerCommands.MacInstaller, pkg.FileName);
@@ -182,6 +207,9 @@ public sealed class UpdateSharedTests
     [InlineData(UpdateOs.Linux, 0, "", InstallOutcome.Done, null)]
     [InlineData(UpdateOs.Linux, 100, "E: Could not get lock /var/lib/dpkg/lock-frontend.", InstallOutcome.Busy, "Another installation is running. Try again later.")]
     [InlineData(UpdateOs.Linux, 100, "E: Sub-process /usr/bin/dpkg returned an error code (1)", InstallOutcome.Failed, "The installer failed.")]
+    [InlineData(UpdateOs.Linux, 1, "error: can't create transaction lock on /var/lib/rpm/.rpm.lock (Resource temporarily unavailable)", InstallOutcome.Busy, "Another installation is running. Try again later.")]
+    [InlineData(UpdateOs.Linux, 1, "Failed to obtain rpm transaction lock. Another transaction is in progress.", InstallOutcome.Busy, "Another installation is running. Try again later.")]
+    [InlineData(UpdateOs.Linux, 1, "Error: Transaction test error: file /opt/oadm/server/Oadm.Server conflicts", InstallOutcome.Failed, "The installer failed.")]
     [InlineData(UpdateOs.MacOs, 0, "", InstallOutcome.Done, null)]
     [InlineData(UpdateOs.MacOs, 1, "installer: The install failed.", InstallOutcome.Failed, "The installer failed.")]
     public void InstallerResultsAreReadNotGuessed(UpdateOs os, int code, string output, InstallOutcome outcome, string? text)

@@ -27,6 +27,12 @@ public static class Installation
     /// <summary>The Linux server package's file list (dpkg), with and without the architecture qualifier.</summary>
     public const string DpkgInfo = "/var/lib/dpkg/info";
 
+    /// <summary>
+    /// The file the .rpm packages put into <see cref="LinuxServerFolder"/> and <see cref="LinuxClientFolder"/>
+    /// (packaging/linux/build-rpm.sh): that folder came from an RPM package, and dnf installs its update.
+    /// </summary>
+    public const string RpmMarker = "oadm-rpm.txt";
+
     /// <summary>The LaunchDaemon of the macOS server (rule 10: without it the .pkg update leaves the server out).</summary>
     public const string MacServerDaemon = "/Library/LaunchDaemons/com.oadm.server.plist";
 
@@ -35,7 +41,7 @@ public static class Installation
     public const string MacServerFolder = "/Library/Application Support/OADM/server";
     public const string MacClientFolder = "/Applications/OADM.app/Contents/MacOS";
 
-    /// <summary>The server is the installed service of the MSI, the .deb or the .pkg.</summary>
+    /// <summary>The server is the installed service of the MSI, the .deb, the .rpm (with dnf to update it) or the .pkg.</summary>
     public static bool IsServerInstalled(InstallFacts facts)
     {
         ArgumentNullException.ThrowIfNull(facts);
@@ -48,11 +54,11 @@ public static class Installation
         {
             UpdateOs.Windows => SameFolder(facts.Os, facts.BaseDirectory, Path.Combine(facts.ProgramFiles, "OADM", "Server")),
             UpdateOs.MacOs => SameFolder(facts.Os, facts.BaseDirectory, MacServerFolder) && facts.FileExists(MacServerDaemon),
-            _ => SameFolder(facts.Os, facts.BaseDirectory, LinuxServerFolder) && HasDpkgList(facts, "oadm-server"),
+            _ => SameFolder(facts.Os, facts.BaseDirectory, LinuxServerFolder) && FromPackage(facts, "oadm-server", LinuxServerFolder),
         };
     }
 
-    /// <summary>The client runs from the MSI's, the .deb's or the .pkg's folder.</summary>
+    /// <summary>The client runs from the MSI's, the .deb's, the .rpm's (with dnf to update it) or the .pkg's folder.</summary>
     public static bool IsClientInstalled(InstallFacts facts)
     {
         ArgumentNullException.ThrowIfNull(facts);
@@ -60,7 +66,7 @@ public static class Installation
         {
             UpdateOs.Windows => SameFolder(facts.Os, facts.BaseDirectory, Path.Combine(facts.ProgramFiles, "OADM", "Client")),
             UpdateOs.MacOs => SameFolder(facts.Os, facts.BaseDirectory, MacClientFolder),
-            _ => SameFolder(facts.Os, facts.BaseDirectory, LinuxClientFolder) && HasDpkgList(facts, "oadm-client"),
+            _ => SameFolder(facts.Os, facts.BaseDirectory, LinuxClientFolder) && FromPackage(facts, "oadm-client", LinuxClientFolder),
         };
     }
 
@@ -96,6 +102,10 @@ public static class Installation
         ArgumentNullException.ThrowIfNull(facts);
         return facts.FileExists(MacServerDaemon);
     }
+
+    /// <summary>dpkg lists the package, or the folder holds the .rpm's marker and dnf is there to install the update.</summary>
+    private static bool FromPackage(InstallFacts facts, string package, string folder) =>
+        HasDpkgList(facts, package) || (facts.FileExists($"{folder}/{RpmMarker}") && facts.FileExists(InstallerCommands.Dnf));
 
     private static bool HasDpkgList(InstallFacts facts, string package) =>
         facts.FileExists($"{DpkgInfo}/{package}.list")

@@ -263,7 +263,7 @@ public static class UpdateFolder
     {
         var name = Path.GetFileName(file);
         return !string.Equals(file, current, StringComparison.Ordinal)
-            && (name.EndsWith(".msi", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".deb", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase));
+            && (name.EndsWith(".msi", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".deb", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".rpm", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".pkg", StringComparison.OrdinalIgnoreCase));
     }
 }
 

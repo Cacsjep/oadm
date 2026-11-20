@@ -227,7 +227,7 @@ public sealed class ClientUpdateHelper(UpdateOs os, InstallFacts facts, IInstall
 
     private async Task<UpdatedArguments> InstallAsync(ClientHelperArguments arguments, CancellationToken ct)
     {
-        var installerPath = Path.GetFullPath(arguments.Installer!); // apt-get takes a path, never a package name
+        var installerPath = Path.GetFullPath(arguments.Installer!); // apt-get and dnf take a path, never a package name
         var folder = Path.GetDirectoryName(installerPath)!;
         string? choices = null;
         if (os == UpdateOs.MacOs && !Installation.HasMacServer(facts))

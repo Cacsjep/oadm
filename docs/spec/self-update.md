@@ -14,7 +14,7 @@ installer results, disk space; no offline path).
 
 1. **Administrators only.** Updating the server and a client is the rule `AccessRule.Admin`: only the
    Administrator role, never grantable. Other users see the new version dialog as today (Open download page).
-2. **The installers do the work.** The server and the client run their own MSI, .deb or .pkg silently
+2. **The installers do the work.** The server and the client run their own MSI, .deb, .rpm or .pkg silently
    ([packaging.md](packaging.md)): services, firewall rules, folder rights, plugin cleanup and the MSI's rollback stay the
    installers' job. Never a file swap of a running installation.
 3. **No extra app.** The helper that runs the installer is the same program in update mode (`Oadm.Server --update`,
@@ -54,6 +54,8 @@ installer results, disk space; no offline path).
     - `apt-get` waits up to 5 minutes for the package lock (`-o DPkg::Lock::Timeout=300`), else "Another installation is
       running. Try again later."; any other failure "The installer failed." with its output in the log
       (apt-get runs with `LC_ALL=C`, so the busy lock is recognized on every system).
+    - `dnf` (the .rpm) waits for its own lock; an rpm transaction lock it cannot get ("transaction lock" in its output,
+      `LC_ALL=C`) is "Another installation is running. Try again later."; any other failure "The installer failed.".
     - `installer`: a non-zero exit is "The installer failed." with `/var/log/install.log`.
 13. **Enough room.** The data folder needs free space of three times the installer's size (download, installer cache)
     plus the size of the database (its copy), else "Not enough free disk space for the update." before anything is
@@ -72,7 +74,8 @@ installer results, disk space; no offline path).
    "Could not download the update. Install it from the download page." with Open download page; nothing else happens.
 3. The helper (as SYSTEM / root) waits up to 30 s for the clients on this computer to close (step 6), so the installer
    finds no client file in use. It runs the installer silently with a log (`msiexec /i … /qn /norestart /l*v`,
-   `apt-get install -y -o DPkg::Lock::Timeout=300 ./oadm-server_….deb`, `installer -pkg … -target /` with the choice
+   `apt-get install -y -o DPkg::Lock::Timeout=300 ./oadm-server_….deb`, `dnf install -y ./oadm-server-….rpm`,
+   `installer -pkg … -target /` with the choice
    file of rule 10), reads its exit code (rule 12), then waits up to 5 minutes for the service to
    answer `AuthService.Status` on this computer with the new version.
 4. **The new version answers:** done. **The installer failed** (on Windows the MSI rolled back and the old server runs
@@ -99,7 +102,8 @@ Once the server is newer than the client, an Administrator's client offers **Upd
 for the server's version; other users: Open download page). The client downloads its installer from the GitHub release
 (not reachable: Open download page), checks it like the server does (rules 4 and 13), starts its helper and closes. The
 helper runs the installer with the system's elevation prompt and visible progress (`msiexec /i … /passive /norestart`,
-`pkexec apt-get install -y -o DPkg::Lock::Timeout=300 ./oadm-client_….deb`, an administrator prompt for
+`pkexec apt-get install -y -o DPkg::Lock::Timeout=300 ./oadm-client_….deb`, `pkexec dnf install -y ./oadm-client-….rpm`,
+an administrator prompt for
 `installer -pkg` with the choice file of rule 10), reads its exit code (rule 12), then starts the client that is installed now: the new one says "OADM updated
 to V4.9.0"; the old one (installer failed, cancelled prompt) says "The update failed" with the reason. The setup type stays (rule 10). A computer with an installed OADM server (the MSI's server
 folder, the macOS LaunchDaemon) gets no Update client: its installer would update that server too without the server's
@@ -136,12 +140,15 @@ the reconnect.
 ## How it is built
 
 - **Installed or not** (`Oadm.Contracts.Updates.Installation`, the one place): the server is installed when it runs as
-  the service from `Program Files\OADM\Server` (Windows), from `/opt/oadm/server` with dpkg's `oadm-server` list (Linux),
+  the service from `Program Files\OADM\Server` (Windows), from `/opt/oadm/server` with dpkg's `oadm-server` list or the
+  .rpm's `oadm-rpm.txt` in that folder and `/usr/bin/dnf` (Linux),
   from `/Library/Application Support/OADM/server` with `/Library/LaunchDaemons/com.oadm.server.plist` (macOS); the client
-  from `Program Files\OADM\Client`, `/opt/oadm/client` with dpkg's `oadm-client` list (and `pkexec`, else Update client
-  is not offered), `/Applications/OADM.app/Contents/MacOS`. Anything else (the ZIP, `dotnet run`) keeps Open download page.
+  from `Program Files\OADM\Client`, `/opt/oadm/client` with dpkg's `oadm-client` list or the .rpm's marker and dnf (and
+  `pkexec`, else Update client is not offered), `/Applications/OADM.app/Contents/MacOS`. Anything else (the ZIP, `dotnet run`) keeps Open download page.
 - **Release files** by exact name (`UpdatePlatform`): `OADM-<version>-win-x64.msi`, `oadm-server_<version>_<arch>.deb`,
-  `oadm-client_<version>_<arch>.deb`, `OADM-<version>-osx-x64.pkg`, and `SHA256SUMS.txt`; only from
+  `oadm-client_<version>_<arch>.deb`, on an RPM installation (`UpdatePlatform.Package`, the marker in the program's own
+  folder) `oadm-server-<version>-1.<x86_64|aarch64>.rpm` and `oadm-client-<version>-1.<x86_64|aarch64>.rpm`,
+  `OADM-<version>-osx-x64.pkg`, and `SHA256SUMS.txt`; an installation keeps its kind of package; only from
   `https://github.com/Cacsjep/oadm/releases/download/` (`GitHubReleaseFeed`, `UpdateDownloader`).
 - **Server** (`Oadm.Server/Updates`): `ServerUpdateCoordinator` (checks, download into `update/`, the database copy
   `DatabaseCopy`, the record `UpdateRecordFile`, the hold of tasks and event rule actions, the follow of the record, the
@@ -212,6 +219,7 @@ Assistant the user presses Run on the card. Tests use the fakes of the release f
 The update record across a restart (done, failed, not back); the helper's start outside the service and its installer
 call per platform (choice file on macOS, each exit code) with a fake installer and a `FakeTimeProvider`; the database
 copy; refusal of a pre-release, a downgrade, the same version, a wrong checksum, a wrong file name or size, too little
-disk space, a running task; `Package.wxs` sets the setup type in the execute sequence; the client's states (updating, updated, failed, not back) headless with
+disk space, a running task; the .rpm names, detection and dnf calls; `Package.wxs` sets the setup type in the execute sequence; the client's states (updating, updated, failed, not back) headless with
 screenshots; the hint for older site nodes. A real update of each installer is a manual test on
-Windows, Debian/Ubuntu and macOS, each with "Server and client" and "Client only", written down in `packaging/README.md`.
+Windows, Debian/Ubuntu, Fedora/RHEL and macOS, each with "Server and client" and "Client only", written down in
+`packaging/README.md`.
