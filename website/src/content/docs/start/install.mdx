@@ -32,7 +32,7 @@ The installers are not signed yet. Check a download against `SHA256SUMS.txt` of 
 
 </Steps>
 
-- Client: Start menu > **OADM**.
+- Client: **OADM** on the desktop and in the Start menu.
 - Data folder: `%ProgramData%\OADM`.
 - Uninstall: Settings > Apps > OADM.
 - Silent install of the client only: `msiexec /i OADM-<version>-win-x64.msi ADDLOCAL=Client /qn`.
@@ -40,8 +40,10 @@ The installers are not signed yet. Check a download against `SHA256SUMS.txt` of 
 </TabItem>
 <TabItem label="Linux">
 
-Debian and Ubuntu (also Raspberry Pi OS), x64 (`amd64`) or ARM64 (`arm64`, e.g. Raspberry Pi 4 and 5). Download the
-`.deb` files of your computer's type and install them:
+x64 (`amd64`, `x86_64`) or ARM64 (`arm64`, `aarch64`, e.g. Raspberry Pi 4 and 5). Download the files of your
+computer's type and install them.
+
+Debian and Ubuntu (also Raspberry Pi OS), the `.deb` files:
 
 ```sh
 sudo apt install ./oadm-server_*.deb ./oadm-client_*.deb   # server and client
@@ -49,10 +51,24 @@ sudo apt install ./oadm-server_*.deb                       # server only
 sudo apt install ./oadm-client_*.deb                       # client only
 ```
 
+Fedora, RHEL, Rocky Linux and AlmaLinux, the `.rpm` files:
+
+```sh
+sudo dnf install ./oadm-server-*.rpm ./oadm-client-*.rpm   # server and client
+sudo dnf install ./oadm-server-*.rpm                       # server only
+sudo dnf install ./oadm-client-*.rpm                       # client only
+```
+
+On Fedora and RHEL the firewall blocks clients on other computers. Open TCP 5080 on the server:
+
+```sh
+sudo firewall-cmd --permanent --add-port=5080/tcp && sudo firewall-cmd --reload
+```
+
 - Server: systemd service `oadm-server` (`sudo systemctl status oadm-server`).
 - Client: app menu > **OADM**, or `oadm-client`.
 - Data folder: `/var/lib/oadm`.
-- Uninstall: `sudo apt remove oadm-server oadm-client`.
+- Uninstall: `sudo apt remove oadm-server oadm-client` or `sudo dnf remove oadm-server oadm-client`.
 
 <Aside title="Video on the graphics card">
 The client decodes video on the graphics card when it can. On Linux it needs the video driver of the graphics
@@ -113,7 +129,7 @@ Remove-Item -Recurse -Force "$env:ProgramData\OADM"
 <TabItem label="Linux">
 
 ```sh
-sudo apt purge oadm-server oadm-client
+sudo apt purge oadm-server oadm-client   # Fedora, RHEL: sudo dnf remove oadm-server oadm-client
 sudo rm -rf /var/lib/oadm
 ```
 

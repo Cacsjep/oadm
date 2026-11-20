@@ -42,18 +42,30 @@ const optional = (rid: string): Group => ({
 		{ label: 'Optional plugins', href: `${base}admin/plugins/#optional-plugins` },
 	],
 });
-const linux = (id: string, label: string, deb: string): Tab => ({
+// The .deb packages (Debian, Ubuntu) and the .rpm packages (Fedora, RHEL) of one processor type; a group the release lacks
+// is hidden.
+const linux = (id: string, label: string, deb: string, rpm: string): Tab => ({
 	id,
 	label,
 	icon: 'linux',
 	iconClass: 'os-linux',
 	groups: [
 		{
+			title: 'Debian and Ubuntu',
 			rows: [
 				{ name: 'Server', pattern: `^oadm-server_.*_${deb}\\.deb$` },
 				{ name: 'Client', pattern: `^oadm-client_.*_${deb}\\.deb$` },
 				{ name: 'Site Node', pattern: `^oadm-site-node_.*_${deb}\\.deb$` },
 				{ name: 'Site Node App', note: 'Optional, needs a desktop', pattern: `^oadm-site-node-app_.*_${deb}\\.deb$` },
+			],
+		},
+		{
+			title: 'Fedora and RHEL',
+			rows: [
+				{ name: 'Server', pattern: `^oadm-server-\\d.*\\.${rpm}\\.rpm$` },
+				{ name: 'Client', pattern: `^oadm-client-\\d.*\\.${rpm}\\.rpm$` },
+				{ name: 'Site Node', pattern: `^oadm-site-node-\\d.*\\.${rpm}\\.rpm$` },
+				{ name: 'Site Node App', note: 'Optional, needs a desktop', pattern: `^oadm-site-node-app-\\d.*\\.${rpm}\\.rpm$` },
 			],
 		},
 		optional(id),
@@ -75,8 +87,8 @@ const tabs: Tab[] = [
 			optional('win-x64'),
 		],
 	},
-	linux('linux-x64', 'Linux x64', 'amd64'),
-	linux('linux-arm64', 'Linux ARM64', 'arm64'),
+	linux('linux-x64', 'Linux x64', 'amd64', 'x86_64'),
+	linux('linux-arm64', 'Linux ARM64', 'arm64', 'aarch64'),
 	{
 		id: 'macos',
 		label: 'macOS',

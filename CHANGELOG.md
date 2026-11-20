@@ -14,12 +14,15 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Plugin SDK 0.15.0: the first set up of factory-new cameras, the DHCP server's leases, a plugin's own files for its tasks, the node canvas and commands on a task in the tasks pane.
 - Set password of factory-default devices: administrators can pick a saved password of root from the credential list, with an eye to show it.
 - Audit log: every task run shows how it ended, with the devices that failed.
+- Linux: RPM packages for Fedora and RHEL, also of the site node; self update installs them.
+- Windows: the installers put OADM and the site node app on the desktop.
 
 ### Changed
 
 - Import configuration and provisioning: a configuration file also works on other models; each camera takes the settings it has.
 - Provisioning: the Certificate and 802.1X nodes use the PKI policy you choose.
 - Settings: one column of settings with a search and one Save, in the look of the Windows settings.
+- Linux: the app menu and the dock show the OADM icon sharp in every size.
 
 ### Fixed
 

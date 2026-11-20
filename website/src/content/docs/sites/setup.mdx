@@ -20,7 +20,7 @@ Download the site node from the [latest release](https://github.com/Cacsjep/oadm
 
 1. Download `OADM-SiteNode-<version>-win-x64.msi` and double-click it.
 2. Finish. The Windows service **OADM Site Node** starts now and on every boot.
-3. Start menu > **OADM Site Node** opens the app. It asks you to accept the terms of use once.
+3. **OADM Site Node** on the desktop or in the Start menu opens the app. It asks you to accept the terms of use once.
 
 </Steps>
 
@@ -31,19 +31,27 @@ Download the site node from the [latest release](https://github.com/Cacsjep/oadm
 </TabItem>
 <TabItem label="Linux">
 
-Debian and Ubuntu (also Raspberry Pi OS), x64 (`amd64`) or ARM64 (`arm64`). Download both `.deb` files of your
-computer's type:
+x64 (`amd64`, `x86_64`) or ARM64 (`arm64`, `aarch64`). Download both files of your computer's type.
+
+Debian and Ubuntu (also Raspberry Pi OS), the `.deb` files:
 
 ```sh
 sudo apt install ./oadm-site-node_*.deb ./oadm-site-node-app_*.deb   # service and app
 sudo apt install ./oadm-site-node_*.deb                             # service only, no desktop
 ```
 
+Fedora, RHEL, Rocky Linux and AlmaLinux, the `.rpm` files:
+
+```sh
+sudo dnf install ./oadm-site-node-[0-9]*.rpm ./oadm-site-node-app-*.rpm   # service and app
+sudo dnf install ./oadm-site-node-[0-9]*.rpm                              # service only, no desktop
+```
+
 - Service: `oadm-site-node` (`sudo systemctl status oadm-site-node`). It runs as its own user, not as root.
 - App: app menu > **OADM Site Node**, or `oadm-site-node-app`.
 - Data folder: `/var/lib/oadm-site-node`. Uninstalling keeps it, so the node stays connected after a reinstall. To
-  remove it too: `sudo apt purge oadm-site-node oadm-site-node-app`, `sudo rm -rf /var/lib/oadm-site-node` and
-  `sudo deluser oadm-site-node`.
+  remove it too: `sudo apt purge oadm-site-node oadm-site-node-app` (or `sudo dnf remove oadm-site-node-app
+  oadm-site-node`), `sudo rm -rf /var/lib/oadm-site-node` and `sudo userdel oadm-site-node`.
 
 </TabItem>
 </Tabs>

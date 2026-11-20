@@ -10,9 +10,10 @@ never in an installer or portable ZIP (see "Add-on ZIPs").
 CI: one workflow, `.github/workflows/release.yml`, only on release tags `v*.*.*` (e.g. `v0.0.1`). Each job runs only
 when the jobs it needs passed (details in `docs/spec/packaging.md` "CI"):
 1. `tests`: build and unit tests on Windows, Linux and macOS (30 min timeout, hang detection after 5 min).
-2. `installers`: every installer (the .deb packages for arm64 on a native ARM runner), the OADM Site Node packages,
+2. `installers`: every installer (the .deb and .rpm packages for arm64 on a native ARM runner), the OADM Site Node packages,
    the portable ZIPs `OADM-Server-<version>-<rid>.zip` and `OADM-Client-<version>-<rid>.zip` (the publish folders) and
-   the add-on ZIPs of the platform. The .deb packages are installed, checked and removed on the runner, as "Server and
+   the add-on ZIPs of the platform. The .rpm packages are installed with dnf in Fedora and AlmaLinux containers, checked
+   and removed. The .deb packages are installed, checked and removed on the runner, as "Server and
    client", as "Client only" and the site node; the .pkg is checked without installing it; no installer or portable ZIP
    may hold an add-on folder.
 3. `smoke-windows` and `smoke-windows-node`: the MSI (both ways) and the site node MSI installed, checked and removed,
@@ -37,15 +38,15 @@ Every installer offers **"Server and client"** (default) or **"Client only"**:
   line: `installer -applyChoiceChangesXML` with `com.oadm.choice.server` deselected.
 
 Version: `--version` (tag `v1.2.0` gives `1.2.0`), default `0.1.0-dev`. It goes to every assembly (`-p:Version`) and
-to the installers: MSI ProductVersion and the .pkg use the numeric part (`1.2.0`); the .deb writes a pre-release as
+to the installers: MSI ProductVersion and the .pkg use the numeric part (`1.2.0`); the .deb and .rpm write a pre-release as
 `1.2.0~rc.1` so it sorts before `1.2.0`.
 
-| | Windows (MSI) | Linux (.deb) | macOS (.pkg) |
+| | Windows (MSI) | Linux (.deb, .rpm) | macOS (.pkg) |
 |---|---|---|---|
-| File | `OADM-<version>-win-x64.msi` | `oadm-server_<version>_<amd64\|arm64>.deb`, `oadm-client_<version>_<amd64\|arm64>.deb` | `OADM-<version>-osx-x64.pkg` |
-| Built with | WiX Toolset 6 (`WixToolset.Sdk` from NuGet, `windows/Oadm.Installer.wixproj`), on Windows | `dpkg-deb` (`linux/build-deb.sh`), on Linux or in a container | `pkgbuild` + `productbuild` (`macos/build-pkg.sh`), on macOS |
+| File | `OADM-<version>-win-x64.msi` | `oadm-server_<version>_<amd64\|arm64>.deb`, `oadm-client_<version>_<amd64\|arm64>.deb`; `oadm-server-<version>-1.<x86_64\|aarch64>.rpm`, `oadm-client-<version>-1.<x86_64\|aarch64>.rpm` | `OADM-<version>-osx-x64.pkg` |
+| Built with | WiX Toolset 6 (`WixToolset.Sdk` from NuGet, `windows/Oadm.Installer.wixproj`), on Windows | `dpkg-deb` (`linux/build-deb.sh`) and `rpmbuild` (`linux/build-rpm.sh`, `linux/rpm/`), on Linux or in a container | `pkgbuild` + `productbuild` (`macos/build-pkg.sh`), on macOS |
 | Server | `C:\Program Files\OADM\Server` | `/opt/oadm/server` | `/Library/Application Support/OADM/server` |
-| Client | `C:\Program Files\OADM\Client`, Start menu "OADM" | `/opt/oadm/client`, `/usr/bin/oadm-client`, `oadm.desktop` + icon | `/Applications/OADM.app` |
+| Client | `C:\Program Files\OADM\Client`, "OADM" in the Start menu and on the desktop | `/opt/oadm/client`, `/usr/bin/oadm-client`, `oadm.desktop` + icon (16 to 512 px) | `/Applications/OADM.app` (Launchpad) |
 | Service | Windows service "OADM Server" (`OadmServer`), automatic, LocalSystem, restart on failure | systemd `oadm-server.service`, root, `Type=notify`, `Restart=on-failure` | LaunchDaemon `com.oadm.server`, root, KeepAlive on failure |
 | Data folder | `%ProgramData%\OADM` (`--Oadm:DataDir`), SYSTEM + Administrators only | `/var/lib/oadm` (`OADM_DATA_DIR`, StateDirectory 0700) | `/Library/Application Support/OADM` (`OADM_DATA_DIR`, 0700) |
 | Native lib extraction | `%ProgramData%\OADM\runtime` | `/var/cache/oadm` | `/Library/Application Support/OADM/runtime` |
@@ -75,8 +76,11 @@ Notes:
   `codesign --options runtime`) and notarization (`notarytool`) are not built yet. Open the .pkg with right-click > Open.
 - Icons: `icons/make-icons.py` builds `oadm.ico` (also the client exe icon), `oadm.icns` and the PNGs from
   `/icon/oadm-app-icon-<size>.png`; the client uses `oadm-256.png` as window icon.
+- Linux: `dnf install ./oadm-server-*.rpm ./oadm-client-*.rpm` (Fedora, RHEL) like the .deb packages; the same files,
+  service, user and data folder. `manage package linux` builds the .rpm packages after the .deb when `rpmbuild` is there
+  (`sudo apt install rpm` on Debian and Ubuntu). firewalld blocks TCP 5080 by default: `firewall-cmd --add-port=5080/tcp`.
 - Building the .deb on Windows: in Docker, e.g. `docker run` with `mcr.microsoft.com/dotnet/sdk:10.0` and
-  `./manage.sh package linux --rid linux-x64` inside (the image has `dpkg-deb`).
+  `./manage.sh package linux --rid linux-x64` inside (the image has `dpkg-deb`; `apt-get install rpm` for the .rpm).
 
 ## Add-on ZIPs
 
@@ -124,6 +128,7 @@ with the same file names and `SHA256SUMS.txt`):
 |---|---|---|
 | Windows 10/11 x64 (MSI) | Install now, client closes and returns | Update client with the UAC prompt (`/passive`) |
 | Debian / Ubuntu (amd64, arm64) | Install now; the client is its own package: Update client afterwards | Update client with `pkexec` |
+| Fedora / RHEL (x86_64, aarch64, .rpm) | Install now (dnf); the client is its own package: Update client afterwards | Update client with `pkexec` (dnf) |
 | macOS (x64 .pkg) | Install now, client closes and returns | Update client with the administrator prompt; no server installed afterwards |
 
 ## OADM Site Node
@@ -133,26 +138,27 @@ with the same file names and `SHA256SUMS.txt`):
 single-file into `artifacts/publish/site-node/<rid>` and `artifacts/publish/site-node-app/<rid>`, writes the notices
 (`tools/Oadm.Notices --product site-node`: hand-written part `notices/site-node.md`, no LGPL part, so no
 `LGPL-2.1.txt`), then builds the packages into `artifacts/packages/`. RIDs: `win-x64` (on Windows), `linux-x64` and
-`linux-arm64` (with `dpkg-deb`). No macOS package, no portable ZIP.
+`linux-arm64` (with `dpkg-deb`, with `rpmbuild` also the .rpm packages). No macOS package, no portable ZIP.
 
-| | Windows (MSI) | Linux (.deb) |
+| | Windows (MSI) | Linux (.deb, .rpm) |
 |---|---|---|
-| File | `OADM-SiteNode-<version>-win-x64.msi` | `oadm-site-node_<version>_<amd64\|arm64>.deb`, `oadm-site-node-app_<version>_<amd64\|arm64>.deb` |
-| Built with | WiX Toolset 6 (`windows/site-node/Oadm.SiteNode.Installer.wixproj`) | `dpkg-deb` (`linux/build-site-node-deb.sh`, files in `linux/site-node/`) |
-| Program | `C:\Program Files\OADM Site Node` (service and app), on the system PATH | `/opt/oadm/site-node` + `/usr/bin/oadm-site-node`; app `/opt/oadm/site-node-app` + `/usr/bin/oadm-site-node-app`, `oadm-site-node.desktop` + icon (package `oadm-site-node-app`, Depends `oadm-site-node`) |
+| File | `OADM-SiteNode-<version>-win-x64.msi` | `oadm-site-node_<version>_<amd64\|arm64>.deb`, `oadm-site-node-app_<version>_<amd64\|arm64>.deb`; `oadm-site-node-<version>-1.<x86_64\|aarch64>.rpm`, `oadm-site-node-app-<version>-1.<x86_64\|aarch64>.rpm` |
+| Built with | WiX Toolset 6 (`windows/site-node/Oadm.SiteNode.Installer.wixproj`) | `dpkg-deb` (`linux/build-site-node-deb.sh`, files in `linux/site-node/`) and `rpmbuild` (`linux/build-site-node-rpm.sh`) |
+| Program | `C:\Program Files\OADM Site Node` (service and app), on the system PATH; the app in the Start menu and on the desktop | `/opt/oadm/site-node` + `/usr/bin/oadm-site-node`; app `/opt/oadm/site-node-app` + `/usr/bin/oadm-site-node-app`, `oadm-site-node.desktop` + icon (package `oadm-site-node-app`, Depends `oadm-site-node`) |
 | Service | "OADM Site Node" (`OadmSiteNode`), automatic, virtual account `NT SERVICE\OadmSiteNode`, restart on failure and after a stop with an error (exit code 1) | systemd `oadm-site-node.service`, user `oadm-site-node` (created by postinst), `Type=notify`, `AmbientCapabilities=CAP_NET_BIND_SERVICE` (relays below 1024), `RuntimeDirectory=oadm-site-node` (`/run/oadm-site-node/admin.sock`), `Restart=on-failure` |
 | Data folder | `%ProgramData%\OADM Site Node`, SYSTEM + the service SID (`NT SERVICE\OadmSiteNode`) only | `/var/lib/oadm-site-node` (StateDirectory 0700, owned by the service user) |
 | Native lib extraction | `%ProgramData%\OADM Site Node\runtime` | `/var/cache/oadm-site-node` |
 | Firewall | none: the node only connects out to the server (TCP 5081 by default) and never listens | not touched |
 | Server address | silent: `msiexec /i OADM-SiteNode-<version>-win-x64.msi SERVER=oadm.example.com /qn` (runs `oadm-site-node server <address> --timeout 60` after the service started; a refused address fails the install) | `sudo oadm-site-node server oadm.example.com` |
 | License texts | `TERMS.md`, `LICENSE.txt`, `NOTICE.txt`, `THIRD-PARTY-NOTICES.txt` next to the exes | same in `/opt/oadm/site-node*` and `/usr/share/doc/<package>/` |
-| Uninstall | Apps and Features / `msiexec /x`; data kept | `apt remove oadm-site-node-app oadm-site-node`; data and user kept, also on purge |
+| Uninstall | Apps and Features / `msiexec /x`; data kept | `apt remove oadm-site-node-app oadm-site-node` or `dnf remove ...`; data and user kept, also on purge |
 
 The server side: the OADM MSI opens only TCP 5080. The installed Windows service adds "OADM Server (Site nodes, TCP 5081)"
-(Domain and Private) itself while Accept site nodes is on and removes it when it is off. The .deb and .pkg of the server
-change no firewall.
+(Domain and Private) itself while Accept site nodes is on and removes it when it is off. The .deb, .rpm and .pkg of the
+server change no firewall.
 
 CI (`release.yml`): job `installers` builds the node packages next to the others on Windows and on both Linux runners,
-installs the .deb packages, checks the service (`oadm-site-node status` answers "Not bound") and removes them;
+installs the .deb packages, checks the service (`oadm-site-node status` answers "Not bound") and removes them, installs
+and removes the .rpm packages in Fedora and AlmaLinux containers;
 `smoke-windows-node` does the same with the node MSI (`windows/smoke.ps1 -Mode SiteNode`); `release` uploads them with
 the others and lists them in `SHA256SUMS.txt`.

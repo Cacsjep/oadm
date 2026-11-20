@@ -11,7 +11,7 @@ The file layout of every installer and the user-facing install notes are in `pac
   assembly references and calls the plugin's own `ICorePlugin.SelfCheck` (Text recognition starts ONNX Runtime on a
   model of the ZIP, and Skia). `Oadm.Client --self-check` tries the decoder, Skia and HarfBuzz, loads every native library beside its exe and each plugin's
   client part and follows its assembly references; it creates no classes and calls no `SelfCheck`. `--add-on <folder>` adds an unpacked add-on to either. release.yml runs them on the published folders of every platform, on each add-on ZIP,
-  and in the smoke tests of the .deb and MSI packages (the .pkg is not installed there). A deps.json check would not do: a package publish leaves out is missing there too (Send email in 4.11.0). The server and the site node also embed their native libraries (`IncludeNativeLibrariesForSelfExtract`). The client keeps
+  and in the smoke tests of the .deb, .rpm and MSI packages (the .pkg is not installed there). A deps.json check would not do: a package publish leaves out is missing there too (Send email in 4.11.0). The server and the site node also embed their native libraries (`IncludeNativeLibrariesForSelfExtract`). The client keeps
   them beside the exe (decision 2026-11-05): unpacking made the first start of every build take 4.65 s instead of 0.79 s and left 73 MB per
   build in the temp folder; `OldNativeFolders` removes those left-overs in the background at a start (`.net/Oadm.Client` in the home folder, on Windows also in the temp folder; a symlink is skipped). Every plugin project is published
   once into `artifacts/publish/plugins/<plugin id>/` (`<OadmPluginId>`, server and client part together) and copied next
@@ -119,8 +119,9 @@ each app.
 
 - **Windows MSI** (WiX Toolset 6 via the `WixToolset.Sdk` MSBuild SDK, `packaging/windows/`, not in Oadm.sln; never WiX
   7, it requires the OSMF EULA), x64 only, per machine: `Program Files\OADM\Server` and `\Client`, Windows service "OADM
-  Server" (`OadmServer`, automatic, LocalSystem, restart on failure, `--Oadm:DataDir="%ProgramData%\OADM"`), Start menu
-  shortcut, firewall rule for `Oadm.Server.exe` TCP 5080, profiles Domain and Private (`Profile="[OADM_FW_PROFILE]"` = 3);
+  Server" (`OadmServer`, automatic, LocalSystem, restart on failure, `--Oadm:DataDir="%ProgramData%\OADM"`), the
+  shortcut "OADM" in the Start menu and on the desktop (both advertised shortcuts of the client exe, `DesktopFolder` is the
+  public desktop of a per-machine install, removed with the client; `smoke.ps1` checks both ways), firewall rule for `Oadm.Server.exe` TCP 5080, profiles Domain and Private (`Profile="[OADM_FW_PROFILE]"` = 3);
   TCP 5081 for site nodes is the server's own rule while Accept site nodes is on (`docs/spec/sites.md`). Fixed
   UpgradeCode + MajorUpgrade (same version reinstall allowed). Features `Client` (always) and `Server` (service, firewall
   rule, data folder); own UI `WixUI_Oadm` (welcome, page "Choose what to install" with the radio buttons "Server and
@@ -129,19 +130,39 @@ each app.
   the UI and the execute sequence (`Sequence="both"`), so a silent update of self update keeps the setup type too);
   silent `ADDLOCAL=Client` = client only. Self update ([self-update.md](self-update.md)) takes the release files by these
   exact names: `OADM-<version>-win-x64.msi`, `oadm-server_<version>_<arch>.deb`, `oadm-client_<version>_<arch>.deb`,
-  `OADM-<version>-osx-x64.pkg` and `SHA256SUMS.txt`; renaming one breaks it.
+  `oadm-server-<version>-1.<rpm arch>.rpm`, `oadm-client-<version>-1.<rpm arch>.rpm`, `OADM-<version>-osx-x64.pkg` and
+  `SHA256SUMS.txt`; renaming one breaks it.
   `%ProgramData%\OADM` is created for SYSTEM and Administrators only and never removed. Files are harvested from the
   publish folders.
 - **Linux .deb** (`dpkg-deb`, `packaging/linux/build-deb.sh`, amd64 and arm64, built on Linux or in a container), two
   packages: `oadm-server` (`/opt/oadm/server`, systemd unit `oadm-server.service` (root, `Type=notify`,
   `Restart=on-failure`, `OADM_DATA_DIR=/var/lib/oadm`, StateDirectory 0700, optional `/etc/default/oadm-server`);
   postinst enables and starts it like dh_installsystemd and works without systemd; prerm stops it; data kept even on
-  purge) and `oadm-client` (`/opt/oadm/client`, `/usr/bin/oadm-client`, `oadm.desktop` + hicolor icon, X11 libraries as
-  Depends, `libwebkit2gtk-4.1-0` as Recommends for the Web View). Both files in one `apt install` = "Server and client",
+  purge) and `oadm-client` (`/opt/oadm/client`, `/usr/bin/oadm-client`, `/usr/share/applications/oadm.desktop`, the
+  hicolor icon `oadm.png` in 16 to 512 px, X11 libraries as Depends, `libwebkit2gtk-4.1-0` as Recommends for the Web View;
+  postinst and postrm run `update-desktop-database` and `gtk-update-icon-cache` only where they are installed). Both files in one `apt install` = "Server and client",
   `oadm-client` alone = "Client only". No metapackage. Both take over the files of the former single package `oadm`
   (`Replaces: oadm (<< 0.0.3~)`, `Breaks: oadm`, which also removes the metapackage `oadm` of 0.0.3..1.0.0 on upgrade).
   Each has `/usr/share/doc/<package>/{copyright,THIRD-PARTY-NOTICES.txt,LGPL-2.1.txt}`. Pre-release versions are written
-  `1.2.0~rc.1`. No .rpm.
+  `1.2.0~rc.1`.
+- **Menu entries** (`oadm.desktop`, `site-node/oadm-site-node.desktop`, the same files in .deb and .rpm): `Exec` the
+  installed exe, `Icon` the hicolor name the package installs (`oadm`, `oadm-site-node`), `Categories=Network;`,
+  `StartupWMClass` the app's assembly name (`Oadm.Client`, `oadm-site-node-app`: Avalonia's X11 window class is the entry
+  assembly's name, so the dock groups the window with its entry). `desktop-file-validate` checks both in `release.yml`.
+- **Linux .rpm** (`rpmbuild`, `packaging/linux/build-rpm.sh` and `build-site-node-rpm.sh` with `rpm/rpm-common.sh` and
+  the scriptlets in `rpm/`, x86_64 and aarch64, built on Linux with the `rpm` package of Debian/Ubuntu or `rpm-build`):
+  for Fedora, RHEL and its rebuilds (Rocky Linux, AlmaLinux), the same packages, files, units, users and data folders as
+  the .deb: `oadm-server-<version>-1.<arch>.rpm`, `oadm-client-…`, `oadm-site-node-…`, `oadm-site-node-app-…` (Requires
+  `oadm-site-node = <version>`, Recommends `polkit`). `manage package linux` and `site-node` build them after the .deb
+  when `rpmbuild` is there (else a note). Single-file apps: `AutoReqProv: no` with hand-written Requires (glibc,
+  libgcc, libstdc++, `libz.so.1()(64bit)`, openssl-libs, libicu; the client X11 libraries and fontconfig, Recommends
+  `webkit2gtk4.1`), no stripping, no debug package, xz payload. Scriptlets like the .deb maintainer scripts: `%post`
+  creates the data folder and enables the unit on install and starts it, restarts it on upgrade, works without systemd;
+  `%preun` stops and disables on removal; `%postun` removes `/var/cache/oadm*` on removal (rpm has no purge) and keeps
+  the data folders; the site node's `%pre` creates its user. Each folder `/opt/oadm/server` and `/opt/oadm/client` holds
+  `oadm-rpm.txt` (`Installation.RpmMarker`): self update installs the next version with dnf there. Pre-release versions
+  `1.2.0~rc.1`. Not signed (like every installer; the SHA-256 of `SHA256SUMS.txt`). The firewall is not touched: the
+  install docs name `firewall-cmd --add-port=5080/tcp` for firewalld.
 - **macOS .pkg** (`pkgbuild` + `productbuild`, `packaging/macos/build-pkg.sh`, x64 (Intel) only, built on macOS only):
   `/Applications/OADM.app` (Info.plist, icns, license texts, plugins and the desktop extension `OADM.mcpb` in `Contents/Resources`), server in
   `/Library/Application Support/OADM/server`, LaunchDaemon `com.oadm.server` (root, `OADM_DATA_DIR=/Library/Application
@@ -154,10 +175,12 @@ each app.
   project does not pick up its .wxs files; `Program Files\OADM Site Node` on the system PATH, service "OADM Site Node"
   `OadmSiteNode` automatic, its own virtual account `NT SERVICE\OadmSiteNode`, restart on failure (also after a stop with
   an error: a part of the node that fails ends it with exit code 1), data folder `%ProgramData%\OADM Site Node` for SYSTEM
-  and the service SID only and kept, Start menu shortcut, silent `SERVER=<address>`), `oadm-site-node_<version>_<arch>.deb`
+  and the service SID only and kept, shortcut "OADM Site Node" to the app in the Start menu and on the desktop, silent
+  `SERVER=<address>`), `oadm-site-node_<version>_<arch>.deb`
   (service + `/usr/bin/oadm-site-node`, user `oadm-site-node`, `CAP_NET_BIND_SERVICE`, `RuntimeDirectory`,
   `NoNewPrivileges`, `/var/lib/oadm-site-node` 0700) and `oadm-site-node-app_<version>_<arch>.deb` (Depends
-  oadm-site-node of the same version, Recommends pkexec, icon `oadm-site-node.png`); amd64 and arm64; notices
+  oadm-site-node of the same version, Recommends pkexec, icon `oadm-site-node.png` in 16 to 512 px), the same as .rpm
+  (`oadm-site-node-<version>-1.<arch>.rpm`, `oadm-site-node-app-<version>-1.<arch>.rpm`); amd64 and arm64; notices
   `tools/Oadm.Notices --product site-node` (hand-written part `packaging/notices/site-node.md`, no LGPL part); no macOS
   package, no portable ZIP. The node only connects out: no firewall rule on either system.
 - **Plugin folders a version no longer ships** (`oadm.est`, a part of PKI, `docs/spec/pki.md` "One plugin") are removed
@@ -176,8 +199,8 @@ each app.
   `Permanent="yes"`: Windows deletes the key with the service, and removing a value of a key already marked for
   deletion fails the uninstall (Error 1409, system error 1018).
 - **Icons:** the app icon is `icon/oadm-app-icon-<size>.png` (16-1024); `packaging/icons/make-icons.py` builds `oadm.ico`
-  (client exe, MSI, shortcuts), `oadm.icns` (macOS), `oadm.png` / `oadm-256.png` (Linux, window icon of every client
-  window) from it.
+  (client exe, MSI, shortcuts), `oadm.icns` (macOS), `oadm.png` / `oadm-256.png` (window icon of every client window)
+  from it. The Linux packages take the hicolor icons straight from `icon/` (16, 24, 32, 48, 64, 128, 256, 512 px).
 
 ## CI
 
@@ -188,11 +211,13 @@ when the jobs it needs passed:
   `Category!=Hardware&Category!=Perf&Category!=HardwareWrite&Category!=RealModel&Category!=Gpu`, one run without a retry, `--blame-hang-timeout 5m
   --blame-crash`: a crashed test host leaves a dump and its test sequence, uploaded as the artifact `test-results-<os>`
   when the step fails.
-- `installers` (needs docs, beside the tests, 60 min; `release` needs both): MSI, the .deb packages for amd64 and arm64 (on `ubuntu-24.04-arm`), .pkg,
-  the OADM Site Node MSI and .deb packages, and the portable ZIPs `OADM-Server|Client-<version>-<rid>.zip` (their own
+- `installers` (needs docs, beside the tests, 60 min; `release` needs both): MSI, the .deb and .rpm packages for amd64 and arm64 (on `ubuntu-24.04-arm`; `rpm` and
+  `desktop-file-utils` from apt first), .pkg, the OADM Site Node MSI, .deb and .rpm packages, and the portable ZIPs `OADM-Server|Client-<version>-<rid>.zip` (their own
   artifact `portable-<version>-<rid>`). Takes the offline docs of the job `docs` into the client. Checks the license
   texts and the client's `docs/index.html` next to the published exes; installs, checks and removes the .deb packages as
-  "Server and client", as "Client only" and the site node; checks the .pkg's choices and payload without installing.
+  "Server and client", as "Client only" and the site node; checks the .rpm packages' files, requires and scriptlets, then
+  installs them with dnf in `fedora:latest` and `almalinux:9` containers (no systemd there), runs the self checks and
+  removes them; validates the menu entries and the icon sizes; checks the .pkg's choices and payload without installing.
   Builds the add-on ZIPs of its platform first (`manage package addons --rid <rid>`, before every package step, their own
   artifact `addons-<version>-<rid>`, left out of `oadm-<version>-<rid>` so `smoke-windows` does not download them), so the
   server built next holds their hashes; after the packages it checks each ZIP with `check-addon-zip.sh`, checks with
@@ -277,8 +302,9 @@ cacsjep.github.io/oadm addresses redirect). Texts follow "Wording".
   developers); phones narrower than 40rem see icons only; fixed, no border.
 - **Download** (`Downloads.astro`): one accent button "Download <version>" that opens a dialog with every file of the
   latest release: tabs Windows, Linux x64, Linux ARM64, macOS (the visitor's system first, each icon in the system's
-  color), each a plain list of its OADM files without a heading (Windows "Server and Client Installer", "Site Node
-  Installer"; Linux: Server, Client, Site Node, Site Node App; the site node has no macOS build), below them in each
+  color), each a plain list of its OADM files (Windows "Server and Client Installer", "Site Node Installer", without a
+  heading; Linux: Server, Client, Site Node, Site Node App under the headings "Debian and Ubuntu" (.deb) and "Fedora and
+  RHEL" (.rpm); the site node has no macOS build), below them in each
   system tab a group "Optional plugins" (the add-on ZIPs of that platform, `oadm-addon-<id>-<version>-<rid>.zip`, with
   one line "Download the ZIP of your server's version and system, then install it on the Plugins page of OADM." and links to
   each plugin's docs and the Plugins page's "Optional plugins"), and a tab Portable with
