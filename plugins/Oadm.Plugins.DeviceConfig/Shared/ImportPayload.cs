@@ -9,7 +9,7 @@ namespace Oadm.Plugins.DeviceConfig;
 /// <summary>
 /// Payload of "Import configuration". The dialog uploads the chosen file (one <c>.json</c> or the ZIP of an export) and
 /// names, per device, the file it gets: the empty name for a single file, else the ZIP entry. Devices the dialog left out
-/// (other model, no file) carry their reason; their task changes nothing. An AI agent (<see cref="ImportMcpPayload"/>) sends
+/// (no file, two files) carry their reason; their task changes nothing. An AI agent (<see cref="ImportMcpPayload"/>) sends
 /// no <see cref="Files"/> at all: its one <c>.json</c> goes to every device of the run (<see cref="ForEveryDevice"/>).
 /// </summary>
 public sealed class ImportPayload
@@ -191,6 +191,11 @@ public static class ImportTexts
     public const string IdentityNote = "Host name, IP address and device names stay as they are on each device.";
 
     public const string PasswordNote = "The file has no passwords. Event recipients that need one must get it again.";
+
+    /// <summary>"2 of 6 devices are another model than the file: each takes only the settings it has." (all: "The devices are ...").</summary>
+    public static string OtherModelNote(int others, int total) => others == total
+        ? (total == 1 ? "The device is another model than the file: it takes only the settings it has." : "The devices are another model than the file: each takes only the settings it has.")
+        : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{others:N0} of {total:N0} devices are another model than the file: each takes only the settings it has.");
 
     /// <summary>Warning when the file has connection settings (off by default in the dialog).</summary>
     public const string ConnectionNote = "Connection settings (HTTPS, ports, login method, IEEE 802.1X, IPv6, DNS, network link, web interface) can make the devices unreachable.";

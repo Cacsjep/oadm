@@ -734,8 +734,9 @@ import, `/config/rest/$export`, `$import`, like its web interface), **Configure 
   parameters they are comes from the one table of Configure devices (`DangerousParameters`), so a parameter that needs
   the `dangerous` right there needs the `connection` right here; of `user-management.v2` only the password policy is
   imported, never accounts (no lock-out); only the seven areas OADM knows are imported, any other
-  area of a file and the left-out part of the password policy area are shown as not imported and never sent; the same model only
-  ("Nothing was changed" otherwise); no backup by OADM (export first); the device validates and OADM shows its answer per
+  area of a file and the left-out part of the password policy area are shown as not imported and never sent; any model (decision
+  2026-11-20): the device leaves out what it does not have and refuses single values, the dialog says how many devices are
+  another model; no backup by OADM (export first); the device validates and OADM shows its answer per
   area, one failed area does not stop the others; a ZIP entry must carry the device's MAC address; Export is a dialog
   in the client (an agent's run is a read-only task whose result is the export in its log).
 - **Configure devices** rules that must hold: values come from the source (a device or an ADM `.cfg` file), definitions
@@ -760,7 +761,7 @@ import, `/config/rest/$export`, `$import`, like its web interface), **Configure 
   the host's task tools: an agent never sends a password or a secret value (a setting or action parameter with a secret
   name is a slot of the secret channel the user fills; a password parameter whose name is no secret name is skipped on the
   device) and never a device address; Configure devices' `dangerous` and
-  Import's `connection` rights hold as in the dialogs; Import takes one uploaded `.json` for every device of its model
+  Import's `connection` rights hold as in the dialogs; Import takes one uploaded `.json` for every device of the run
   (no ZIP); the plans come from the cached devices and the uploaded file only and carry the dialogs' warnings.
 - Device groups: the source device of Configure devices and Create configuration file is read with the user's query
   (only devices of the user's view); configuration files stay on the client (an import uploads its file for its own

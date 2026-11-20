@@ -18,7 +18,7 @@
       <StackPanel>
         <ui:CardHeader Title="Configuration file" Description="{Binding Scope}" />
         <TextBlock Classes="secondary" TextWrapping="Wrap" Margin="0,0,0,8"
-                   Text="One .json file for every device of its model, or the ZIP of an export: each device gets its own file." />
+                   Text="One .json file for every device, or the ZIP of an export: each device gets its own file." />
         <ui:FileRow FileName="{Binding FileName}" Details="{Binding FileDetails}" Error="{Binding FileError}" ButtonText="Choose file" Command="{Binding BrowseCommand}" />
       </StackPanel>
     </Border>

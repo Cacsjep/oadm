@@ -52,10 +52,10 @@ public sealed record ExportConfigMcpPayload;
 
 /// <summary>
 /// The input of Import configuration for AI agents: one uploaded configuration file (<c>.json</c> of Export configuration or the
-/// camera's web interface) for every device of its model, and the settings areas to import. It is read as an
+/// camera's web interface) for every device (any model: each takes the settings it has), and the settings areas to import. It is read as an
 /// <see cref="ImportPayload"/> without <see cref="ImportPayload.Files"/>: every device of the run gets the file.
 /// </summary>
-[Description("Imports one configuration file into every device of its model, like Import configuration in OADM.")]
+[Description("Imports one configuration file into every device, like Import configuration in OADM; a device of another model takes only the settings it has.")]
 public sealed record ImportMcpPayload(
     [property: Description("The file id the upload answered."), MinLength(1), MaxLength(64)] string FileId,
     [property: Description("The file name as uploaded, like lobby.json."), MinLength(1), MaxLength(255)] string FileName,

@@ -101,7 +101,7 @@ public sealed class HeadlessTests : IDisposable
             window.Show();
             Pump();
             Assert.False(vm.IsZip);
-            Assert.Contains("2 of 6 devices are other models and are left out.", vm.Notes);
+            Assert.Contains("2 of 6 devices are another model than the file: each takes only the settings it has.", vm.Notes);
             Save(window, outDir, "device-config-import-other-model.png");
 
             // The ZIP of an export: each device its own file.

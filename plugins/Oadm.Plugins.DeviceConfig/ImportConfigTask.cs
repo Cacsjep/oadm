@@ -9,8 +9,8 @@ using Oadm.Sdk.Plugins;
 namespace Oadm.Plugins.DeviceConfig;
 
 /// <summary>
-/// "Import configuration" (Maintenance, dialog): imports a configuration file of the same model into the device, one settings
-/// area at a time, always as a merge and without the device's own network identity (<see cref="ConfigIdentity"/>). Only the
+/// "Import configuration" (Maintenance, dialog): imports a configuration file into the device, one settings area at a time
+/// (a file of another model too: the device leaves out what it does not have and refuses single values it cannot take), always as a merge and without the device's own network identity (<see cref="ConfigIdentity"/>). Only the
 /// areas OADM knows are sent (<see cref="ConfigSections.Known"/>). The device
 /// validates each area itself; OADM shows its answer. Steps: Read configuration file, Check compatibility, Import &lt;area&gt;
 /// (one per area; a failing area does not stop the others), Import connection settings (only when chosen, always last: it can
@@ -86,7 +86,7 @@ public sealed class ImportConfigTask : ITaskPlugin
         }
     }
 
-    /// <summary>The input for AI agents (SDK 0.13.0): one uploaded <c>.json</c> for every device of its model, and the areas.</summary>
+    /// <summary>The input for AI agents (SDK 0.13.0): one uploaded <c>.json</c> for every device (any model), and the areas.</summary>
     public Type? PayloadType => typeof(ImportMcpPayload);
 
     /// <summary>The names and area keys the task reads.</summary>
@@ -101,9 +101,9 @@ public sealed class ImportConfigTask : ITaskPlugin
         PlanCoreAsync(payloadJson, devices, null, ct);
 
     /// <summary>
-    /// The plan of a run, from the cached devices and the uploaded file (never a device request): a device of another model than
-    /// the file's, one the dialog left out and one the task cannot run on are skipped with the reason; the warnings are the
-    /// dialog's notes and confirmation (the settings are replaced, connection settings can make the devices unreachable).
+    /// The plan of a run, from the cached devices and the uploaded file (never a device request): a device the dialog left out
+    /// and one the task cannot run on are skipped with the reason; the warnings are the dialog's notes and confirmation (the
+    /// settings are replaced, connection settings can make the devices unreachable, devices of another model than the file's).
     /// </summary>
     public Task<Oadm.Sdk.Tasks.TaskPlan> PlanAsync(string? payloadJson, IReadOnlyList<IDeviceInfo> devices, IUploadedFiles files, CancellationToken ct)
     {
@@ -175,16 +175,31 @@ public sealed class ImportConfigTask : ITaskPlugin
             {
                 reason = payload.LeftOut.GetValueOrDefault(device.Id) ?? DeviceConfigIds.NoFile;
             }
-            else if (payload.ForEveryDevice && file is not null && !ModelNames.Same(file.Model, device.Model))
-            {
-                reason = DeviceConfigIds.OtherModel(file.Model);
-            }
             else
             {
                 reason = null;
             }
 
             plan.Add(new(device.Id, reason));
+        }
+
+        if (payload.ForEveryDevice && file is not null)
+        {
+            var runs = 0;
+            var others = 0;
+            for (var i = 0; i < plan.Count; i++)
+            {
+                if (plan[i].SkipReason is null)
+                {
+                    runs++;
+                    others += ModelNames.Same(file.Model, devices[i].Model) ? 0 : 1;
+                }
+            }
+
+            if (others > 0)
+            {
+                warnings.Add(ImportTexts.OtherModelNote(others, runs));
+            }
         }
 
         return new Oadm.Sdk.Tasks.TaskPlan(plan) { Warnings = warnings, Files = named };
@@ -253,18 +268,15 @@ public sealed class ImportConfigTask : ITaskPlugin
                 throw new ConfigDeviceException($"Needs AXIS OS {DeviceConfigIds.MinFirmwareText} or later (this device has {info.Version}). Nothing was changed.");
             }
 
-            if (!ModelNames.Same(file.Model, info.ProdNbr))
-            {
-                throw new ConfigDeviceException($"The file is for {ModelNames.Display(file.Model)}; this device is {ModelNames.Display(info.ProdNbr)}. Nothing was changed.");
-            }
-
             available = await ConfigApi.DiscoverAsync(ctx.Vapix, ct).ConfigureAwait(false);
             if (!sections.Any(key => ConfigSections.IsKnown(key) && file.Data[ConfigSections.SourceKey(key)] is JsonObject && available.Contains(ConfigSections.SourceKey(key))))
             {
                 throw new ConfigDeviceException("None of the settings in the file exist on this device. Nothing was changed.");
             }
 
-            step.Complete($"{ModelNames.Display(info.ProdNbr)}, AXIS OS {info.Version}");
+            // Another model takes only what it has: the device leaves out unknown settings and refuses single values.
+            step.Complete($"{ModelNames.Display(info.ProdNbr)}, AXIS OS {info.Version}"
+                + (ModelNames.Same(file.Model, info.ProdNbr) ? string.Empty : $" (file of {ModelNames.Display(file.Model)})"));
         }
 
         var imported = new List<(string Key, JsonNode Data, HashSet<string> Removed)>();

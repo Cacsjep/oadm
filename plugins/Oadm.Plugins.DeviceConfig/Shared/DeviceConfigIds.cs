@@ -45,8 +45,6 @@ public static class DeviceConfigIds
 
     public const string TwoFiles = "Two files for this device";
 
-    public static string OtherModel(string fileModel) => "Other model: the file is for " + ModelNames.Display(fileModel);
-
     public static string Count(int n, string noun) =>
         string.Create(CultureInfo.InvariantCulture, $"{n:N0} {noun}{(n == 1 ? string.Empty : "s")}");
 }

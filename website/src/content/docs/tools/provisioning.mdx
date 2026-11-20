@@ -209,7 +209,8 @@ Results:
 ### Configuration
 
 Applies settings from a file of Export configuration in [Device configuration](../../tasks/device-configuration/), or
-from a camera OADM manages. Addresses, host names, certificates and passwords are never copied.
+from a camera OADM manages, also of another model: each camera takes the settings it has. Addresses, host names,
+certificates and passwords are never copied.
 
 - **Settings from**: **A configuration file** or **A template camera**.
 - **Configuration file**: a .json file of Export configuration.
@@ -221,7 +222,7 @@ Results:
 
 - Success: "Parameters and action rules applied." or "Parameters of the template camera applied."
 - Not needed: "Not needed: this is the template camera."
-- Warning: settings the model lacks, listed.
+- Warning: values the camera refused, listed.
 - Error: for example "The template camera ACCC8E012345 has no configuration export (AXIS OS 12.5 or later)."
 
 ### Users

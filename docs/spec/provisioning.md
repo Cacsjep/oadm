@@ -147,8 +147,9 @@ this model."). A node that does not apply (no SD card, no remote focus) is Succe
 5. **Date and time**: NTP servers (NTS where the camera has it), the ones DHCP gives or OADM's NTP server, and the time
    zone (the shared `TimeZoneChoice`).
 6. **Configuration**: a configuration file of Device configuration **or** a template camera read at run time; the areas
-   to apply. Device-specific values (address, host name, certificates, passwords) are never copied; settings the model
-   lacks: Warning listing them.
+   to apply. Device-specific values (address, host name, certificates, passwords) are never copied; a file or template
+   camera of another model works (decision 2026-11-20): the camera leaves out what it does not have, a value it refuses
+   is a Warning listing it.
 7. **Users**: more accounts (name, role, password from the credential list or typed); several Users nodes allowed;
    OADM's account never touched.
 8. **Certificate**: a certificate by a PKI issuing policy (clock check first), **or** EST enrollment (PRO).

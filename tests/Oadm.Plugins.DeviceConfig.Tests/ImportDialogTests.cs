@@ -90,9 +90,9 @@ public sealed class ImportDialogTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(8, vm.Sections.Count);
         Assert.StartsWith("Network and system settings (", vm.Sections[3].Text, StringComparison.Ordinal);
         Assert.Equal(
-            [ImportConfigViewModel.IdentityNote, ImportConfigViewModel.PasswordNote, "1 of 3 devices are other models and are left out."],
+            [ImportConfigViewModel.IdentityNote, ImportConfigViewModel.PasswordNote, "1 of 3 devices are another model than the file: each takes only the settings it has."],
             vm.Notes);
-        Assert.Equal(2, vm.TargetCount);
+        Assert.Equal(3, vm.TargetCount);
         Assert.Null(vm.ImportBlockedReason);
 
         // Unchecking every area blocks Import.
@@ -109,17 +109,17 @@ public sealed class ImportDialogTests(ITestOutputHelper output) : IDisposable
         vm.CloseRequested += (_, payload) => closed = payload;
         await vm.ImportCommand.ExecuteAsync(null);
 
-        Assert.Equal(["Import the configuration into 2 devices? The settings in the file replace the current ones."], questions);
+        Assert.Equal(["Import the configuration into 3 devices? The settings in the file replace the current ones."], questions);
         Assert.Equal([path], uploads);
         var payload = ImportPayload.Parse(closed);
         Assert.Empty(new ImportConfigTask().ValidatePayload(closed, Oadm.Sdk.Testing.FakeCallContext.AllDevices(new Oadm.Sdk.Testing.FakeCoreContext()))); // the server's check before the run
         Assert.False(payload.ForEveryDevice);
-        Assert.Null(payload.EntryFor(devices[2].Id)); // left out: the other model
+        Assert.Equal(string.Empty, payload.EntryFor(devices[2].Id)); // the other model too
         Assert.Equal(("up1", "lobby.json", false), (payload.FileId, payload.FileName, payload.IsZip));
         Assert.Equal(["time.v2"], payload.Sections);
-        Assert.Equal(new[] { devices[0].Id, devices[1].Id }.Order(), payload.Files.Keys.Order());
+        Assert.Equal(devices.Select(d => d.Id).Order(), payload.Files.Keys.Order());
         Assert.All(payload.Files.Values, v => Assert.Equal(string.Empty, v));
-        Assert.Equal("Other model: the file is for AXIS P3265-V", payload.LeftOut[devices[2].Id]);
+        Assert.Empty(payload.LeftOut);
     }
 
     [Fact]
@@ -209,12 +209,12 @@ public sealed class ImportDialogTests(ITestOutputHelper output) : IDisposable
     }
 
     [Fact]
-    public async Task A_file_of_another_model_or_a_broken_file_blocks_import()
+    public async Task A_file_of_another_model_imports_and_a_broken_file_blocks_import()
     {
         var vm = Dialog([new FakeDevice()]);
         await vm.LoadAsync(Write("other.json", FileFor("Q6135-LE")));
-        Assert.Equal("No selected device is of the file's model", vm.ImportBlockedReason);
-        Assert.Contains("None of the selected devices is an AXIS Q6135-LE.", vm.Notes);
+        Assert.Null(vm.ImportBlockedReason);
+        Assert.Contains("The device is another model than the file: it takes only the settings it has.", vm.Notes);
 
         await vm.LoadAsync(Write("broken.json", "{"));
         Assert.Equal(DeviceConfigIds.NotAConfigFile, vm.FileError);
@@ -252,13 +252,13 @@ public sealed class ImportDialogTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(
         [
             "Ready",
-            "Other model: the file is for AXIS Q6135-LE",
+            "Ready", // another model: the device takes the settings it has
             DeviceConfigIds.TwoFiles,
             DeviceConfigIds.NotAConfigFile,
             DeviceConfigIds.NoFile,
         ], vm.Rows.Select(r => r.Status));
         Assert.Equal("10.0.0.48_B8A44F631339_P3265-V_config.json", vm.Rows[0].FileText);
-        Assert.Equal("1 ready · 4 left out · 1 file has no selected device", vm.DevicesSummary);
+        Assert.Equal("2 ready · 3 left out · 1 file has no selected device", vm.DevicesSummary);
         Assert.Equal(8, vm.Sections.Count);
         Assert.All(vm.Sections, s => Assert.Null(s.Detail));
 
@@ -268,7 +268,8 @@ public sealed class ImportDialogTests(ITestOutputHelper output) : IDisposable
         var payload = ImportPayload.Parse(closed);
         Assert.True(payload.IsZip);
         Assert.Equal("10.0.0.48_B8A44F631339_P3265-V_config.json", payload.Files[devices[0].Id]);
-        Assert.Single(payload.Files);
+        Assert.Equal("b8:a4:4f:63:13:40.json", payload.Files[devices[1].Id]);
+        Assert.Equal(2, payload.Files.Count);
         Assert.Equal(DeviceConfigIds.NoFile, payload.LeftOut[devices[4].Id]);
     }
 

@@ -179,9 +179,10 @@ public sealed partial class ImportConfigViewModel : ObservableObject
                 return "Choose a configuration file";
             }
 
+            // A single file goes to every selected device; only a ZIP can leave all of them out.
             if (_targets.Count == 0)
             {
-                return IsZip ? "No selected device has a file in the ZIP" : "No selected device is of the file's model";
+                return "No selected device has a file in the ZIP";
             }
 
             if (Sections.Count == 0)
@@ -282,16 +283,12 @@ public sealed partial class ImportConfigViewModel : ObservableObject
     private void Apply(ConfigFile file)
     {
         FileDetails = file.SourceText;
+        // Every device takes the file; another model keeps only the settings it has (the device decides).
+        var others = 0;
         foreach (var device in _devices)
         {
-            if (ModelNames.Same(file.Model, device.Model))
-            {
-                _targets[device.Id] = string.Empty;
-            }
-            else
-            {
-                _leftOut[device.Id] = DeviceConfigIds.OtherModel(file.Model);
-            }
+            _targets[device.Id] = string.Empty;
+            others += ModelNames.Same(file.Model, device.Model) ? 0 : 1;
         }
 
         foreach (var section in file.Sections)
@@ -300,11 +297,9 @@ public sealed partial class ImportConfigViewModel : ObservableObject
         }
 
         AddNotes(file.Data.ContainsKey(ConfigSections.Param), file.HasRecipients, file.NotImported);
-        if (_leftOut.Count > 0)
+        if (others > 0)
         {
-            Notes.Add(_leftOut.Count == _devices.Count
-                ? $"None of the selected devices is an {ModelNames.Display(file.Model)}."
-                : string.Create(CultureInfo.InvariantCulture, $"{_leftOut.Count:N0} of {_devices.Count:N0} devices are other models and are left out."));
+            Notes.Add(ImportTexts.OtherModelNote(others, _devices.Count));
         }
     }
 
@@ -582,12 +577,6 @@ public sealed class ZipPlan
             catch (Exception ex) when (ex is ConfigFileException or InvalidDataException)
             {
                 rows.Add(new ImportDeviceRow(device, entry.FullName, ex is ConfigFileException ? ex.Message : DeviceConfigIds.NotAConfigFile, ready: false));
-                continue;
-            }
-
-            if (!ModelNames.Same(file.Model, device.Model))
-            {
-                rows.Add(new ImportDeviceRow(device, entry.FullName, DeviceConfigIds.OtherModel(file.Model), ready: false));
                 continue;
             }
 

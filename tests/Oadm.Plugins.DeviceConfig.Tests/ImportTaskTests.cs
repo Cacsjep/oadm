@@ -343,15 +343,17 @@ public sealed class ImportTaskTests
     }
 
     [Fact]
-    public async Task Another_model_is_refused_before_anything_is_written()
+    public async Task A_file_of_another_model_is_imported_and_the_device_keeps_what_it_has()
     {
-        var s = Setup(file: ChangedFile("Q6135-LE"));
-        var ex = await Assert.ThrowsAsync<ConfigDeviceException>(() => RunAsync(s));
+        // The device leaves out what it does not have (its answer names it) and imports the rest.
+        var s = Setup(file: ChangedFile("Q6135-LE"), sections: ["time.v2", "param.v2"], camera: c => c.ImportAnswer = (key, _) => key == "param.v2"
+            ? (HttpStatusCode.OK, """{"status":"success","information":["Field 'PTZ' has been removed from the request"]}""")
+            : null);
+        await RunAsync(s);
 
-        Assert.Equal("The file is for AXIS Q6135-LE; this device is AXIS P3265-V. Nothing was changed.", ex.Message);
-        Assert.Empty(s.Camera.Imports);
-        Assert.Equal("Check compatibility: Failed", StepRun.Lines(s.Ctx.Steps)[1]);
-        Assert.Equal("Import time zone: Skipped", StepRun.Lines(s.Ctx.Steps)[7]);
+        Assert.Equal("AXIS P3265-V, AXIS OS 12.11.77 (file of AXIS Q6135-LE)", StepRun.Detail(s.Ctx.Steps, "Check compatibility"));
+        Assert.Equal(["param.v2", "time.v2"], s.Camera.Imports.Select(i => i.Key).Order(StringComparer.Ordinal));
+        Assert.EndsWith("1 not on this device", StepRun.Detail(s.Ctx.Steps, "Import network and system settings"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -455,12 +457,12 @@ public sealed class ImportTaskTests
             FileName = payload.FileName,
             Sections = payload.Sections,
             Files = payload.Files,
-            LeftOut = new Dictionary<Guid, string> { [device.Id] = DeviceConfigIds.OtherModel("P3265-V") },
+            LeftOut = new Dictionary<Guid, string> { [device.Id] = DeviceConfigIds.TwoFiles },
         }.ToJson();
         await StepRun.RunAsync(s.Ctx.Steps, () => s.Plugin.ExecuteAsync(s.Ctx, device, json, CancellationToken.None));
 
         Assert.Equal(["Check compatibility: Warning", "Completed: Done"], StepRun.Lines(s.Ctx.Steps));
-        Assert.Equal("Other model: the file is for AXIS P3265-V. Nothing was changed.", s.Ctx.Warnings.Single());
+        Assert.Equal(DeviceConfigIds.TwoFiles + ". Nothing was changed.", s.Ctx.Warnings.Single());
         Assert.Empty(s.Camera.Requests);
     }
 

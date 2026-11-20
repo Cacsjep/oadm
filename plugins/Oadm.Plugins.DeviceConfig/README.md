@@ -80,9 +80,9 @@ The export contains values that belong to **one device** and some that cannot be
 | Merge only | `importType=default` resets whole APIs (network included) and can make a device unreachable; not offered. |
 | Network identity | Never imported (the list above); no option to turn this off. |
 | Backup | None by OADM. Whoever wants to go back exports first. |
-| Same model only | A device of another model than the file's `metadata.prodNbr` is refused ("Nothing was changed"). Other AXIS OS versions are allowed. |
+| Any model (decision 2026-11-20) | A file goes to devices of any model and AXIS OS version. The device itself leaves out the settings it does not have ("Field 'x' has been removed from the request": "3 not on this device") and refuses single values it cannot take ("Failed to set property": a warning, the rest of the area is set); the dialog and the plan say how many devices are another model. Was "same model only". |
 | The device validates | OADM only uses `$export` / `$import` and does not check the file against the device's OpenAPI schema; it removes the identity values, sends each area and shows the device's answer per step. |
-| Two import modes | One `.json` file applied to every selected device of its model, or the ZIP of a multi-device export where each device gets its own file back (matched by MAC address). |
+| Two import modes | One `.json` file applied to every selected device, or the ZIP of a multi-device export where each device gets its own file back (matched by MAC address). |
 | Connection settings | Their own area, off by default: listed after the file's areas (unchecked) with a warning; unchecked, their values are left out of "Network and system settings" and of the verify like identity values; checked, they are written last in their own step and the confirmation warns. Which values: `DangerousParameters`, shared with Configure devices, so both ask for their restricted right (`connection`, `dangerous`) for the same parameters. |
 | Known areas only | An area of a file that is not one of the seven is shown as not imported ("Not imported: firewall.v1. OADM does not import these settings.") and never sent; the task skips it too when a payload names it ("OADM does not import these settings"). |
 | No accounts | Of `user-management.v2` only the password policy (`settings.passphraseComplexity`) is imported (`ConfigIdentity.Clean`), in the dialog and in the task. A camera exports nothing else there, but accounts in a file made by hand could change or demote the account OADM uses on every device. The rest of the area is named like an unknown area ("Not imported: user-management.v2 (users). OADM does not import these settings.", `ConfigFile.NotImported`) and never sent. |
@@ -108,13 +108,12 @@ The export contains values that belong to **one device** and some that cannot be
 - Choose file (`ui:FileRow`, `.json` at most 2 MB, or `.zip` at most 1 GB and 5,000 `.json` entries). Each configuration
   file is checked at once: valid JSON, `data` object with at least one `<api>.v<n>` object and `metadata.prodNbr`; else
   the error below the field ("Not a device configuration file", "The file does not name the device model").
-- **One file** (`.json`): source line "From AXIS P3265-V, AXIS OS 12.11.77"; it goes to every selected device of that
-  model (compared with the device grid's Model without "AXIS ").
+- **One file** (`.json`): source line "From AXIS P3265-V, AXIS OS 12.11.77"; it goes to every selected device, of any
+  model (compared with the device grid's Model without "AXIS " only for the note).
 - **ZIP**: every `*.json` entry is matched to a selected device by a MAC address in its name (12 hex digits, also with
   ":" "-" "." between the bytes; the first one that is a selected device's serial). Devices card (only for a ZIP):
   summary "4 ready · 2 left out · 1 file has no selected device", virtualized grid MAC address, Address, Model, File,
-  Status ("Ready", "No file for this device", "Two files for this device", "Not a device configuration file",
-  "Other model: the file is for AXIS P3265-V"). Read off the UI thread, matched entries only.
+  Status ("Ready", "No file for this device", "Two files for this device", "Not a device configuration file"). Read off the UI thread, matched entries only.
 - Settings card: one check box per area (all on except "Connection settings", in columns): "Network and system settings
   (1,245 values)" for one file (values that would be imported), names only for a ZIP; "Connection settings (30 values)"
   last when the parameters have connection values, with the warning chip "Connection settings (HTTPS, ports, login
@@ -122,8 +121,8 @@ The export contains values that belong to **one device** and some that cannot be
   knows are listed. Notes below, only when they apply: "Host name, IP address and
   device names stay as they are on each device." (parameters in the file), "The file has no passwords. Event recipients
   that need one must get it again." (event recipients), "Not imported: firewall.v1, user-management.v2 (users). OADM does not import these
-  settings." (areas OADM does not know, accounts in the password policy area), "2 of 6 devices are other models and are left out." / "None of
-  the selected devices is an AXIS ...". A file with no known area keeps Import disabled ("The file has no settings OADM
+  settings." (areas OADM does not know, accounts in the password policy area), "2 of 6 devices are another model than the file: each takes only
+  the settings it has." / "The devices are another model than the file: ...". A file with no known area keeps Import disabled ("The file has no settings OADM
   imports").
 - Import (primary, disabled with the reason as tooltip) asks in `ui:MessageWindow`: "Import the configuration into 4
   devices? The settings in the file replace the current ones." (+ " The devices may become unreachable." when Connection
@@ -138,8 +137,8 @@ The export contains values that belong to **one device** and some that cannot be
    entry whose name does not carry the device's MAC address fails "The file <entry> is not for this device (<MAC>). Nothing
    was changed."; an upload removed meanwhile "The configuration file is no longer on the server. Import it again. Nothing
    was changed.".
-2. **Check compatibility**: status, AXIS OS 12.5+ and the model from a fresh basicdeviceinfo ("The file is for AXIS
-   Q6135-LE; this device is AXIS P3265-V. Nothing was changed."), `GET /config/discover` (area keys `<api>.<vN>`); none of
+2. **Check compatibility**: status, AXIS OS 12.5+ and the model from a fresh basicdeviceinfo (another model: the detail
+   ends with "(file of AXIS Q6135-LE)", never a refusal), `GET /config/discover` (area keys `<api>.<vN>`); none of
    the chosen areas on the device = "None of the settings in the file exist on this device. Nothing was changed.".
 3. **Import <area>** (Import network and system settings, Import event rules, Import schedules, Import MQTT events, Import
    time zone, Import power settings, Import password policy): the area without identity and read-only values
@@ -260,7 +259,7 @@ The four tasks are offered to AI agents through the host's task tools (`oadm_tas
 | Configure devices | `settings` (name, value), `actionRules`, `schedules`, `streamProfiles` (the dialog's models) | `ConfigurePayload.Check`: the payload rules with their texts at `settings[i].name` ...; device addresses (`AddressNote`) and values with line breaks or over 4,096 characters refused; a secret name's value is entered by the user (`SecretsOf`, an empty one "Enter the password.", at most 8: "Set at most 8 passwords in one run.") | runs where `CanRun`; a per-device value (host name, device names) skips every device of a run of several (`PerDeviceNote`); warnings: dangerous parameters with their reason, "Each device checks the values ...", rules and profiles of the same name are replaced, "Sets <names> with the values the user enters." |
 | Create configuration file | `parameters` (names; a name ending in a dot is a group), `actionRules`, `streamProfiles` (names) | "Check what to save", a name twice or empty, a secret name | runs where `CanRun` |
 | Export configuration | none (`{}`) | any field: "The export takes no settings." | runs where `CanRun` |
-| Import configuration | `fileId`, `fileName`, `sections` (area keys, `connection` included) | `ImportPayload.Check`: file, "Choose at least one settings area", unknown areas, no ZIP | the uploaded file read like the task reads it: other model, a broken or removed file skip with the dialog's texts; warnings: the settings are replaced, connection settings can make the devices unreachable, the identity stays; the file's name and SHA-256 |
+| Import configuration | `fileId`, `fileName`, `sections` (area keys, `connection` included) | `ImportPayload.Check`: file, "Choose at least one settings area", unknown areas, no ZIP | the uploaded file read like the task reads it: a broken or removed file skips with the dialog's texts; warnings: the settings are replaced, connection settings can make the devices unreachable, the identity stays, devices of another model take only the settings they have; the file's name and SHA-256 |
 
 - **Agent form.** Configure devices reads `settings` and `actionRules` (the dialog sends `parameters` and `rules`), so the
   task knows an agent's payload (`ConfigurePayload.FromAgent`).
@@ -372,7 +371,7 @@ own run): the server keeps no shared file with saved passwords. Tests: server `D
 - File format, identity filter, file names and MAC notations, models, AXIS OS version check, payload, discover, device answers and
   error texts, verify comparison.
 - Import task against a stateful fake camera (`ConfigCamera`): every area as merge without identity, chosen areas, ZIP
-  entry, other model / old AXIS OS version / feature off with no write, missing areas skipped, a refused area while the others
+  entry, another model imported with the device's answer, old AXIS OS version / feature off with no write, missing areas skipped, a refused area while the others
   run, device warnings and differing values, devices left out, broken or missing file, connection settings only when
   chosen and last, a timeout failing one area, a changed certificate stopping, verify unreadable, ZIP entry of another
   device, upload removed meanwhile.

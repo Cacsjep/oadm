@@ -357,7 +357,7 @@ public sealed class AgentTaskInputTests
     }
 
     [Fact]
-    public async Task Import_plans_the_devices_of_the_files_model_with_the_dialogs_warnings()
+    public async Task Import_plans_every_model_with_the_dialogs_warnings()
     {
         var uploads = new MemoryUploads();
         var fileId = uploads.Add("lobby.json", Encoding.UTF8.GetBytes(Fixtures.Export));
@@ -368,9 +368,9 @@ public sealed class AgentTaskInputTests
 
         var plan = await task.PlanAsync(AgentImport(fileId, ConfigSections.Param, ConfigSections.Connection), [same, other, old], uploads, CancellationToken.None);
         Assert.Null(plan.Devices[0].SkipReason);
-        Assert.Equal(DeviceConfigIds.OtherModel("P3265-V"), plan.Devices[1].SkipReason);
+        Assert.Null(plan.Devices[1].SkipReason); // another model takes the settings it has
         Assert.StartsWith("Needs AXIS OS 12.5 or later", plan.Devices[2].SkipReason, StringComparison.Ordinal);
-        Assert.Equal([ImportTexts.ReplaceNote, ImportTexts.ConnectionNote, ImportTexts.IdentityNote], plan.Warnings);
+        Assert.Equal([ImportTexts.ReplaceNote, ImportTexts.ConnectionNote, ImportTexts.IdentityNote, ImportTexts.OtherModelNote(1, 2)], plan.Warnings);
         Assert.Equal("lobby.json", Assert.Single(plan.Files).Name);
 
         var calm = await task.PlanAsync(AgentImport(fileId, "time.v2"), [same], uploads, CancellationToken.None);
