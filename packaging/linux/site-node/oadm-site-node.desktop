@@ -5,5 +5,6 @@ Comment=Lets an OADM server reach the devices of this network
 Exec=/opt/oadm/site-node-app/oadm-site-node-app
 Icon=oadm-site-node
 Terminal=false
-Categories=Network;Utility;
+Categories=Network;
+Keywords=Axis;OADM;site;
 StartupWMClass=oadm-site-node-app

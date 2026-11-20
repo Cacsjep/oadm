@@ -6,5 +6,6 @@ Comment=Open AXIS Device Management
 Exec=/opt/oadm/client/Oadm.Client
 Icon=oadm
 Terminal=false
-Categories=Network;Utility;
+Categories=Network;
+Keywords=Axis;camera;ADM;device;
 StartupWMClass=Oadm.Client

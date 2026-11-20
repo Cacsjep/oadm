@@ -1,10 +1,20 @@
 #!/bin/sh
 # oadm-client postinst: the EST server is a part of PKI since OADM 4.5. dpkg removes the files of its 4.1
 # plugin folder on upgrade; anything else left there goes too (the client would skip the folder anyway).
+# Then the application menu and the icon theme see the entry (only where the tools are installed; the dpkg triggers of
+# desktop-file-utils and the icon theme do the same).
 set -e
 
 if [ "$1" = configure ]; then
     rm -rf /opt/oadm/client/plugins/oadm.est
+fi
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database -q /usr/share/applications >/dev/null 2>&1 || true
+fi
+if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+    touch --no-create /usr/share/icons/hicolor >/dev/null 2>&1 || true
+    gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor >/dev/null 2>&1 || true
 fi
 
 exit 0

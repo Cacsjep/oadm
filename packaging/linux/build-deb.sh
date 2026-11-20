@@ -8,7 +8,8 @@
 #                                     /usr/lib/systemd/system/oadm-server.service, maintainer scripts
 #   oadm-client_<version>_<arch>.deb  /opt/oadm/client/Oadm.Client (+ plugins/, license texts),
 #                                     /usr/bin/oadm-client -> /opt/oadm/client/Oadm.Client,
-#                                     /usr/share/applications/oadm.desktop, /usr/share/icons/hicolor/{256x256,512x512}/apps/oadm.png
+#                                     /usr/share/applications/oadm.desktop, /usr/share/icons/hicolor/<size>/apps/oadm.png
+#                                     (16 to 512 px from /icon); postinst and postrm refresh the menu and icon caches
 # Each has /usr/share/doc/<package>/{copyright,TERMS.md,THIRD-PARTY-NOTICES.txt,LGPL-2.1.txt} (TERMS.md: terms of use,
 # shown before the license everywhere; Debian has no interactive acceptance).
 # Data folder /var/lib/oadm (systemd StateDirectory, 0700), created by the server's postinst too.
@@ -42,6 +43,8 @@ trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$OUT_DIR"
 
 MAINTAINER="OADM contributors <oadm@acs-dev.org>"
+# Sizes of the app icon in the hicolor theme (icon/oadm-app-icon-<size>.png).
+ICON_SIZES="16 24 32 48 64 128 256 512"
 # .NET runtime needs: glibc, libstdc++, zlib, OpenSSL (HTTPS to devices), ICU (globalization).
 ICU="libicu80 | libicu79 | libicu78 | libicu77 | libicu76 | libicu75 | libicu74 | libicu73 | libicu72 | libicu71 | libicu70 | libicu67 | libicu66"
 RUNTIME_DEPENDS="libc6, libgcc-s1 | libgcc1, libstdc++6, zlib1g, libssl3t64 | libssl3 | libssl1.1, $ICU"
@@ -121,18 +124,21 @@ build_package "$ROOT" oadm-server "$RUNTIME_DEPENDS" "Description: Open AXIS Dev
 
 # --- oadm-client
 ROOT="$WORK/oadm-client"
-mkdir -p "$ROOT/DEBIAN" "$ROOT/opt/oadm" "$ROOT/usr/bin" "$ROOT/usr/share/applications" \
-  "$ROOT/usr/share/icons/hicolor/256x256/apps" "$ROOT/usr/share/icons/hicolor/512x512/apps"
+mkdir -p "$ROOT/DEBIAN" "$ROOT/opt/oadm" "$ROOT/usr/bin" "$ROOT/usr/share/applications"
 cp -R "$CLIENT_DIR" "$ROOT/opt/oadm/client"
 ln -s /opt/oadm/client/Oadm.Client "$ROOT/usr/bin/oadm-client"
-cp "$HERE/oadm.desktop" "$ROOT/usr/share/applications/oadm.desktop"
-cp "$REPO_ROOT/packaging/icons/oadm-256.png" "$ROOT/usr/share/icons/hicolor/256x256/apps/oadm.png"
-cp "$REPO_ROOT/packaging/icons/oadm.png" "$ROOT/usr/share/icons/hicolor/512x512/apps/oadm.png"
+tr -d '\r' < "$HERE/oadm.desktop" > "$ROOT/usr/share/applications/oadm.desktop"
+# The app icon in every size of /icon (menus and docks pick the size they show).
+for n in $ICON_SIZES; do
+  mkdir -p "$ROOT/usr/share/icons/hicolor/${n}x${n}/apps"
+  cp "$REPO_ROOT/icon/oadm-app-icon-$n.png" "$ROOT/usr/share/icons/hicolor/${n}x${n}/apps/oadm.png"
+done
 write_docs "$ROOT" oadm-client "$CLIENT_DIR"
 tr -d '\r' < "$HERE/client-postinst" > "$ROOT/DEBIAN/postinst"
+tr -d '\r' < "$HERE/client-postrm" > "$ROOT/DEBIAN/postrm"
 build_package "$ROOT" oadm-client "$CLIENT_DEPENDS" "Description: Open AXIS Device Management client
  OADM manages Axis network devices. This package is the desktop client; it
  connects to an OADM server on this or another computer. Start it from the
  application menu or as oadm-client." "$TAKES_OVER
 Recommends: libwebkit2gtk-4.1-0" \
-  opt/oadm/client/Oadm.Client DEBIAN/postinst
+  opt/oadm/client/Oadm.Client DEBIAN/postinst DEBIAN/postrm

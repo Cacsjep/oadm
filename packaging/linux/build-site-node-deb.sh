@@ -9,7 +9,8 @@
 #                                            /usr/lib/systemd/system/oadm-site-node.service, maintainer scripts
 #                                            (system user oadm-site-node, data folder /var/lib/oadm-site-node 0700)
 #   oadm-site-node-app_<version>_<arch>.deb  /opt/oadm/site-node-app/oadm-site-node-app (+ license texts),
-#                                            /usr/bin/oadm-site-node-app -> it, oadm-site-node.desktop + icon;
+#                                            /usr/bin/oadm-site-node-app -> it, oadm-site-node.desktop + icon
+#                                            (16 to 512 px), postinst and postrm refresh the menu and icon caches;
 #                                            Depends oadm-site-node (the app is only a window on the service)
 # Each has /usr/share/doc/<package>/{copyright,TERMS.md,NOTICE.txt,THIRD-PARTY-NOTICES.txt}. No LGPL part, so no
 # LGPL-2.1.txt.
@@ -117,18 +118,22 @@ build_package "$ROOT" oadm-site-node "$RUNTIME_DEPENDS, passwd" "Description: OA
 
 # --- oadm-site-node-app (the window)
 ROOT="$WORK/oadm-site-node-app"
-mkdir -p "$ROOT/DEBIAN" "$ROOT/opt/oadm" "$ROOT/usr/bin" "$ROOT/usr/share/applications" \
-  "$ROOT/usr/share/icons/hicolor/256x256/apps" "$ROOT/usr/share/icons/hicolor/512x512/apps"
+mkdir -p "$ROOT/DEBIAN" "$ROOT/opt/oadm" "$ROOT/usr/bin" "$ROOT/usr/share/applications"
 cp -R "$APP_DIR" "$ROOT/opt/oadm/site-node-app"
 ln -s /opt/oadm/site-node-app/oadm-site-node-app "$ROOT/usr/bin/oadm-site-node-app"
 tr -d '\r' < "$FILES/oadm-site-node.desktop" > "$ROOT/usr/share/applications/oadm-site-node.desktop"
-# Its own icon name: oadm.png belongs to the oadm-client package.
-cp "$REPO_ROOT/packaging/icons/oadm-256.png" "$ROOT/usr/share/icons/hicolor/256x256/apps/oadm-site-node.png"
-cp "$REPO_ROOT/packaging/icons/oadm.png" "$ROOT/usr/share/icons/hicolor/512x512/apps/oadm-site-node.png"
+# Its own icon name (oadm.png belongs to the oadm-client package), in every size of /icon.
+for n in 16 24 32 48 64 128 256 512; do
+  mkdir -p "$ROOT/usr/share/icons/hicolor/${n}x${n}/apps"
+  cp "$REPO_ROOT/icon/oadm-app-icon-$n.png" "$ROOT/usr/share/icons/hicolor/${n}x${n}/apps/oadm-site-node.png"
+done
 write_docs "$ROOT" oadm-site-node-app "$APP_DIR"
+# The application menu and the icon theme see the entry (the OADM client's postrm does the same on removal).
+tr -d '\r' < "$FILES/app-postinst" > "$ROOT/DEBIAN/postinst"
+tr -d '\r' < "$HERE/client-postrm" > "$ROOT/DEBIAN/postrm"
 # pkexec: changes and the pairing code run through an elevated copy of the app.
 build_package "$ROOT" oadm-site-node-app "$APP_DEPENDS" "Description: OADM Site Node app
  The window of the OADM Site Node: the server, the pairing code, networks,
  ports and the connection log. Start it from the application menu or as
  oadm-site-node-app." "Recommends: pkexec | policykit-1" \
-  opt/oadm/site-node-app/oadm-site-node-app
+  opt/oadm/site-node-app/oadm-site-node-app DEBIAN/postinst DEBIAN/postrm
