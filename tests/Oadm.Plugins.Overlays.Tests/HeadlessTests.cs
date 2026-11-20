@@ -8,7 +8,6 @@ using Avalonia.VisualTree;
 using Oadm.Client;
 using Oadm.Client.Infrastructure;
 using Oadm.Plugins.Overlays.Client;
-using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Overlays.Tests;
@@ -63,7 +62,7 @@ public sealed class HeadlessTests
             Capture(window, outDir, "overlays-two" + suffix + ".png");
 
             // The modifiers list of the first overlay.
-            var more = window.GetVisualDescendants().OfType<ToolbarButton>().First(b => b.Text == "More values");
+            var more = window.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Insert a value");
             more.Flyout!.ShowAt(more);
             Dispatcher.UIThread.RunJobs();
             Capture(window, outDir, "overlays-modifiers" + suffix + ".png");
@@ -92,6 +91,23 @@ public sealed class HeadlessTests
             Assert.DoesNotContain(Buttons(window), b => b.Classes.Contains("primary"));
             Capture(window, outDir, "overlays-remove" + suffix + ".png");
             window.Close();
+
+            // Many cameras, some without text overlays: the summary counts them.
+            IReadOnlyList<IDeviceInfo> many = [.. Enumerable.Range(0, 250).Select(i => (IDeviceInfo)(i % 36 == 5
+                ? new Oadm.Sdk.Testing.FakeDevice { Address = $"10.0.1.{i}", Apis = [new Oadm.Sdk.Vapix.DeviceApi("param-cgi", "1.0")] }
+                : Fixtures.Camera($"10.0.1.{i}")))];
+            var big = ViewModelTests.Dialog(many);
+            await big.LoadAsync(CancellationToken.None);
+            big.Rows[0].Text = "%F %X";
+            big.AddOverlayCommand.Execute(null);
+            big.Rows[1].Text = "#n";
+            big.Rows[1].SelectedPosition = big.Rows[1].Positions.Single(p => p.Position == OverlayPosition.TopRight);
+            var bigWindow = new OverlaysWindow { DataContext = big };
+            bigWindow.Show();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("250 devices: 243 compatible, 7 not supported", big.DevicesText);
+            Capture(bigWindow, outDir, "overlays-many" + suffix + ".png");
+            bigWindow.Close();
             return true;
         }, CancellationToken.None);
 

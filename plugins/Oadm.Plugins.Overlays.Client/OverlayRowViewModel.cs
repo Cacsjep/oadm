@@ -70,8 +70,10 @@ public sealed record OverlayLimits(int MaxTextLength, int MinFontSize, int MaxFo
         ? Default
         : new(capabilities.MaxTextLength, capabilities.MinFontSize ?? OverlayRules.MinFontSize, capabilities.MaxFontSize ?? OverlayRules.MaxFontSize);
 
-    /// <summary>The Size field's hint: the camera's range ("16 to 200"); none before a camera was read. Empty is the default (placeholder).</summary>
-    public string? SizeHint => this == Default ? null : string.Create(CultureInfo.InvariantCulture, $"{MinFontSize} to {MaxFontSize}");
+    /// <summary>The Size header's tooltip: the camera's range, and that empty is its default.</summary>
+    public string SizeTip => this == Default
+        ? "Empty: the camera's default"
+        : string.Create(CultureInfo.InvariantCulture, $"{MinFontSize} to {MaxFontSize}; empty: the camera's default");
 }
 
 /// <summary>
@@ -144,9 +146,6 @@ public sealed partial class OverlayRowViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial bool ShowStyle { get; set; } = true;
 
-    /// <summary>The Size field's hint with the camera's range.</summary>
-    public string? SizeHint => _limits().SizeHint;
-
     /// <summary>Raised after any input changed (the dialog sums up).</summary>
     public event EventHandler? Changed;
 
@@ -179,7 +178,6 @@ public sealed partial class OverlayRowViewModel : ValidatingViewModel
     public void Revalidate()
     {
         Validation.Validate();
-        OnPropertyChanged(nameof(SizeHint));
     }
 
     public TextOverlay ToOverlay() => new()

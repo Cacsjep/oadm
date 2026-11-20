@@ -78,7 +78,7 @@ public sealed class ViewModelTests
         vm.Rows[0].Text = "x";
         vm.Rows[0].SizeText = "300";
         Assert.Equal(OverlayRules.SizeRange(16, 200), vm.Rows[0].ErrorOf(nameof(OverlayRowViewModel.SizeText)));
-        Assert.Equal("16 to 200", vm.Rows[0].SizeHint);
+        Assert.Equal("16 to 200; empty: the camera's default", vm.SizeTip);
         Assert.False(vm.CanApply);
     }
 
@@ -109,6 +109,7 @@ public sealed class ViewModelTests
 
         Assert.Equal(OverlayRules.MaxOverlays, vm.Rows.Count);
         Assert.False(vm.AddOverlayCommand.CanExecute(null));
+        Assert.Equal(OverlayRules.TooMany, vm.AddOverlayTip);
 
         while (vm.Rows.Count > 0)
         {

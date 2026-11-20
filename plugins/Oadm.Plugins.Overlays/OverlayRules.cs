@@ -33,7 +33,7 @@ public static class OverlayRules
 
     public static string TooLong(int max) => string.Create(CultureInfo.InvariantCulture, $"At most {max} characters.");
 
-    public static string SizeRange(int min, int max) => string.Create(CultureInfo.InvariantCulture, $"Enter a size from {min} to {max}.");
+    public static string SizeRange(int min, int max) => string.Create(CultureInfo.InvariantCulture, $"Enter {min} to {max}.");
 
     /// <summary>Every problem of the payload, at its JSON field ("overlays[1].text"); empty when it can run.</summary>
     public static IReadOnlyList<PayloadError> Check(OverlaysPayload payload)

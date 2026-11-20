@@ -59,6 +59,7 @@ public sealed partial class OverlaysDialogViewModel : ValidatingViewModel
             OnPropertyChanged(nameof(HasRows));
             OnPropertyChanged(nameof(ShowEmptyLine));
             AddOverlayCommand.NotifyCanExecuteChanged();
+            OnPropertyChanged(nameof(AddOverlayTip));
             Validation.Touch(OverlaysField);
             Update();
         };
@@ -179,6 +180,12 @@ public sealed partial class OverlaysDialogViewModel : ValidatingViewModel
 
     /// <summary>The limits used for the checks (the camera read last, else the API's).</summary>
     public OverlayLimits Limits => _limits;
+
+    /// <summary>The Size header's tooltip ("16 to 200; empty: the camera's default").</summary>
+    public string SizeTip => _limits.SizeTip;
+
+    /// <summary>Why Add overlay is disabled (its tooltip); null while it can add.</summary>
+    public string? AddOverlayTip => CanAddOverlay() ? null : OverlayRules.TooMany;
 
     /// <summary>Reads the limits of the first compatible selected camera. Never throws: the dialog works without them.</summary>
     public async Task LoadAsync(CancellationToken ct)
@@ -363,6 +370,7 @@ public sealed partial class OverlaysDialogViewModel : ValidatingViewModel
         }
 
         OnPropertyChanged(nameof(Limits));
+        OnPropertyChanged(nameof(SizeTip));
         Update();
     }
 
