@@ -1,0 +1,6 @@
+# oadm-site-node pre: the system user oadm-site-node (never root), before its files and unit are installed.
+if ! getent passwd oadm-site-node >/dev/null; then
+    useradd --system --user-group --home-dir /var/lib/oadm-site-node --no-create-home --shell /usr/sbin/nologin \
+        --comment "OADM Site Node" oadm-site-node
+fi
+exit 0

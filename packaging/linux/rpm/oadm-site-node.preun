@@ -1,0 +1,10 @@
+# oadm-site-node preun ($1: 0 removal, 1 upgrade): stop and disable the node on removal only.
+if [ "$1" -eq 0 ]; then
+    if [ -d /run/systemd/system ]; then
+        systemctl stop oadm-site-node.service >/dev/null 2>&1 || :
+    fi
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl disable oadm-site-node.service >/dev/null 2>&1 || :
+    fi
+fi
+exit 0

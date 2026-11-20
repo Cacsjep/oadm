@@ -186,6 +186,8 @@ Targets:
             features Server and Client (msiexec ... ADDLOCAL=Client for the client only)
   linux     oadm-server_<version>_<arch>.deb and oadm-client_<version>_<arch>.deb (dpkg-deb;
             both = server and client). Needs dpkg-deb: Debian, Ubuntu or a container.
+            With rpmbuild (package rpm) also oadm-server-<version>-1.<arch>.rpm and
+            oadm-client-<version>-1.<arch>.rpm (Fedora, RHEL).
             /opt/oadm, systemd unit oadm-server.service
   macos     OADM-<version>-<rid>.pkg (pkgbuild, productbuild). Needs macOS.
             /Applications/OADM.app, LaunchDaemon com.oadm.server (choice "OADM server");
@@ -194,7 +196,8 @@ Targets:
             site-node-app, then OADM-SiteNode-<version>-win-x64.msi (Windows, WiX Toolset;
             service "OADM Site Node", msiexec ... SERVER=<address> sets the server) or
             oadm-site-node_<version>_<arch>.deb and oadm-site-node-app_<version>_<arch>.deb (Linux,
-            dpkg-deb). --rid win-x64, linux-x64 or linux-arm64; no macOS
+            dpkg-deb; with rpmbuild also the .rpm packages). --rid win-x64, linux-x64 or
+            linux-arm64; no macOS
   addons    Every add-on plugin (<OadmAddOn>true</OadmAddOn>, server and client part) published
             into artifacts/publish/addons/<rid>/<plugin id>/ with the native libraries of
             that platform only, then oadm-addon-<plugin id>-<version>-<rid>.zip (the folder's

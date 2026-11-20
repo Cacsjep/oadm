@@ -623,7 +623,7 @@ function Invoke-PackageNuget {
 # The OADM Site Node (docs/spec/sites.md, "Packaging"): service and app published self-contained single-file into
 # artifacts/publish/site-node/<rid> and artifacts/publish/site-node-app/<rid> with their notices (no LGPL part), then
 # OADM-SiteNode-<version>-win-x64.msi (Windows) or oadm-site-node_<version>_<arch>.deb and
-# oadm-site-node-app_<version>_<arch>.deb (Linux) in artifacts/packages.
+# oadm-site-node-app_<version>_<arch>.deb (Linux; with rpmbuild also the .rpm packages) in artifacts/packages.
 function Invoke-PackageSiteNode {
     Initialize-Dotnet
     $isWin = ($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows
@@ -649,6 +649,10 @@ function Invoke-PackageSiteNode {
     } else {
         & bash (Join-Path $RepoRoot 'packaging/linux/build-site-node-deb.sh') $script:Rid (Get-Version) $node $app $out
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        if (Test-Command 'rpmbuild') {
+            & bash (Join-Path $RepoRoot 'packaging/linux/build-site-node-rpm.sh') $script:Rid (Get-Version) $node $app $out
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        } else { Write-Host 'note: rpmbuild not found, no .rpm packages (install the package rpm)' }
     }
     Write-Host "site node packages written to $out"
 }
@@ -796,6 +800,12 @@ function Invoke-Package {
         $builder = if ($prefix -eq 'linux') { 'packaging/linux/build-deb.sh' } else { 'packaging/macos/build-pkg.sh' }
         & bash (Join-Path $RepoRoot $builder) $script:Rid $version $server $client $out
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        if ($prefix -eq 'linux') {
+            if (Test-Command 'rpmbuild') {
+                & bash (Join-Path $RepoRoot 'packaging/linux/build-rpm.sh') $script:Rid $version $server $client $out
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            } else { Write-Host 'note: rpmbuild not found, no .rpm packages (install the package rpm)' }
+        }
     }
     Write-Host "package written to $out"
 }

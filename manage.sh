@@ -567,7 +567,7 @@ package_nuget() {
 # The OADM Site Node (docs/spec/sites.md, "Packaging"): service and app published self-contained single-file into
 # artifacts/publish/site-node/<rid> and artifacts/publish/site-node-app/<rid> with their notices (no LGPL part), then
 # OADM-SiteNode-<version>-win-x64.msi (Windows) or oadm-site-node_<version>_<arch>.deb and
-# oadm-site-node-app_<version>_<arch>.deb (Linux) in artifacts/packages.
+# oadm-site-node-app_<version>_<arch>.deb (Linux; with rpmbuild also the .rpm packages) in artifacts/packages.
 package_site_node() {
   local os arch out node app
   case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) os=win ;; Linux*) os=linux ;; *) os=other ;; esac
@@ -595,7 +595,13 @@ package_site_node() {
       "$DOTNET" build "$(cygpath -w "$REPO_ROOT/packaging/windows/site-node/Oadm.SiteNode.Installer.wixproj")" -c Release --no-incremental \
         "-p:OadmVersion=$(app_version)" "-p:OadmNodeDir=$(cygpath -w "$node")" "-p:OadmAppDir=$(cygpath -w "$app")" \
         "-p:OadmPackageDir=$(cygpath -w "$out")" ;;
-    linux-*) bash "$REPO_ROOT/packaging/linux/build-site-node-deb.sh" "$RID" "$(app_version)" "$node" "$app" "$out" ;;
+    linux-*)
+      bash "$REPO_ROOT/packaging/linux/build-site-node-deb.sh" "$RID" "$(app_version)" "$node" "$app" "$out"
+      if command -v rpmbuild >/dev/null 2>&1; then
+        bash "$REPO_ROOT/packaging/linux/build-site-node-rpm.sh" "$RID" "$(app_version)" "$node" "$app" "$out"
+      else
+        echo "note: rpmbuild not found, no .rpm packages (install the package rpm)"
+      fi ;;
   esac
   echo "site node packages written to $out"
 }
@@ -759,7 +765,13 @@ cmd_package() {
       "$DOTNET" build "$(cygpath -w "$REPO_ROOT/packaging/windows/Oadm.Installer.wixproj")" -c Release --no-incremental \
         "-p:OadmVersion=$(app_version)" "-p:OadmRid=$RID" "-p:OadmServerDir=$(cygpath -w "$server")" \
         "-p:OadmClientDir=$(cygpath -w "$client")" "-p:OadmPackageDir=$(cygpath -w "$out")" ;;
-    linux) bash "$REPO_ROOT/packaging/linux/build-deb.sh" "$RID" "$(app_version)" "$server" "$client" "$out" ;;
+    linux)
+      bash "$REPO_ROOT/packaging/linux/build-deb.sh" "$RID" "$(app_version)" "$server" "$client" "$out"
+      if command -v rpmbuild >/dev/null 2>&1; then
+        bash "$REPO_ROOT/packaging/linux/build-rpm.sh" "$RID" "$(app_version)" "$server" "$client" "$out"
+      else
+        echo "note: rpmbuild not found, no .rpm packages (install the package rpm)"
+      fi ;;
     osx) bash "$REPO_ROOT/packaging/macos/build-pkg.sh" "$RID" "$(app_version)" "$server" "$client" "$out" ;;
   esac
   echo "package written to $out"

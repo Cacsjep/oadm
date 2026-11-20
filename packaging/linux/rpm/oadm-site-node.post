@@ -1,0 +1,17 @@
+# oadm-site-node post ($1: 1 install, 2 upgrade): its data folder, then enable and (re)start oadm-site-node.service like
+# the .deb. Works without systemd (containers): the unit is enabled for a later boot.
+mkdir -p /var/lib/oadm-site-node
+chown oadm-site-node:oadm-site-node /var/lib/oadm-site-node
+chmod 0700 /var/lib/oadm-site-node
+if [ "$1" -eq 1 ] && command -v systemctl >/dev/null 2>&1; then
+    systemctl enable oadm-site-node.service >/dev/null 2>&1 || :
+fi
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload >/dev/null 2>&1 || :
+    if [ "$1" -eq 1 ]; then action=start; else action=restart; fi
+    systemctl "$action" oadm-site-node.service >/dev/null 2>&1 || :
+else
+    echo "oadm-site-node: systemd is not running; start the node with:"
+    echo "  sudo -u oadm-site-node OADM_SITE_NODE_DATA_DIR=/var/lib/oadm-site-node /opt/oadm/site-node/oadm-site-node"
+fi
+exit 0

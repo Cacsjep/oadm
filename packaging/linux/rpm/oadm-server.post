@@ -1,0 +1,16 @@
+# oadm-server post ($1: 1 install, 2 upgrade): data folder, then enable and (re)start oadm-server.service like the .deb.
+# Works without systemd (containers): the unit is enabled for a later boot, nothing is started.
+mkdir -p /var/lib/oadm
+chmod 0700 /var/lib/oadm
+if [ "$1" -eq 1 ] && command -v systemctl >/dev/null 2>&1; then
+    systemctl enable oadm-server.service >/dev/null 2>&1 || :
+fi
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload >/dev/null 2>&1 || :
+    if [ "$1" -eq 1 ]; then action=start; else action=restart; fi
+    systemctl "$action" oadm-server.service >/dev/null 2>&1 || :
+else
+    echo "oadm: systemd is not running; start the server with:"
+    echo "  OADM_DATA_DIR=/var/lib/oadm /opt/oadm/server/Oadm.Server"
+fi
+exit 0

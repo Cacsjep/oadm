@@ -3,11 +3,12 @@ name: release
 # The one CI workflow (replaces ci.yml and package.yml). Runs only for release tags (v0.0.1, v1.2.0, ...):
 #   1. tests      build and unit tests on Windows, Linux and macOS (like "manage test unit", one run; hang
 #                 detection 5 min)
-#   2. installers MSI (Windows), .deb packages (Linux amd64 and arm64), .pkg (macOS Intel), built with "manage package"; the MSI
+#   2. installers MSI (Windows), .deb and .rpm packages (Linux amd64 and arm64), .pkg (macOS Intel), built with "manage package"; the MSI
 #                 and the .deb packages are installed, checked and removed again, both as "Server and client" and as
-#                 "Client only" (the MSI in the job smoke-windows); the .pkg is checked without installing it
+#                 "Client only" (the MSI in the job smoke-windows); the .rpm packages with dnf in Fedora and AlmaLinux
+#                 containers; the .pkg is checked without installing it
 #                 plus the portable ZIPs of the server and client publish folders per platform (plugin development);
-#                 the OADM Site Node too: its MSI (installed by smoke-windows-node) and its .deb packages (amd64, arm64,
+#                 the OADM Site Node too: its MSI (installed by smoke-windows-node) and its .deb and .rpm packages (amd64, arm64,
 #                 installed, checked and removed here); no portable ZIP and no macOS package for the node;
 #                 the add-on ZIPs oadm-addon-<id>-<version>-<rid>.zip of each platform (docs/spec/add-ons.md), checked,
 #                 and no add-on folder in any installer or portable ZIP
@@ -106,8 +107,8 @@ jobs:
         # is checked without installing it.
         include:
           - { os: windows-latest, target: windows, rid: win-x64, smoke: false } # installed by the job smoke-windows
-          - { os: ubuntu-latest, target: linux, rid: linux-x64, deb: amd64, smoke: true }
-          - { os: ubuntu-24.04-arm, target: linux, rid: linux-arm64, deb: arm64, smoke: true }
+          - { os: ubuntu-latest, target: linux, rid: linux-x64, deb: amd64, rpm: x86_64, smoke: true }
+          - { os: ubuntu-24.04-arm, target: linux, rid: linux-arm64, deb: arm64, rpm: aarch64, smoke: true }
           - { os: macos-latest, target: macos, rid: osx-x64, smoke: false }
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
@@ -154,6 +155,15 @@ jobs:
         shell: bash
         run: ./manage.sh package addons --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
 
+      # rpmbuild for the .rpm packages next to the .deb ones (manage package linux and site-node build both when it is
+      # there); desktop-file-validate for the menu entries.
+      - name: Install rpmbuild (Linux)
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq rpm cpio desktop-file-utils
+          rpmbuild --version
+
       - name: Build package (Windows)
         if: matrix.target == 'windows'
         shell: pwsh
@@ -164,7 +174,7 @@ jobs:
         shell: bash
         run: ./manage.sh package ${{ matrix.target }} --rid ${{ matrix.rid }} --version ${{ steps.version.outputs.version }}
 
-      # The OADM Site Node (docs/spec/sites.md, "Packaging"): the MSI on Windows, both .deb packages on each Linux runner.
+      # The OADM Site Node (docs/spec/sites.md, "Packaging"): the MSI on Windows, the .deb and .rpm packages on each Linux runner.
       - name: Build site node package (Windows)
         if: matrix.target == 'windows'
         shell: pwsh
@@ -369,6 +379,14 @@ jobs:
           for p in oadm-server oadm-client; do dpkg-deb --contents artifacts/packages/${p}_*_${{ matrix.deb }}.deb | grep -q "usr/share/doc/$p/TERMS.md"; done
           ! dpkg-deb --contents artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb | grep -q 'oadm-server.service'
           dpkg-deb --contents artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb | grep -q '/opt/oadm/client/docs/index.html$'
+          # Menu entries and the icon in every size (16 to 512 px).
+          dpkg-deb --fsys-tarfile artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb | tar -xO ./usr/share/applications/oadm.desktop > oadm.desktop
+          dpkg-deb --fsys-tarfile artifacts/packages/oadm-site-node-app_*_${{ matrix.deb }}.deb | tar -xO ./usr/share/applications/oadm-site-node.desktop > oadm-site-node.desktop
+          desktop-file-validate oadm.desktop oadm-site-node.desktop
+          for n in 16 24 32 48 64 128 256 512; do
+            dpkg-deb --contents artifacts/packages/oadm-client_*_${{ matrix.deb }}.deb | grep -q "usr/share/icons/hicolor/${n}x${n}/apps/oadm.png$"
+            dpkg-deb --contents artifacts/packages/oadm-site-node-app_*_${{ matrix.deb }}.deb | grep -q "usr/share/icons/hicolor/${n}x${n}/apps/oadm-site-node.png$"
+          done
           ! dpkg-deb --contents artifacts/packages/oadm-server_*_${{ matrix.deb }}.deb | grep -q '/opt/oadm/server/docs/'
           # No add-on folder (docs/spec/add-ons.md rule 1).
           for id in $(bash packaging/addons/addon-ids.sh); do
@@ -393,6 +411,79 @@ jobs:
           grep -qx 'User=oadm-site-node' node.service
           grep -qx 'RuntimeDirectory=oadm-site-node' node.service
           grep -qx 'AmbientCapabilities=CAP_NET_BIND_SERVICE' node.service
+
+      # The same files, units and desktop entries as the .deb packages (docs/spec/packaging.md "Installers").
+      - name: Inspect .rpm packages
+        if: matrix.target == 'linux'
+        run: |
+          rpms=artifacts/packages
+          arch=${{ matrix.rpm }}
+          for p in oadm-server oadm-client oadm-site-node oadm-site-node-app; do
+            rpm=$(ls $rpms/$p-[0-9]*.$arch.rpm)
+            rpm -qip "$rpm"
+            rpm -qp --requires "$rpm"
+            rpm -qlp "$rpm" > "$p.files"
+            # No add-on folder (docs/spec/add-ons.md rule 1).
+            for id in $(bash packaging/addons/addon-ids.sh); do
+              ! grep -qF "/plugins/$id/" "$p.files" || { echo "$p: add-on $id must not be in it"; exit 1; }
+            done
+          done
+          grep -qx /opt/oadm/server/Oadm.Server oadm-server.files
+          grep -qx /opt/oadm/server/oadm-rpm.txt oadm-server.files
+          grep -qx /usr/lib/systemd/system/oadm-server.service oadm-server.files
+          grep -qx /usr/share/doc/oadm-server/TERMS.md oadm-server.files
+          grep -qx /usr/share/doc/oadm-server/THIRD-PARTY-NOTICES.txt oadm-server.files
+          ! grep -q '/opt/oadm/server/docs/' oadm-server.files
+          grep -qx /opt/oadm/client/Oadm.Client oadm-client.files
+          grep -qx /opt/oadm/client/oadm-rpm.txt oadm-client.files
+          grep -qx /opt/oadm/client/docs/index.html oadm-client.files
+          grep -qx /usr/bin/oadm-client oadm-client.files
+          grep -qx /usr/share/applications/oadm.desktop oadm-client.files
+          grep -qx /usr/share/doc/oadm-client/LGPL-2.1.txt oadm-client.files
+          ! grep -q 'oadm-server.service' oadm-client.files
+          grep -qx /usr/lib/systemd/system/oadm-site-node.service oadm-site-node.files
+          grep -qx /usr/bin/oadm-site-node oadm-site-node.files
+          grep -qx /usr/share/applications/oadm-site-node.desktop oadm-site-node-app.files
+          ! grep -q LGPL oadm-site-node.files
+          ! grep -q LGPL oadm-site-node-app.files
+          for n in 16 24 32 48 64 128 256 512; do
+            grep -qx "/usr/share/icons/hicolor/${n}x${n}/apps/oadm.png" oadm-client.files
+            grep -qx "/usr/share/icons/hicolor/${n}x${n}/apps/oadm-site-node.png" oadm-site-node-app.files
+          done
+          rpm -qp --requires $rpms/oadm-site-node-app-[0-9]*.$arch.rpm | grep -q '^oadm-site-node = '
+          rpm -qp --scripts $rpms/oadm-server-[0-9]*.$arch.rpm | grep -q 'systemctl enable oadm-server.service'
+          rpm -qp --scripts $rpms/oadm-site-node-[0-9]*.$arch.rpm | grep -q 'useradd --system'
+          # The executables keep their mode, every file belongs to root.
+          rpm -qlvp $rpms/oadm-server-[0-9]*.$arch.rpm | grep -E ' /opt/oadm/server/Oadm.Server$' | grep -q '^-rwxr-xr-x .*root *root'
+          rpm2cpio $rpms/oadm-client-[0-9]*.$arch.rpm | (mkdir -p rpm-client && cd rpm-client && cpio -idm --quiet)
+          cmp rpm-client/usr/share/applications/oadm.desktop oadm.desktop
+
+      # Fedora and a RHEL rebuild install the .rpm packages with dnf (no systemd in the container: the scriptlets enable
+      # the units for a later boot), the apps pass their self checks, removal keeps the data folders.
+      - name: Smoke test (RPM, Fedora and AlmaLinux)
+        if: matrix.target == 'linux' && matrix.smoke
+        run: |
+          for image in fedora:latest almalinux:9; do
+            echo "::group::$image"
+            docker run --rm -v "$PWD/artifacts/packages:/pkgs:ro" "$image" bash -euxc '
+              arch=$(uname -m)
+              dnf install -y -q /pkgs/oadm-server-[0-9]*.$arch.rpm /pkgs/oadm-client-[0-9]*.$arch.rpm
+              test -d /var/lib/oadm && test "$(stat -c %a /var/lib/oadm)" = 700
+              test -L /usr/bin/oadm-client && test -f /opt/oadm/client/docs/index.html && test ! -e /opt/oadm/server/docs
+              oadm-client --check-decoder
+              oadm-client --self-check
+              /opt/oadm/server/Oadm.Server --self-check
+              dnf remove -y -q oadm-client oadm-server
+              test ! -e /usr/bin/oadm-client && test ! -e /opt/oadm/server/Oadm.Server && test -d /var/lib/oadm
+              dnf install -y -q /pkgs/oadm-site-node-[0-9]*.$arch.rpm /pkgs/oadm-site-node-app-[0-9]*.$arch.rpm
+              getent passwd oadm-site-node
+              test "$(stat -c %U:%a /var/lib/oadm-site-node)" = oadm-site-node:700
+              test -L /usr/bin/oadm-site-node && test -x /opt/oadm/site-node-app/oadm-site-node-app
+              dnf remove -y -q oadm-site-node-app oadm-site-node
+              test ! -e /usr/bin/oadm-site-node && test -d /var/lib/oadm-site-node
+            '
+            echo "::endgroup::"
+          done
 
       - name: Check .pkg choices (macOS, not installed)
         if: matrix.target == 'macos'

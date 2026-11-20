@@ -1,0 +1,12 @@
+# oadm-site-node postun ($1: 0 removal, 1 upgrade). The data folder /var/lib/oadm-site-node (the node's identity: a
+# bound node stays bound after a reinstall) and the user oadm-site-node are kept; delete them by hand when no longer needed.
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload >/dev/null 2>&1 || :
+fi
+if [ "$1" -eq 0 ]; then
+    rm -rf /var/cache/oadm-site-node
+    if [ -d /var/lib/oadm-site-node ]; then
+        echo "oadm-site-node: the data folder /var/lib/oadm-site-node was kept (identity, settings, logs)."
+    fi
+fi
+exit 0
