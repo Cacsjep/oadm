@@ -1,0 +1,86 @@
+
+
+{
+    "apiVersion": "1.10",
+    "context": "oadm",
+    "data": {
+        "imageFiles": [
+            "/etc/overlays/axis(128x44).ovl"
+        ],
+        "imageOverlays": [],
+        "textOverlays": [
+            {
+                "camera": 1,
+                "fontSize": 48,
+                "identity": 2,
+                "indicator": "",
+                "indicatorBG": "transparent",
+                "indicatorColor": "white",
+                "indicatorOL": "black",
+                "indicatorSize": 48,
+                "position": [
+                    0.5,
+                    -0.5
+                ],
+                "ptPosition": [
+                    0.0,
+                    0.0
+                ],
+                "reference": "channel",
+                "rotation": 0,
+                "scalable": true,
+                "scrollSpeed": 0,
+                "size": [
+                    992,
+                    48
+                ],
+                "text": "OADM test 67756934 encoded%0Abreak #n",
+                "textBGColor": "transparent",
+                "textColor": "white",
+                "textLength": 0,
+                "textOLColor": "black",
+                "visible": true,
+                "zIndex": 0,
+                "zoomInterval": [
+                    1.0,
+                    19999.0
+                ]
+            },
+            {
+                "camera": 1,
+                "fontSize": 32,
+                "identity": 1,
+                "indicator": "",
+                "indicatorBG": "transparent",
+                "indicatorColor": "white",
+                "indicatorOL": "black",
+                "indicatorSize": 48,
+                "position": "bottomLeft",
+                "ptPosition": [
+                    0.0,
+                    0.0
+                ],
+                "reference": "channel",
+                "rotation": 0,
+                "scalable": true,
+                "scrollSpeed": 0,
+                "size": [
+                    320,
+                    62
+                ],
+                "text": "OADM test 67756934 real\nbreak %F %X",
+                "textBGColor": "semiTransparent",
+                "textColor": "white",
+                "textLength": 0,
+                "textOLColor": "black",
+                "visible": true,
+                "zIndex": 0,
+                "zoomInterval": [
+                    1.0,
+                    19999.0
+                ]
+            }
+        ]
+    },
+    "method": "list"
+}

@@ -1,0 +1,10 @@
+
+{
+    "apiVersion": "1.10",
+    "context": "oadm",
+    "error": {
+        "code": 102,
+        "message": "Mandatory parameter(s) missing"
+    },
+    "method": "list"
+}

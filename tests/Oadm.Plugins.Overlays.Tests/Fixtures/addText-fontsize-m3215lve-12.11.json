@@ -1,0 +1,11 @@
+
+
+{
+    "apiVersion": "1.10",
+    "context": "oadm",
+    "error": {
+        "code": 309,
+        "message": "Invalid value for parameter font size"
+    },
+    "method": "addText"
+}

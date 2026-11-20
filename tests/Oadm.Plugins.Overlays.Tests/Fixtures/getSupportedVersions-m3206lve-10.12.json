@@ -1,0 +1,12 @@
+
+{
+    "context": "oadm",
+    "data": {
+        "apiVersions": [
+            "1.0",
+            "1.6",
+            "1.7"
+        ]
+    },
+    "method": "getSupportedVersions"
+}

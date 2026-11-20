@@ -467,6 +467,7 @@ public sealed partial class CanaryTests
         ["oadm.datetime"] = TaskPluginOnly,
         ["oadm.firmware"] = TaskPluginOnly,
         ["oadm.network"] = TaskPluginOnly + "; the address check: Oadm.Plugins.Network.Tests DeviceGroupTests",
+        ["oadm.overlays"] = TaskPluginOnly,
         ["oadm.restart"] = TaskPluginOnly,
         ["oadm.users"] = TaskPluginOnly,
     };

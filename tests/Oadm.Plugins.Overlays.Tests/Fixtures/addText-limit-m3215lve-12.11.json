@@ -1,0 +1,9 @@
+{
+    "apiVersion": "1.10",
+    "context": "oadm",
+    "error": {
+        "code": 300,
+        "message": "Unable to create overlay (limit reached)"
+    },
+    "method": "addText"
+}

@@ -1,0 +1,13 @@
+
+{
+    "apiVersion": "1.10",
+    "context": "oadm",
+    "data": {
+        "imageFiles": [
+            "/etc/overlays/axis(128x44).ovl"
+        ],
+        "imageOverlays": [],
+        "textOverlays": []
+    },
+    "method": "list"
+}

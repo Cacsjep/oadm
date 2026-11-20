@@ -1,0 +1,13 @@
+{
+  "apiVersion": "1.0",
+  "context": "oadm",
+  "method": "getOverlayCapabilities",
+  "data": {
+    "maxFontSize": 200,
+    "minFontSize": 16,
+    "maxTextLength": 512,
+    "numberAvailbleSlots": 16,
+    "slotsPerTextOverlay": 2,
+    "slotsPerImageOverlay": 1
+  }
+}

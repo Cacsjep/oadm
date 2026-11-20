@@ -1,0 +1,11 @@
+
+
+{
+    "apiVersion": "1.10",
+    "context": "oadm",
+    "error": {
+        "code": 302,
+        "message": "Invalid value for parameter identity"
+    },
+    "method": "remove"
+}

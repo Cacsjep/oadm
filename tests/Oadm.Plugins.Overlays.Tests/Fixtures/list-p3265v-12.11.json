@@ -1,0 +1,51 @@
+
+{
+    "apiVersion": "1.10",
+    "context": "oadm",
+    "data": {
+        "imageFiles": [
+            "/etc/overlays/axis(128x44).ovl"
+        ],
+        "imageOverlays": [],
+        "textOverlays": [
+            {
+                "camera": 1,
+                "fontSize": 48,
+                "identity": 1,
+                "indicator": "",
+                "indicatorBG": "transparent",
+                "indicatorColor": "white",
+                "indicatorOL": "black",
+                "indicatorSize": 48,
+                "position": [
+                    -0.25,
+                    -0.5
+                ],
+                "ptPosition": [
+                    0.0,
+                    0.0
+                ],
+                "reference": "channel",
+                "rotation": 0,
+                "scalable": true,
+                "scrollSpeed": 0,
+                "size": [
+                    16,
+                    48
+                ],
+                "text": "",
+                "textBGColor": "transparent",
+                "textColor": "white",
+                "textLength": 0,
+                "textOLColor": "black",
+                "visible": true,
+                "zIndex": 0,
+                "zoomInterval": [
+                    1.0,
+                    19999.0
+                ]
+            }
+        ]
+    },
+    "method": "list"
+}

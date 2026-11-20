@@ -1,0 +1,23 @@
+
+{
+    "apiVersion": "1.10",
+    "context": "oadm",
+    "data": {
+        "maxFontSize": 200,
+        "maxImageHeight": 2160,
+        "maxImageSize": 2073600,
+        "maxImageWidth": 3840,
+        "maxTextLength": 512,
+        "minFontSize": 16,
+        "numAvailableSlots": 8,
+        "rotationSupported": true,
+        "scrollingTextSupported": true,
+        "slotsPerImageOverlay": 1,
+        "slotsPerOverlay": 1,
+        "slotsPerTextOverlay": 1,
+        "supportedReferences": [
+            "channel"
+        ]
+    },
+    "method": "getOverlayCapabilities"
+}
