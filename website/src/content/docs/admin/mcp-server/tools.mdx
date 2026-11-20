@@ -58,7 +58,7 @@ and runs after the user agreed.
 | Tool | Kind | What it does |
 | --- | --- | --- |
 | `oadm_task_preview` | Preview | Checks the input and shows what the task would do on the filter's devices; nothing is changed. Show the plan and the skipped reasons to the user, then call oadm_task_run with the handle. |
-| `oadm_task_query` | Change | What a task's dialog reads from one device before a change: the users, the network settings, the applications, the time settings, the certificates or the AXIS OS status. Read only. |
+| `oadm_task_query` | Change | What a task's dialog reads from one device before a change: the users, the network settings, the applications, the time settings, the text overlays, the certificates or the AXIS OS status. Read only. |
 | `oadm_task_run` | Run (changes) | Runs the task of a preview on its devices, one task per device. Follow them with oadm_tasks_list and the batch. |
 | `oadm_tasks_cancel_preview` | Preview | Shows which tasks of a run or of a list of ids are still waiting or running and would be cancelled; nothing is changed. Show it to the user, then call oadm_tasks_cancel_run with the handle. |
 | `oadm_tasks_cancel_run` | Run (changes) | Cancels the tasks of a preview. A running task stops at its next safe point, so a device may be left half done. |

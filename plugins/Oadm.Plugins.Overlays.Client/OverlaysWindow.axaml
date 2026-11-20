@@ -1,0 +1,127 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Overlays.Client"
+        x:Class="Oadm.Plugins.Overlays.Client.OverlaysWindow"
+        x:DataType="vm:OverlaysDialogViewModel"
+        Title="Text overlays"
+        Width="980" Height="860"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Title bar, the overlays card (a list of outlined rows like the rule dialog's actions, Add overlay below it), the card
+       "On each camera" (Add, Replace, Remove), footer. Shared controls and theme classes only; every error below its field. -->
+  <Grid RowDefinitions="Auto,*,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="Text overlays" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,Auto,*">
+        <ui:CardHeader Title="Overlays" Description="{Binding DevicesText}">
+          <Button Classes="secondary" Command="{Binding ReadFromCameraCommand}" IsEnabled="{Binding !IsLoading}">
+            <ui:IconLabel Icon="{DynamicResource Icon.devices}" Text="Read from a camera" />
+          </Button>
+        </ui:CardHeader>
+        <ui:StatusChip Grid.Row="1" Text="{Binding ReadStatus}" IsInfo="{Binding !ReadFailed}" IsError="{Binding ReadFailed}" MaxLines="2"
+                       IsVisible="{Binding HasReadStatus}" Margin="0,0,0,8" />
+
+        <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
+          <!-- Room on the right for the scroll bar, so it never covers a row's border -->
+          <StackPanel Spacing="12" Margin="0,0,12,0">
+            <ItemsControl ItemsSource="{Binding Rows}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><StackPanel Spacing="12" /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:OverlayRowViewModel">
+                  <Border Classes="ruleItem">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                      <StackPanel Spacing="8">
+                        <ui:FormField Label="Text" LabelAbove="True">
+                          <TextBox Text="{Binding Text}" CaretIndex="{Binding CaretIndex}" AcceptsReturn="True" TextWrapping="Wrap"
+                                   MinHeight="56" MaxHeight="96" PlaceholderText="Text, date, time or camera name" />
+                        </ui:FormField>
+                        <WrapPanel Orientation="Horizontal" ItemSpacing="4">
+                          <ui:ToolbarButton Text="Date" IconKey="calendarClock" Command="{Binding InsertCommand}" CommandParameter="{x:Static vm:OverlayModifiers.Date}"
+                                            ToolTip.Tip="Insert the date (%F)" />
+                          <ui:ToolbarButton Text="Time" IconKey="clock" Command="{Binding InsertCommand}" CommandParameter="{x:Static vm:OverlayModifiers.Time}"
+                                            ToolTip.Tip="Insert the time (%X)" />
+                          <ui:ToolbarButton x:Name="MoreValues" Text="More values" IconKey="chevronDown">
+                            <ui:ToolbarButton.Flyout>
+                              <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                                <MenuItem Header="Day of the week" Command="{Binding InsertCommand}" CommandParameter="{x:Static vm:OverlayModifiers.DayOfWeek}" />
+                                <MenuItem Header="Date and time" Command="{Binding InsertCommand}" CommandParameter="{x:Static vm:OverlayModifiers.DateAndTime}" />
+                                <MenuItem Header="Camera name" Command="{Binding InsertCommand}" CommandParameter="{x:Static vm:OverlayModifiers.CameraName}" />
+                                <MenuItem Header="IP address" Command="{Binding InsertCommand}" CommandParameter="{x:Static vm:OverlayModifiers.IpAddress}" />
+                                <MenuItem Header="MAC address" Command="{Binding InsertCommand}" CommandParameter="{x:Static vm:OverlayModifiers.MacAddress}" />
+                                <MenuItem Header="Frame rate" Command="{Binding InsertCommand}" CommandParameter="{x:Static vm:OverlayModifiers.FrameRate}" />
+                                <MenuItem Header="Bitrate" Command="{Binding InsertCommand}" CommandParameter="{x:Static vm:OverlayModifiers.Bitrate}" />
+                                <MenuItem Header="Dynamic text" ItemsSource="{Binding DynamicTextActions}">
+                                  <MenuItem.ItemContainerTheme>
+                                    <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="vm:ModifierAction">
+                                      <Setter Property="Header" Value="{Binding Name}" />
+                                      <Setter Property="Command" Value="{Binding Command}" />
+                                    </ControlTheme>
+                                  </MenuItem.ItemContainerTheme>
+                                </MenuItem>
+                              </MenuFlyout>
+                            </ui:ToolbarButton.Flyout>
+                          </ui:ToolbarButton>
+                        </WrapPanel>
+                        <Grid ColumnDefinitions="1.2*,0.7*,1.3*,1.3*,1.3*" ColumnSpacing="12" IsVisible="{Binding ShowStyle}">
+                          <ui:FormField Grid.Column="0" Label="Position" LabelAbove="True">
+                            <ComboBox ItemsSource="{Binding Positions}" SelectedItem="{Binding SelectedPosition}" HorizontalAlignment="Stretch" />
+                          </ui:FormField>
+                          <ui:FormField Grid.Column="1" Label="Size" LabelAbove="True" Hint="{Binding SizeHint}">
+                            <TextBox Text="{Binding SizeText}" PlaceholderText="Default" />
+                          </ui:FormField>
+                          <ui:FormField Grid.Column="2" Label="Text colour" LabelAbove="True">
+                            <ComboBox ItemsSource="{x:Static vm:OverlayRowViewModel.Colors}" SelectedItem="{Binding SelectedTextColor}" HorizontalAlignment="Stretch" />
+                          </ui:FormField>
+                          <ui:FormField Grid.Column="3" Label="Background" LabelAbove="True">
+                            <ComboBox ItemsSource="{x:Static vm:OverlayRowViewModel.Colors}" SelectedItem="{Binding SelectedBackgroundColor}" HorizontalAlignment="Stretch" />
+                          </ui:FormField>
+                          <ui:FormField Grid.Column="4" Label="Outline" LabelAbove="True">
+                            <ComboBox ItemsSource="{x:Static vm:OverlayRowViewModel.Colors}" SelectedItem="{Binding SelectedOutlineColor}" HorizontalAlignment="Stretch" />
+                          </ui:FormField>
+                        </Grid>
+                      </StackPanel>
+                      <Button Grid.Column="1" Classes="toolbar iconOnly danger" VerticalAlignment="Top" ToolTip.Tip="Remove overlay" Command="{Binding RemoveCommand}">
+                        <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
+                      </Button>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Classes="secondary" Text="{Binding EmptyText}" TextWrapping="Wrap" IsVisible="{Binding ShowEmptyLine}" />
+            <TextBlock Classes="fieldMessage error" Text="{Binding OverlaysError}"
+                       IsVisible="{Binding OverlaysError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddOverlayCommand}">
+              <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add overlay" />
+            </Button>
+          </StackPanel>
+        </ScrollViewer>
+        <ui:LoadingOverlay Grid.Row="0" Grid.RowSpan="3" Text="{Binding LoadingText}" IsVisible="{Binding IsLoading}" />
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="2" Classes="card" Margin="16,12,16,0">
+      <StackPanel Spacing="8">
+        <ui:CardHeader Title="On each camera" Description="All overlays go to view area 1." />
+        <StackPanel Orientation="Horizontal" Spacing="24">
+          <RadioButton GroupName="mode" Content="Add" IsChecked="{Binding IsAdd}" />
+          <RadioButton GroupName="mode" Content="Replace text overlays" IsChecked="{Binding IsReplace}" />
+          <RadioButton GroupName="mode" Content="Remove matching" IsChecked="{Binding IsRemove}" />
+        </StackPanel>
+        <TextBlock Classes="secondary" Text="{Binding ModeNote}" TextWrapping="Wrap" IsVisible="{Binding !IsReplace}" />
+        <ui:StatusChip IsWarning="True" Text="{Binding ModeNote}" MaxLines="2" IsVisible="{Binding IsReplace}" />
+      </StackPanel>
+    </Border>
+
+    <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
+      <Button Classes.primary="{Binding !IsRemove}" Classes.danger="{Binding IsRemove}" Content="{Binding ApplyText}" Command="{Binding ApplyCommand}" IsDefault="True"
+              ToolTip.Tip="{Binding ApplyBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

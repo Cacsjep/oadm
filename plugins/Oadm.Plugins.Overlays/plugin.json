@@ -1,0 +1,8 @@
+{
+  "id": "oadm.overlays",
+  "version": "0.1.0",
+  "minSdkVersion": "0.13.0",
+  "displayName": "Text overlays",
+  "description": "Add, replace or remove text overlays on cameras.",
+  "siteSupport": "full"
+}

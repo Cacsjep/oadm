@@ -125,12 +125,12 @@ internal static partial class TaskChangeTools
         yield return TaskRunTools.NeedsTaskRight(new OadmTool(
             "oadm_task_query",
             "Read a device for a task",
-            "What a task's dialog reads from one device before a change: the users, the network settings, the applications, the time settings, the certificates or the AXIS OS status. Read only.",
+            "What a task's dialog reads from one device before a change: the users, the network settings, the applications, the time settings, the text overlays, the certificates or the AXIS OS status. Read only.",
             Object(null,
             [
                 P("task", Text("The task id from oadm_tasks_catalog, like oadm.users or oadm.network.", 128, minLength: 1)),
                 P("device_id", Text("The device id.", 36, "uuid")),
-                P("method", Text("The read: listUsers (oadm.users), getNetworkInfo (oadm.network), listApplications (oadm.acap), getTimeSettings (oadm.datetime), status (oadm.firmware), listCertificates or readClock (the PKI tasks).", 64, minLength: 1)),
+                P("method", Text("The read: listUsers (oadm.users), getNetworkInfo (oadm.network), listApplications (oadm.acap), getTimeSettings (oadm.datetime), listOverlays (oadm.overlays), status (oadm.firmware), listCertificates or readClock (the PKI tasks).", 64, minLength: 1)),
                 P("input", OpenObject("The read's input, when it takes one.")),
             ], "task", "device_id", "method"),
             OutObject(null,

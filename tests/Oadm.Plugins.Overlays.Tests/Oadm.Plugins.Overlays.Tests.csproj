@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <!-- test method names use underscores -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861;CA2000</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.1.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
+    <!-- dev-cameras.yaml loader of the hardware test. -->
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Oadm.Client supplies the host theme (OadmTheme.axaml) and the shared runtime assemblies (Avalonia, CommunityToolkit,
+         SDK) that the plugin projects compile against only; Oadm.Server the agents' payload schema (TaskPayloadSchemas). -->
+    <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
+    <ProjectReference Include="..\..\src\Oadm.Server\Oadm.Server.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Overlays\Oadm.Plugins.Overlays.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.Overlays.Client\Oadm.Plugins.Overlays.Client.csproj" />
+    <!-- Runs plugins against a step list the way the task engine does. -->
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shared dev-cameras.yaml loader of the core hardware tests. -->
+    <Compile Include="..\Oadm.Core.Tests\Hardware\DevCameras.cs" Link="Hardware\DevCameras.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Recorded read-only (and with own test overlays, removed again) on 10.0.0.48 (AXIS P3265-V, AXIS OS 12.11.147),
+         10.0.0.202 (AXIS M3215-LVE, 12.11.147) and 10.0.0.200 (AXIS M3206-LVE, 10.12.363) on 2026-11-20.
+         docs-*.json are written from the VAPIX documentation (the misspelled numberAvailbleSlots of its example): no camera
+         recorded so far sends that; replace it with a recording when one does. -->
+    <None Include="Fixtures\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
