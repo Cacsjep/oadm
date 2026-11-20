@@ -87,12 +87,13 @@ function Stop-OadmService([string] $name, [string] $process) {
     }
 }
 
-# After the uninstall: waits until the service is gone (sc.exe: 1060 = does not exist), at most 60 s.
+# After the uninstall: waits until the service is gone (sc.exe: 1060 = does not exist), at most 60 s. It resets
+# LASTEXITCODE: the 1060 would otherwise become the exit code of the whole script and fail the step.
 function Wait-ServiceGone([string] $name) {
     $deadline = (Get-Date).AddSeconds(60)
     while ($true) {
         sc.exe query $name | Out-Null
-        if ($LASTEXITCODE -eq 1060) { return }
+        if ($LASTEXITCODE -eq 1060) { $global:LASTEXITCODE = 0; return }
         if ((Get-Date) -gt $deadline) { throw "service $name still installed" }
         Start-Sleep -Milliseconds 500
     }
