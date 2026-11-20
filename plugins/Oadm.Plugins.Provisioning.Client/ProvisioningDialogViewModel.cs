@@ -22,7 +22,6 @@ public sealed record ProfileRow(ProfileSummary Summary)
 
     public string Name => Summary.Name;
 
-    public int Nodes => Summary.Nodes;
 
     public bool IsActive => Summary.IsActive;
 

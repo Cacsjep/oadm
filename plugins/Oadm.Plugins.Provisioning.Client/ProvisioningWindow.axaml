@@ -64,11 +64,6 @@
                     CanUserReorderColumns="False" SelectionMode="Single">
             <DataGrid.Columns>
               <DataGridTextColumn Header="{x:Static vm:ProvisioningTexts.Name}" Width="*" Binding="{Binding Name}" x:DataType="vm:ProfileRow" />
-              <DataGridTextColumn Width="110" Binding="{Binding Nodes}" CellStyleClasses="number" x:DataType="vm:ProfileRow">
-                <DataGridTextColumn.Header>
-                  <TextBlock Classes="numberHeader" Text="{x:Static vm:ProvisioningTexts.NodesHeader}" />
-                </DataGridTextColumn.Header>
-              </DataGridTextColumn>
               <DataGridTemplateColumn Header="{x:Static vm:ProvisioningTexts.State}" Width="170" CanUserSort="True" SortMemberPath="StateText">
                 <DataGridTemplateColumn.CellTemplate>
                   <DataTemplate x:DataType="vm:ProfileRow">
