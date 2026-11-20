@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 
+using Oadm.Sdk.Certificates;
 using Oadm.Plugins.Provisioning.Engine;
 using Oadm.Plugins.Provisioning.Model;
 using Oadm.Plugins.Provisioning.Nodes;
@@ -334,19 +335,41 @@ public sealed class StageTwoNodeTests
         h.Outcomes["oadm.pki.https-enable"] = (TaskEndState.Failed, "The device's time is 2 hours behind. The certificate becomes valid on the device only in 2 hours. Set the device to use NTP. Nothing was changed.");
         Assert.Equal(NodeState.Error, (await RunAsync(h, node, new CertificateSettings(), camera)).State);
         Assert.Equal("Choose a PKI policy.", node.Check(Harness.Json(new CertificateSettings(CertificateMode.Policy, Guid.Empty)), ProfileCheckContext.Empty));
+        Assert.Equal("Choose a PKI policy.", node.Check(Harness.Json(new CertificateSettings()), ProfileCheckContext.Empty));
+        Assert.Null(node.Check(Harness.Json(new CertificateSettings(CertificateMode.Est)), ProfileCheckContext.Empty));
     }
 
     [Fact]
-    public async Task Dot1x_turns_on_802_1x_with_pkis_policy()
+    public void The_policy_of_certificate_and_802_1x_must_be_one_pki_has()
+    {
+        var https = new IssuingPolicyInfo(Guid.NewGuid(), "Cameras", IssuingPolicyUse.Https);
+        var dot1x = new IssuingPolicyInfo(Guid.NewGuid(), "Switch ports", IssuingPolicyUse.Dot1x);
+        var pki = ProfileCheckContext.Empty with { Policies = [https, dot1x] };
+        var certificate = new CertificateNode();
+        var port = new Dot1xNode();
+
+        Assert.Null(certificate.Check(Harness.Json(new CertificateSettings(CertificateMode.Policy, https.Id)), pki));
+        Assert.Equal(PolicyChoice.Gone, certificate.Check(Harness.Json(new CertificateSettings(CertificateMode.Policy, dot1x.Id)), pki)); // another use
+        Assert.Null(port.Check(Harness.Json(new Dot1xSettings(dot1x.Id)), pki));
+        Assert.Equal(PolicyChoice.Choose, port.Check(Harness.Json(new Dot1xSettings()), pki));
+        Assert.Equal(PolicyChoice.Gone, port.Check(Harness.Json(new Dot1xSettings(Guid.NewGuid())), pki));
+        Assert.Equal("Add an HTTPS certificate policy on the PKI page first.", certificate.Check(Harness.Json(new CertificateSettings()), ProfileCheckContext.Empty with { Policies = [dot1x] }));
+        Assert.Null(port.Check(Harness.Json(new Dot1xSettings(Guid.NewGuid())), ProfileCheckContext.Empty)); // PKI not running: its task checks
+    }
+
+    [Fact]
+    public async Task Dot1x_turns_on_802_1x_with_the_chosen_policy()
     {
         await using var h = await StartedAsync();
         var camera = Camera(Device(h));
 
-        Assert.Equal(NodeResult.Success("802.1X on."), await RunAsync(h, new Dot1xNode(), new Dot1xSettings(), camera));
+        var policy = Guid.NewGuid();
+        Assert.Equal(NodeResult.Success("802.1X on."), await RunAsync(h, new Dot1xNode(), new Dot1xSettings(policy), camera));
         Assert.Equal("oadm.pki.dot1x-enable", Assert.Single(h.Ctx.TaskRuns).PluginId);
+        Assert.Equal(policy.ToString(), Payload(h.Ctx.TaskRuns[0]).GetProperty("policyId").GetString());
 
-        h.Outcomes["oadm.pki.dot1x-enable"] = (TaskEndState.Failed, "There is no 802.1X certificate policy. Add one on the PKI page. Nothing was changed.");
-        Assert.Equal(NodeResult.Error("There is no 802.1X certificate policy. Add one on the PKI page. Nothing was changed."), await RunAsync(h, new Dot1xNode(), new Dot1xSettings(), camera));
+        h.Outcomes["oadm.pki.dot1x-enable"] = (TaskEndState.Failed, "The chosen policy no longer exists. Nothing was changed.");
+        Assert.Equal(NodeResult.Error("The chosen policy no longer exists. Nothing was changed."), await RunAsync(h, new Dot1xNode(), new Dot1xSettings(policy), camera));
     }
 
     // ---- SD card ----

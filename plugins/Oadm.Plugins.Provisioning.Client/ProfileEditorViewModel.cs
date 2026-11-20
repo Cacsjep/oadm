@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Plugins.Provisioning.Engine;
+using Oadm.Sdk.Certificates;
 using Oadm.Plugins.Provisioning.Model;
 using Oadm.Plugins.Provisioning.Nodes;
 using Oadm.Sdk.Client;
@@ -41,6 +42,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
     private readonly DhcpServerSummary? _dhcp;
     private Dictionary<NodeKind, NodeKindInfo> _kinds = [];
     private IReadOnlyList<CredentialChoice> _credentials = [];
+    private IReadOnlyList<IssuingPolicyInfo> _policies = [];
     private IReadOnlyList<ProfileCommand> _commands = [];
     private Guid _id;
     private bool _checking;
@@ -150,6 +152,8 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
 
     IReadOnlyList<CredentialChoice> INodeFormServices.Credentials => _credentials;
 
+    IReadOnlyList<IssuingPolicyInfo> INodeFormServices.Policies => _policies;
+
     IReadOnlyList<ProfileCommand> INodeFormServices.Commands => _commands;
 
     bool INodeFormServices.CanRevealCredentials => _ctx.IsAdministrator;
@@ -168,6 +172,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
             var credentials = PluginJson.Parse<List<DeviceCredentialName>>(await _ctx.InvokeAsync(ProvisioningMethods.Credentials, null, ct).ConfigureAwait(true), json);
             _kinds = kinds.ToDictionary(k => k.Kind);
             _credentials = FieldRules.RootEntries(credentials);
+            _policies = PluginJson.Parse<List<IssuingPolicyInfo>>(await _ctx.InvokeAsync(ProvisioningMethods.Policies, null, ct).ConfigureAwait(true), json);
             _commands = PluginJson.Parse<List<ProfileCommand>>(await _ctx.InvokeAsync(ProvisioningMethods.VapixCommands, null, ct).ConfigureAwait(true), json);
             AddableKinds.Clear();
             foreach (var kind in kinds.Where(k => !k.IsFixed).OrderBy(k => NodeLook.Rank(k.Kind)))

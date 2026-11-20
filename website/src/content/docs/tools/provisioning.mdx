@@ -90,7 +90,7 @@ A profile is a chain of nodes that runs from top to bottom on each camera. Only 
 
 **Set password** is fixed: always the first node, never moved or removed.
 
-The profile list shows every profile with its number of nodes and its state: **Active** or **Has errors**. **Activate**
+The profile list shows every profile with its state: **Active** or **Has errors**. **Activate**
 makes the selected profile the active one, like the **Active profile** choice. **Delete** asks first. The active profile
 cannot be deleted while provisioning is on. A change to a profile applies to the next tasks; running tasks keep their
 copy.
@@ -247,8 +247,10 @@ Results:
 Gives the camera its certificate. The camera's clock is checked first: a camera whose clock is behind gets no
 certificate.
 
-- **Certificate**: **From PKI's HTTPS certificate policy** installs a certificate of [PKI](../pki/) and turns on HTTPS.
+- **Certificate**: **From a PKI policy** installs a certificate of [PKI](../pki/) and turns on HTTPS.
   **EST enrollment (OADM PRO)** sets up enrollment with the [EST server](../est-server/), so the camera renews by itself.
+- **Policy**: the HTTPS certificate policy of PKI that issues the certificate. With only one policy it is chosen
+  already.
 
 Results:
 
@@ -257,8 +259,13 @@ Results:
 
 ### 802.1X
 
-Turns on 802.1X with the certificate and CA of PKI's 802.1X policy. No settings of its own. The camera's clock is
-checked first. On a switch port that enforces 802.1X the camera answers only once it is authenticated.
+Turns on 802.1X with the certificate, identity and CA of the PKI policy you choose. The camera's clock is checked
+first.
+
+- **Policy**: the IEEE 802.1X certificate policy of PKI. With only one policy it is chosen already.
+
+If a chosen policy is deleted in PKI, the node says "The PKI policy no longer exists. Choose another one." and the
+profile cannot be active. On a switch port that enforces 802.1X the camera answers only once it is authenticated.
 
 Ends with "802.1X on." or an error with the reason.
 

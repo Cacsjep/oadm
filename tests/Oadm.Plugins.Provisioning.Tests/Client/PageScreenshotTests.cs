@@ -78,6 +78,12 @@ public sealed class PageScreenshotTests
             editor.SelectedNode.Fields.OfType<CheckGroupFieldViewModel>().Single().Items[1].IsChecked = true;
             Headless.Pump();
             Headless.Capture(window, $"provisioning-editor-sdcard-{suffix}.png");
+
+            // Certificate: the PKI policy by name.
+            editor.SelectedNode = editor.Nodes.Single(n => n.Kind == NodeKind.Certificate);
+            Headless.Pump();
+            Assert.Equal("Cameras", editor.SelectedNode.Field<PolicyFieldViewModel>("policyId").Selected?.Name);
+            Headless.Capture(window, $"provisioning-editor-certificate-{suffix}.png");
             window.Close();
             return true;
         }, CancellationToken.None);

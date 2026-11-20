@@ -2,6 +2,7 @@ using System.Text.Json;
 
 using Oadm.Plugins.Provisioning.Engine;
 using Oadm.Plugins.Provisioning.Model;
+using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
@@ -56,6 +57,9 @@ public sealed record ProfileCheckContext(IReadOnlyDictionary<Guid, string>? Cred
 
     /// <summary>The secrets the vault keeps; null when the host cannot tell.</summary>
     public IReadOnlySet<Guid>? Secrets { get; init; }
+
+    /// <summary>PKI's HTTPS and IEEE 802.1X certificate policies; null when PKI does not run (PKI's task then checks the policy).</summary>
+    public IReadOnlyList<IssuingPolicyInfo>? Policies { get; init; }
 }
 
 /// <summary>What a node may use while it runs (the engine implements it).</summary>

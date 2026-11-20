@@ -9,6 +9,7 @@ using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Styling;
 using Avalonia.Threading;
 
+using Oadm.Sdk.Certificates;
 using Oadm.Plugins.Provisioning.Client;
 using Oadm.Plugins.Provisioning.Engine;
 using Oadm.Plugins.Provisioning.Model;
@@ -215,6 +216,14 @@ internal static class Samples
     public static IReadOnlyList<NodeKindInfo> Kinds =>
         [.. Registry.All.Select(n => new NodeKindInfo(n.Kind, n.Name, n.IsFixed, n.AlwaysStops, NodeSettings.Write(n.DefaultSettings)))];
 
+    /// <summary>PKI's policies: two for HTTPS, one for 802.1X.</summary>
+    public static readonly IReadOnlyList<IssuingPolicyInfo> Policies =
+    [
+        new(Guid.Parse("3c3c3c3c-0001-4c2d-9e8f-0a1b2c3d4e5f"), "Cameras", IssuingPolicyUse.Https),
+        new(Guid.Parse("3c3c3c3c-0002-4c2d-9e8f-0a1b2c3d4e5f"), "Lobby, 1 year", IssuingPolicyUse.Https),
+        new(Guid.Parse("3c3c3c3c-0003-4c2d-9e8f-0a1b2c3d4e5f"), "Switch ports", IssuingPolicyUse.Dot1x),
+    ];
+
     public static readonly IReadOnlyList<DeviceCredentialName> Credentials =
         [new(RootCredential, "root", new DateTimeOffset(2026, 10, 2, 9, 15, 0, TimeSpan.Zero)), new(Guid.Parse("0d0d0d0d-3333-4c2d-9e8f-0a1b2c3d4e5f"), "operator")];
 
@@ -272,7 +281,7 @@ internal static class Samples
                 Id = "n7", Kind = NodeKind.Users,
                 Settings = NodeSettings.Write(new UsersSettings([new UserAccount("operator1", CameraRole.Operator, false, Guid.Parse("2e2e2e2e-7777-4c2d-9e8f-0a1b2c3d4e5f"))])),
             },
-            new FlowNode { Id = "n8", Kind = NodeKind.Certificate, Settings = NodeSettings.Write(new CertificateSettings()) },
+            new FlowNode { Id = "n8", Kind = NodeKind.Certificate, Settings = NodeSettings.Write(new CertificateSettings(CertificateMode.Policy, Policies[0].Id)) },
             new FlowNode { Id = "n9", Kind = NodeKind.SdCard, Settings = NodeSettings.Write(new SdCardSettings(true, false, null, 30)) },
             new FlowNode { Id = "n10", Kind = NodeKind.Autofocus, Settings = NodeSettings.Write(new AutofocusSettings()) },
             new FlowNode
@@ -307,6 +316,7 @@ internal static class Samples
         ctx.Answers[ProvisioningMethods.ListProfiles] = _ => Serialize(profiles ?? Profiles());
         ctx.Answers[ProvisioningMethods.NodeKinds] = _ => Serialize(Kinds);
         ctx.Answers[ProvisioningMethods.Credentials] = _ => Serialize(Credentials);
+        ctx.Answers[ProvisioningMethods.Policies] = _ => Serialize(Policies);
         ctx.Answers[ProvisioningMethods.VapixCommands] = _ => Serialize(Commands);
         ctx.Answers[ProvisioningMethods.StoreSecret] = _ => Serialize(new SecretReply(Guid.NewGuid()));
         ctx.Answers[ProvisioningMethods.StoreFile] = payload =>
@@ -346,7 +356,7 @@ internal static class Samples
 
     /// <summary>The server's own check, with the sample credential list and DHCP server.</summary>
     public static ProfileCheckResult Check(Profile profile) =>
-        ProfileCheck.Check(profile, Registry, new ProfileCheckContext(Credentials.ToDictionary(c => c.Id, c => c.UserName), Dhcp()));
+        ProfileCheck.Check(profile, Registry, new ProfileCheckContext(Credentials.ToDictionary(c => c.Id, c => c.UserName), Dhcp()) { Policies = Policies });
 
     public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Json);
 }

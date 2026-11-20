@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 using Oadm.Plugins.Provisioning.Model;
 using Oadm.Plugins.Provisioning.Nodes;
+using Oadm.Sdk.Certificates;
 
 namespace Oadm.Plugins.Provisioning.Client;
 
@@ -174,14 +175,15 @@ public static class NodeForms
         return kind switch
         {
             NodeKind.SetPassword => [new PasswordFieldViewModel(FieldRules.ToGuid(settings["credentialId"]), services.Credentials, services)],
-            NodeKind.Dot1x or NodeKind.Autofocus => [],
+            NodeKind.Dot1x => [new PolicyFieldViewModel("policyId", ProvisioningTexts.Policy, IssuingPolicyUse.Dot1x, FieldRules.ToGuid(settings["policyId"]), services.Policies) { Help = ProvisioningTexts.Dot1xPolicyHelp }],
+            NodeKind.Autofocus => [],
             NodeKind.Network => NetworkForm(settings),
             NodeKind.DateTime => DateTime(settings),
             NodeKind.UpgradeOnline => UpgradeOnline(settings),
             NodeKind.UpgradeFiles => [new FilesFieldViewModel("files", ProvisioningTexts.OsFiles, OsFiles(settings["files"]), services) { Help = ProvisioningTexts.OsFilesHelp }],
             NodeKind.Configuration => Configuration(settings, services),
             NodeKind.Users => [new UsersFieldViewModel(settings["accounts"] as JsonArray)],
-            NodeKind.Certificate => Certificate(settings),
+            NodeKind.Certificate => Certificate(settings, services),
             NodeKind.SdCard => SdCard(settings),
             NodeKind.VapixCommands => [new VapixCommandsFieldViewModel(settings["commands"] as JsonArray, services.Commands)],
             _ => [],
@@ -191,11 +193,10 @@ public static class NodeForms
     /// <summary>What a node does where its fields do not say it; null for most.</summary>
     public static string? Note(NodeKind kind) => kind switch
     {
-        NodeKind.Dot1x => ProvisioningTexts.Dot1xHint,
         NodeKind.Autofocus => ProvisioningTexts.AutofocusHint,
         NodeKind.UpgradeOnline => ProvisioningTexts.MyAxisHint,
         NodeKind.UpgradeFiles => ProvisioningTexts.OsFilesHint,
-        NodeKind.SetPassword or NodeKind.Network or NodeKind.DateTime or NodeKind.Configuration
+        NodeKind.SetPassword or NodeKind.Network or NodeKind.DateTime or NodeKind.Configuration or NodeKind.Dot1x
             or NodeKind.Users or NodeKind.Certificate or NodeKind.SdCard or NodeKind.VapixCommands => null,
         _ => ProvisioningTexts.UnknownNode,
     };
@@ -341,11 +342,16 @@ public static class NodeForms
         ];
     }
 
-    private static IReadOnlyList<NodeFieldViewModel> Certificate(JsonObject s)
+    private static IReadOnlyList<NodeFieldViewModel> Certificate(JsonObject s, INodeFormServices services)
     {
         var mode = new ChoiceFieldViewModel("mode", ProvisioningTexts.CertificateMode,
             [new("policy", ProvisioningTexts.CertificatePolicy), new("est", ProvisioningTexts.CertificateEst)], Text(s["mode"])) { Help = ProvisioningTexts.CertificateHelp };
-        return [mode];
+        var policy = new PolicyFieldViewModel("policyId", ProvisioningTexts.Policy, IssuingPolicyUse.Https, FieldRules.ToGuid(s["policyId"]), services.Policies)
+        {
+            Help = ProvisioningTexts.HttpsPolicyHelp,
+            ShownWhen = () => mode.Is("policy"),
+        };
+        return [mode, policy];
     }
 
     private static IReadOnlyList<NodeFieldViewModel> SdCard(JsonObject s)
@@ -416,9 +422,9 @@ public static class NodeForms
                 var users = node.Field<UsersFieldViewModel>("accounts").Rows.Select(r => r.Name.Trim()).Where(n => n.Length > 0).ToList();
                 return users.Count == 0 ? string.Empty : string.Join(", ", users);
             case NodeKind.Certificate:
-                return Of("mode");
+                return node.Field<ChoiceFieldViewModel>("mode").Is("policy") ? node.Field<PolicyFieldViewModel>("policyId").Name : Of("mode");
             case NodeKind.Dot1x:
-                return ProvisioningTexts.Dot1xLine;
+                return node.Field<PolicyFieldViewModel>("policyId").Name;
             case NodeKind.SdCard:
                 var parts = node.Fields.OfType<CheckGroupFieldViewModel>().First().Items.Where(i => i.IsChecked).Select(i => i.Label.ToLowerInvariant()).ToList();
                 if (Of("maxAgeDays") is { Length: > 0 } keep)

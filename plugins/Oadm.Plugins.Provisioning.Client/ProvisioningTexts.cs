@@ -28,7 +28,6 @@ public static class ProvisioningTexts
     public const string Active = "Active";
     public const string Delete = "Delete";
     public const string Close = "Close";
-    public const string NodesHeader = "Nodes";
     public const string State = "State";
     public const string DeleteProfile = "Delete profile";
     public const string FixProfileFirst = "Fix the profile first.";
@@ -124,10 +123,10 @@ public static class ProvisioningTexts
 
     // Certificate, 802.1X, Autofocus
     public const string CertificateMode = "Certificate";
-    public const string CertificatePolicy = "From PKI's HTTPS certificate policy";
+    public const string CertificatePolicy = "From a PKI policy";
+
+    public const string Policy = "Policy";
     public const string CertificateEst = "EST enrollment (OADM PRO)";
-    public const string Dot1xHint = "Uses the certificate and CA of PKI's 802.1X policy.";
-    public const string Dot1xLine = "PKI's 802.1X policy";
     public const string AutofocusHint = "Starts the autofocus and waits until it is done. Cameras without remote focus skip it.";
     public const string AutofocusLine = "Finds the focus";
 
@@ -228,6 +227,10 @@ public static class ProvisioningTexts
     public const string PtzHelp = "The account may move the camera";
     public const string SecretHelp = "Kept encrypted on the server";
     public const string CertificateHelp = "Where the HTTPS certificate comes from";
+
+    public const string HttpsPolicyHelp = "PKI's HTTPS certificate policy that issues it";
+
+    public const string Dot1xPolicyHelp = "Certificate, identity and CA for the switch port";
     public const string PrepareHelp = "Format erases everything on the card";
     public const string KeepDaysHelp = "Empty: the camera keeps its setting";
     public const string CommandHelp = "A command of the VAPIX Commander library";

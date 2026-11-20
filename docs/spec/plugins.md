@@ -512,7 +512,7 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
   packages keep their own hand-written `plugin.json`: 0.4.0, or the version of the newest member a package uses at run time
-  (0.15.0: DHCP server (`IDhcpServerLeases`), Provisioning (`IDeviceAutoAdd` first set up, `TaskAudit`) and the node canvas of Vision Center and Text recognition; 0.13.0, the members for MCP: Applications (ACAP), Upgrade AXIS OS, Network, DHCP server, NTP server, Hardening
+  (0.15.0: DHCP server (`IDhcpServerLeases`), PKI (`IIssuingPolicies`), Provisioning (`IDeviceAutoAdd` first set up, `TaskAudit`) and the node canvas of Vision Center and Text recognition; 0.13.0, the members for MCP: Applications (ACAP), Upgrade AXIS OS, Network, DHCP server, NTP server, Hardening
   scan (payload schemas or plugin tools), PKI with the EST and 802.1X servers (also `IServerCertificates`), Date and time
   (`ValidatePayload`), Users (`Secret`), Action Rule Editor, Device configuration and Edge storage (task inputs for agents,
   `PagePermissions`); 0.12.0: `PluginJson` or `ByteSize` in Application
@@ -643,7 +643,7 @@ box back with the error below the list (`PluginsViewModel.SwitchAsync`).
   (`docs/spec/recipient-sessions.md` "Security"); `IServerCertificates` by PKI (SDK 0.13.0): the certificate with its key and
   issuers that a server policy picks for a server the host runs (`HostServers.Mcp`, the MCP server of the policy MCP server,
   docs/spec/mcp.md), or why there is none, and `Changed`; only the host reads it, and only while that server is on (like a
-  PKI server's Turn on, the first load of the MCP server policy without a certificate makes the MCP Server Certificate). Test fake: `FakePluginServices` (`FakeCoreContext.FakeServices`).
+  PKI server's Turn on, the first load of the MCP server policy without a certificate makes the MCP Server Certificate). `IIssuingPolicies` by PKI (SDK 0.15.0): its HTTPS and IEEE 802.1X certificate policies (id, name), read only, for a plugin that starts PKI's tasks with a chosen policy (Provisioning). Test fake: `FakePluginServices` (`FakeCoreContext.FakeServices`).
 - **Tasks for MCP** (SDK 0.13.0, `docs/spec/mcp.md` "SDK"): `ITaskPlugin.PayloadType` (the payload record; the host's
   `TaskPayloadSchemas` exports its JSON Schema with `PayloadJsonOptions`, default `PluginJson.CreateOptions()`;
   `[Description]`, `[MaxLength]`, `[MinLength]`, `[Length]`, `[StringLength]`, `[Range]`; texts, numbers and lists without a

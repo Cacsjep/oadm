@@ -53,8 +53,8 @@ changes nothing by itself: provisioning itself is **Off** until an Administrator
 - **Provisioning management** (dialog `ProvisioningWindow`): the **On / Off** switch (the theme's `ToggleSwitch`; a refused
   On shows `TurnOnRefusal` or the server's reason directly below the switch and the switch stays Off; who turned it on and
   when beside it), the **active profile** (a choice of the profiles without errors; choosing one activates it, a refusal
-  below the choice), the warnings, and the profile list (every profile with its number of nodes and its state, Active or
-  Has errors; New and Edit open the profile editor with the status's DHCP server for a new Network node, Activate, Delete
+  below the choice), the warnings, and the profile list (every profile with its state, Active or Has errors; no node count,
+  decision 2026-11-20; New and Edit open the profile editor with the status's DHCP server for a new Network node, Activate, Delete
   with a red confirmation). One card for the switch, one for the list, a lone Close; it follows the `status` event while
   open. On needs an active profile without errors. While no profile is active, the first one saved without errors becomes
   active.
@@ -152,8 +152,14 @@ this model."). A node that does not apply (no SD card, no remote focus) is Succe
    is a Warning listing it.
 7. **Users**: more accounts (name, role, password from the credential list or typed); several Users nodes allowed;
    OADM's account never touched.
-8. **Certificate**: a certificate by a PKI issuing policy (clock check first), **or** EST enrollment (PRO).
-9. **802.1X**: with the certificate and CA of PKI's 802.1X policies.
+8. **Certificate**: a certificate by the chosen PKI HTTPS certificate policy (clock check first), **or** EST
+   enrollment (PRO).
+9. **802.1X**: with the certificate, identity and CA of the chosen PKI IEEE 802.1X certificate policy.
+
+   Both choose the policy by name (decision 2026-11-20): PKI offers its issuing policies read only to other plugins
+   (`IIssuingPolicies`, SDK 0.15.0); the only policy of its kind is chosen already; without a choice, or with a policy
+   PKI no longer has, the node has an error and the profile is a draft. PKI's task checks the policy again before the
+   first write.
 10. **SD card**: format, encrypt (passphrase typed), maximum age. No card: Not needed.
 11. **Autofocus**: starts it and waits until done (at most 2 minutes). No remote focus: Not needed.
 12. **VAPIX commands**: commands of the VAPIX Commander library with their values; a command the model lacks: Warning.

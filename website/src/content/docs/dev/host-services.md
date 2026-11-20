@@ -130,7 +130,9 @@ if (ca is not { IsReady: true })
 
 PKI offers `Oadm.Sdk.Certificates.IDeviceCertificateAuthority` (sign a device's certificate request, the list of issued
 certificates); the EST server and the 802.1X server use it. The DHCP server offers `Oadm.Sdk.Network.IDhcpServerLeases` (SDK 0.15.0, read only: its
-state, the acknowledged leases with sequence numbers, the active leases); Provisioning reads it. In tests: `FakePluginServices`
+state, the acknowledged leases with sequence numbers, the active leases); Provisioning reads it. PKI also offers
+`Oadm.Sdk.Certificates.IIssuingPolicies` (SDK 0.15.0, read only: its HTTPS and IEEE 802.1X certificate policies by id and
+name), so a plugin that starts PKI's tasks lets the user choose the policy; Provisioning reads it. In tests: `FakePluginServices`
 (`FakeCoreContext.FakeServices`).
 
 ## Protected tags

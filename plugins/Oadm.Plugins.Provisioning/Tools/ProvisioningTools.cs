@@ -37,6 +37,10 @@ internal static class ProvisioningTools
             new("credentials", "Credential list names", "The credential list entries (id and user name, never a password) Set password can use."),
             ProvisioningMethods.Credentials,
             async (plugin, _, _, ct) => new CredentialsAnswer([.. (await plugin.CredentialsAsync(ct).ConfigureAwait(false)).Select(c => new CredentialRow(c.Id, c.UserName))]))
+        .Read<NoArgs, PoliciesAnswer>(
+            new("policies", "PKI policies for provisioning", "PKI's HTTPS and IEEE 802.1X certificate policies (id, name, use) a Certificate or 802.1X node can choose."),
+            ProvisioningMethods.Policies,
+            async (plugin, _, _, ct) => new PoliciesAnswer([.. (await plugin.PoliciesAsync(ct).ConfigureAwait(false) ?? []).Select(p => new PolicyRow(p.Id, p.Name, p.Use == Oadm.Sdk.Certificates.IssuingPolicyUse.Dot1x ? "802.1X" : "HTTPS"))]))
         .Read<NoArgs, CommandsAnswer>(
             new("vapix_commands", "Provisioning VAPIX commands", "The VAPIX Commander commands a VAPIX commands node can run, with their fields (name, type, required, options)."),
             ProvisioningMethods.VapixCommands,
@@ -307,6 +311,10 @@ internal sealed record DoneAnswer([property: Description("What happened.")] stri
 internal sealed record CredentialRow(Guid Id, string UserName);
 
 internal sealed record CredentialsAnswer(IReadOnlyList<CredentialRow> Credentials);
+
+internal sealed record PoliciesAnswer(IReadOnlyList<PolicyRow> Policies);
+
+internal sealed record PolicyRow(Guid Id, string Name, string Use);
 
 internal sealed record CommandsAnswer(IReadOnlyList<CommandToolRow> Commands)
 {

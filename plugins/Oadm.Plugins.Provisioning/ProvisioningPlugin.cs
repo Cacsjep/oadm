@@ -3,6 +3,7 @@ using Oadm.Plugins.Provisioning.Engine;
 using Oadm.Plugins.Provisioning.Model;
 using Oadm.Plugins.Provisioning.Nodes;
 using Oadm.Plugins.Provisioning.Tools;
+using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Network;
 using Oadm.Sdk.Plugins;
@@ -216,6 +217,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
             ProvisioningMethods.CheckProfile => PluginJson.Serialize(await CheckAsync(PluginJson.Parse<ProfileRequest>(payloadJson, json).Profile, ct).ConfigureAwait(false), json),
             ProvisioningMethods.NodeKinds => PluginJson.Serialize(NodeKinds(), json),
             ProvisioningMethods.Credentials => PluginJson.Serialize(await CredentialsAsync(ct).ConfigureAwait(false), json),
+            ProvisioningMethods.Policies => PluginJson.Serialize(await PoliciesAsync(ct).ConfigureAwait(false) ?? [], json),
             ProvisioningMethods.VapixCommands => PluginJson.Serialize(VapixCommands(), json),
             ProvisioningMethods.SaveProfile => PluginJson.Serialize(await SaveProfileAsync(PluginJson.Parse<SaveProfileRequest>(payloadJson, json), ct).ConfigureAwait(false), json),
             ProvisioningMethods.DeleteProfile => PluginJson.Serialize(await DeleteProfileAsync(PluginJson.Parse<IdRequest>(payloadJson, json).Id, ct).ConfigureAwait(false), json),
@@ -239,6 +241,17 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
     internal NodeVault RunningVault => _vault ?? throw new InvalidOperationException("The Provisioning plugin is not running.");
 
     internal DhcpServerSummary? Dhcp() => _ctx?.Services?.Find<IDhcpServerLeases>()?.Summary();
+
+    /// <summary>PKI's HTTPS and IEEE 802.1X certificate policies; null when PKI does not run.</summary>
+    internal async Task<IReadOnlyList<IssuingPolicyInfo>?> PoliciesAsync(CancellationToken ct)
+    {
+        if (_ctx?.Services?.Find<IIssuingPolicies>() is not { } pki)
+        {
+            return null;
+        }
+
+        return [.. await pki.ListAsync(IssuingPolicyUse.Https, ct).ConfigureAwait(false), .. await pki.ListAsync(IssuingPolicyUse.Dot1x, ct).ConfigureAwait(false)];
+    }
 
     internal async Task<StatusReply> StatusAsync(CancellationToken ct)
     {
@@ -537,7 +550,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
             credentials = null;
         }
 
-        return new ProfileCheckContext(credentials, Dhcp()) { Files = _vault?.Files, Secrets = _vault?.SecretIds };
+        return new ProfileCheckContext(credentials, Dhcp()) { Files = _vault?.Files, Secrets = _vault?.SecretIds, Policies = await PoliciesAsync(ct).ConfigureAwait(false) };
     }
 
     private async Task<StatusReply> PublishStatusAsync(CancellationToken ct)

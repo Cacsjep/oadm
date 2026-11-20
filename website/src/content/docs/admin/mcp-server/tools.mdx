@@ -539,6 +539,7 @@ and runs after the user agreed.
 | `oadm_provisioning_credentials` | Read | The credential list entries (id and user name, never a password) Set password can use. |
 | `oadm_provisioning_file_store_preview` | Preview | Keeps a file the caller uploaded (an AXIS OS file, a configuration file of Export configuration) for a node; the answer is its file_id for the node's settings. Nothing is changed. Call oadm_provisioning_file_store_run with the handle to apply it. |
 | `oadm_provisioning_file_store_run` | Run (changes) | Applies the plan of oadm_provisioning_file_store_preview, which checks everything again. |
+| `oadm_provisioning_policies` | Read | PKI's HTTPS and IEEE 802.1X certificate policies (id, name, use) a Certificate or 802.1X node can choose. |
 | `oadm_provisioning_profile` | Read | One profile with its nodes in order, their settings and the errors and warnings of each node. |
 | `oadm_provisioning_profile_activate_preview` | Preview | Makes a profile without errors the active one: the next cameras found run it. Nothing is changed. Call oadm_provisioning_profile_activate_run with the handle to apply it. |
 | `oadm_provisioning_profile_activate_run` | Run (changes) | Applies the plan of oadm_provisioning_profile_activate_preview, which checks everything again. |

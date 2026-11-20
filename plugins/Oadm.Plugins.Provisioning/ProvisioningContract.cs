@@ -40,6 +40,9 @@ public static class ProvisioningMethods
     /// <summary>() -> the credential list without passwords (<see cref="Sdk.Devices.DeviceCredentialName"/>).</summary>
     public const string Credentials = "credentials";
 
+    /// <summary>() -> PKI's HTTPS and IEEE 802.1X certificate policies (<see cref="Sdk.Certificates.IssuingPolicyInfo"/>), empty when PKI does not run.</summary>
+    public const string Policies = "policies";
+
     /// <summary><see cref="SaveProfileRequest"/> -> <see cref="ProfileReply"/>.</summary>
     public const string SaveProfile = "saveProfile";
 
@@ -75,7 +78,7 @@ public static class ProvisioningMethods
 
     /// <summary>The methods that only read.</summary>
     public static bool IsRead(string method) =>
-        method is State or GetStatus or ListProfiles or GetProfile or CheckProfile or NodeKinds or Credentials or VapixCommands or GetRun;
+        method is State or GetStatus or ListProfiles or GetProfile or CheckProfile or NodeKinds or Credentials or Policies or VapixCommands or GetRun;
 }
 
 /// <summary>A command of the VAPIX Commander library for a VAPIX commands node: its id, name, category and fields.</summary>

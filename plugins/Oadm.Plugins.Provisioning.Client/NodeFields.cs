@@ -10,6 +10,8 @@ using CommunityToolkit.Mvvm.Input;
 using Oadm.Plugins.DateAndTime.Model;
 using Oadm.Plugins.Network.Model;
 using Oadm.Plugins.Provisioning.Engine;
+using Oadm.Plugins.Provisioning.Nodes;
+using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Client;
 using Oadm.Sdk.Client.Validation;
 using Oadm.Sdk.Devices;
@@ -267,6 +269,49 @@ public sealed partial class ChoiceFieldViewModel : NodeFieldViewModel
     public override JsonNode? Value => JsonValue.Create(Selected.Value);
 }
 
+/// <summary>
+/// The PKI policy of a Certificate or 802.1X node: PKI's policies of its use by name. One policy is chosen already; with none,
+/// the error says to add one on the PKI page. A stored policy PKI no longer has shows <see cref="PolicyChoice.Gone"/>.
+/// </summary>
+public sealed partial class PolicyFieldViewModel : NodeFieldViewModel
+{
+    private readonly IssuingPolicyUse _use;
+    private readonly bool _gone;
+
+    public PolicyFieldViewModel(string key, string label, IssuingPolicyUse use, Guid? policyId, IReadOnlyList<IssuingPolicyInfo> policies)
+        : base(key, label)
+    {
+        ArgumentNullException.ThrowIfNull(policies);
+        _use = use;
+        Policies = [.. policies.Where(p => p.Use == use)];
+        Selected = policyId is { } id ? Policies.FirstOrDefault(p => p.Id == id) : Policies.Count == 1 ? Policies[0] : null;
+        _gone = policyId is not null && Selected is null;
+        Rule(nameof(Selected), () => Selected is not null ? null
+            : _gone ? PolicyChoice.Gone
+            : Policies.Count == 0 ? PolicyChoice.NoneOf(_use)
+            : PolicyChoice.Choose);
+        Ready();
+        if (_gone)
+        {
+            Validation.ShowAll(); // a policy deleted in PKI shows at once, like the server's check
+        }
+    }
+
+    public IReadOnlyList<IssuingPolicyInfo> Policies { get; }
+
+    [ObservableProperty]
+    public partial IssuingPolicyInfo? Selected { get; set; }
+
+    public string? Error => ErrorOf(nameof(Selected));
+
+    /// <summary>The chosen policy's name for the node's card; empty without one.</summary>
+    public string Name => Selected?.Name ?? string.Empty;
+
+    public override JsonNode? Value => Selected is { } p ? JsonValue.Create(p.Id.ToString()) : null;
+
+    partial void OnSelectedChanged(IssuingPolicyInfo? value) => OnPropertyChanged(nameof(Error));
+}
+
 /// <summary>An entry of the credential list (never its password) and when it was added, which tells equal user names apart.</summary>
 public sealed record CredentialChoice(Guid Id, string UserName, DateTimeOffset? Added = null)
 {
@@ -494,6 +539,9 @@ public interface INodeFormServices
 
     /// <summary>The VAPIX commands a profile can run.</summary>
     IReadOnlyList<ProfileCommand> Commands { get; }
+
+    /// <summary>PKI's HTTPS and IEEE 802.1X certificate policies (the Certificate and 802.1X nodes); empty when PKI does not run.</summary>
+    IReadOnlyList<IssuingPolicyInfo> Policies => [];
 
     /// <summary>Lets the user choose files, uploads and keeps them for the profile (<c>storeFile</c>); empty when closed.</summary>
     Task<IReadOnlyList<StoredFile>> ChooseFilesAsync(string title, bool multiple, IReadOnlyList<string> patterns);

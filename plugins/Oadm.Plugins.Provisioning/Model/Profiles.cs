@@ -214,8 +214,8 @@ public enum CertificateMode
 /// <summary>Settings of Certificate: the mode and the PKI policy (none: the first HTTPS certificate policy).</summary>
 public sealed record CertificateSettings(CertificateMode Mode = CertificateMode.Policy, Guid? PolicyId = null);
 
-/// <summary>Settings of 802.1X: none (PKI's 802.1X policies decide).</summary>
-public sealed record Dot1xSettings;
+/// <summary>Settings of 802.1X: PKI's IEEE 802.1X certificate policy (certificate, identity, CA).</summary>
+public sealed record Dot1xSettings(Guid? PolicyId = null);
 
 /// <summary>Settings of SD card: format, encrypt with the typed passphrase (<c>secretId</c>), how many days recordings stay.</summary>
 public sealed record SdCardSettings(bool Format = true, bool Encrypt = false, Guid? SecretId = null, int? MaxAgeDays = null);

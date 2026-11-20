@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
+using Oadm.Plugins.Provisioning.Nodes;
+using Oadm.Sdk.Certificates;
 using Oadm.Plugins.Provisioning.Client;
 using Oadm.Plugins.Provisioning.Model;
 using Oadm.Sdk.Devices;
@@ -252,23 +254,55 @@ public sealed class NodeFormsTests
     }
 
     [Fact]
-    public async Task Certificate_keeps_its_policy_and_chooses_est()
+    public async Task Certificate_asks_for_one_of_several_https_policies_and_chooses_est()
     {
         var (editor, ctx, _, node) = await AddAsync(NodeKind.Certificate);
         var mode = node.Field<ChoiceFieldViewModel>("mode");
         Assert.Equal(ProvisioningTexts.CertificatePolicy, mode.Selected.Label);
-        mode.Selected = mode.Choices.Single(c => c.Value == "est");
+        var policy = node.Field<PolicyFieldViewModel>("policyId");
+        Assert.Equal(["Cameras", "Lobby, 1 year"], policy.Policies.Select(p => p.Name)); // HTTPS only, PKI's order
+        Assert.Null(policy.Selected); // two policies: the user chooses
+        Assert.Equal(PolicyChoice.Choose, node.FirstError);
+
+        policy.Selected = policy.Policies[1];
         await NoErrorAsync(editor, node);
+        Assert.Equal("Lobby, 1 year", node.Summary);
         var settings = await SaveAsync(editor, ctx, NodeKind.Certificate);
+        Assert.Equal(Samples.Policies[1].Id.ToString(), (string?)settings["policyId"]);
+
+        mode.Selected = mode.Choices.Single(c => c.Value == "est");
+        Assert.False(policy.IsShown);
+        await NoErrorAsync(editor, node);
+        settings = await SaveAsync(editor, ctx, NodeKind.Certificate);
         Assert.Equal("est", (string?)settings["mode"]);
+    }
+
+    [Fact]
+    public async Task Dot1x_takes_the_only_802_1x_policy()
+    {
+        var (editor, ctx, _, node) = await AddAsync(NodeKind.Dot1x);
+        var policy = node.Field<PolicyFieldViewModel>("policyId");
+        Assert.Equal("Switch ports", Assert.Single(policy.Policies).Name);
+        Assert.Equal("Switch ports", policy.Selected?.Name); // the only one is chosen already
+        await NoErrorAsync(editor, node);
+        var settings = await SaveAsync(editor, ctx, NodeKind.Dot1x);
+        Assert.Equal(Samples.Policies[2].Id.ToString(), (string?)settings["policyId"]);
+    }
+
+    [Fact]
+    public void A_policy_pki_no_longer_has_or_no_policy_at_all_says_so()
+    {
+        var gone = new PolicyFieldViewModel("policyId", "Policy", IssuingPolicyUse.Https, Guid.NewGuid(), Samples.Policies);
+        Assert.Null(gone.Selected);
+        Assert.Equal(PolicyChoice.Gone, gone.Error); // shown at once
+
+        var none = new PolicyFieldViewModel("policyId", "Policy", IssuingPolicyUse.Dot1x, null, []);
+        Assert.Equal("Add an IEEE 802.1X certificate policy on the PKI page first.", none.FirstError);
     }
 
     [Fact]
     public async Task Nodes_without_settings_say_what_they_do()
     {
-        var (_, _, _, dot1x) = await AddAsync(NodeKind.Dot1x);
-        Assert.Equal(ProvisioningTexts.Dot1xHint, dot1x.Note);
-        Assert.False(dot1x.HasFields);
         var (_, _, _, focus) = await AddAsync(NodeKind.Autofocus);
         Assert.Equal(ProvisioningTexts.AutofocusHint, focus.Note);
         Assert.False(focus.HasFields);

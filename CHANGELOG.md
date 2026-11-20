@@ -18,6 +18,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Changed
 
 - Import configuration and provisioning: a configuration file also works on other models; each camera takes the settings it has.
+- Provisioning: the Certificate and 802.1X nodes use the PKI policy you choose.
 - Settings: one column of settings with a search and one Save, in the look of the Windows settings.
 
 ### Fixed
