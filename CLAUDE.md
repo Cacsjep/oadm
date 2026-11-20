@@ -393,6 +393,8 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
     - Waiting for another thread: `Oadm.Sdk.Testing.Eventually.TrueAsync(condition, "what")`, never a fixed
       `Task.Delay` / `Thread.Sleep` before an assert. "Nothing else happens" checks wait first for a positive sign that
       the work ended; `Eventually.StaysTrueAsync` only when none exists.
+      Everything another thread changes is checked inside the wait, never right after it: `Eventually.TrueAsync(() => a && b)`,
+      not a wait for `a` followed by `Assert(b)`. After the wait, assert only what the wait made certain.
     - Time in the code (timeouts, intervals, retries, debounce): a `TimeProvider`, and the test passes a
       `FakeTimeProvider` and advances it. Real timeouts in tests are generous (30 s); an upper bound only proves "it did not
       hang". Concurrency limits are tested with gates that hold the work, not with overlapping delays.
