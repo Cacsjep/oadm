@@ -184,9 +184,9 @@ public sealed class TaskRunAuditTests : IAsyncLifetime
             await _engine.WaitForCompletionAsync(id, CancellationToken.None).WaitAsync(Eventually.DefaultTimeout);
         }
 
-        await Eventually.TrueAsync(async () => (await SingleAsync()).Detail == "3,000 devices: 3,000 done", "the outcome is written");
+        // The counter drops right after the write lands, so both are waited for together.
+        await Eventually.TrueAsync(async () => _audit.PendingWrites == 0 && (await SingleAsync()).Detail == "3,000 devices: 3,000 done", "the outcome is written");
         Assert.Equal("system", (await SingleAsync()).UserName);
-        Assert.Equal(0, _audit.PendingWrites);
     }
 
     [Fact]
