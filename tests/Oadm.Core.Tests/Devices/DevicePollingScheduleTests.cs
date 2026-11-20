@@ -13,7 +13,19 @@ using Oadm.Sdk.Testing;
 
 namespace Oadm.Core.Tests.Devices;
 
+/// <summary>
+/// The polling schedule tests step a fake clock and wait for both polling loops after every step (20 steps in one test):
+/// never in parallel with other tests, whose work in the same process can hold the thread pool long enough to delay a
+/// loop past the 30 s wait (failed 2 of about 40 full runs under load, never alone).
+/// </summary>
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class PollingSchedule
+{
+    public const string Name = "Polling schedule on a fake clock";
+}
+
 /// <summary>Scheduled full refresh, back-online trigger and certificate capture, driven by a fake clock.</summary>
+[Collection(PollingSchedule.Name)]
 public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
 {
     private readonly FakeTimeProvider _time = new(DateTimeOffset.UtcNow);
@@ -107,10 +119,18 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
             var elapsed = _time.GetUtcNow() - start;
             int statusWaits = 1 + (int)(elapsed / _polling.RoundPause);
             int fullWaits = 1 + (int)(elapsed / _polling.FullRefreshPause);
-            await Eventually.TrueAsync(
-                () => _timers.Created(_polling.RoundPause) == statusWaits && _timers.Pending(_polling.RoundPause) > 0
-                    && _timers.Created(_polling.FullRefreshPause) == fullWaits && _timers.Pending(_polling.FullRefreshPause) > 0,
-                $"both loops waiting at {elapsed}");
+            try
+            {
+                await Eventually.TrueAsync(
+                    () => _timers.Created(_polling.RoundPause) == statusWaits && _timers.Pending(_polling.RoundPause) > 0
+                        && _timers.Created(_polling.FullRefreshPause) == fullWaits && _timers.Pending(_polling.FullRefreshPause) > 0,
+                    $"both loops waiting at {elapsed}");
+            }
+            catch (TimeoutException ex)
+            {
+                // The timers at the timeout tell a stuck loop (a count that never comes) from a slow machine.
+                throw new TimeoutException($"{ex.Message} Expected status {statusWaits}, full {fullWaits}; now {_timers.Describe(_polling.RoundPause, _polling.FullRefreshPause)}.", ex);
+            }
             _time.Advance(_polling.RoundPause);
         }
 
@@ -368,6 +388,10 @@ public sealed class DevicePollingScheduleTests : IAsyncLifetime, IDisposable
                 return _entries.Count(e => e.Due == due && !e.Fired && !e.Disposed);
             }
         }
+
+        /// <summary>"status 20 created, 1 pending; full 2 created, 1 pending" for a timeout's message.</summary>
+        public string Describe(TimeSpan status, TimeSpan full) =>
+            $"status {Created(status)} created, {Pending(status)} pending; full {Created(full)} created, {Pending(full)} pending";
 
         /// <summary>How many timers with this due time were created so far (a loop arms one per wait).</summary>
         public int Created(TimeSpan due)
