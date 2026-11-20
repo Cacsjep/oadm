@@ -29,6 +29,11 @@ public static class OverlayPlanner
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(limits);
         var existing = current.TextsOf(DynamicOverlayApi.ViewArea);
+        if (payload.Mode == OverlaysMode.RemoveAll)
+        {
+            return new OverlayPlan(existing, [], [], []);
+        }
+
         if (payload.Mode == OverlaysMode.RemoveMatching)
         {
             var texts = payload.Overlays.Select(o => OverlayText.Normalize(o.Text)).ToHashSet(StringComparer.Ordinal);

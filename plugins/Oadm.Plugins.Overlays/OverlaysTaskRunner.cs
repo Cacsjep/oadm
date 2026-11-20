@@ -104,6 +104,11 @@ internal static class OverlaysTaskRunner
     internal static string? Verify(OverlaysPayload payload, OverlayPlan plan, DeviceOverlays after)
     {
         var shown = after.TextsOf(DynamicOverlayApi.ViewArea).Select(t => t.Overlay).ToList();
+        if (payload.Mode == OverlaysMode.RemoveAll)
+        {
+            return shown.Count == 0 ? null : $"The camera still shows \"{OverlayNames.Brief(shown[0].Text)}\".";
+        }
+
         if (payload.Mode == OverlaysMode.RemoveMatching)
         {
             var gone = plan.Remove.Select(r => OverlayText.Normalize(r.Overlay.Text)).ToHashSet(StringComparer.Ordinal);

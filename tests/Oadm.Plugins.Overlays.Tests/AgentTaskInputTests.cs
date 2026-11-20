@@ -29,6 +29,7 @@ public sealed class AgentTaskInputTests
         Assert.Equal(OverlayRules.MaxTextLength, overlay["properties"]!["text"]!["maxLength"]!.GetValue<int>());
         Assert.Contains("semiTransparent", overlay["properties"]!["textColor"]!["enum"]!.AsArray().Select(v => v!.GetValue<string>()));
         Assert.Contains("removeMatching", schema["properties"]!["mode"]!["enum"]!.AsArray().Select(v => v!.GetValue<string>()));
+        Assert.Contains("removeAll", schema["properties"]!["mode"]!["enum"]!.AsArray().Select(v => v!.GetValue<string>()));
         Assert.Empty(((ITaskPlugin)_plugin).SecretsOf("""{"mode":"add","overlays":[{"text":"x"}]}"""));
         Assert.Same(OverlaysJson.Options, _plugin.PayloadJsonOptions);
     }
@@ -37,7 +38,9 @@ public sealed class AgentTaskInputTests
     public void The_dialogs_rules_answer_at_their_fields()
     {
         Assert.Empty(Errors("""{"mode":"add","overlays":[{"text":"%F %X","position":"bottomLeft"},{"text":"#n","position":"topRight","fontSize":32}]}"""));
-        Assert.Empty(Errors("""{"mode":"replace","overlays":[]}""")); // removes every text overlay
+        Assert.Empty(Errors("""{"mode":"replace","overlays":[]}""")); // an older form of Remove all, still valid
+        Assert.Empty(Errors("""{"mode":"removeAll"}"""));
+        Assert.Equal(OverlayRules.RemoveAllTakesNone, Errors("""{"mode":"removeAll","overlays":[{"text":"x"}]}""")["overlays"]);
         Assert.Equal(OverlayRules.AddOne, Errors("""{"mode":"add","overlays":[]}""")["overlays"]);
         Assert.Equal(OverlayRules.AddOne, Errors("""{"mode":"removeMatching"}""")["overlays"]);
         Assert.Equal(OverlayRules.EnterText, Errors("""{"overlays":[{"text":" "}]}""")["overlays[0].text"]);
@@ -64,7 +67,9 @@ public sealed class AgentTaskInputTests
         Assert.NotNull(plan.Devices[2].SkipReason);
         Assert.Equal([OverlaysTaskPlugin.ReplaceNote], plan.Warnings);
 
-        var all = await _plugin.PlanAsync("""{"mode":"replace","overlays":[]}""", [ok], CancellationToken.None);
-        Assert.StartsWith("Removes every text overlay", Assert.Single(all.Warnings), StringComparison.Ordinal);
+        var all = await _plugin.PlanAsync("""{"mode":"removeAll"}""", [ok], CancellationToken.None);
+        Assert.Equal(OverlaysTaskPlugin.RemoveAllNote, Assert.Single(all.Warnings));
+        var empty = await _plugin.PlanAsync("""{"mode":"replace","overlays":[]}""", [ok], CancellationToken.None);
+        Assert.Equal(OverlaysTaskPlugin.RemoveAllNote, Assert.Single(empty.Warnings));
     }
 }

@@ -27,6 +27,9 @@ public sealed class OverlaysTaskPlugin : ITaskPlugin, ITaskPluginQuery
     /// <summary>The plan's note of Replace.</summary>
     public const string ReplaceNote = "Every other text overlay of view area 1 is removed. Image overlays stay.";
 
+    /// <summary>The note of Remove all (and of a Replace with no overlay).</summary>
+    public const string RemoveAllNote = "Every text overlay of view area 1 is removed. Image overlays stay.";
+
     /// <summary>The plan's note of Add.</summary>
     public const string AddNote = "An overlay a camera already shows is skipped.";
 
@@ -83,7 +86,8 @@ public sealed class OverlaysTaskPlugin : ITaskPlugin, ITaskPluginQuery
         var plan = devices.Select(d => CanRunOn(d) ? new TaskPlanDevice(d.Id) : new TaskPlanDevice(d.Id, NotSupportedReason(d) ?? TaskSupportReasons.Default)).ToList();
         IReadOnlyList<string> warnings = payload.Mode switch
         {
-            OverlaysMode.Replace when payload.Overlays.Count == 0 => ["Removes every text overlay of view area 1. Image overlays stay."],
+            OverlaysMode.RemoveAll => [RemoveAllNote],
+            OverlaysMode.Replace when payload.Overlays.Count == 0 => [RemoveAllNote],
             OverlaysMode.Replace => [ReplaceNote],
             OverlaysMode.Add => [AddNote],
             _ => [],
@@ -128,6 +132,7 @@ public sealed class OverlaysTaskPlugin : ITaskPlugin, ITaskPluginQuery
         var many = string.Create(CultureInfo.InvariantCulture, $"{count} text overlays");
         return payload.Mode switch
         {
+            OverlaysMode.RemoveAll => "Remove all text overlays",
             OverlaysMode.Replace when count == 0 => "Remove all text overlays",
             OverlaysMode.Replace => one is null ? "Set " + many : "Set text overlay " + one,
             OverlaysMode.RemoveMatching => one is null ? "Remove " + many : "Remove text overlay " + one,

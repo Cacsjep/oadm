@@ -17,6 +17,9 @@ public enum OverlaysMode
 
     /// <summary>Removes the text overlays of view area 1 whose text equals one of the list.</summary>
     RemoveMatching = 2,
+
+    /// <summary>Removes every text overlay of view area 1; image overlays stay. Takes no overlays.</summary>
+    RemoveAll = 3,
 }
 
 /// <summary>Axis's six fixed places, or a custom place read from a camera (<see cref="TextOverlay.CustomPosition"/>).</summary>
@@ -75,7 +78,7 @@ public sealed record TextOverlay
 [Description("Add, replace or remove text overlays in view area 1 of the cameras.")]
 public sealed record OverlaysPayload
 {
-    [property: Description("add: next to the camera's overlays; replace: the camera keeps exactly these text overlays (an empty list removes all), image overlays stay; removeMatching: removes the text overlays with one of these texts.")]
+    [property: Description("add: next to the camera's overlays; replace: the camera keeps exactly these text overlays, image overlays stay; removeMatching: removes the text overlays with one of these texts; removeAll: removes every text overlay (no overlays in the list).")]
     public OverlaysMode Mode { get; init; } = OverlaysMode.Add;
 
     [property: Description("The text overlays, at most 8.")]

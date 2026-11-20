@@ -20,17 +20,23 @@
     <Border Grid.Row="1" Classes="card" Margin="16,0">
       <Grid RowDefinitions="Auto,Auto,Auto,Auto">
         <!-- The selection left, Read from a camera right: the title bar names the dialog, no heading here -->
-        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+        <Grid ColumnDefinitions="*,Auto">
           <TextBlock Classes="secondary" Text="{Binding DevicesText}" VerticalAlignment="Center" TextWrapping="Wrap" />
-          <Button Grid.Column="1" Classes="secondary" Command="{Binding ReadFromCameraCommand}" IsEnabled="{Binding !IsLoading}">
+          <Button Grid.Column="1" Classes="secondary" Command="{Binding ReadFromCameraCommand}" IsEnabled="{Binding !IsLoading}" IsVisible="{Binding ShowList}">
             <ui:IconLabel Icon="{DynamicResource Icon.devices}" Text="Read from a camera" />
           </Button>
         </Grid>
         <ui:StatusChip Grid.Row="1" Text="{Binding ReadStatus}" IsInfo="{Binding !ReadFailed}" IsError="{Binding ReadFailed}" MaxLines="2"
-                       IsVisible="{Binding HasReadStatus}" Margin="0,0,0,12" />
+                       IsVisible="{Binding HasReadStatus}" Margin="0,12,0,0" />
 
         <!-- Column headers, once -->
-        <Grid Grid.Row="2" ColumnDefinitions="230,152,80,152,152,152,30" ColumnSpacing="8" Margin="0,0,0,6" IsVisible="{Binding HasRows}">
+        <Grid Grid.Row="2" ColumnDefinitions="230,152,80,152,152,152,30" ColumnSpacing="8" Margin="0,12,0,6">
+          <Grid.IsVisible>
+            <MultiBinding Converter="{x:Static BoolConverters.And}">
+              <Binding Path="HasRows" />
+              <Binding Path="ShowList" />
+            </MultiBinding>
+          </Grid.IsVisible>
           <TextBlock Grid.Column="0" Classes="fieldLabel" Text="Text" />
           <TextBlock Grid.Column="1" Classes="fieldLabel" Text="Position" IsVisible="{Binding !IsRemove}" />
           <TextBlock Grid.Column="2" Classes="fieldLabel" Text="Size" IsVisible="{Binding !IsRemove}" ToolTip.Tip="{Binding SizeTip}" />
@@ -39,7 +45,7 @@
           <TextBlock Grid.Column="5" Classes="fieldLabel" Text="Outline" IsVisible="{Binding !IsRemove}" />
         </Grid>
 
-        <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Disabled" MaxHeight="420">
+        <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Disabled" MaxHeight="420" IsVisible="{Binding ShowList}">
           <StackPanel Spacing="8">
             <ItemsControl ItemsSource="{Binding Rows}">
               <ItemsControl.ItemsPanel>
@@ -103,7 +109,7 @@
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
-            <TextBlock Classes="secondary" Text="{Binding EmptyText}" TextWrapping="Wrap" IsVisible="{Binding ShowEmptyLine}" />
+            <TextBlock Classes="secondary" Text="{x:Static vm:OverlaysDialogViewModel.EmptyList}" TextWrapping="Wrap" IsVisible="{Binding ShowEmptyLine}" />
             <TextBlock Classes="fieldMessage error" Text="{Binding OverlaysError}"
                        IsVisible="{Binding OverlaysError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddOverlayCommand}"
@@ -123,6 +129,7 @@
           <RadioButton GroupName="mode" Content="Add" IsChecked="{Binding IsAdd}" />
           <RadioButton GroupName="mode" Content="Replace text overlays" IsChecked="{Binding IsReplace}" />
           <RadioButton GroupName="mode" Content="Remove matching" IsChecked="{Binding IsRemove}" />
+          <RadioButton GroupName="mode" Content="Remove all" IsChecked="{Binding IsRemoveAll}" />
         </StackPanel>
         <TextBlock Classes="secondary" Text="{Binding ModeNote}" TextWrapping="Wrap" IsVisible="{Binding !IsReplace}" />
         <ui:StatusChip IsWarning="True" Text="{Binding ModeNote}" MaxLines="2" IsVisible="{Binding IsReplace}" />
@@ -130,7 +137,7 @@
     </Border>
 
     <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
-      <Button Classes.primary="{Binding !IsRemove}" Classes.danger="{Binding IsRemove}" Content="{Binding ApplyText}" Command="{Binding ApplyCommand}" IsDefault="True"
+      <Button Classes.primary="{Binding !IsDanger}" Classes.danger="{Binding IsDanger}" Content="{Binding ApplyText}" Command="{Binding ApplyCommand}" IsDefault="True"
               ToolTip.Tip="{Binding ApplyBlockedReason}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>

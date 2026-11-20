@@ -8,6 +8,7 @@ using Avalonia.VisualTree;
 using Oadm.Client;
 using Oadm.Client.Infrastructure;
 using Oadm.Plugins.Overlays.Client;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Plugins.Overlays.Tests;
@@ -90,6 +91,14 @@ public sealed class HeadlessTests
             Assert.Single(Buttons(window), b => b.Classes.Contains("danger") && !b.Classes.Contains("toolbar"));
             Assert.DoesNotContain(Buttons(window), b => b.Classes.Contains("primary"));
             Capture(window, outDir, "overlays-remove" + suffix + ".png");
+
+            // Remove all: no list, the red button works without one.
+            vm.IsRemoveAll = true;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(vm.CanApply);
+            Assert.Single(Buttons(window), b => b.Classes.Contains("danger") && !b.Classes.Contains("toolbar"));
+            Assert.DoesNotContain(Buttons(window), b => b.Content is IconLabel { Text: "Read from a camera" or "Add overlay" });
+            Capture(window, outDir, "overlays-removeall" + suffix + ".png");
             window.Close();
 
             // Many cameras, some without text overlays: the summary counts them.

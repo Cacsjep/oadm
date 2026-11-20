@@ -84,6 +84,25 @@ public sealed class TaskPluginTests
     }
 
     [Fact]
+    public async Task Remove_all_removes_every_text_overlay_of_view_area_1_and_nothing_else()
+    {
+        var camera = new OverlayCamera();
+        camera.Put(1, "Lobby");
+        camera.Put(1, "%F %X");
+        camera.Put(2, "Area 2");
+        camera.PutImage(1);
+        var ctx = await RunAsync(camera, OverlaysJson.Serialize(new OverlaysPayload { Mode = OverlaysMode.RemoveAll }));
+        Assert.Equal(["Area 2"], camera.Texts.Select(t => t["text"]!.GetValue<string>()));
+        Assert.Equal("2 to remove", StepRun.Detail(ctx.Steps, OverlaysTaskRunner.StepCheck));
+        Assert.Equal("0 text overlays in view area 1", StepRun.Detail(ctx.Steps, OverlaysTaskRunner.StepVerify));
+        Assert.Equal(2, camera.Methods.Count(m => m == "remove")); // the image overlay stays
+        Assert.Equal("Remove all text overlays", _plugin.GetTaskName("""{"mode":"removeAll"}"""));
+
+        var again = await RunAsync(camera, """{"mode":"removeAll"}""");
+        Assert.Equal("Nothing to change", StepRun.Detail(again.Steps, OverlaysTaskRunner.StepCheck));
+    }
+
+    [Fact]
     public async Task Remove_matching_without_a_match_writes_nothing()
     {
         var camera = new OverlayCamera();

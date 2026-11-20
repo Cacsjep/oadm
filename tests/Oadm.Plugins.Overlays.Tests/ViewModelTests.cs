@@ -99,7 +99,7 @@ public sealed class ViewModelTests
     }
 
     [Fact]
-    public void The_list_holds_at_most_eight_and_replace_may_be_empty()
+    public void The_list_holds_at_most_eight_and_only_remove_all_runs_without_one()
     {
         var vm = Dialog();
         for (var i = 0; i < 10; i++)
@@ -119,9 +119,29 @@ public sealed class ViewModelTests
         Assert.Equal(OverlayRules.AddOne, vm.ErrorOf(OverlaysDialogViewModel.OverlaysField));
         Assert.False(vm.CanApply);
         vm.IsReplace = true;
-        Assert.True(vm.CanApply);
+        Assert.False(vm.CanApply); // the dialog never offers an empty Replace
+        Assert.Equal(OverlayRules.AddOne, vm.ApplyBlockedReason);
         Assert.Equal("Replace overlays", vm.ApplyText);
-        Assert.Equal(OverlaysMode.Replace, OverlaysJson.ParsePayload(vm.BuildPayload()).Mode);
+
+        vm.IsRemoveAll = true;
+        Assert.True(vm.CanApply);
+        Assert.True(vm.IsDanger);
+        Assert.False(vm.ShowList);
+        Assert.Equal("Remove overlays", vm.ApplyText);
+        Assert.Equal(OverlaysTaskPlugin.RemoveAllNote, vm.ModeNote);
+        var payload = OverlaysJson.ParsePayload(vm.BuildPayload());
+        Assert.Equal(OverlaysMode.RemoveAll, payload.Mode);
+        Assert.Empty(payload.Overlays);
+    }
+
+    [Fact]
+    public void Remove_all_ignores_the_rows_and_their_errors()
+    {
+        var vm = Dialog();
+        vm.Rows[0].SizeText = "big";
+        vm.IsRemoveAll = true;
+        Assert.True(vm.CanApply);
+        Assert.Empty(OverlaysJson.ParsePayload(vm.BuildPayload()).Overlays);
     }
 
     [Fact]
