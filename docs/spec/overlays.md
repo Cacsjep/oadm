@@ -42,14 +42,16 @@ API in the plugin's README.
 
 ## Dialog
 
-A list of at most 8 text overlays: Text (several lines; Date, Time and More values insert a modifier at the caret:
-day of the week, date and time, camera name, IP address, MAC address, frame rate, bitrate, dynamic text 1 to 16),
+A table of at most 8 text overlays, one line each with the column headers once above (decision 2026-11-20: no card per
+overlay, no heading that repeats the title bar): Text (one line high, keeps line breaks; the icon-only button Insert a
+value puts a modifier in at the caret: date, time, day of the week, date and time, camera name, IP address, MAC address,
+frame rate, bitrate, dynamic text 1 to 16),
 Position (Top left, Top, Top right, Bottom left, Bottom, Bottom right; Custom position only for an overlay read from a
 camera with its own place, which is kept when copied), Size (optional, the camera's default when empty), Text colour,
 Background, Outline (Black, White, Red, Transparent, Semi-transparent; new overlays white on black). **Read from a
 camera** fills the list from one camera the user may see (the read-only query `listOverlays`). The selection's summary
 "N devices: M compatible, K not supported" is the card's description. Every error sits below its field; the list's own
-error ("Add an overlay.") below the list.
+error ("Add an overlay.") below the list. The window takes the height of its content.
 
 ## AI agents
 

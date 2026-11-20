@@ -74,17 +74,27 @@ warning). Nothing to change: the writes are left out and Verify is skipped "Noth
 
 ## Dialog
 
-`OverlaysWindow` over `OverlaysDialogViewModel`. Card **Overlays**: the selection ("12 devices: 11 compatible, 1 not
-supported"), **Read from a camera** (the one-device picker over the user's devices, unsupported ones greyed with the
-reason; reads the camera's text overlays of view area 1 through the query `listOverlays` and replaces the list, at most
-8), one outlined row per overlay (`Border.ruleItem`, like the rule dialog's actions): **Text** (several lines), the
-modifier buttons **Date** (%F), **Time** (%X) and **More values** (Day of the week, Date and time, Camera name, IP
-address, MAC address, Frame rate, Bitrate, Dynamic text 1 to 16; the code goes in at the caret, after a space when it
-would stick to a word), **Position** (the six places, **Custom position** only for an overlay read with one), **Size**
-(empty = the camera's default; the hint gives the range of the camera read), **Text colour**, **Background**, **Outline**
-(Black, White, Red, Transparent, Semi-transparent; new overlays white on black), the remove icon; **Add overlay** below
-(at most 8). Card **On each camera**: Add, Replace text overlays (with a warning chip), Remove matching (only the text
-shows; the footer button turns red). Footer: Cancel and **Add overlays** / **Replace overlays** / **Remove overlays**.
+`OverlaysWindow` over `OverlaysDialogViewModel`, 1080 px wide, as high as its content (8 rows scroll). The title bar
+names the dialog; the first card has no heading: the selection left ("250 devices: 243 compatible, 7 not supported"),
+**Read from a camera** right (the one-device picker over the user's devices, unsupported ones greyed with the reason;
+reads the camera's text overlays of view area 1 through the query `listOverlays` and replaces the list, at most 8).
+
+The overlays are a table: the column headers once (`TextBlock.fieldLabel`; the Size header's tooltip gives the range of
+the camera read), one line per overlay, each input a label-less `ui:FormField` (`wide inline`), so its error shows
+directly below it and only that row grows:
+
+- **Text**: one line high. `AcceptsReturn` stays on with the height of one line: a text read from a camera keeps its line
+  breaks and Enter adds one; the box scrolls to the caret's line. The icon-only button next to it (tooltip "Insert a
+  value") opens one menu: Date (%F), Time (%X), Day of the week, Date and time, Camera name, IP address, MAC address,
+  Frame rate, Bitrate, Dynamic text > 1 to 16. The code goes in at the caret, after a space when it would stick to a word.
+- **Position** (the six places, **Custom position** only for an overlay read with one), **Size** (placeholder Default),
+  **Text colour**, **Background**, **Outline** (Black, White, Red, Transparent, Semi-transparent; new overlays white on
+  black). The columns are wide enough for "Semi-transparent" and "Custom position".
+- The red remove icon at the row's end; **Add overlay** below the rows, disabled at 8 with "At most 8 overlays." as tooltip.
+
+Card **On each camera**: Add, Replace text overlays (with a warning chip), Remove matching (only the Text column shows; the
+footer button turns red). Footer: Cancel and **Add overlays** / **Replace overlays** / **Remove overlays**. The dialog
+shows the count of unsupported devices only; their reason is the greyed menu entry's tooltip, like other tasks.
 
 On open the dialog reads the limits of the first compatible selected camera (one query, whatever the selection) for the
 text length and the size range; without them the payload's widest range applies and each camera checks its own.
