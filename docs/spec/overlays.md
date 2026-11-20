@@ -35,10 +35,15 @@ API in the plugin's README.
 ## What happens on each camera
 
 - **Add**: the list goes next to the camera's overlays.
-- **Replace text overlays**: the camera ends up with exactly this list of text overlays in view area 1; an empty list
-  removes all of them. The dialog shows a warning under the choice.
+- **Replace text overlays**: the camera ends up with exactly this list of text overlays in view area 1. The dialog shows a
+  warning under the choice and needs at least one overlay ("Add an overlay."). An empty Replace still removes every text
+  overlay when a payload sends one (older payloads, agents); the dialog never sends it.
 - **Remove matching**: removes the text overlays whose text equals one in the list; only the text counts, the dialog
   hides the other fields.
+- **Remove all** (decision 2026-11-20): removes every text overlay of view area 1; image overlays stay. The dialog hides
+  the table, Read from a camera and Add overlay, the main button is the red Remove overlays and needs no overlay. The
+  payload is `{"mode":"removeAll"}` with no overlays ("Remove all takes no overlays."); task name "Remove all text
+  overlays".
 
 ## Dialog
 

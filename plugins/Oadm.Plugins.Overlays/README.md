@@ -57,8 +57,11 @@ warning). Nothing to change: the writes are left out and Verify is skipped "Noth
   colours, and the size when one was asked for); identities can change after a restart.
 - **Add**: an overlay the camera already shows exactly like this is skipped ("2 already on the camera"), so a second run
   changes nothing.
-- **Replace text overlays**: the text overlays of view area 1 the list does not have are removed, the missing ones added;
-  an empty list removes every text overlay of view area 1. Image overlays and other view areas stay.
+- **Replace text overlays**: the text overlays of view area 1 the list does not have are removed, the missing ones added.
+  Image overlays and other view areas stay. An empty list removes every text overlay of view area 1 (kept for payloads
+  that send one; the dialog needs at least one overlay and offers Remove all instead).
+- **Remove all**: removes every text overlay of view area 1 (`mode` `removeAll`, no overlays). Image overlays and other
+  view areas stay.
 - **Remove matching**: removes the text overlays of view area 1 whose text equals one of the list (only the text counts);
   a text no overlay has is named in the check step, no warning.
 - **Checks before the first write**: text length against `maxTextLength`, size against `minFontSize`..`maxFontSize`,
@@ -66,8 +69,8 @@ warning). Nothing to change: the writes are left out and Verify is skipped "Noth
   `slotsPerImageOverlay`; "The camera has room for 1 more overlay in view area 1, not 2. Nothing was changed."
 - A refused write after an earlier one says what was done: "... Already done: 1 removed, 0 added."
 - Task names: "Add text overlay "Lobby"", "Add 2 text overlays", "Set text overlay ...", "Set 3 text overlays", "Remove all
-  text overlays" (Replace with an empty list), "Remove text overlay ...", "Remove 2 text overlays".
-- Payload (`OverlaysPayload`, JSON camelCase): `mode` (`add`, `replace`, `removeMatching`), `overlays[]` (`text`,
+  text overlays" (Remove all, or Replace with an empty list), "Remove text overlay ...", "Remove 2 text overlays".
+- Payload (`OverlaysPayload`, JSON camelCase): `mode` (`add`, `replace`, `removeMatching`, `removeAll`), `overlays[]` (`text`,
   `position`, `customPosition` [x, y] for `custom`, `textColor`, `backgroundColor`, `outlineColor`, `fontSize`), at most
   8. `ValidatePayload` holds the dialog's rules at their fields; the agents' input is its schema (no secrets).
 - Permissions: the default `task:oadm.overlays` only.
@@ -92,8 +95,9 @@ directly below it and only that row grows:
   black). The columns are wide enough for "Semi-transparent" and "Custom position".
 - The red remove icon at the row's end; **Add overlay** below the rows, disabled at 8 with "At most 8 overlays." as tooltip.
 
-Card **On each camera**: Add, Replace text overlays (with a warning chip), Remove matching (only the Text column shows; the
-footer button turns red). Footer: Cancel and **Add overlays** / **Replace overlays** / **Remove overlays**. The dialog
+Card **On each camera**: Add, Replace text overlays (with a warning chip; needs at least one overlay), Remove matching
+(only the Text column shows; the footer button turns red), Remove all (the table, Read from a camera and Add overlay are
+hidden, the count stays; the red footer button works without an overlay). Footer: Cancel and **Add overlays** / **Replace overlays** / **Remove overlays**. The dialog
 shows the count of unsupported devices only; their reason is the greyed menu entry's tooltip, like other tasks.
 
 On open the dialog reads the limits of the first compatible selected camera (one query, whatever the selection) for the
