@@ -720,6 +720,19 @@ zone from the 313 IANA zones of AXIS OS, daylight saving, time mode: server time
   changes ("Set NTP servers ...", "Sync with server time", else "Change date and time"); a manual time holds at OK, a
   device whose task runs later gets the time since then on top (payload `manualSetAt`, on the server's clock).
 
+## Text overlays
+
+`plugins/Oadm.Plugins.Overlays` (+ `.Client`), id `oadm.overlays`, on by default, context menu (Video, icon `text`)
+**Text overlays**: add text overlays to view area 1 of the selected cameras, replace their text overlays with the dialog's
+list, or remove the ones with its texts; Read from a camera copies one camera's text overlays into the dialog. Spec:
+`docs/spec/overlays.md`.
+
+- Rules that must hold: text overlays of view area 1 only (image overlays, widgets, privacy masks and other view areas
+  never touched); API discovery `dynamicoverlay` 1.x checked fresh before the first request to the API; text length, size
+  range and free slots of the view area checked before the first write ("Nothing was changed"); overlays listed right
+  before the writes and found by content, never by a stored identity; never the deprecated `reference` or `scrollSpeed`;
+  an overlay the camera already shows is not added again.
+
 ## Device configuration
 
 `plugins/Oadm.Plugins.DeviceConfig` (+ `.Client`), id `oadm.device-config`, always on, context menu (Maintenance)

@@ -599,7 +599,7 @@ box back with the error below the list (`PluginsViewModel.SwitchAsync`).
   (ACAP), Users, Network settings, PKI, Provisioning, System report, Device configuration, Outputs, Notifications, Modbus, MQTT and OPC UA (core
   functionality). Enabled whatever the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers
   FAILED_PRECONDITION "<name> is always on.". Every other bundled package is switchable (on by default:
-  VAPIX Commander, NTP server, DHCP server, Web View). Third-party plugins are switchable unless their manifest says
+  VAPIX Commander, NTP server, DHCP server, Web View, Text overlays). Third-party plugins are switchable unless their manifest says
   otherwise.
 - Manifest `description` (`PluginOrigin.Description`): one short sentence shown on the Plugins page; every bundled plugin
   has one (PKI adds a second: "802.1X and EST servers need OADM PRO.").

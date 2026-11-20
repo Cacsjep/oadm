@@ -146,6 +146,7 @@ export default defineConfig({
 						{ label: 'Date and time', slug: 'tasks/date-and-time' },
 						{ label: 'Device configuration', slug: 'tasks/device-configuration' },
 						{ label: 'Network settings', slug: 'tasks/network' },
+						{ label: 'Text overlays', slug: 'tasks/text-overlays' },
 						{ label: 'Upgrade AXIS OS', slug: 'tasks/firmware' },
 						{ label: 'Users', slug: 'tasks/users' },
 					],

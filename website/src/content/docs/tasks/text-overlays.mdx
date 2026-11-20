@@ -1,0 +1,52 @@
+---
+title: Text overlays
+description: Add, replace or remove text overlays such as date, time and camera name on many cameras.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import shot from '../../../assets/screens/plugin-overlays.png';
+
+**Text overlays** puts the same text overlays on many cameras: date and time, the camera name, your own text. It is in
+the context menu under **Video**.
+
+<Image src={shot} alt="The Text overlays dialog with date and time bottom left and the camera name top right" class="screen" />
+
+## Run it
+
+<Steps>
+
+1. Select the cameras, right-click and choose **Video** > **Text overlays**.
+2. Type the **Text** of each overlay. **Date**, **Time** and **More values** put a value in at the cursor: day of the
+   week, date and time, camera name, IP address, MAC address, frame rate, bitrate or dynamic text 1 to 16.
+3. Choose **Position**, **Size**, **Text colour**, **Background** and **Outline**. An empty **Size** keeps the camera's
+   default. **Add overlay** adds another one, up to 8.
+4. Choose what happens **On each camera**:
+   - **Add**: the overlays go next to those the camera has.
+   - **Replace text overlays**: the camera keeps exactly this list. With no overlay in the list, all its text overlays
+     are removed.
+   - **Remove matching**: removes the overlays with the same text.
+5. Click **Add overlays**, **Replace overlays** or **Remove overlays**.
+
+</Steps>
+
+**Read from a camera** fills the list with the text overlays of one camera, so you can copy them to many. An overlay
+placed freely on that camera keeps its place (**Custom position**).
+
+All overlays go to view area 1. Image overlays and the other view areas stay as they are.
+
+## What OADM checks first
+
+- The camera supports text overlays.
+- The text fits the camera's length, the size is in the camera's range and the view area has a free slot.
+
+A refused camera fails with "Nothing was changed". An overlay the camera already shows is not added twice.
+
+## Steps
+
+Check the overlay support, Read the overlay limits, Read the overlays, Check the overlays, then one step per overlay
+removed or added, Verify the overlays.
+
+<Aside>
+A line break in the text makes a new line on the video.
+</Aside>
