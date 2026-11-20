@@ -98,6 +98,14 @@ function Wait-ServiceGone([string] $name) {
     }
 }
 
+# The shortcuts of an app in the Start menu and on the public desktop: both after the install, none after the removal.
+function Test-Shortcuts([string] $name, [bool] $installed) {
+    foreach ($lnk in "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\$name.lnk", "$env:PUBLIC\Desktop\$name.lnk") {
+        if ($installed -and -not (Test-Path $lnk)) { throw "shortcut missing: $lnk" }
+        if (-not $installed -and (Test-Path $lnk)) { throw "shortcut left behind: $lnk" }
+    }
+}
+
 function Test-Decoder {
     # WinExe: Start-Process returns at once; Invoke-Limited waits for the exit code.
     $d = Invoke-Limited 'C:\Program Files\OADM\Client\Oadm.Client.exe' '--check-decoder' '' 120
@@ -148,7 +156,7 @@ if ($Mode -eq 'SiteNode') {
         if (-not (Test-Path "C:\Program Files\OADM Site Node\$f")) { throw "$f missing" }
     }
     if (Test-Path 'C:\Program Files\OADM Site Node\LGPL-2.1.txt') { throw 'the node has no LGPL part' }
-    if (-not (Test-Path "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\OADM Site Node.lnk")) { throw 'Start menu shortcut missing' }
+    Test-Shortcuts 'OADM Site Node' $true
     if ((Get-NodeRule).Count -ne 0) { throw 'the node MSI must not add a firewall rule' }
 
     # SERVER=<address> reached the node; it is not bound (and cannot connect: the name does not exist).
@@ -172,6 +180,7 @@ if ($Mode -eq 'SiteNode') {
     Uninstall uninstall-node.log
     Wait-ServiceGone OadmSiteNode
     if (Test-Path $node) { throw 'node still installed' }
+    Test-Shortcuts 'OADM Site Node' $false
     if ((Get-NodeRule).Count -ne 0) { throw 'firewall rule left behind' }
     if (-not (Test-Path $data)) { throw 'data folder was removed' }
     Say 'site node: install, service, status, no firewall rule, uninstall ok'
@@ -186,9 +195,11 @@ if ($Mode -eq 'ClientOnly') {
     if (Get-NetFirewallRule -DisplayName 'OADM Server*' -ErrorAction SilentlyContinue) { throw 'client only must not add a firewall rule' }
     if (-not (Test-Path 'C:\Program Files\OADM\Client\THIRD-PARTY-NOTICES.txt')) { throw 'client license texts missing' }
     if (-not (Test-Path 'C:\Program Files\OADM\Client\docs\index.html')) { throw 'client Help (docs) missing' }
+    Test-Shortcuts 'OADM' $true
     Test-Decoder
     Uninstall uninstall-client.log
     if (Test-Path 'C:\Program Files\OADM\Client\Oadm.Client.exe') { throw 'client still installed' }
+    Test-Shortcuts 'OADM' $false
     Say 'client only: install, decoder, uninstall ok'
     return
 }
@@ -236,6 +247,7 @@ foreach ($app in 'Server', 'Client') {
 # Help: the offline docs only next to the client (docs/spec/help.md).
 if (-not (Test-Path 'C:\Program Files\OADM\Client\docs\index.html')) { throw 'client Help (docs) missing' }
 if (Test-Path 'C:\Program Files\OADM\Server\docs') { throw 'the server has no Help (docs)' }
+Test-Shortcuts 'OADM' $true
 (Get-Acl C:\ProgramData\OADM).Access | Format-Table IdentityReference, FileSystemRights -AutoSize | Out-String | Write-Host
 # TCP 5080 (clients) for Domain and Private; the server adds TCP 5081 only while Accept site nodes is on (off by default),
 # the NTP and DHCP plugins their UDP rules only while enabled.
@@ -259,4 +271,5 @@ Uninstall uninstall.log
 Wait-ServiceGone OadmServer
 if (Get-NetFirewallRule -DisplayName 'OADM Server*' -ErrorAction SilentlyContinue) { throw 'firewall rule left behind' }
 if (-not (Test-Path C:\ProgramData\OADM\master.key)) { throw 'data folder was removed' }
+Test-Shortcuts 'OADM' $false
 Say 'server and client: install, service, gRPC, firewall, uninstall ok'

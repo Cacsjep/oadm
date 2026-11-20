@@ -8,7 +8,7 @@
     S-1-5-80-4118054575-3786589468-426418864-2630448348-754858313 = SHA-1 of "OADMSITENODE", `sc showsid OadmSiteNode`) and
     kept on uninstall. The single-file exe extracts native files below it (runtime), never to a shared temp folder.
   - No firewall rule: the node only connects out.
-  - Start menu shortcut "OADM Site Node" to the app; the folder is on the system PATH for "oadm-site-node status".
+  - Shortcut "OADM Site Node" to the app in the Start menu and on the desktop; the folder is on the system PATH for "oadm-site-node status".
   - A silent install takes SERVER=<address> (oadm.example.com, 10.0.0.5, 10.0.0.5:5081): after the service started,
     "oadm-site-node server <address>" sets it, waiting up to 60 s for the service (an address the node refuses fails the
     install).
@@ -83,11 +83,15 @@
       </Files>
     </ComponentGroup>
 
-    <!-- The app: its exe with the Start menu shortcut (its license texts are the same files as the service's). -->
+    <!-- The app: its exe with the shortcuts (its license texts are the same files as the service's). -->
     <ComponentGroup Id="App" Directory="INSTALLFOLDER">
       <Component Id="AppExe">
         <File Id="AppExe" Source="$(var.AppDir)\oadm-site-node-app.exe" KeyPath="yes">
           <Shortcut Id="AppStartMenu" Directory="ProgramMenuFolder" Name="OADM Site Node"
+                    Description="OADM Site Node" WorkingDirectory="INSTALLFOLDER"
+                    Icon="OadmIcon.ico" Advertise="yes" />
+          <!-- The public desktop (per-machine install), removed with the app. -->
+          <Shortcut Id="AppDesktop" Directory="DesktopFolder" Name="OADM Site Node"
                     Description="OADM Site Node" WorkingDirectory="INSTALLFOLDER"
                     Icon="OadmIcon.ico" Advertise="yes" />
         </File>

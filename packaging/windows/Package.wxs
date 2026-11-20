@@ -11,7 +11,8 @@
     5081 while Accept site nodes is on, the NTP and DHCP plugins their UDP rule while enabled.
     %ProgramData%\OADM is created with access for SYSTEM and Administrators only and is never removed (database,
     master key, logs survive uninstall and upgrades).
-  - Feature Client (always): Program Files\OADM\Client: Oadm.Client.exe + plugins\, Start menu shortcut "OADM".
+  - Feature Client (always): Program Files\OADM\Client: Oadm.Client.exe + plugins\, shortcut "OADM" in the Start menu
+    and on the desktop.
   - Both folders carry LICENSE.txt, NOTICE.txt, THIRD-PARTY-NOTICES.txt and LGPL-2.1.txt (written by manage publish).
   - Every file below the published folders is harvested at build time (Files), so plugins added later are
     picked up without editing this file.
@@ -91,11 +92,15 @@
       </Files>
     </ComponentGroup>
 
-    <!-- Client: the exe with the Start menu shortcut, everything else (plugins, license texts) harvested. -->
+    <!-- Client: the exe with the shortcuts, everything else (plugins, license texts) harvested. -->
     <ComponentGroup Id="Client" Directory="ClientFolder">
       <Component Id="ClientExe">
         <File Id="ClientExe" Source="$(var.ClientDir)\Oadm.Client.exe" KeyPath="yes">
           <Shortcut Id="ClientStartMenu" Directory="ProgramMenuFolder" Name="OADM"
+                    Description="OADM - Open AXIS Device Management" WorkingDirectory="ClientFolder"
+                    Icon="OadmIcon.ico" Advertise="yes" />
+          <!-- The public desktop (per-machine install), removed with the client. -->
+          <Shortcut Id="ClientDesktop" Directory="DesktopFolder" Name="OADM"
                     Description="OADM - Open AXIS Device Management" WorkingDirectory="ClientFolder"
                     Icon="OadmIcon.ico" Advertise="yes" />
         </File>
