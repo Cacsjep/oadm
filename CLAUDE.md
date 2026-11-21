@@ -308,6 +308,15 @@ state through `ITaskDialogContext.QueryAsync`), `IUploadedFiles` (dialog uploads
 `ITaskDialogContext.UploadAsync`, task reads by id), `ReportWarning` (Done with warnings) and
 `Log` (persisted per-task log).
 
+# HARD RULE: ask about multi-sensor cameras
+
+Before building or changing anything that works per picture or per video channel (overlays, snapshots, live view, image
+settings, privacy masks, view areas, stream profiles, analytics areas, events with a channel), ask the maintainer how
+cameras with several sensors are handled: every sensor, the first only, or a choice; and what happens to extra view
+areas and a group view. Never decide it silently. Facts: a sensor is `Image.I<n>.Source` (`VideoSource.Sensor`), a
+camera with one sensor can have up to 8 view areas, a group view combines sensors (`Source=1,0`, AXIS P4708-PLVE); the
+decision goes into the feature's spec (example: `docs/spec/overlays.md` rule 2, every sensor's first view area).
+
 # Wording
 
 HARD RULE for every UI text and every doc. We write for installers who know Axis devices and come from ADM.
