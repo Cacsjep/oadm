@@ -25,7 +25,6 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 - Import configuration: cameras with AXIS OS older than 12.5 take the parameters of a configuration file.
 - Devices: the toolbar shows Add, Export and Provisioning first, then Remove and Refresh for the selection.
 - Tasks: names hold up to 120 characters, so file names and texts are no longer cut.
-- Updates: a plugin the new version no longer ships is removed with its settings and data.
 - Settings: one column of settings with a search and one Save, in the look of the Windows settings.
 - Linux: the app menu and the dock show the OADM icon sharp in every size.
 
