@@ -7,6 +7,8 @@
 import { Image, getImage } from 'astro:assets';
 import Reveal from './Reveal.astro';
 import compliance from '../assets/screens/compliance-page.png';
+import provisioning from '../assets/screens/provisioning-dialog.png';
+import overlays from '../assets/screens/plugin-overlays.png';
 import ntp from '../assets/screens/ntp-server-page.png';
 import dhcp from '../assets/screens/dhcp-server-page.png';
 import commander from '../assets/screens/plugin-vapix-commander-rollout.png';
@@ -33,6 +35,8 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 
 const plugins = [
 	{ name: 'Compliance', path: 'devices/compliance', image: compliance, text: 'Which devices need attention: unreachable, wrong login, certificate, AXIS OS, apps, configuration.' },
+	{ name: 'Provisioning', path: 'tools/provisioning', image: provisioning, text: 'Every factory-new camera OADM finds gets its password, address and settings by itself.' },
+	{ name: 'Text overlays', path: 'tasks/text-overlays', image: overlays, text: 'Date, time or camera name on hundreds of cameras at once, or copied from one camera.' },
 	{ name: 'NTP server', page: 'ntp-server', image: ntp, text: 'The time for every device, from this server.' },
 	{ name: 'DHCP server', page: 'dhcp-server', image: dhcp, text: 'Addresses for sites without infrastructure. New Axis devices add themselves.' },
 	{ name: 'EST server', page: 'est-server', image: est, pro: true, text: 'Cameras get their certificates from OADM and renew them by themselves.' },
