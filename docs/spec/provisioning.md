@@ -117,8 +117,8 @@ the editor); a profile with errors is saved as a draft.
 
 **The file preview** (Configuration, once a file is chosen): below Continue on error, a separator and a read-only list
 (its own space below the separator, group headings in the theme's `groupHeader` style) of what the file holds of the
-ticked areas: per area a heading with its count ("Parameters, 1,117"), then the parameters as "Name = value" by their `param.cgi` names, the action rules and the schedules by name; an empty area
-says so ("The file has no action rules."). The parameters are exactly what Import configuration applies
+ticked areas: per area a heading with its count ("Parameters, 1,117"), then the parameters as "Name = value" by their
+`param.cgi` names, the action rules and the schedules by name; an empty area says so ("The file has no action rules."). The parameters are exactly what Import configuration applies
 (`ConfigIdentity.Clean`); the ones it never writes (address, names, connection settings, time zone parameters) are left
 out and counted in one line ("66 more stay as they are on each camera: address, names and connection settings."). The
 list is virtualized and scrolls in itself; the file is read once per file (`readConfigFile`, the kept `.json` of at most
