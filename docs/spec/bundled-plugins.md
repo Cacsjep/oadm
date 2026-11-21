@@ -387,10 +387,11 @@ toolbar button, Provisioning management, the Add devices page's "Provisioning" a
 - Rights: "show" and "manage", both off for Operator and Viewer; every method for users with all devices only except
   `state` (whether it is on: every signed-in user, for the Add devices page); On, Off, Run again and profile changes
   audited without the payload.
-- MCP ([mcp.md](mcp.md)): `oadm_provisioning_status`, `_profiles`, `_profile`, `_credentials`, `_vapix_commands`, `_camera`
-  (the last run of a camera) and the changes with preview and run (`_profile_save`, `_profile_delete`, `_profile_activate`,
-  `_turn_on`, `_turn_off`, `_run_again`); `_secret_store` (the person enters a node's password) and `_file_store` (an
-  uploaded file) answer the ids a node's settings name.
+- MCP ([mcp.md](mcp.md)): `oadm_provisioning_status`, `_profiles`, `_profile`, `_credentials`, `_vapix_commands`,
+  `_policies` (PKI's policies for Certificate and 802.1X), `_camera` (the last run of a camera) and the changes with
+  preview and run (`_profile_save`, `_profile_delete`, `_profile_activate`, `_turn_on`, `_turn_off`, `_run_again`);
+  `_secret_store` (the person enters a node's password) and `_file_store` (an uploaded file) answer the ids a node's
+  settings name.
 
 ## VPN Fleet (core plugin)
 
@@ -726,15 +727,16 @@ zone from the 313 IANA zones of AXIS OS, daylight saving, time mode: server time
 ## Text overlays
 
 `plugins/Oadm.Plugins.Overlays` (+ `.Client`), package `oadm.overlays`, on by default, context menu group **Overlays**
-(icon `text`): **Add overlays**, **Replace overlays**, **Remove matching overlays** (one dialog each; Read from a camera
-copies one camera's text overlays into it) and, last after a separator, **Remove all overlays** (a confirmation only).
-Spec: `docs/spec/overlays.md`.
+(icon `text`): **Add overlays** (`oadm.overlays.add`), **Replace overlays** (`oadm.overlays.replace`), **Remove matching
+overlays** (`oadm.overlays.remove-matching`; one dialog each; Read from a camera copies one camera's text overlays into
+it) and, last after a separator (`IsDestructive`), **Remove all overlays** (`oadm.overlays.remove-all`, a confirmation
+only). Spec: `docs/spec/overlays.md`.
 
 - Rules that must hold: text overlays of view area 1 only (image overlays, widgets, privacy masks and other view areas
   never touched); API discovery `dynamicoverlay` 1.x checked fresh before the first request to the API; text length, size
   range and free slots of the view area checked before the first write ("Nothing was changed"); overlays listed right
-  before the writes and found by content, never by a stored identity; never the deprecated `reference` or `scrollSpeed`;
-  an overlay the camera already shows is not added again.
+  before the writes and found by content, never by a stored identity; additions before removals while the free slots take
+  them; never the deprecated `reference` or `scrollSpeed`; an overlay the camera already shows is not added again.
 
 ## Device configuration
 

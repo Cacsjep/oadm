@@ -43,7 +43,7 @@ Package `plugins/Oadm.Plugins.Overlays` (+ `.Client`), id `oadm.overlays`, free,
 - **Replace overlays**: the camera ends up with exactly this list of text overlays in view area 1; at least one overlay
   ("Add an overlay."). The dialog shows a short warning above the table.
 - **Remove matching overlays**: removes the text overlays whose text equals one in the list; only the text counts, the
-  dialog shows only the Text column and its main button is red.
+  dialog shows only the Text column, **Add text** adds a row and its main button is red.
 - **Remove all overlays**: removes every text overlay of view area 1; image overlays stay. No form: only a confirmation
   (`ui:MessageWindow`, red Remove): "Remove all text overlays of 243 cameras? Image overlays stay." with the line of
   unsupported cameras below when there are some. Task name "Remove all text overlays".

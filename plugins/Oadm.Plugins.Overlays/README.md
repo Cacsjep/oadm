@@ -108,7 +108,8 @@ directly below it and only that row grows:
   **Text colour** (Black, White, Red), **Background**, **Outline** (Black, White, Red, Transparent, Semi-transparent; new
   overlays white on black). The columns are wide enough for "Semi-transparent" and "Custom position". Remove matching shows the Text
   column only (and checks only the text); its footer button is red.
-- The red remove icon at the row's end; **Add overlay** below the rows, disabled at 8 with "At most 8 overlays." as tooltip.
+- The red remove icon at the row's end; **Add overlay** (Remove matching: **Add text**) below the rows, disabled at 8
+  with "At most 8 overlays." as tooltip.
 
 Remove all overlays has no form: `MessageWindow.ConfirmAsync` "Remove all text overlays of 243 cameras? Image overlays
 stay." (and the unsupported line), red Remove; it returns `{}`.

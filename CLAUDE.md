@@ -234,10 +234,10 @@ must never break.
   and permissions; reads only on demand, kept in server memory.
 - **[Text overlays](docs/spec/overlays.md)** (package `oadm.overlays`, free, on by default; context menu group Overlays:
   Add, Replace, Remove matching and, last, Remove all overlays): the text overlays of view area 1 on many cameras, Read
-  from a camera copies one camera's; text only (image overlays,
-  widgets, privacy masks, other view areas never touched); `dynamicoverlay` 1.x checked fresh, text length, size range and
-  free slots (per view area) before the first write; listed right before the writes and found by content, never a stored
-  identity; never the deprecated `reference` or `scrollSpeed`. Open: whether overlays survive a restart.
+  from a camera copies one camera's; text only (image overlays, widgets, privacy masks, other view areas never touched);
+  `dynamicoverlay` 1.x checked fresh, text length, size range and free slots (per view area) before the first write;
+  listed right before the writes and found by content, never a stored identity; never the deprecated `reference` or
+  `scrollSpeed`. Open: whether overlays survive a restart.
 - **[VPN Fleet](docs/spec/vpn-fleet.md)** (community core plugin `oadm.vpn-fleet`, free, off by default): the camera VPN
   apps of github.com/Mo3he; secrets never reach the client or the database; changes only to parameters the device has,
   checked first; installs from the apps' GitHub releases, checked against GitHub's SHA-256.
