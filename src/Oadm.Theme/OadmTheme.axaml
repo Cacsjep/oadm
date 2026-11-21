@@ -2279,6 +2279,15 @@
   <Style Selector="ListBox.readOnlyList ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter, ListBox.readOnlyList ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="Transparent" />
   </Style>
+  <!-- A group heading in a read-only list (Your role, the file preview of Provisioning's Configuration): space above, a little below -->
+  <Style Selector="ListBox.readOnlyList TextBlock.groupHeader">
+    <Setter Property="Margin" Value="0,8,0,2" />
+  </Style>
+  <!-- A read-only list that scrolls in itself below a separator in a form (the file preview of Provisioning's Configuration):
+       space of its own above, so a half scrolled first line never sits right under the line -->
+  <Style Selector="ListBox.readOnlyList.belowSeparator">
+    <Setter Property="Margin" Value="0,6,0,0" />
+  </Style>
   <!-- The Assistant's conversation (after readOnlyList, which it refines): one 18 px gap between entries (an answer and its cards clearly apart), and room on the right so nothing sits under the scroll bar -->
   <Style Selector="ListBox.chatList">
     <Setter Property="Padding" Value="0,0,16,0" />

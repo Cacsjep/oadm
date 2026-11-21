@@ -27,7 +27,7 @@
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="shell:MyRoleRow">
               <Panel>
-                <TextBlock Classes="groupHeader" Text="{Binding Title}" IsVisible="{Binding IsGroup}" Margin="0,8,0,2" />
+                <TextBlock Classes="groupHeader" Text="{Binding Title}" IsVisible="{Binding IsGroup}" />
                 <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsPermission}" Margin="16,2,0,2">
                   <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
                   <ui:InfoIcon Text="{Binding Description}" />
