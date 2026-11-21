@@ -27,7 +27,8 @@ Package `plugins/Oadm.Plugins.Overlays` (+ `.Client`), id `oadm.overlays`, free,
    to 1), then per camera its text length, size range and free slots of view area 1 from `getOverlayCapabilities`.
 5. **No stored identities.** Overlays are listed right before the writes and found by their content; an identity is
    used only in the same task, right after the list that returned it.
-6. **One request per step**, removals before additions, a refusal after an earlier write says what was already done.
+6. **One request per step**, additions before removals while the free slots take them (a refused add leaves the old
+   overlays in place), else removals first; a refusal after an earlier write says what was already done.
    Errors in an HTTP 200 answer are failures with a plain message.
 7. **Never the deprecated parameters** `reference` and `scrollSpeed`.
 8. **The same twice changes nothing**: an overlay the camera already shows exactly like this is not added again.

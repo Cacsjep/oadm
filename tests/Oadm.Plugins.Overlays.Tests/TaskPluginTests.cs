@@ -60,7 +60,7 @@ public sealed class TaskPluginTests
     }
 
     [Fact]
-    public async Task Replace_removes_first_then_adds_and_never_touches_images_or_other_view_areas()
+    public async Task Replace_adds_first_then_removes_and_never_touches_images_or_other_view_areas()
     {
         var camera = new OverlayCamera();
         camera.Put(1, "Old");
@@ -70,11 +70,34 @@ public sealed class TaskPluginTests
         var ctx = await RunAsync(camera, OverlaysMode.Replace, Payload(Overlay("%F %X"), Overlay("New")));
 
         Assert.Single(camera.Methods, m => m == "remove");
-        Assert.True(camera.Methods.IndexOf("remove") < camera.Methods.IndexOf("addText"));
+        Assert.True(camera.Methods.IndexOf("addText") < camera.Methods.IndexOf("remove"));
         Assert.Equal(["%F %X", "Area 2", "New"], camera.Texts.Select(t => t["text"]!.GetValue<string>()));
-        Assert.Contains("Remove the overlay \"Old\": Done", StepRun.Lines(ctx.Steps));
+        Assert.Equal(
+            [
+                "Check the overlay support: Done", "Read the overlay limits: Done", "Read the overlays: Done", "Check the overlays: Done",
+                "Add the overlay \"New\": Done", "Remove the overlay \"Old\": Done", "Verify the overlays: Done", "Completed: Done",
+            ],
+            StepRun.Lines(ctx.Steps));
         Assert.Equal("Set 2 text overlays", For(OverlaysMode.Replace).GetTaskName(Payload(Overlay("a"), Overlay("b"))));
-        Assert.Equal(["addText", "list"], camera.Methods.Skip(camera.Methods.Count - 2)); // the add, then the verification's list
+        Assert.Equal(["remove", "list"], camera.Methods.Skip(camera.Methods.Count - 2)); // the removal, then the verification's list
+    }
+
+    [Fact]
+    public async Task Replace_removes_first_when_the_free_slots_do_not_take_the_new_overlays()
+    {
+        var camera = new OverlayCamera();
+        for (var i = 0; i < 8; i++)
+        {
+            camera.Put(1, "x" + i);
+        }
+
+        var ctx = await RunAsync(camera, OverlaysMode.Replace, Payload(Overlay("New")));
+
+        Assert.True(camera.Methods.IndexOf("remove") < camera.Methods.IndexOf("addText"));
+        Assert.Equal(["New"], camera.Texts.Select(t => t["text"]!.GetValue<string>()));
+        Assert.Equal("Remove the overlay \"x0\": Done", StepRun.Lines(ctx.Steps)[4]);
+        Assert.Equal("Add the overlay \"New\": Done", StepRun.Lines(ctx.Steps)[12]);
+        Assert.Equal("Verify the overlays: Done", StepRun.Lines(ctx.Steps)[^2]);
     }
 
     [Fact]
@@ -156,7 +179,21 @@ public sealed class TaskPluginTests
         var ctx = new FakeTaskContext(camera);
         var error = await Assert.ThrowsAsync<OverlayDeviceException>(() =>
             StepRun.RunAsync(ctx.Steps, () => For(OverlaysMode.Replace).ExecuteAsync(ctx, Fixtures.Camera(), Payload(Overlay("New")), CancellationToken.None)));
-        Assert.Equal("The camera does not accept this text. Already done: 1 removed, 0 added.", error.Message);
+        Assert.Equal("The camera does not accept this text. Nothing was changed.", error.Message);
+        Assert.Equal(["Old"], camera.Texts.Select(t => t["text"]!.GetValue<string>())); // the add came first: the old overlay stays
+        Assert.DoesNotContain("remove", camera.Methods);
+
+        var full = new OverlayCamera();
+        for (var i = 0; i < 8; i++)
+        {
+            full.Put(1, "x" + i);
+        }
+
+        full.FailNextAdd = 304;
+        var ctxFull = new FakeTaskContext(full);
+        var afterRemovals = await Assert.ThrowsAsync<OverlayDeviceException>(() =>
+            StepRun.RunAsync(ctxFull.Steps, () => For(OverlaysMode.Replace).ExecuteAsync(ctxFull, Fixtures.Camera(), Payload(Overlay("New")), CancellationToken.None)));
+        Assert.Equal("The camera does not accept this text. Already done: 8 removed, 0 added.", afterRemovals.Message);
 
         var first = new OverlayCamera { FailNextAdd = 309 };
         var ctx2 = new FakeTaskContext(first);

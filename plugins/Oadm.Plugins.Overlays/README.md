@@ -58,8 +58,9 @@ each camera's list was the same afterwards. 10.0.0.12 (AXIS OS 11.9.65) did not 
 
 Steps: **Check the overlay support** (fresh API list; without the API `DeviceNotCompatibleException` "The camera does not
 support text overlays. Nothing was changed."), **Read the overlay limits**, **Read the overlays**, **Check the overlays**
-(`OverlayPlanner.Build`: every limit before the first write), then one step per request: **Remove the overlay "x"**
-(removals first, they free slots), **Add the overlay "x"**, then **Verify the overlays** (list again; a difference is a
+(`OverlayPlanner.Build`: every limit before the first write), then one step per request: **Add the overlay "x"**
+and **Remove the overlay "x"** (`OverlayPlan.AddFirst`: additions first while the free slots take them, so a refused add
+leaves the old overlays in place; else removals first, they free slots), then **Verify the overlays** (list again; a difference is a
 warning). Nothing to change: the writes are left out and Verify is skipped "Nothing was changed.".
 
 - **No stored identities.** The overlays are listed right before the writes and matched by content (text, position,

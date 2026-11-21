@@ -7,11 +7,15 @@ namespace Oadm.Plugins.Overlays;
 /// <param name="Add">Overlays to add.</param>
 /// <param name="AlreadyThere">Overlays of the list the camera already shows exactly like this.</param>
 /// <param name="NotFound">Remove matching: texts of the list the camera does not show.</param>
+/// <param name="AddFirst">
+/// Replace: the free slots take the additions before the removals, so a refused add leaves the old overlays in place.
+/// </param>
 public sealed record OverlayPlan(
     IReadOnlyList<DeviceOverlay> Remove,
     IReadOnlyList<TextOverlay> Add,
     IReadOnlyList<TextOverlay> AlreadyThere,
-    IReadOnlyList<string> NotFound)
+    IReadOnlyList<string> NotFound,
+    bool AddFirst = false)
 {
     public bool ChangesNothing => Remove.Count == 0 && Add.Count == 0;
 }
@@ -62,8 +66,10 @@ public static class OverlayPlanner
         }
 
         var removals = payload.Mode == OverlaysMode.Replace ? unused : [];
-        CheckSlots(add.Count, existing.Count - removals.Count, current.ImagesOf(DynamicOverlayApi.ViewArea), limits);
-        return new OverlayPlan(removals, add, there, []);
+        var images = current.ImagesOf(DynamicOverlayApi.ViewArea);
+        CheckSlots(add.Count, existing.Count - removals.Count, images, limits);
+        var addFirst = removals.Count > 0 && add.Count > 0 && Room(existing.Count, images, limits) is { } room && add.Count <= room;
+        return new OverlayPlan(removals, add, there, [], addFirst);
     }
 
     /// <summary>The camera already shows <paramref name="wanted"/>: same text, place, colours, and size (when one is asked for).</summary>
@@ -110,19 +116,23 @@ public static class OverlayPlanner
         }
     }
 
+    /// <summary>Text overlays view area 1 still takes next to these; null when the camera does not say.</summary>
+    private static int? Room(int texts, int images, OverlayCapabilities limits) =>
+        limits.Slots is { } total
+            ? Math.Max(0, total - (texts * limits.SlotsPerText) - (images * limits.SlotsPerImage)) / limits.SlotsPerText
+            : null;
+
     /// <summary>
     /// The free slots of view area 1: numAvailableSlots is the view area's total (it stays the same after an add, AXIS OS 10.12
     /// and 12.11), less the slots of the text and image overlays that stay.
     /// </summary>
     private static void CheckSlots(int adds, int textsStaying, int images, OverlayCapabilities limits)
     {
-        if (adds == 0 || limits.Slots is not { } total)
+        if (adds == 0 || Room(textsStaying, images, limits) is not { } room)
         {
             return;
         }
 
-        var free = Math.Max(0, total - (textsStaying * limits.SlotsPerText) - (images * limits.SlotsPerImage));
-        var room = free / limits.SlotsPerText;
         if (adds > room)
         {
             throw new OverlayDeviceException(room == 0

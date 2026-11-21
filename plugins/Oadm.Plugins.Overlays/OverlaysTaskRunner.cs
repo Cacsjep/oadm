@@ -8,7 +8,8 @@ namespace Oadm.Plugins.Overlays;
 
 /// <summary>
 /// One camera: Check the overlay support, Read the overlay limits, Read the overlays, Check the overlays (every limit before the
-/// first write), one step per removal and per addition, Verify the overlays. The overlays are listed right before the
+/// first write), one step per addition and per removal (additions first when the free slots allow it, else removals first),
+/// Verify the overlays. The overlays are listed right before the
 /// writes and matched by content: identities are never kept.
 /// </summary>
 internal static class OverlaysTaskRunner
@@ -63,25 +64,43 @@ internal static class OverlaysTaskRunner
 
         var names = new HashSet<string>(StringComparer.Ordinal);
         int removed = 0, added = 0;
-        foreach (var overlay in plan.Remove)
+        async Task RemoveAllAsync()
         {
-            using (ctx.BeginStep(Unique(names, $"Remove the overlay \"{OverlayNames.Brief(overlay.Overlay.Text)}\"")))
+            foreach (var overlay in plan.Remove)
             {
-                await WriteAsync(() => DynamicOverlayApi.RemoveAsync(ctx.Vapix, overlay.Identity, ct), removed, added).ConfigureAwait(false);
-            }
+                using (ctx.BeginStep(Unique(names, $"Remove the overlay \"{OverlayNames.Brief(overlay.Overlay.Text)}\"")))
+                {
+                    await WriteAsync(() => DynamicOverlayApi.RemoveAsync(ctx.Vapix, overlay.Identity, ct), removed, added).ConfigureAwait(false);
+                }
 
-            removed++;
+                removed++;
+            }
         }
 
-        foreach (var overlay in plan.Add)
+        async Task AddAllAsync()
         {
-            using (var step = ctx.BeginStep(Unique(names, $"Add the overlay \"{OverlayNames.Brief(overlay.Text)}\"")))
+            foreach (var overlay in plan.Add)
             {
-                await WriteAsync(() => DynamicOverlayApi.AddTextAsync(ctx.Vapix, overlay, ct), removed, added).ConfigureAwait(false);
-                step.Complete(OverlayNames.Of(overlay.Position));
-            }
+                using (var step = ctx.BeginStep(Unique(names, $"Add the overlay \"{OverlayNames.Brief(overlay.Text)}\"")))
+                {
+                    await WriteAsync(() => DynamicOverlayApi.AddTextAsync(ctx.Vapix, overlay, ct), removed, added).ConfigureAwait(false);
+                    step.Complete(OverlayNames.Of(overlay.Position));
+                }
 
-            added++;
+                added++;
+            }
+        }
+
+        // A refused add after the removals would leave the camera without text overlays: add first while the slots allow it.
+        if (plan.AddFirst)
+        {
+            await AddAllAsync().ConfigureAwait(false);
+            await RemoveAllAsync().ConfigureAwait(false);
+        }
+        else
+        {
+            await RemoveAllAsync().ConfigureAwait(false);
+            await AddAllAsync().ConfigureAwait(false);
         }
 
         ctx.Log(TaskLogLevel.Info, string.Create(CultureInfo.InvariantCulture, $"Removed {removed}, added {added} text overlays in view area 1."));

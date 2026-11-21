@@ -63,6 +63,9 @@ public sealed class PlannerTests
         var replace = OverlayPlanner.Build(new OverlaysPayload { Mode = OverlaysMode.Replace, Overlays = [.. Enumerable.Range(0, 7).Select(i => Overlay("n" + i))] }, full, Eight);
         Assert.Equal(7, replace.Add.Count);
         Assert.Equal(6, replace.Remove.Count);
+        Assert.False(replace.AddFirst); // no room for 7 next to the 6: removals first
+        var roomy = OverlayPlanner.Build(new OverlaysPayload { Mode = OverlaysMode.Replace, Overlays = [Overlay("n")] }, full, Eight);
+        Assert.True(roomy.AddFirst); // a free slot for the one new overlay: it goes in before the old ones go
 
         var twoEach = Assert.Throws<OverlayDeviceException>(() => OverlayPlanner.Build(new OverlaysPayload { Overlays = [Overlay("a")] },
             Shown([.. Enumerable.Range(0, 8).Select(i => (1, Overlay("x" + i)))]), new OverlayCapabilities(512, 16, 200, 16, 2, 1)));
