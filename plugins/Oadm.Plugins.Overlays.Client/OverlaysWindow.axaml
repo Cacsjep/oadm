@@ -55,8 +55,10 @@
                          the line of the caret -->
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4" VerticalAlignment="Top">
                       <ui:FormField Classes="wide inline">
+                        <!-- One line high: a text read from a camera keeps its line breaks and scrolls to the caret's line,
+                             without a vertical bar beside the one visible line -->
                         <TextBox Text="{Binding Text}" CaretIndex="{Binding CaretIndex}" AcceptsReturn="True" TextWrapping="NoWrap"
-                                 MaxHeight="{DynamicResource Oadm.ControlHeight}" PlaceholderText="Text, date or time" VerticalAlignment="Top" />
+                                 ScrollViewer.VerticalScrollBarVisibility="Hidden" MaxHeight="{DynamicResource Oadm.ControlHeight}" PlaceholderText="Text, date or time" VerticalAlignment="Top" />
                       </ui:FormField>
                       <Button Grid.Column="1" Classes="toolbar iconOnly" ToolTip.Tip="Insert a value" VerticalAlignment="Top">
                         <ui:OadmIcon Data="{DynamicResource Icon.braces}" />

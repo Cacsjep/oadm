@@ -102,7 +102,7 @@ directly below it and only that row grows:
   camera keeps its line breaks and Enter adds one; the box scrolls to the caret's line, a long text shows the theme's
   thin 4 px scroll bar below the text. The icon-only button next to it (tooltip "Insert a value") opens one menu: Date
   (%F), Time (%X), Day of the week, Date and time, Camera name, IP address, MAC address, Frame rate, Bitrate, Dynamic
-  text > 1 to 16. The code goes in at the caret, after a space when it would stick to a word.
+  text > 1 to 16. The code goes at the end of the text ("Camera" + Camera name = "Camera#n").
 - **Position** (the six places, **Custom position** only for an overlay read with one), **Size** (placeholder Default),
   **Text colour**, **Background**, **Outline** (Black, White, Red, Transparent, Semi-transparent; new overlays white on
   black). The columns are wide enough for "Semi-transparent" and "Custom position". Remove matching shows the Text

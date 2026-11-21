@@ -149,7 +149,7 @@ public sealed partial class OverlayRowViewModel : ValidatingViewModel
     /// <summary>Raised after any input changed (the dialog sums up).</summary>
     public event EventHandler? Changed;
 
-    /// <summary>Inserts the modifier's code at the caret (a space before it when it would stick to a word).</summary>
+    /// <summary>Puts the modifier's code at the end of the text ("Camera" + camera name = "Camera#n"), the caret after it.</summary>
     [RelayCommand]
     private void Insert(ModifierChoice? modifier)
     {
@@ -158,11 +158,8 @@ public sealed partial class OverlayRowViewModel : ValidatingViewModel
             return;
         }
 
-        var text = Text ?? string.Empty;
-        var at = Math.Clamp(CaretIndex, 0, text.Length);
-        var code = at > 0 && !char.IsWhiteSpace(text[at - 1]) ? " " + modifier.Code : modifier.Code;
-        Text = text.Insert(at, code);
-        CaretIndex = at + code.Length;
+        Text = (Text ?? string.Empty) + modifier.Code;
+        CaretIndex = Text.Length;
     }
 
     [RelayCommand]

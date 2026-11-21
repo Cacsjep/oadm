@@ -33,21 +33,23 @@ public sealed class ViewModelTests
     }
 
     [Fact]
-    public void Modifiers_go_in_at_the_caret_with_a_space_before_a_word()
+    public void Modifiers_go_in_at_the_end_of_the_text_wherever_the_caret_is()
     {
         var row = Dialog().Rows[0];
-        row.Text = "Lobby";
-        row.CaretIndex = 5;
-        row.InsertCommand.Execute(OverlayModifiers.Date);
-        Assert.Equal("Lobby %F", row.Text);
-        Assert.Equal(8, row.CaretIndex);
-        row.InsertCommand.Execute(OverlayModifiers.Time);
-        Assert.Equal("Lobby %F %X", row.Text);
-        row.CaretIndex = 0;
+        row.Text = "Camera";
+        row.CaretIndex = 0; // the box lost its focus to the button: the caret says nothing
         row.InsertCommand.Execute(OverlayModifiers.CameraName);
-        Assert.Equal("#nLobby %F %X", row.Text);
+        Assert.Equal("Camera#n", row.Text);
+        Assert.Equal(8, row.CaretIndex);
+        row.InsertCommand.Execute(OverlayModifiers.Date);
+        Assert.Equal("Camera#n%F", row.Text);
         row.DynamicTextActions[2].Command.Execute(null);
-        Assert.Equal("#n #D3Lobby %F %X", row.Text);
+        Assert.Equal("Camera#n%F#D3", row.Text);
+
+        var empty = Dialog().Rows[0];
+        empty.Text = string.Empty;
+        empty.InsertCommand.Execute(OverlayModifiers.Time);
+        Assert.Equal("%X", empty.Text);
     }
 
     [Fact]
