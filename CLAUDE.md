@@ -244,6 +244,10 @@ must never break.
 - **[Audio](docs/spec/audio.md)** (spec, not built; core plugin `oadm.audio`, free, off by default): clips, sound,
   display, siren and light of many devices; every change a task, hazardous settings confirmed, tests ask first; no live
   audio, no multicast, presets via the Action Rule Editor.
+- **[Removing plugins](docs/spec/plugin-removal.md)** (spec, not built): what a release ships is the truth; a generated
+  manifest of the bundled plugins, folders not in it skipped and deleted, all state of an id no longer shipped deleted
+  once (also after a restore); never a retired list, a rename is a new id; turned off, failed, data-folder plugins and
+  add-ons never touched.
 - **[MyAxis sign-in](docs/spec/myaxis.md)** (built; macOS not verified yet): each user signs in to their own MyAxis
   account on Axis's page in the embedded browser; only the session cookie is kept, per user, encrypted on the server,
   sent only to axis.com, never to plugins; Upgrade AXIS OS downloads the versions from axis.com with it.

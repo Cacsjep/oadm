@@ -577,6 +577,8 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
   the stored choices apply, `MergedPlugins.TakeOverAsync` moves its entry in `Plugins.Enabled` to the server's own choice
   (`Plugin:oadm.est:serverOn`, unless one is stored) and removes it from `Plugins.Enabled` (idempotent). The 802.1X
   server (`oadm.radius`) never shipped as a package of its own, so it is not in the list.
+- **Removed plugins**: a bundled plugin a release no longer ships is removed with its folder and state
+  (`docs/spec/plugin-removal.md`, spec, not built).
 
 ### Plugins on and off
 
