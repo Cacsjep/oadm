@@ -257,7 +257,7 @@ public sealed partial class ConfigureDevicesViewModel : ObservableObject, IDispo
             IReadOnlySet<string>? preChecked = null;
             if (file is not null)
             {
-                values = file.Parameters.GroupBy(p => p.Name, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Last().Value, StringComparer.Ordinal);
+                values = AdmConfigApply.Values(file);
                 var known = merged.Select(m => m.Definition.Name).ToHashSet(StringComparer.Ordinal);
                 preChecked = values.Keys.Where(known.Contains).ToHashSet(StringComparer.Ordinal);
                 var missing = values.Keys.Where(k => !known.Contains(k)).ToList();

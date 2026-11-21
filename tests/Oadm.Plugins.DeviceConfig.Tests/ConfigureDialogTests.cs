@@ -234,6 +234,63 @@ public sealed class ConfigureDialogTests(Xunit.Abstractions.ITestOutputHelper ou
         Assert.True(other.IsDeviceSource);
     }
 
+    /// <summary>
+    /// Every setting of a file for several devices without the dangerous right: the dialog's payload is the one of the shared
+    /// rules Provisioning's Configuration node applies (<see cref="AdmConfigApply.ForEveryDevice"/>).
+    /// </summary>
+    [Fact]
+    public async Task Every_setting_of_a_file_for_several_devices_is_what_the_shared_rules_apply()
+    {
+        var server = new Server();
+        var devices = new[] { server.Add("10.0.0.48"), server.Add("10.0.0.49") };
+        var file = AdmConfigFile.Read(ConfigureFixtures.Read("adm-p3265v-12.11.77.cfg"));
+        file = file with
+        {
+            Parameters = [.. file.Parameters, new NameValue("Image.I0.Appearance.Compression", "55"), new NameValue("Network.HostName", "lobby"), new NameValue("HTTPS.Enabled", "yes")],
+        };
+        var dialog = Dialog(server, devices, new FakeUi(), mayDangerous: false);
+        await dialog.InitializeAsync();
+        await dialog.LoadFileAsync(file, "lobby.cfg");
+        await dialog.NextCommand.ExecuteAsync(null);
+        await dialog.NextCommand.ExecuteAsync(null);
+
+        var sent = ConfigurePayload.Parse(dialog.Result);
+        var plan = AdmConfigApply.ForEveryDevice(file, AdmConfigAreas.All, "lobby.cfg");
+        Assert.True(plan.IsValid);
+        Assert.Equal(2, plan.LeftOutParameters); // the host name and HTTPS
+        static string Sorted(ConfigurePayload p) => (p with { Parameters = [.. p.Parameters.OrderBy(x => x.Name, StringComparer.Ordinal)] }).ToJson();
+        Assert.Equal(Sorted(sent), Sorted(ConfigurePayload.Parse(plan.Payload.ToJson())));
+        Assert.Equal(5, sent.Parameters.Count);
+        Assert.Empty(new ConfigureDevicesTask().ValidatePayload(plan.Payload.ToJson(), Oadm.Sdk.Testing.FakeCallContext.AllDevices(new Oadm.Sdk.Testing.FakeCoreContext())));
+    }
+
+    [Fact]
+    public void The_shared_rules_take_the_chosen_areas_and_refuse_what_Configure_devices_refuses()
+    {
+        var file = AdmConfigFile.Read(ConfigureFixtures.Read("adm-p3265v-12.11.77.cfg"));
+
+        // A name listed twice keeps its last value; an empty password is never written; the address never.
+        var twice = file with
+        {
+            Parameters = [new NameValue("Image.I0.Appearance.Compression", "30"), new NameValue("Image.I0.Appearance.Compression", "40"), new NameValue("SNMP.V2.Community", ""), new NameValue("Network.IPAddress", "10.0.0.48")],
+        };
+        var plan = AdmConfigApply.ForEveryDevice(twice, new AdmConfigAreas(true, false, false), null);
+        Assert.Equal([new NameValue("Image.I0.Appearance.Compression", "40")], plan.Payload.Parameters);
+        Assert.Equal(2, plan.LeftOutParameters);
+        Assert.Empty(plan.Payload.Rules);
+        Assert.Empty(plan.Payload.StreamProfiles);
+
+        var rules = AdmConfigApply.ForEveryDevice(file, new AdmConfigAreas(false, true, false), null);
+        Assert.Equal(["re"], rules.Payload.Rules.Select(r => r.Name));
+        Assert.Equal(["com.axis.schedules.genid.id-0"], rules.Payload.Schedules.Select(s => s.Id));
+        Assert.Empty(rules.Payload.Parameters);
+
+        // Nothing of the areas, a rule without its own schedule: the payload check's texts.
+        Assert.Equal(ConfigurePayload.NothingToApply, Assert.Single(AdmConfigApply.ForEveryDevice(new AdmConfig(), AdmConfigAreas.All, null).Errors).Message);
+        var missing = AdmConfigApply.ForEveryDevice(file with { Schedules = [] }, new AdmConfigAreas(false, true, false), null);
+        Assert.Equal(ConfigurePayload.MissingSchedule("com.axis.schedules.genid.id-0"), Assert.Single(missing.Errors).Message);
+    }
+
     [Fact]
     public async Task Create_configuration_file_saves_an_ADM_file_with_every_schedule_for_a_rule()
     {

@@ -310,9 +310,7 @@ public sealed partial class SettingsEditorViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(parameters);
         _rows = [.. parameters
-            .Where(p => allowDangerous || !DangerousParameters.IsDangerous(p.Definition.Name))
-            .Where(p => !DangerousParameters.IsAddress(p.Definition.Name))
-            .Where(p => !severalDevices || !DangerousParameters.IsPerDevice(p.Definition.Name))
+            .Where(p => AdmConfigApply.IsOffered(p.Definition.Name, allowDangerous, severalDevices))
             .Select(p => new ParamRowViewModel(p, values?.GetValueOrDefault(p.Definition.Name), OnRowChanged))];
         _groups = [.. _rows.GroupBy(r => r.Group, StringComparer.Ordinal).Select(g =>
         {
@@ -428,14 +426,7 @@ public sealed partial class SettingsEditorViewModel : ObservableObject
     public IReadOnlyList<ConfigActionRule> CheckedRules => [.. Rules.Where(r => r.IsChecked).Select(r => r.Rule)];
 
     /// <summary>The own schedules the checked rules use (built-in ones every device has).</summary>
-    public IReadOnlyList<ConfigSchedule> CheckedSchedules
-    {
-        get
-        {
-            var ids = CheckedRules.SelectMany(r => r.ScheduleIds).ToHashSet(StringComparer.Ordinal);
-            return [.. Schedules.Where(s => ids.Contains(s.Id))];
-        }
-    }
+    public IReadOnlyList<ConfigSchedule> CheckedSchedules => AdmConfigApply.UsedBy(CheckedRules, Schedules);
 
     public IReadOnlyList<ConfigStreamProfile> CheckedProfiles => [.. Profiles.Where(p => p.IsChecked).Select(p => p.Profile)];
 
