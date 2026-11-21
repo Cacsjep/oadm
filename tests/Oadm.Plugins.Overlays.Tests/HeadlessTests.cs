@@ -83,6 +83,16 @@ public sealed class HeadlessTests
             Assert.False(vm.CanApply);
             Assert.Equal(OverlayRules.SizeRange(16, 200), vm.ApplyBlockedReason);
             Capture(window, outDir, "overlays-error" + suffix + ".png");
+
+            // An empty text with its error, the box focused: one line, the whole border, no scroll bar.
+            vm.Rows[1].SizeText = "32";
+            vm.Rows[0].Text = string.Empty;
+            vm.Rows[0].ShowErrors();
+            Dispatcher.UIThread.RunJobs();
+            window.GetVisualDescendants().OfType<TextBox>().First(t => t.PlaceholderText == "Text, date or time").Focus();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(OverlayRules.EnterText, vm.Rows[0].ErrorOf(nameof(OverlayRowViewModel.Text)));
+            Capture(window, outDir, "overlays-texterror" + suffix + ".png");
             window.Close();
 
             // Replace overlays: its warning above the table.

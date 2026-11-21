@@ -98,7 +98,9 @@ public sealed partial class OverlayRowViewModel : ValidatingViewModel
         Text = overlay.Text.Replace("\n", Environment.NewLine, StringComparison.Ordinal);
         SelectedPosition = Positions.FirstOrDefault(p => p.Position == overlay.Position) ?? Positions[3];
         SizeText = overlay.FontSize?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
-        SelectedTextColor = Colors.First(c => c.Color == overlay.TextColor);
+        // Text in black, white or red; a camera's own transparent text (read from a camera) stays choosable on its row only.
+        TextColors = [.. Colors.Where(c => c.Color is OverlayColor.Black or OverlayColor.White or OverlayColor.Red || c.Color == overlay.TextColor)];
+        SelectedTextColor = TextColors.First(c => c.Color == overlay.TextColor);
         SelectedBackgroundColor = Colors.First(c => c.Color == overlay.BackgroundColor);
         SelectedOutlineColor = Colors.First(c => c.Color == overlay.OutlineColor);
         Validation
@@ -110,6 +112,9 @@ public sealed partial class OverlayRowViewModel : ValidatingViewModel
     public IReadOnlyList<PositionChoice> Positions { get; }
 
     public static IReadOnlyList<ColorChoice> Colors { get; } = [.. Enum.GetValues<OverlayColor>().Select(c => new ColorChoice(c))];
+
+    /// <summary>The text colour's choices: Black, White, Red (transparent text cannot be read).</summary>
+    public IReadOnlyList<ColorChoice> TextColors { get; }
 
     public static ModifierChoice DateModifier => OverlayModifiers.Date;
 

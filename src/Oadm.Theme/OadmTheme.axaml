@@ -1399,6 +1399,11 @@
   <Style Selector="TextBox /template/ ScrollViewer /template/ ScrollBar /template/ RepeatButton#PART_LineUpButton, TextBox /template/ ScrollViewer /template/ ScrollBar /template/ RepeatButton#PART_LineDownButton">
     <Setter Property="IsVisible" Value="False" />
   </Style>
+  <!-- A text box one line high that still takes line breaks (Text overlays): the text area is capped, not the box, so a
+       validation error below it never squeezes the box -->
+  <Style Selector="TextBox.oneLine /template/ ScrollViewer#PART_ScrollViewer">
+    <Setter Property="MaxHeight" Value="30" />
+  </Style>
   <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
     <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextDisabledBrush}" />

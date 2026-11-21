@@ -53,6 +53,18 @@ public sealed class ViewModelTests
     }
 
     [Fact]
+    public void Text_is_black_white_or_red_a_cameras_own_transparent_text_stays_on_its_row()
+    {
+        var row = Dialog().Rows[0];
+        Assert.Equal([OverlayColor.Black, OverlayColor.White, OverlayColor.Red], row.TextColors.Select(c => c.Color));
+        Assert.Equal(5, OverlayRowViewModel.Colors.Count); // background and outline keep all five
+
+        var read = new OverlayRowViewModel(() => OverlayLimits.Default, _ => { }, new TextOverlay { Text = "Lobby", TextColor = OverlayColor.SemiTransparent });
+        Assert.Equal([OverlayColor.Black, OverlayColor.White, OverlayColor.Red, OverlayColor.SemiTransparent], read.TextColors.Select(c => c.Color));
+        Assert.Equal(OverlayColor.SemiTransparent, read.SelectedTextColor.Color);
+    }
+
+    [Fact]
     public void Errors_show_below_their_field_and_block_apply()
     {
         var vm = Dialog();

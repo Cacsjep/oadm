@@ -104,8 +104,8 @@ directly below it and only that row grows:
   (%F), Time (%X), Day of the week, Date and time, Camera name, IP address, MAC address, Frame rate, Bitrate, Dynamic
   text > 1 to 16. The code goes at the end of the text ("Camera" + Camera name = "Camera#n").
 - **Position** (the six places, **Custom position** only for an overlay read with one), **Size** (placeholder Default),
-  **Text colour**, **Background**, **Outline** (Black, White, Red, Transparent, Semi-transparent; new overlays white on
-  black). The columns are wide enough for "Semi-transparent" and "Custom position". Remove matching shows the Text
+  **Text colour** (Black, White, Red), **Background**, **Outline** (Black, White, Red, Transparent, Semi-transparent; new
+  overlays white on black). The columns are wide enough for "Semi-transparent" and "Custom position". Remove matching shows the Text
   column only (and checks only the text); its footer button is red.
 - The red remove icon at the row's end; **Add overlay** below the rows, disabled at 8 with "At most 8 overlays." as tooltip.
 
