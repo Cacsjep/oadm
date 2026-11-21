@@ -175,7 +175,8 @@ public sealed class LogExportGrpcService(OadmPaths paths, AuditLog audit, RoleSt
     {
         var lines = new List<string>();
         var times = from is null && to is null ? null : RangeTimes(clock, from, to);
-        var name = string.IsNullOrWhiteSpace(rangeName) ? null : rangeName.Trim();
+        // "Custom" says nothing in a file: its times say it all ("Dates: 2026-11-20 10:00 to 2026-11-21 10:00").
+        var name = string.IsNullOrWhiteSpace(rangeName) || (times is not null && string.Equals(rangeName.Trim(), "Custom", StringComparison.OrdinalIgnoreCase)) ? null : rangeName.Trim();
         lines.Add("Dates: " + (name, times) switch
         {
             (null, null) => "All",

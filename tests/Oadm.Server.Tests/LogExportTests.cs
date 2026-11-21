@@ -202,6 +202,8 @@ public sealed class LogExportTests
             new DateTimeOffset(2026, 11, 21, 10, 0, 0, TimeSpan.Zero), "Error", "gate");
         Assert.Equal(["Dates: Last 24 hours, 2026-11-20 10:00 to 2026-11-21 10:00", "Level: Errors only", "Search: gate"], filter);
         Assert.Equal(["Dates: All"], LogExportGrpcService.FilterLines(clock, null, null, null, null, null));
+        Assert.Equal(["Dates: 2026-11-20 10:00 to 2026-11-21 10:00"], LogExportGrpcService.FilterLines(clock, "Custom", new DateTimeOffset(2026, 11, 20, 10, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 11, 21, 10, 0, 0, TimeSpan.Zero), null, null));
 
         var head = new LogExportHead("Audit log", filter, "OADM-HQ", "admin", new DateTimeOffset(2026, 11, 21, 10, 5, 0, TimeSpan.Zero), 5_000, Limited: true);
         Assert.Equal([.. filter, "The newest 5,000 entries", "Server: OADM-HQ", "Exported 2026-11-21 10:05 by admin"], LogPdf.HeadLines(head));
