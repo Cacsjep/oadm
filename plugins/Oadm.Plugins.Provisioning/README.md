@@ -1,7 +1,7 @@
 # Provisioning
 
-Core plugin `oadm.provisioning`, free, on by default, no rail page. While provisioning is on, every factory-new camera
-OADM finds gets one task "Provision with <profile>" that runs the active profile. The spec is
+Core plugin `oadm.provisioning`, free, always on (a built-in feature), no rail page. While provisioning is on, every
+factory-new camera OADM finds gets one task "Provision with <profile>" that runs the active profile. The spec is
 [`docs/spec/provisioning.md`](../../docs/spec/provisioning.md); this file holds the decisions of the code.
 
 Built (redesign of 2026-11-19): the server part, the task, every node of the spec, the methods and the tools (stage 1);
