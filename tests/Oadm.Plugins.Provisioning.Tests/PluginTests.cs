@@ -130,6 +130,35 @@ public sealed class PluginTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_preview_read_never_sends_a_password_or_secret_of_the_file()
+    {
+        var text = """
+            <AcmDeviceParameterExport><FileFormatVersion>3</FileFormatVersion><ParameterList>
+            <Parameter><Name>root.SNMP.V2c.Community</Name><Value>Snmp-Secret-1</Value></Parameter>
+            <Parameter><Name>root.Network.FTP.Password</Name><Value>Ftp-Pass-2</Value></Parameter>
+            <Parameter><Name>root.Network.Proxy.Password</Name><Value></Value></Parameter>
+            <Parameter><Name>root.Image.I0.Appearance.Resolution</Name><Value>1920x1080</Value></Parameter>
+            </ParameterList><ActionRuleList><ActionRule><Name>Mail</Name><StartEvent><TopicFilter>tns1:Device</TopicFilter></StartEvent>
+            <PrimaryAction><Name>Mail</Name><ActionTemplate>com.axis.action.fixed.notification.smtp</ActionTemplate><ParameterList>
+            <Parameter><Name>password</Name><Value>Smtp-Pass-3</Value></Parameter></ParameterList></PrimaryAction></ActionRule></ActionRuleList>
+            </AcmDeviceParameterExport>
+            """;
+        var upload = ((FakeUploadedFiles)_admin.Uploads).Add("secrets.cfg", System.Text.Encoding.UTF8.GetBytes(text));
+        var file = await CallAsync<StoredFile>(ProvisioningMethods.StoreFile, new FileRequest(upload.Id));
+
+        var read = await CallAsync<ConfigFileReply>(ProvisioningMethods.ReadConfigFile, new IdRequest(file.Id));
+
+        Assert.All(new[] { "Snmp-Secret-1", "Ftp-Pass-2", "Smtp-Pass-3" }, secret => Assert.DoesNotContain(secret, read.Content, StringComparison.Ordinal));
+        var config = DeviceConfig.AdmConfigFile.Read(read.Content);
+        var values = config.Parameters.ToDictionary(p => p.Name, p => p.Value);
+        Assert.Equal(DeviceConfig.AdmConfigFile.SecretMask, values["root.SNMP.V2c.Community"]);
+        Assert.Equal(DeviceConfig.AdmConfigFile.SecretMask, values["root.Network.FTP.Password"]);
+        Assert.Equal(string.Empty, values["root.Network.Proxy.Password"]); // empty stays empty: the run leaves it out
+        Assert.Equal("1920x1080", values["root.Image.I0.Appearance.Resolution"]);
+        Assert.Equal(DeviceConfig.AdmConfigFile.SecretMask, Assert.Single(Assert.Single(config.Rules).Action.Parameters).Value);
+    }
+
+    [Fact]
     public async Task Saving_an_edited_profile_keeps_what_a_waiting_task_or_a_failed_run_still_needs()
     {
         var secret = await CallAsync<SecretReply>(ProvisioningMethods.StoreSecret, new SecretRequest("Op-Pass-77"));

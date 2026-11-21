@@ -124,7 +124,8 @@ the own schedules they use ("Schedules, 1", only when there are some) and the st
 so ("The file has no action rules."). The parameters Configure devices never writes on every camera (address, per-device
 names, identity and connection settings, empty passwords) are left out and counted in one line ("5 more stay as they are
 on each camera: address, names and connection settings."). The list is virtualized and scrolls in itself; the file is
-read once per file (`readConfigFile`, the kept `.cfg` of at most 1 MB) with a ring in place while it loads. A file that
+read once per file (`readConfigFile`, the kept `.cfg` of at most 1 MB) with a ring in place while it loads; the server
+masks every password and secret value before it replies (`AdmConfigFile.MaskSecrets`), the client masks them too. A file that
 is no configuration file ("This is not an AXIS Device Manager configuration file.") or whose ticked areas Configure
 devices refuses ("Nothing to apply.") is an error directly below the file field, and Save stays off.
 

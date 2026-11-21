@@ -54,6 +54,40 @@ public static class AdmConfigFile
     public static string SuggestedFileName(string? model, string? firmware) =>
         string.Join('_', $"Configuration - {ModelNames.Display(model)} {firmware}".Trim().Split(Path.GetInvalidFileNameChars())) + "." + Extension;
 
+    /// <summary>The value <see cref="MaskSecrets"/> puts in place of a password or secret.</summary>
+    public const string SecretMask = "••••••••";
+
+    /// <summary>
+    /// The file with the value of every parameter whose name is a secret (<see cref="SecretNames.IsSecret(string)"/>, also in
+    /// action rules) replaced by <see cref="SecretMask"/>; empty values stay empty. Still readable by <see cref="Read"/>. Text
+    /// that is no XML comes back as it is (<see cref="Read"/> refuses it).
+    /// </summary>
+    public static string MaskSecrets(string xml)
+    {
+        ArgumentNullException.ThrowIfNull(xml);
+        XDocument document;
+        try
+        {
+            document = DeviceXml.Parse(xml.TrimStart('﻿'));
+        }
+        catch (XmlException)
+        {
+            return xml;
+        }
+
+        var masked = false;
+        foreach (var parameter in document.Descendants("Parameter"))
+        {
+            if (parameter.Element("Name")?.Value is { } name && SecretNames.IsSecret(name) && parameter.Element("Value") is { Value.Length: > 0 } value)
+            {
+                value.Value = SecretMask;
+                masked = true;
+            }
+        }
+
+        return masked ? document.ToString(SaveOptions.DisableFormatting) : xml;
+    }
+
     /// <summary>Parses the file; throws <see cref="FormatException"/> with <see cref="NotAnAdmFile"/> or a more exact text.</summary>
     public static AdmConfig Read(string xml)
     {

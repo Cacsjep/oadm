@@ -544,7 +544,8 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
             throw new ArgumentException(ConfigurationNode.TooLarge);
         }
 
-        return new ConfigFileReply(file.Name, await vault.ReadTextAsync(fileId, MaxConfigFileBytes, ct).ConfigureAwait(false));
+        // Only "show" is needed for this read: the passwords and secrets of the file never leave the server.
+        return new ConfigFileReply(file.Name, DeviceConfig.AdmConfigFile.MaskSecrets(await vault.ReadTextAsync(fileId, MaxConfigFileBytes, ct).ConfigureAwait(false)));
     }
 
     /// <summary>
