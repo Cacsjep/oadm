@@ -304,10 +304,10 @@ public sealed class PageScreenshotTests
             var entries = new Oadm.Sdk.Client.IToolbarPlugin[]
             {
                 new Oadm.Client.Devices.Toolbar.AddToolbarPlugin(),
-                new Oadm.Client.Devices.Toolbar.RemoveToolbarPlugin(),
-                new Oadm.Client.Devices.Toolbar.RefreshToolbarPlugin(),
                 new Oadm.Client.Devices.Toolbar.ExportToolbarPlugin(),
                 new ProvisioningToolbarPlugin { Dialogs = new FakeProvisioningDialogs() },
+                new Oadm.Client.Devices.Toolbar.RemoveToolbarPlugin(),
+                new Oadm.Client.Devices.Toolbar.RefreshToolbarPlugin(),
             };
             var bar = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 4 };
             foreach (var entry in entries)
@@ -325,7 +325,7 @@ public sealed class PageScreenshotTests
             window.Show();
             await Oadm.Sdk.Testing.Eventually.TrueAsync(() => plugin.CallsOf(ProvisioningMethods.State) >= 1, "the state");
             Headless.Pump();
-            var button = (ToolbarButton)bar.Children[^1];
+            var button = bar.Children.OfType<ToolbarButton>().Single(b => b.Text == Oadm.Sdk.Client.DeviceTexts.Provisioning);
             Assert.Equal(Oadm.Sdk.Client.DeviceTexts.Provisioning, button.Text);
             Assert.DoesNotContain("ok", button.Classes);
             Assert.True(button.IsEffectivelyEnabled);

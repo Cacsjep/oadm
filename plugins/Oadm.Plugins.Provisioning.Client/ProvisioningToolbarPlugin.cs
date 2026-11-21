@@ -17,7 +17,7 @@ public sealed class ProvisioningToolbarPlugin : IToolbarPlugin
     /// <summary>Right of Export (order 10) in the group of Remove, Refresh and Export.</summary>
     public int Order => 20;
 
-    public ToolbarGroup Group => ToolbarGroup.Manage;
+    public ToolbarGroup Group => ToolbarGroup.Add;
 
     public string? RequiredPermission => ProvisioningButtonViewModel.ShowPermission;
 

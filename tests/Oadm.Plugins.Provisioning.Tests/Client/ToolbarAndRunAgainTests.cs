@@ -137,7 +137,7 @@ public sealed class ToolbarAndRunAgainTests
     public void The_toolbar_entry_sits_right_of_export_for_users_who_may_see_provisioning()
     {
         var plugin = new ProvisioningToolbarPlugin();
-        Assert.Equal(ToolbarGroup.Manage, plugin.Group);
+        Assert.Equal(new Oadm.Client.Devices.Toolbar.ExportToolbarPlugin().Group, plugin.Group);
         Assert.True(plugin.Order > new Oadm.Client.Devices.Toolbar.ExportToolbarPlugin().Order);
         Assert.Equal("oadm.provisioning:show", plugin.RequiredPermission);
     }

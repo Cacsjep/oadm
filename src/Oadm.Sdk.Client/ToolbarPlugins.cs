@@ -11,10 +11,10 @@ namespace Oadm.Sdk.Client;
 /// </summary>
 public enum ToolbarGroup
 {
-    /// <summary>Adding devices (Scan, Scan IP range, Add manually).</summary>
+    /// <summary>Adding devices and actions that need no selection (Add, Export, Provisioning).</summary>
     Add = 0,
 
-    /// <summary>Managing the selection (Remove).</summary>
+    /// <summary>Managing the selection (Remove, Refresh).</summary>
     Manage = 1,
 
     /// <summary>Task plugin actions (Restart, ...).</summary>

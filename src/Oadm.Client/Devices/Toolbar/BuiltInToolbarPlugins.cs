@@ -193,7 +193,7 @@ public sealed class ExportToolbarPlugin : IToolbarPlugin
 
     public string? RequiredPermission => HostPermissionKeys.DevicesExport;
     public int Order => 10;
-    public ToolbarGroup Group => ToolbarGroup.Manage;
+    public ToolbarGroup Group => ToolbarGroup.Add;
 
     public Control CreateControl(IToolbarContext ctx)
     {

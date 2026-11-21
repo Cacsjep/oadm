@@ -39,8 +39,8 @@ hides some is cleared, the view selects the rows in one step with the ring above
 
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in [visual-style.md](visual-style.md).
-2. Toolbar: toolbar plugins (**Add** menu | Remove, Refresh, Export, **Provisioning** (plugin; **Provisioning active** with a
-   green icon while provisioning is on, [provisioning.md](provisioning.md)) | task plugin actions that declare `ShowInToolbar`,
+2. Toolbar: toolbar plugins (**Add** menu, Export, **Provisioning** (plugin; **Provisioning active** with a
+   green icon while provisioning is on, [provisioning.md](provisioning.md)): what needs no selection | Remove, Refresh | task plugin actions that declare `ShowInToolbar`,
    then System report (plugin) | plugin entries) in `ui:ToolbarOverflowPanel`: entries that do not fit (narrow
    window, live view open) move into a **More** menu (icon `more`, right of the toolbar). Right-aligned: the AXIS OS
    release notes link (icon only, toolbar controls with the class `trailing` go here), **Group by tag** icon button (icon

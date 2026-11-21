@@ -44,8 +44,8 @@ changes nothing by itself: provisioning itself is **Off** until an Administrator
 
 ## Where it lives
 
-- **Devices toolbar**: a **Provisioning** button right of Export (`ProvisioningToolbarPlugin`, an `IToolbarPlugin` of the
-  plugin's client part, group Manage, order 20; it gets the plugin's context through `IToolbarContext.CorePluginContext`,
+- **Devices toolbar**: a **Provisioning** button right of Export, before the selection's actions (`ProvisioningToolbarPlugin`, an `IToolbarPlugin` of the
+  plugin's client part, group Add, order 20; it gets the plugin's context through `IToolbarContext.CorePluginContext`,
   SDK 0.15.0) opens **Provisioning management**. While provisioning is on, the button reads **Provisioning active** and its
   icon is green (the theme's `Button.toolbar.ok`, as the title bar's MyAxis cloud), live from the `status` event (read with
   `state` first). Users with "show" see the button; only an Administrator with "manage" opens the dialog (the others: the
