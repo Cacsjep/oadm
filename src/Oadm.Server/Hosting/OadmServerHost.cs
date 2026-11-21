@@ -843,7 +843,9 @@ public static partial class OadmServerHost
                 sp.GetRequiredService<Core.Auth.AuditLog>(),
                 paths.PluginDataDirectory,
                 PluginActivation.SettingKey,
-                logger)
+                logger,
+                Mapping.Mappers.ServerVersion,
+                Contracts.Updates.UpdateVersions.IsOlder)
             .CleanAsync(
                 BundledPluginsAtStart.BundledIds(registry, bundledRoots),
                 BundledPluginsAtStart.KnownIds(registry, PluginPaths.Installed(paths.DataDirectory), addOns.Root),

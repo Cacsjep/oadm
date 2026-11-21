@@ -46,6 +46,9 @@ public sealed class ClientSettings
     /// </summary>
     public List<string>? BundledPlugins { get; set; }
 
+    /// <summary>The client version that stored <see cref="BundledPlugins"/>; a set of a newer client is never cleaned.</summary>
+    public string? BundledPluginsVersion { get; set; }
+
     /// <summary>Device grid group mode: a group per tag.</summary>
     public bool GroupDevicesByTag { get; set; }
 

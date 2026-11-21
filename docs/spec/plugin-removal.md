@@ -114,6 +114,9 @@ Licenses (`Plugins.Licenses`, `Plugins.TrialStarted`): out of scope.
 - The restored database brings the backup's `Plugins.Bundled`: the next start cleans the ids that version shipped and
   this one does not, the same way (restored data of a plugin this version does not have).
 - A backup made before `Plugins.Bundled` existed holds no record: nothing of it is deleted.
+- `Plugins.BundledVersion` (`RemovedPlugins.VersionKey`) holds the OADM version that wrote the set; a set of a newer
+  version (a backup of it restored on an older one) is neither cleaned nor overwritten, a missing version cleans as before;
+  the client does the same with `ClientSettings.BundledPluginsVersion` (an older client sharing the data folder).
 - The restore report (`BackupManager.RecordAsync`, `src/Oadm.Server/Backup/BackupManager.cs`, given the deleted ids by
   `RecordRestoreAsync`) says for a deleted id "Plugin <id> is no longer part of OADM: its settings and data were
   deleted."; "not installed on this server; its settings were kept." stays only for ids that were kept (third-party

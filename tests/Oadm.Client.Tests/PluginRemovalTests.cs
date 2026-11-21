@@ -101,4 +101,33 @@ public sealed class PluginRemovalTests : IDisposable
         Assert.Equal(["oadm.kept", "oadm.new"], store.Current.BundledPlugins);
         Assert.Empty(RemovedClientPlugins.Clean(store, bundled, known, loadFailures: false));
     }
+
+    [Fact]
+    public void The_set_of_a_newer_client_is_kept_and_an_equal_or_older_one_is_cleaned()
+    {
+        var store = new InMemoryClientSettingsStore();
+        store.Current.BundledPlugins = ["oadm.kept", "oadm.newer"];
+        store.Current.BundledPluginsVersion = "5.4.0";
+        store.Current.PluginSettings["oadm.newer/choice"] = "1";
+        HashSet<string> known = new(["oadm.kept"], StringComparer.OrdinalIgnoreCase);
+        HashSet<string> bundled = new(["oadm.kept"], StringComparer.OrdinalIgnoreCase);
+
+        // An older client (also a pre-release of 5.4) sharing the data folder keeps the settings and the newer set.
+        Assert.Empty(RemovedClientPlugins.Clean(store, bundled, known, loadFailures: false, "5.3.0"));
+        Assert.Empty(RemovedClientPlugins.Clean(store, bundled, known, loadFailures: false, "5.4.0-rc.2"));
+        Assert.Equal(["oadm.kept", "oadm.newer"], store.Current.BundledPlugins);
+        Assert.Equal("5.4.0", store.Current.BundledPluginsVersion);
+        Assert.True(store.Current.PluginSettings.ContainsKey("oadm.newer/choice"));
+
+        // The same version cleans as before.
+        Assert.Equal(["oadm.newer"], RemovedClientPlugins.Clean(store, bundled, known, loadFailures: false, "5.4.0"));
+        Assert.Equal(["oadm.kept"], store.Current.BundledPlugins);
+
+        // An older stored version is cleaned and gets the running one.
+        store.Current.BundledPlugins = ["oadm.kept", "oadm.newer"];
+        store.Current.BundledPluginsVersion = "5.4.0-rc.2";
+        store.Current.PluginSettings["oadm.newer/choice"] = "1";
+        Assert.Equal(["oadm.newer"], RemovedClientPlugins.Clean(store, bundled, known, loadFailures: false, "5.4.0"));
+        Assert.Equal("5.4.0", store.Current.BundledPluginsVersion);
+    }
 }

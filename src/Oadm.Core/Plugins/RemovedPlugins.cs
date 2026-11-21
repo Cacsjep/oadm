@@ -22,10 +22,15 @@ public sealed partial class RemovedPlugins(
     AuditLog audit,
     string pluginDataRoot,
     string enabledKey,
-    ILogger logger)
+    ILogger logger,
+    string? version = null,
+    Func<string, string, bool>? isOlder = null)
 {
     /// <summary>JSON array of the package and plugin ids the previous start loaded from the bundled root.</summary>
     public const string SettingKey = "Plugins.Bundled";
+
+    /// <summary>The OADM version that stored <see cref="SettingKey"/>: a set of a newer OADM (a restored backup) is never cleaned.</summary>
+    public const string VersionKey = "Plugins.BundledVersion";
 
     /// <summary>The audit entry, log line and restore report line of a deleted id.</summary>
     public static string DeletedText(string id) => $"Plugin {id} is no longer part of OADM: its settings and data were deleted.";
@@ -33,13 +38,21 @@ public sealed partial class RemovedPlugins(
     /// <summary>
     /// Deletes the state of every id of the stored set that is not in <paramref name="known"/>, then stores
     /// <paramref name="bundled"/>. <paramref name="bundled"/> null (no bundled root with a manifest: a development run) or
-    /// <paramref name="loadErrors"/> change nothing. Idempotent: every step deletes what is there. Returns the ids whose state
+    /// <paramref name="loadErrors"/> change nothing, nor does a set stored by a newer OADM than <c>version</c> (<see cref="VersionKey"/>;
+    /// none stored or no <c>version</c>: cleaned as usual). Idempotent: every step deletes what is there. Returns the ids whose state
     /// was deleted.
     /// </summary>
     public async Task<IReadOnlyList<string>> CleanAsync(IReadOnlyCollection<string>? bundled, IReadOnlySet<string> known, bool loadErrors, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(known);
         if (bundled is null || loadErrors)
+        {
+            return [];
+        }
+
+        // A set a newer OADM stored (a backup of it restored here) names plugins this version never had: keep all and the set.
+        var storedVersion = version is null || isOlder is null ? null : await settings.GetAsync<string>(VersionKey, ct).ConfigureAwait(false);
+        if (storedVersion is not null && isOlder!(version!, storedVersion))
         {
             return [];
         }
@@ -76,6 +89,11 @@ public sealed partial class RemovedPlugins(
         if (!now.SequenceEqual(previous, StringComparer.OrdinalIgnoreCase))
         {
             await settings.SetAsync(SettingKey, now, ct).ConfigureAwait(false);
+        }
+
+        if (version is not null && isOlder is not null && !string.Equals(storedVersion, version, StringComparison.Ordinal))
+        {
+            await settings.SetAsync(VersionKey, version, ct).ConfigureAwait(false);
         }
 
         return deleted;

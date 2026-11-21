@@ -113,7 +113,7 @@ public static class ServiceRegistration
         {
             var loader = new ClientPluginLoader(options, sp.GetRequiredService<ILogger<ClientPluginLoader>>());
             // The settings of plugins this version no longer ships go once (docs/spec/plugin-removal.md).
-            RemovedClientPlugins.Clean(sp.GetRequiredService<IClientSettingsStore>(), loader.BundledIds, loader.KnownIds, loader.Failures > 0);
+            RemovedClientPlugins.Clean(sp.GetRequiredService<IClientSettingsStore>(), loader.BundledIds, loader.KnownIds, loader.Failures > 0, Updates.ClientVersion.Text);
             return loader;
         });
         // Add-ons (docs/spec/add-ons.md rule 6): their client parts from the server, cached per server and version in the

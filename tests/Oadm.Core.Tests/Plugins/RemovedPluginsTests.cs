@@ -33,6 +33,10 @@ public sealed class RemovedPluginsTests : IAsyncLifetime
         _db.Get<IDbContextFactory<OadmDbContext>>(), Settings, _db.Get<RoleStore>(), _db.Get<AuditLog>(),
         _db.Paths.PluginDataDirectory, EnabledKey, NullLogger.Instance);
 
+    private RemovedPlugins Cleaner(string version) => new(
+        _db.Get<IDbContextFactory<OadmDbContext>>(), Settings, _db.Get<RoleStore>(), _db.Get<AuditLog>(),
+        _db.Paths.PluginDataDirectory, EnabledKey, NullLogger.Instance, version, (a, b) => Version.Parse(a) < Version.Parse(b));
+
     private static readonly string[] PreviousSet = ["oadm.est", "oadm.gone", "oadm.gone.task", "oadm.kept", "oadm.off"];
     private static readonly string[] CustomKeys = ["devices.refresh", "oadm.gone:manage", "task:oadm.gone.task", "task:oadm.gone.task:remove", "oadm.kept:manage", "oadm.gone-other:x"];
     private static readonly string[] WithState = ["oadm.gone", "oadm.kept", "oadm.est"];
@@ -145,5 +149,35 @@ public sealed class RemovedPluginsTests : IAsyncLifetime
         await Settings.ResetAsync(RemovedPlugins.SettingKey, CancellationToken.None);
         Assert.Empty(await Cleaner().CleanAsync(["oadm.kept"], Known, loadErrors: false, CancellationToken.None));
         Assert.Equal("1", await Settings.GetJsonAsync(SettingKeys.PluginKey("oadm.gone", "a"), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ASetStoredByANewerOadmKeepsEverythingAndAnEqualOrOlderOneIsCleaned()
+    {
+        await SeedAsync();
+        await Settings.SetAsync(RemovedPlugins.VersionKey, "5.4.0", CancellationToken.None); // a backup of 5.4 restored on 5.3
+
+        Assert.Empty(await Cleaner("5.3.0").CleanAsync(["oadm.kept", "oadm.off"], Known, loadErrors: false, CancellationToken.None));
+        Assert.Equal("1", await Settings.GetJsonAsync(SettingKeys.PluginKey("oadm.gone", "a"), CancellationToken.None));
+        Assert.True(Directory.Exists(Path.Combine(_db.Paths.PluginDataDirectory, "oadm.gone")));
+        Assert.Equal(PreviousSet, await Settings.GetAsync<string[]>(RemovedPlugins.SettingKey, CancellationToken.None) ?? []);
+        Assert.Equal("5.4.0", await Settings.GetAsync<string>(RemovedPlugins.VersionKey, CancellationToken.None));
+        Assert.Equal(0, await AuditCountAsync());
+
+        // The same version (5.4 itself) cleans as before and stores its version.
+        Assert.Equal(["oadm.gone", "oadm.gone.task"], await Cleaner("5.4.0").CleanAsync(["oadm.kept", "oadm.off"], Known, loadErrors: false, CancellationToken.None));
+        Assert.Null(await Settings.GetJsonAsync(SettingKeys.PluginKey("oadm.gone", "a"), CancellationToken.None));
+        Assert.Equal("5.4.0", await Settings.GetAsync<string>(RemovedPlugins.VersionKey, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task ASetStoredByAnOlderOadmIsCleanedAndGetsTheRunningVersion()
+    {
+        await SeedAsync();
+        await Settings.SetAsync(RemovedPlugins.VersionKey, "5.2.0", CancellationToken.None);
+
+        Assert.Equal(["oadm.gone", "oadm.gone.task"], await Cleaner("5.3.0").CleanAsync(["oadm.kept", "oadm.off"], Known, loadErrors: false, CancellationToken.None));
+        Assert.False(Directory.Exists(Path.Combine(_db.Paths.PluginDataDirectory, "oadm.gone")));
+        Assert.Equal("5.3.0", await Settings.GetAsync<string>(RemovedPlugins.VersionKey, CancellationToken.None));
     }
 }
