@@ -6,8 +6,9 @@ namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>
 /// The header of every dialog window (a window with <c>WindowDecorations="BorderOnly"</c>, no system title bar): the
-/// title as a heading, an optional small grey <see cref="Subtitle"/> right of it (like a page title) and an X that
-/// closes the window, aligned with the content. Like a dialog on a web page it does not move and is modal. Padding comes
+/// title as a heading, an optional small grey <see cref="Subtitle"/> right of it (like a page title), optional
+/// <see cref="Actions"/> left of the X (flat command buttons, e.g. Read from a camera) and an X that closes the window,
+/// aligned with the content. Like a dialog on a web page it does not move and is modal. Padding comes
 /// from the theme (<c>ui|DialogTitleBar</c>).
 /// </summary>
 public sealed class DialogTitleBar : Border
@@ -20,6 +21,7 @@ public sealed class DialogTitleBar : Border
 
     private readonly TextBlock _text = new() { VerticalAlignment = VerticalAlignment.Bottom };
     private readonly TextBlock _subtitle = new() { VerticalAlignment = VerticalAlignment.Bottom, IsVisible = false };
+    private readonly StackPanel _actions = new() { Orientation = Orientation.Horizontal, Spacing = 4, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
 
     public DialogTitleBar()
     {
@@ -31,12 +33,21 @@ public sealed class DialogTitleBar : Border
         close.Content = new OadmIcon { Data = ToolbarButton.ResolveIcon("close") };
         ToolTip.SetTip(close, "Close");
         close.Click += (_, _) => (TopLevel.GetTopLevel(this) as Window)?.Close();
-        Grid.SetColumn(close, 1);
+        Grid.SetColumn(_actions, 1);
+        Grid.SetColumn(close, 2);
         var left = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 7, VerticalAlignment = VerticalAlignment.Center };
         left.Children.Add(_text);
         left.Children.Add(_subtitle);
-        Child = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { left, close } };
+        Child = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), Children = { left, _actions, close } };
+        _actions.Children.CollectionChanged += (_, _) => _actions.IsVisible = _actions.Children.Count > 0;
+        _actions.IsVisible = false;
     }
+
+    /// <summary>
+    /// Controls left of the X (SDK 0.15.0): flat command buttons of the whole dialog (<c>ui:ToolbarButton</c>, icon and
+    /// text), such as Read from a camera of Text overlays. Never the dialog's main action, which stays in the footer.
+    /// </summary>
+    public Avalonia.Controls.Controls Actions => _actions.Children;
 
     /// <summary>The dialog title.</summary>
     public string? Text

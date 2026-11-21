@@ -153,6 +153,9 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   fields and text boxes alike, no Inter correction: `Padding` 10,0,8,0, the placeholder of a select at the height of a chosen item). A focused field has the accent border (select and number
   fields too, also after a click). The mouse wheel over a closed select field or a number field scrolls the page and never
   changes the value (`Infrastructure/WheelScroll`, attached in `App`, so plugin views too; test `WheelScrollTests`).
+  Scroll bars inside a text box are 4 px (thumb and bar, a third of Fluent's expanded bar, no arrows, no shrink
+  transform) and never grow under the pointer, so they sit on the edge below the text of a one-line box instead of
+  covering it (decision 2026-11-21, `OadmTheme.axaml` "Scroll bars inside a text box").
 - Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome in the text colour (`#CFCFCF` dark),
   16 px. Exception: command buttons (toolbars, card header rows) show their icon in the accent colour; icon-only buttons
   take the accent only on hover (CLAUDE.md "buttons follow Fluent"). Toolbar uses icon + text buttons, not ADM's icon-only bar.
@@ -210,7 +213,8 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   Enter adds the first, Esc closes (Vision Center's pipelines, Provisioning's profile editor).
 - `PageHeader`: a plugin page's content for the host page header (`Subtitle`, `Trailing`; `IsHidden` leaves the header
   row out, Live View).
-- For dialogs: `DialogTitleBar`, `CardHeader`, `DialogFooter`.
+- For dialogs: `DialogTitleBar` (`Actions`: flat command buttons of the whole dialog left of the X, icon and text, e.g.
+  Read from a camera of the overlay dialogs; never the main action, which stays in the footer), `CardHeader`, `DialogFooter`.
 - `StatusChip`: every status (see "Status" above). `WordWidth` is for a cell without room for the word (`RecipientTargetCell`: the
   Recipients list, its icon only and the word in the tooltip).
 - `FileRow`: every file chooser. One wide button that shows "Choose file" until a file is chosen, then its name, the

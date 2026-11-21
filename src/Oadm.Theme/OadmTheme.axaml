@@ -1373,6 +1373,32 @@
     <Setter Property="VerticalContentAlignment" Value="Center" />
     <Setter Property="Padding" Value="10,0,8,0" />
   </Style>
+  <!-- Scroll bars inside a text box: a thin bar on the edge (4 px, a third of Fluent's expanded bar) that never grows
+       under the pointer, so it never covers the text of a one-line box (Text overlays' text, a long path) -->
+  <Style Selector="TextBox /template/ ScrollViewer /template/ ScrollBar:horizontal">
+    <Setter Property="Height" Value="4" />
+    <Setter Property="MinHeight" Value="4" />
+  </Style>
+  <Style Selector="TextBox /template/ ScrollViewer /template/ ScrollBar:vertical">
+    <Setter Property="Width" Value="4" />
+    <Setter Property="MinWidth" Value="4" />
+  </Style>
+  <Style Selector="TextBox /template/ ScrollViewer /template/ ScrollBar:horizontal /template/ Thumb">
+    <Setter Property="Height" Value="4" />
+    <Setter Property="Margin" Value="0" />
+    <!-- Fluent shrinks the resting thumb with a transform; this one keeps its 4 px, resting or under the pointer -->
+    <Setter Property="RenderTransform" Value="none" />
+  </Style>
+  <Style Selector="TextBox /template/ ScrollViewer /template/ ScrollBar:vertical /template/ Thumb">
+    <Setter Property="Width" Value="4" />
+    <Setter Property="Margin" Value="0" />
+    <!-- Fluent shrinks the resting thumb with a transform; this one keeps its 4 px, resting or under the pointer -->
+    <Setter Property="RenderTransform" Value="none" />
+  </Style>
+  <!-- No arrow buttons on so thin a bar -->
+  <Style Selector="TextBox /template/ ScrollViewer /template/ ScrollBar /template/ RepeatButton#PART_LineUpButton, TextBox /template/ ScrollViewer /template/ ScrollBar /template/ RepeatButton#PART_LineDownButton">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
   <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
     <Setter Property="Background" Value="{StaticResource Oadm.InputBackgroundBrush}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.TextDisabledBrush}" />

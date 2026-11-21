@@ -19,7 +19,7 @@ Add the namespace `xmlns:ui="using:Oadm.Sdk.Client.Controls"` to your XAML.
 
 | Control | Use for |
 |---|---|
-| `ui:DialogTitleBar Text` | The first row of every dialog: the title as a heading and an X that closes it |
+| `ui:DialogTitleBar Text` | The first row of every dialog: the title as a heading and an X that closes it; `Actions` (SDK 0.15.0) holds flat command buttons of the whole dialog left of the X, such as Read from a camera |
 | `ui:DialogFooter CancelCommand` | The last row: Cancel on the left, your buttons on the right (`Button.secondary` for Back, one `Button.primary`); a lone Close or Cancel sits on the right |
 | `ui:CardHeader Title Description` | The heading of a card; child controls go right of the title (a device picker). Class `flush` when the content below is optional and brings its own top margin (`Oadm.GapTop`) |
 | `ui:FormField Label Hint Error` | **Every labeled input**: the label left, level with the input; below the input its validation error, else the `Hint`. The widths come from the theme (`Oadm.FormLabelWidth` 180, `Oadm.FormInputWidth` 280; a narrower row shrinks the input). Class `wide`: the input fills the row. Class `inline`: the label sizes to its text (fields in one line, From / To). `LabelAbove` (SDK 0.5.0): the label above a full-width input. Without a label the label column stays empty, so a check box or a button row lines up with the inputs. `Error` only for content without data validation (a group of check boxes, a text value) |
