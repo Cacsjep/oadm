@@ -130,7 +130,7 @@ internal static partial class TaskChangeTools
             [
                 P("task", Text("The task id from oadm_tasks_catalog, like oadm.users or oadm.network.", 128, minLength: 1)),
                 P("device_id", Text("The device id.", 36, "uuid")),
-                P("method", Text("The read: listUsers (oadm.users), getNetworkInfo (oadm.network), listApplications (oadm.acap), getTimeSettings (oadm.datetime), listOverlays (oadm.overlays), status (oadm.firmware), listCertificates or readClock (the PKI tasks).", 64, minLength: 1)),
+                P("method", Text("The read: listUsers (oadm.users), getNetworkInfo (oadm.network), listApplications (oadm.acap), getTimeSettings (oadm.datetime), listOverlays (the oadm.overlays tasks), status (oadm.firmware), listCertificates or readClock (the PKI tasks).", 64, minLength: 1)),
                 P("input", OpenObject("The read's input, when it takes one.")),
             ], "task", "device_id", "method"),
             OutObject(null,

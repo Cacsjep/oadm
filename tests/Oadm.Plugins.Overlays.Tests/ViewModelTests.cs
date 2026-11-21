@@ -11,10 +11,11 @@ public sealed class ViewModelTests
     internal static OverlaysQueryResult Read(params TextOverlay[] overlays) =>
         new(true, null, new OverlayCapabilities(512, 16, 200, 8, 1, 1), overlays);
 
-    internal static OverlaysDialogViewModel Dialog(IReadOnlyList<IDeviceInfo>? devices = null, OverlaysQueryResult? answer = null, IDeviceInfo? picked = null)
+    internal static OverlaysDialogViewModel Dialog(IReadOnlyList<IDeviceInfo>? devices = null, OverlaysQueryResult? answer = null, IDeviceInfo? picked = null,
+        OverlaysMode mode = OverlaysMode.Add)
     {
         devices ??= [Fixtures.Camera(), Fixtures.Camera("10.0.0.49")];
-        return new OverlaysDialogViewModel(devices, devices,
+        return new OverlaysDialogViewModel(mode, devices, devices,
             (_, _, _) => Task.FromResult<string?>(OverlaysJson.Serialize(answer ?? Read())),
             _ => Task.FromResult<IDeviceInfo?>(picked ?? devices[0]));
     }
@@ -27,7 +28,7 @@ public sealed class ViewModelTests
         Assert.Null(row.ErrorOf(nameof(row.Text)));
         Assert.False(vm.CanApply);
         Assert.Equal(OverlayRules.EnterText, vm.ApplyBlockedReason);
-        Assert.Equal("2 devices", vm.DevicesText);
+        Assert.Null(vm.UnsupportedText); // every selected camera is supported: no line
         Assert.Equal((OverlayPosition.BottomLeft, OverlayColor.White, OverlayColor.Black), (row.SelectedPosition.Position, row.SelectedTextColor.Color, row.SelectedBackgroundColor.Color));
     }
 
@@ -93,13 +94,13 @@ public sealed class ViewModelTests
         Assert.Equal("Read 2 overlays from AXIS P3265-V (10.0.0.48).", vm.ReadStatus);
         Assert.Equal("Custom position", vm.Rows[1].SelectedPosition.Name);
         Assert.DoesNotContain(vm.Rows[0].Positions, p => p.Position == OverlayPosition.Custom);
-        var payload = OverlaysJson.ParsePayload(vm.BuildPayload());
+        var payload = OverlaysJson.ParseList(vm.BuildPayload());
         Assert.Equal("%F\n%X", payload.Overlays[0].Text);
         Assert.Equal([-0.25, -0.5], payload.Overlays[1].CustomPosition);
     }
 
     [Fact]
-    public void The_list_holds_at_most_eight_and_only_remove_all_runs_without_one()
+    public void The_list_holds_at_most_eight_and_needs_one()
     {
         var vm = Dialog();
         for (var i = 0; i < 10; i++)
@@ -118,41 +119,33 @@ public sealed class ViewModelTests
 
         Assert.Equal(OverlayRules.AddOne, vm.ErrorOf(OverlaysDialogViewModel.OverlaysField));
         Assert.False(vm.CanApply);
-        vm.IsReplace = true;
-        Assert.False(vm.CanApply); // the dialog never offers an empty Replace
         Assert.Equal(OverlayRules.AddOne, vm.ApplyBlockedReason);
-        Assert.Equal("Replace overlays", vm.ApplyText);
-
-        vm.IsRemoveAll = true;
-        Assert.True(vm.CanApply);
-        Assert.True(vm.IsDanger);
-        Assert.False(vm.ShowList);
-        Assert.Equal("Remove overlays", vm.ApplyText);
-        Assert.Equal(OverlaysTaskPlugin.RemoveAllNote, vm.ModeNote);
-        var payload = OverlaysJson.ParsePayload(vm.BuildPayload());
-        Assert.Equal(OverlaysMode.RemoveAll, payload.Mode);
-        Assert.Empty(payload.Overlays);
     }
 
-    [Fact]
-    public void Remove_all_ignores_the_rows_and_their_errors()
+    [Theory]
+    [InlineData(OverlaysMode.Add, "Add overlays", "Add overlays")]
+    [InlineData(OverlaysMode.Replace, "Replace overlays", "Replace overlays")]
+    [InlineData(OverlaysMode.RemoveMatching, "Remove matching overlays", "Remove overlays")]
+    public void Each_menu_entry_opens_its_own_dialog(OverlaysMode mode, string title, string button)
     {
-        var vm = Dialog();
-        vm.Rows[0].SizeText = "big";
-        vm.IsRemoveAll = true;
-        Assert.True(vm.CanApply);
-        Assert.Empty(OverlaysJson.ParsePayload(vm.BuildPayload()).Overlays);
-    }
-
-    [Fact]
-    public void Remove_matching_hides_everything_but_the_text()
-    {
-        var vm = Dialog();
+        var vm = Dialog(mode: mode);
         vm.Rows[0].Text = "Lobby";
         vm.Rows[0].SizeText = "5000";
-        vm.IsRemove = true;
-        Assert.False(vm.Rows[0].ShowStyle);
-        Assert.Equal("Remove overlays", vm.ApplyText);
+        Assert.Equal((title, button), (vm.Title, vm.ApplyText));
+        Assert.Equal(mode == OverlaysMode.Replace, vm.IsReplace); // its warning
+        Assert.Equal(mode == OverlaysMode.RemoveMatching, vm.IsRemove); // the text only, the red button
+        Assert.Equal(mode != OverlaysMode.RemoveMatching, vm.Rows[0].ShowStyle);
+        Assert.Equal(mode == OverlaysMode.RemoveMatching, vm.CanApply); // a hidden size never blocks Remove matching
+        Assert.Throws<ArgumentOutOfRangeException>(() => Dialog(mode: OverlaysMode.RemoveAll));
+    }
+
+    [Fact]
+    public void Remove_all_asks_with_the_number_of_cameras()
+    {
+        IReadOnlyList<IDeviceInfo> devices = [Fixtures.Camera(), Fixtures.Camera("10.0.0.49"), new FakeDevice { Apis = [] }];
+        Assert.Equal("Remove all text overlays of 2 cameras? Image overlays stay." + Environment.NewLine + "1 of 3 cameras is not supported.",
+            RemoveAllOverlaysDialog.Question(devices));
+        Assert.Equal("Remove all text overlays of 1 camera? Image overlays stay.", RemoveAllOverlaysDialog.Question([Fixtures.Camera()]));
     }
 
     [Fact]
@@ -160,7 +153,7 @@ public sealed class ViewModelTests
     {
         IReadOnlyList<IDeviceInfo> devices = [Fixtures.Camera(), new FakeDevice { Apis = [new DeviceApi("param-cgi", "1.0")] }];
         var vm = Dialog(devices);
-        Assert.Equal("2 devices: 1 compatible, 1 not supported", vm.DevicesText);
+        Assert.Equal("1 of 2 cameras is not supported.", vm.UnsupportedText);
 
         var none = Dialog([new FakeDevice { Apis = [] }]);
         none.Rows[0].Text = "x";
@@ -176,7 +169,7 @@ public sealed class ViewModelTests
         vm.CloseRequested += (_, payload) => closed = payload;
         vm.Rows[0].Text = "Lobby";
         vm.ApplyCommand.Execute(null);
-        Assert.Equal("Lobby", Assert.Single(OverlaysJson.ParsePayload(closed).Overlays).Text);
+        Assert.Equal("Lobby", Assert.Single(OverlaysJson.ParseList(closed).Overlays).Text);
         vm.CancelCommand.Execute(null);
         Assert.Null(closed);
     }

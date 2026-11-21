@@ -41,26 +41,32 @@ public sealed class HeadlessTests
         await session.Dispatch(async () =>
         {
             IReadOnlyList<IDeviceInfo> devices = [Fixtures.Camera(), Fixtures.Camera("10.0.0.49"), Fixtures.Camera("10.0.0.50")];
-            var vm = ViewModelTests.Dialog(devices);
-            await vm.LoadAsync(CancellationToken.None);
-            var window = new OverlaysWindow { DataContext = vm };
-            window.Show();
-            Dispatcher.UIThread.RunJobs();
-            Assert.True(window.Bounds.Height > 0);
-            Assert.Null(vm.Rows[0].ErrorOf(nameof(OverlayRowViewModel.Text))); // nothing red on an untouched form
-            Capture(window, outDir, "overlays-empty" + suffix + ".png");
 
-            // Two overlays: date and time bottom left, the camera name top right.
-            vm.Rows[0].Text = "%F %X";
-            vm.AddOverlayCommand.Execute(null);
-            vm.Rows[1].Text = "#n";
-            vm.Rows[1].SelectedPosition = vm.Rows[1].Positions.Single(p => p.Position == OverlayPosition.TopRight);
-            vm.Rows[1].SelectedBackgroundColor = OverlayRowViewModel.Colors.Single(c => c.Color == OverlayColor.SemiTransparent);
-            vm.Rows[1].SizeText = "32";
+            // Add overlays: empty, then two overlays (date and time bottom left, the camera name top right).
+            var (window, vm) = await OpenAsync(devices, OverlaysMode.Add);
+            Assert.Null(vm.Rows[0].ErrorOf(nameof(OverlayRowViewModel.Text))); // nothing red on an untouched form
+            Assert.Null(vm.UnsupportedText); // every camera supported: no line
+            Assert.Contains(window.GetVisualDescendants().OfType<ToolbarButton>(), b => b.Text == "Read from a camera"); // in the title bar
+            Capture(window, outDir, "overlays-add-empty" + suffix + ".png");
+            FillTwo(vm);
             Dispatcher.UIThread.RunJobs();
             Assert.True(vm.CanApply);
             Assert.Single(Buttons(window), b => b.Classes.Contains("primary"));
-            Capture(window, outDir, "overlays-two" + suffix + ".png");
+            Capture(window, outDir, "overlays-add" + suffix + ".png");
+
+            // A long text in the focused box, the pointer on it: the thin scroll bar of the theme never covers the text.
+            vm.Rows[0].Text = "Main entrance, north side, camera above the revolving door %F %X";
+            Dispatcher.UIThread.RunJobs();
+            var box = window.GetVisualDescendants().OfType<TextBox>().First(t => t.Text == vm.Rows[0].Text);
+            box.Focus();
+            box.CaretIndex = box.Text!.Length;
+            Dispatcher.UIThread.RunJobs();
+            window.MouseMove(box.TranslatePoint(new Point(box.Bounds.Width / 2, box.Bounds.Height - 3), window)!.Value, Avalonia.Input.RawInputModifiers.None);
+            Dispatcher.UIThread.RunJobs();
+            Capture(window, outDir, "overlays-longtext" + suffix + ".png");
+            vm.Rows[0].Text = "%F %X";
+            window.MouseMove(new Point(1, 1), Avalonia.Input.RawInputModifiers.None);
+            Dispatcher.UIThread.RunJobs();
 
             // The modifiers list of the first overlay.
             var more = window.GetVisualDescendants().OfType<Button>().First(b => ToolTip.GetTip(b) as string == "Insert a value");
@@ -70,53 +76,50 @@ public sealed class HeadlessTests
             more.Flyout.Hide();
             Dispatcher.UIThread.RunJobs();
 
-            // An error directly below its field; Apply disabled with the reason as tooltip.
+            // An error directly below its field; the main button disabled with the reason as tooltip.
             vm.Rows[1].SizeText = "500";
             Dispatcher.UIThread.RunJobs();
             Assert.Equal(OverlayRules.SizeRange(16, 200), vm.Rows[1].ErrorOf(nameof(OverlayRowViewModel.SizeText)));
             Assert.False(vm.CanApply);
             Assert.Equal(OverlayRules.SizeRange(16, 200), vm.ApplyBlockedReason);
             Capture(window, outDir, "overlays-error" + suffix + ".png");
-            vm.Rows[1].SizeText = "32";
+            window.Close();
 
-            // Replace: the note says what goes.
-            vm.IsReplace = true;
+            // Replace overlays: its warning above the table.
+            (window, vm) = await OpenAsync(devices, OverlaysMode.Replace);
+            FillTwo(vm);
             Dispatcher.UIThread.RunJobs();
-            Assert.Equal(OverlaysTaskPlugin.ReplaceNote, vm.ModeNote);
+            Assert.True(vm.IsReplace);
             Capture(window, outDir, "overlays-replace" + suffix + ".png");
+            window.Close();
 
-            // Remove matching: the text only, the red button.
-            vm.IsRemove = true;
+            // Remove matching overlays: the text only, the red button.
+            (window, vm) = await OpenAsync(devices, OverlaysMode.RemoveMatching);
+            FillTwo(vm);
             Dispatcher.UIThread.RunJobs();
             Assert.Single(Buttons(window), b => b.Classes.Contains("danger") && !b.Classes.Contains("toolbar"));
             Assert.DoesNotContain(Buttons(window), b => b.Classes.Contains("primary"));
             Capture(window, outDir, "overlays-remove" + suffix + ".png");
-
-            // Remove all: no list, the red button works without one.
-            vm.IsRemoveAll = true;
-            Dispatcher.UIThread.RunJobs();
-            Assert.True(vm.CanApply);
-            Assert.Single(Buttons(window), b => b.Classes.Contains("danger") && !b.Classes.Contains("toolbar"));
-            Assert.DoesNotContain(Buttons(window), b => b.Content is IconLabel { Text: "Read from a camera" or "Add overlay" });
-            Capture(window, outDir, "overlays-removeall" + suffix + ".png");
             window.Close();
 
-            // Many cameras, some without text overlays: the summary counts them.
+            // Many cameras, some without text overlays: one line says how many are not supported.
             IReadOnlyList<IDeviceInfo> many = [.. Enumerable.Range(0, 250).Select(i => (IDeviceInfo)(i % 36 == 5
                 ? new Oadm.Sdk.Testing.FakeDevice { Address = $"10.0.1.{i}", Apis = [new Oadm.Sdk.Vapix.DeviceApi("param-cgi", "1.0")] }
                 : Fixtures.Camera($"10.0.1.{i}")))];
-            var big = ViewModelTests.Dialog(many);
-            await big.LoadAsync(CancellationToken.None);
-            big.Rows[0].Text = "%F %X";
-            big.AddOverlayCommand.Execute(null);
-            big.Rows[1].Text = "#n";
-            big.Rows[1].SelectedPosition = big.Rows[1].Positions.Single(p => p.Position == OverlayPosition.TopRight);
-            var bigWindow = new OverlaysWindow { DataContext = big };
-            bigWindow.Show();
+            (window, vm) = await OpenAsync(many, OverlaysMode.Add);
+            FillTwo(vm);
             Dispatcher.UIThread.RunJobs();
-            Assert.Equal("250 devices: 243 compatible, 7 not supported", big.DevicesText);
-            Capture(bigWindow, outDir, "overlays-many" + suffix + ".png");
-            bigWindow.Close();
+            Assert.Equal("7 of 250 cameras are not supported.", vm.UnsupportedText);
+            Capture(window, outDir, "overlays-many" + suffix + ".png");
+            window.Close();
+
+            // Remove all overlays: only the confirmation, the red Remove button.
+            var confirm = new MessageWindow { Heading = RemoveAllOverlaysDialog.Title, Message = RemoveAllOverlaysDialog.Question(many), ConfirmText = "Remove" };
+            confirm.Show();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Contains("danger", confirm.ConfirmButton.Classes);
+            Capture(confirm, outDir, "overlays-removeall" + suffix + ".png");
+            confirm.Close();
             return true;
         }, CancellationToken.None);
 
@@ -128,6 +131,27 @@ public sealed class HeadlessTests
         {
             // nothing was written
         }
+    }
+
+    private static async Task<(OverlaysWindow Window, OverlaysDialogViewModel Vm)> OpenAsync(IReadOnlyList<IDeviceInfo> devices, OverlaysMode mode)
+    {
+        var vm = ViewModelTests.Dialog(devices, mode: mode);
+        await vm.LoadAsync(CancellationToken.None);
+        var window = new OverlaysWindow { DataContext = vm };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(window.Bounds.Height > 0);
+        return (window, vm);
+    }
+
+    private static void FillTwo(OverlaysDialogViewModel vm)
+    {
+        vm.Rows[0].Text = "%F %X";
+        vm.AddOverlayCommand.Execute(null);
+        vm.Rows[1].Text = "#n";
+        vm.Rows[1].SelectedPosition = vm.Rows[1].Positions.Single(p => p.Position == OverlayPosition.TopRight);
+        vm.Rows[1].SelectedBackgroundColor = OverlayRowViewModel.Colors.Single(c => c.Color == OverlayColor.SemiTransparent);
+        vm.Rows[1].SizeText = "32";
     }
 
     private static IEnumerable<Button> Buttons(Window window) => window.GetVisualDescendants().OfType<Button>().Where(b => b.IsEffectivelyVisible);

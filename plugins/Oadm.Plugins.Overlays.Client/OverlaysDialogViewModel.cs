@@ -11,7 +11,7 @@ namespace Oadm.Plugins.Overlays.Client;
 
 /// <summary>
 /// The "Text overlays" dialog: a list of at most <see cref="OverlayRules.MaxOverlays"/> text overlays, read from a camera or
-/// typed, and what happens on each camera (Add, Replace text overlays, Remove matching, Remove all: no list). Reads the limits of the first
+/// typed; the menu entry fixes what happens on each camera (Add, Replace or Remove matching overlays). Reads the limits of the first
 /// compatible selected camera once (one query, whatever the selection), and a camera's overlays on Read from a camera.
 /// Every error shows below its field; Apply stays disabled while any exists.
 /// </summary>
@@ -30,16 +30,24 @@ public sealed partial class OverlaysDialogViewModel : ValidatingViewModel
     private OverlayLimits _limits = OverlayLimits.Default;
     private CancellationToken _closing;
 
+    /// <param name="mode">What the menu entry does: Add, Replace or Remove matching (Remove all has no dialog).</param>
     /// <param name="devices">The selected devices (each gets a task).</param>
     /// <param name="allDevices">The devices the user may read from (Read from a camera).</param>
     /// <param name="query">The plugin's query: device id, method → JSON.</param>
     /// <param name="pickCamera">The one-device picker; null = cancelled.</param>
     public OverlaysDialogViewModel(
+        OverlaysMode mode,
         IReadOnlyList<IDeviceInfo> devices,
         IReadOnlyList<IDeviceInfo> allDevices,
         Func<Guid, string, CancellationToken, Task<string?>> query,
         Func<IReadOnlyList<IDeviceInfo>, Task<IDeviceInfo?>> pickCamera)
     {
+        if (mode is not (OverlaysMode.Add or OverlaysMode.Replace or OverlaysMode.RemoveMatching))
+        {
+            throw new ArgumentOutOfRangeException(nameof(mode), mode, "Remove all has no dialog.");
+        }
+
+        Mode = mode;
         _devices = devices ?? throw new ArgumentNullException(nameof(devices));
         _allDevices = allDevices ?? throw new ArgumentNullException(nameof(allDevices));
         _query = query ?? throw new ArgumentNullException(nameof(query));
@@ -63,7 +71,7 @@ public sealed partial class OverlaysDialogViewModel : ValidatingViewModel
             Validation.Touch(OverlaysField);
             Update();
         };
-        Validation.Rule(OverlaysField, () => Rows.Count == 0 && Mode != OverlaysMode.RemoveAll ? OverlayRules.AddOne : null);
+        Validation.Rule(OverlaysField, () => Rows.Count == 0 ? OverlayRules.AddOne : null);
         AddRow(null);
         Validation.Reset();
         Update();
@@ -80,90 +88,33 @@ public sealed partial class OverlaysDialogViewModel : ValidatingViewModel
 
     public int CompatibleCount => _compatible;
 
-    /// <summary>"12 devices" or "12 devices: 11 compatible, 1 not supported".</summary>
-    public string DevicesText
+    /// <summary>"7 of 250 cameras are not supported."; null when every selected device is.</summary>
+    public string? UnsupportedText => OverlayTexts.Unsupported(_devices.Count, _compatible);
+
+    /// <summary>What the menu entry does on each camera.</summary>
+    public OverlaysMode Mode { get; }
+
+    /// <summary>The window title: the menu entry's name.</summary>
+    public string Title => Mode switch
     {
-        get
-        {
-            var total = _devices.Count;
-            var noun = total == 1 ? "device" : "devices";
-            return _compatible == total
-                ? string.Create(CultureInfo.CurrentCulture, $"{total:N0} {noun}")
-                : string.Create(CultureInfo.CurrentCulture, $"{total:N0} {noun}: {_compatible:N0} compatible, {total - _compatible:N0} not supported");
-        }
-    }
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsAdd), nameof(IsReplace), nameof(IsRemove), nameof(IsRemoveAll), nameof(IsDanger), nameof(ShowList), nameof(HasReadStatus), nameof(ApplyText), nameof(ModeNote))]
-    public partial OverlaysMode Mode { get; set; } = OverlaysMode.Add;
-
-    public bool IsAdd
-    {
-        get => Mode == OverlaysMode.Add;
-        set
-        {
-            if (value)
-            {
-                Mode = OverlaysMode.Add;
-            }
-        }
-    }
-
-    public bool IsReplace
-    {
-        get => Mode == OverlaysMode.Replace;
-        set
-        {
-            if (value)
-            {
-                Mode = OverlaysMode.Replace;
-            }
-        }
-    }
-
-    public bool IsRemove
-    {
-        get => Mode == OverlaysMode.RemoveMatching;
-        set
-        {
-            if (value)
-            {
-                Mode = OverlaysMode.RemoveMatching;
-            }
-        }
-    }
-
-    public bool IsRemoveAll
-    {
-        get => Mode == OverlaysMode.RemoveAll;
-        set
-        {
-            if (value)
-            {
-                Mode = OverlaysMode.RemoveAll;
-            }
-        }
-    }
-
-    /// <summary>The main button removes overlays: red.</summary>
-    public bool IsDanger => Mode is OverlaysMode.RemoveMatching or OverlaysMode.RemoveAll;
-
-    /// <summary>The table, its headers, Add overlay and Read from a camera: hidden for Remove all.</summary>
-    public bool ShowList => Mode != OverlaysMode.RemoveAll;
-
-    /// <summary>One line under the choice: what the chosen mode does.</summary>
-    public string ModeNote => Mode switch
-    {
-        OverlaysMode.Replace => OverlaysTaskPlugin.ReplaceNote,
-        OverlaysMode.RemoveMatching => "Removes the text overlays whose text is the same as one in the list.",
-        OverlaysMode.RemoveAll => OverlaysTaskPlugin.RemoveAllNote,
-        _ => "The overlays go next to those the camera has. " + OverlaysTaskPlugin.AddNote,
+        OverlaysMode.Replace => "Replace overlays",
+        OverlaysMode.RemoveMatching => "Remove matching overlays",
+        _ => "Add overlays",
     };
 
+    /// <summary>Remove matching: only the Text column, the red main button.</summary>
+    public bool IsRemove => Mode == OverlaysMode.RemoveMatching;
+
+    /// <summary>Replace: its warning above the table.</summary>
+    public bool IsReplace => Mode == OverlaysMode.Replace;
+
+    public static string ReplaceNote => OverlaysTaskPlugin.ReplaceNote;
+
+    /// <summary>The main button names the action.</summary>
     public string ApplyText => Mode switch
     {
         OverlaysMode.Replace => "Replace overlays",
-        OverlaysMode.RemoveMatching or OverlaysMode.RemoveAll => "Remove overlays",
+        OverlaysMode.RemoveMatching => "Remove overlays",
         _ => "Add overlays",
     };
 
@@ -181,7 +132,7 @@ public sealed partial class OverlaysDialogViewModel : ValidatingViewModel
     [ObservableProperty]
     public partial bool ReadFailed { get; private set; }
 
-    public bool HasReadStatus => !string.IsNullOrEmpty(ReadStatus) && ShowList;
+    public bool HasReadStatus => !string.IsNullOrEmpty(ReadStatus);
 
     /// <summary>The list's error, directly below the list.</summary>
     public string? OverlaysError => ErrorOf(OverlaysField);
@@ -316,8 +267,8 @@ public sealed partial class OverlaysDialogViewModel : ValidatingViewModel
     public string? BuildPayload()
     {
         var payload = CreatePayload();
-        return Validation.IsValid && (Mode == OverlaysMode.RemoveAll || Rows.All(r => r.IsValid)) && OverlayRules.Check(payload).Count == 0
-            ? OverlaysJson.Serialize(payload)
+        return Validation.IsValid && Rows.All(r => r.IsValid) && OverlayRules.Check(payload).Count == 0
+            ? OverlaysJson.Serialize(new OverlayListPayload { Overlays = payload.Overlays })
             : null;
     }
 
@@ -339,16 +290,6 @@ public sealed partial class OverlaysDialogViewModel : ValidatingViewModel
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(this, null);
 
-    partial void OnModeChanged(OverlaysMode value)
-    {
-        foreach (var row in Rows)
-        {
-            row.ShowStyle = value != OverlaysMode.RemoveMatching;
-        }
-
-        Update();
-    }
-
     protected override void OnValidationChanged()
     {
         OnPropertyChanged(nameof(OverlaysError));
@@ -358,7 +299,7 @@ public sealed partial class OverlaysDialogViewModel : ValidatingViewModel
     private OverlaysPayload CreatePayload() => new()
     {
         Mode = Mode,
-        Overlays = Mode == OverlaysMode.RemoveAll ? [] : [.. Rows.Select(r => r.ToOverlay())],
+        Overlays = [.. Rows.Select(r => r.ToOverlay())],
     };
 
     private void AddRow(TextOverlay? overlay)
@@ -399,7 +340,7 @@ public sealed partial class OverlaysDialogViewModel : ValidatingViewModel
     private void Update()
     {
         Validation.Validate();
-        var rowError = Mode == OverlaysMode.RemoveAll ? null : Rows.Select(r => r.IsValid ? null : r.FormError).FirstOrDefault(e => e is not null);
+        var rowError = Rows.Select(r => r.IsValid ? null : r.FormError).FirstOrDefault(e => e is not null);
         var reason = _compatible == 0 ? "None of the selected devices supports text overlays."
             : Validation.FirstError ?? rowError
             ?? (OverlayRules.Check(CreatePayload()) is [var first, ..] ? first.Message : null);

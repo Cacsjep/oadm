@@ -103,7 +103,7 @@ public sealed partial class OverlayRowViewModel : ValidatingViewModel
         SelectedOutlineColor = Colors.First(c => c.Color == overlay.OutlineColor);
         Validation
             .Rule(nameof(Text), () => OverlayRules.TextError(Text, _limits().MaxTextLength))
-            .Rule(nameof(SizeText), () => SizeError(SizeText, _limits()));
+            .Rule(nameof(SizeText), () => ShowStyle ? SizeError(SizeText, _limits()) : null); // Remove matching: only the text counts
         Validation.Validate();
     }
 

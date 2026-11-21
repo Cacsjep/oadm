@@ -28,7 +28,6 @@ public static class OverlayRules
     public const string NoControlCharacters = "Tabs and control characters are not allowed.";
     public const string AddOne = "Add an overlay.";
     public const string CustomNeedsPlace = "A custom position needs two numbers from -1 to 1.";
-    public const string RemoveAllTakesNone = "Remove all takes no overlays.";
 
     public static string TooMany => string.Create(CultureInfo.InvariantCulture, $"At most {MaxOverlays} overlays.");
 
@@ -41,24 +40,13 @@ public static class OverlayRules
     {
         ArgumentNullException.ThrowIfNull(payload);
         var errors = new List<PayloadError>();
-        if (!Enum.IsDefined(payload.Mode))
-        {
-            errors.Add(new PayloadError(OverlayFields.Mode, "Choose add, replace or remove."));
-        }
-
         var overlays = payload.Overlays ?? [];
         if (payload.Mode == OverlaysMode.RemoveAll)
         {
-            if (overlays.Count > 0)
-            {
-                errors.Add(new PayloadError(OverlayFields.Overlays, RemoveAllTakesNone));
-            }
-
-            return errors;
+            return errors; // no overlays: every text overlay goes
         }
 
-        // An empty Replace (every text overlay removed) stays valid for older payloads and agents; the dialog offers Remove all.
-        if (overlays.Count == 0 && payload.Mode != OverlaysMode.Replace)
+        if (overlays.Count == 0)
         {
             errors.Add(new PayloadError(OverlayFields.Overlays, AddOne));
         }

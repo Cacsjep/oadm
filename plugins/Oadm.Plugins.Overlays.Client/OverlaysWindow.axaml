@@ -4,39 +4,36 @@
         xmlns:vm="using:Oadm.Plugins.Overlays.Client"
         x:Class="Oadm.Plugins.Overlays.Client.OverlaysWindow"
         x:DataType="vm:OverlaysDialogViewModel"
-        Title="Text overlays"
-        Width="1080" SizeToContent="Height"
+        Title="{Binding Title}"
+        Width="1180" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         CanResize="False"
         WindowDecorations="BorderOnly">
-  <!-- Title bar, the overlays as a table (one line per overlay, the column headers once above; each input a label-less
-       ui:FormField, so its error shows directly below it and only that row grows), the card "On each camera" (Add, Replace,
-       Remove), footer. The window takes the height of its content; 8 rows scroll. The columns are wide enough for
-       "Semi-transparent" and "Custom position". Shared controls and theme classes only. -->
-  <Grid RowDefinitions="Auto,Auto,Auto,Auto">
-    <ui:DialogTitleBar Grid.Row="0" Text="Text overlays" />
+  <!-- One dialog per menu entry (Add, Replace, Remove matching overlays; the title and the main button name it). Title bar
+       with Read from a camera left of the X; one card: a line when some selected cameras are not supported, Replace's
+       warning, the read result, then the overlays as a table (one line per overlay, the column headers once above; each
+       input a label-less ui:FormField, so its error shows directly below it and only that row grows); footer. The window
+       takes the height of its content; 8 rows scroll. The columns are wide enough for "Semi-transparent" and "Custom
+       position". Shared controls and theme classes only. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}">
+      <ui:DialogTitleBar.Actions>
+        <ui:ToolbarButton Text="Read from a camera" IconKey="devices" Command="{Binding ReadFromCameraCommand}" />
+      </ui:DialogTitleBar.Actions>
+    </ui:DialogTitleBar>
 
     <Border Grid.Row="1" Classes="card" Margin="16,0">
-      <Grid RowDefinitions="Auto,Auto,Auto,Auto">
-        <!-- The selection left, Read from a camera right: the title bar names the dialog, no heading here -->
-        <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Classes="secondary" Text="{Binding DevicesText}" VerticalAlignment="Center" TextWrapping="Wrap" />
-          <Button Grid.Column="1" Classes="secondary" Command="{Binding ReadFromCameraCommand}" IsEnabled="{Binding !IsLoading}" IsVisible="{Binding ShowList}">
-            <ui:IconLabel Icon="{DynamicResource Icon.devices}" Text="Read from a camera" />
-          </Button>
-        </Grid>
-        <ui:StatusChip Grid.Row="1" Text="{Binding ReadStatus}" IsInfo="{Binding !ReadFailed}" IsError="{Binding ReadFailed}" MaxLines="2"
-                       IsVisible="{Binding HasReadStatus}" Margin="0,12,0,0" />
+      <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+        <TextBlock Grid.Row="0" Classes="secondary" Text="{Binding UnsupportedText}" TextWrapping="Wrap" Margin="0,0,0,12"
+                   IsVisible="{Binding UnsupportedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        <ui:StatusChip Grid.Row="1" IsWarning="True" Text="{x:Static vm:OverlaysDialogViewModel.ReplaceNote}" MaxLines="2"
+                       IsVisible="{Binding IsReplace}" Margin="0,0,0,12" />
+        <ui:StatusChip Grid.Row="2" Text="{Binding ReadStatus}" IsInfo="{Binding !ReadFailed}" IsError="{Binding ReadFailed}" MaxLines="2"
+                       IsVisible="{Binding HasReadStatus}" Margin="0,0,0,12" />
 
         <!-- Column headers, once -->
-        <Grid Grid.Row="2" ColumnDefinitions="230,152,80,152,152,152,30" ColumnSpacing="8" Margin="0,12,0,6">
-          <Grid.IsVisible>
-            <MultiBinding Converter="{x:Static BoolConverters.And}">
-              <Binding Path="HasRows" />
-              <Binding Path="ShowList" />
-            </MultiBinding>
-          </Grid.IsVisible>
+        <Grid Grid.Row="3" ColumnDefinitions="330,152,80,152,152,152,30" ColumnSpacing="8" Margin="0,0,0,6" IsVisible="{Binding HasRows}">
           <TextBlock Grid.Column="0" Classes="fieldLabel" Text="Text" />
           <TextBlock Grid.Column="1" Classes="fieldLabel" Text="Position" IsVisible="{Binding !IsRemove}" />
           <TextBlock Grid.Column="2" Classes="fieldLabel" Text="Size" IsVisible="{Binding !IsRemove}" ToolTip.Tip="{Binding SizeTip}" />
@@ -45,7 +42,7 @@
           <TextBlock Grid.Column="5" Classes="fieldLabel" Text="Outline" IsVisible="{Binding !IsRemove}" />
         </Grid>
 
-        <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Disabled" MaxHeight="420" IsVisible="{Binding ShowList}">
+        <ScrollViewer Grid.Row="4" HorizontalScrollBarVisibility="Disabled" MaxHeight="420">
           <StackPanel Spacing="8">
             <ItemsControl ItemsSource="{Binding Rows}">
               <ItemsControl.ItemsPanel>
@@ -53,7 +50,7 @@
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:OverlayRowViewModel">
-                  <Grid ColumnDefinitions="230,152,80,152,152,152,30" ColumnSpacing="8">
+                  <Grid ColumnDefinitions="330,152,80,152,152,152,30" ColumnSpacing="8">
                     <!-- One line high: a text read from a camera keeps its line breaks (Enter adds one); the box scrolls to
                          the line of the caret -->
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4" VerticalAlignment="Top">
@@ -118,26 +115,12 @@
             </Button>
           </StackPanel>
         </ScrollViewer>
-        <ui:LoadingOverlay Grid.Row="0" Grid.RowSpan="4" Text="{Binding LoadingText}" IsVisible="{Binding IsLoading}" />
+        <ui:LoadingOverlay Grid.Row="0" Grid.RowSpan="5" Text="{Binding LoadingText}" IsVisible="{Binding IsLoading}" />
       </Grid>
     </Border>
 
-    <Border Grid.Row="2" Classes="card" Margin="16,12,16,0">
-      <StackPanel Spacing="8">
-        <ui:CardHeader Title="On each camera" Description="All overlays go to view area 1." />
-        <StackPanel Orientation="Horizontal" Spacing="24">
-          <RadioButton GroupName="mode" Content="Add" IsChecked="{Binding IsAdd}" />
-          <RadioButton GroupName="mode" Content="Replace text overlays" IsChecked="{Binding IsReplace}" />
-          <RadioButton GroupName="mode" Content="Remove matching" IsChecked="{Binding IsRemove}" />
-          <RadioButton GroupName="mode" Content="Remove all" IsChecked="{Binding IsRemoveAll}" />
-        </StackPanel>
-        <TextBlock Classes="secondary" Text="{Binding ModeNote}" TextWrapping="Wrap" IsVisible="{Binding !IsReplace}" />
-        <ui:StatusChip IsWarning="True" Text="{Binding ModeNote}" MaxLines="2" IsVisible="{Binding IsReplace}" />
-      </StackPanel>
-    </Border>
-
-    <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
-      <Button Classes.primary="{Binding !IsDanger}" Classes.danger="{Binding IsDanger}" Content="{Binding ApplyText}" Command="{Binding ApplyCommand}" IsDefault="True"
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button Classes.primary="{Binding !IsRemove}" Classes.danger="{Binding IsRemove}" Content="{Binding ApplyText}" Command="{Binding ApplyCommand}" IsDefault="True"
               ToolTip.Tip="{Binding ApplyBlockedReason}" ToolTip.ShowOnDisabled="True" />
     </ui:DialogFooter>
   </Grid>

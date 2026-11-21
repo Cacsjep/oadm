@@ -74,17 +74,26 @@ public sealed record TextOverlay
     public int? FontSize { get; init; }
 }
 
-/// <summary>The dialog's payload: what to do and the overlays. Kept in memory only, like every payload.</summary>
-[Description("Add, replace or remove text overlays in view area 1 of the cameras.")]
+/// <summary>One run on one camera: what the task does (fixed by the task) and the overlays. Kept in memory only.</summary>
 public sealed record OverlaysPayload
 {
-    [property: Description("add: next to the camera's overlays; replace: the camera keeps exactly these text overlays, image overlays stay; removeMatching: removes the text overlays with one of these texts; removeAll: removes every text overlay (no overlays in the list).")]
     public OverlaysMode Mode { get; init; } = OverlaysMode.Add;
 
-    [property: Description("The text overlays, at most 8.")]
+    public IReadOnlyList<TextOverlay> Overlays { get; init; } = [];
+}
+
+/// <summary>The payload of Add, Replace and Remove matching overlays: the overlays. The task says what happens with them.</summary>
+[Description("The text overlays of view area 1, at most 8. Add puts them next to the camera's, Replace leaves exactly these text overlays, Remove matching removes the ones with these texts.")]
+public sealed record OverlayListPayload
+{
+    [property: Description("The text overlays, 1 to 8.")]
     [property: MaxLength(OverlayRules.MaxOverlays)]
     public IReadOnlyList<TextOverlay> Overlays { get; init; } = [];
 }
+
+/// <summary>The payload of Remove all overlays: none (every text overlay of view area 1 goes).</summary>
+[Description("Removes every text overlay of view area 1; image overlays stay. No settings.")]
+public sealed record RemoveAllPayload;
 
 /// <summary>A camera's overlay limits (getOverlayCapabilities).</summary>
 /// <param name="MaxTextLength">Longest text.</param>
@@ -109,12 +118,12 @@ public static class OverlaysJson
 
     public static JsonSerializerOptions Options { get; } = PluginJson.CreateOptions(PluginJsonEnums.CamelCase);
 
-    public static string Serialize(OverlaysPayload payload) => JsonSerializer.Serialize(payload, Options);
+    public static string Serialize(OverlayListPayload payload) => JsonSerializer.Serialize(payload, Options);
 
     public static string Serialize(OverlaysQueryResult result) => JsonSerializer.Serialize(result, Options);
 
-    /// <summary>Parses a payload; an <see cref="ArgumentException"/> with a plain message when it is missing or broken.</summary>
-    public static OverlaysPayload ParsePayload(string? json)
+    /// <summary>Parses the list payload; an <see cref="ArgumentException"/> with a plain message when it is missing or broken.</summary>
+    public static OverlayListPayload ParseList(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
         {
@@ -123,7 +132,7 @@ public static class OverlaysJson
 
         try
         {
-            return JsonSerializer.Deserialize<OverlaysPayload>(json, Options) ?? throw new ArgumentException(OverlayRules.NoSettings);
+            return JsonSerializer.Deserialize<OverlayListPayload>(json, Options) ?? throw new ArgumentException(OverlayRules.NoSettings);
         }
         catch (JsonException)
         {
@@ -164,7 +173,20 @@ public static class OverlayNames
     /// <summary>The API's value: "semiTransparent".</summary>
     public static string ApiValue(OverlayColor color) => JsonNamingPolicy.CamelCase.ConvertName(color.ToString());
 
-    /// <summary>The first line of a text, at most 30 characters, for step names and task names.</summary>
+    /// <summary>The whole text on one line (line breaks as spaces), shortened with "…" only past <paramref name="max"/> characters.</summary>
+    public static string OneLine(string text, int max)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var line = string.Join(' ', OverlayText.Normalize(text).Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0));
+        if (line.Length == 0)
+        {
+            return "(empty)";
+        }
+
+        return line.Length <= max ? line : line[..(max - 1)] + "…";
+    }
+
+    /// <summary>The first line of a text, at most 30 characters, for step names.</summary>
     public static string Brief(string text, int max = 30)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -181,7 +203,6 @@ public static class OverlayNames
 /// <summary>JSON names of the payload's fields, for the field errors.</summary>
 internal static class OverlayFields
 {
-    public const string Mode = "mode";
     public const string Overlays = "overlays";
 
     public static string Of(int index, string field) => $"overlays[{index}].{field}";

@@ -124,7 +124,7 @@ public sealed class HardwareWriteTests(ITestOutputHelper output)
     private static async Task<FakeTaskContext> RunAsync(VapixClient vapix, OverlaysPayload payload)
     {
         var ctx = new FakeTaskContext(vapix);
-        await StepRun.RunAsync(ctx.Steps, () => new OverlaysTaskPlugin().ExecuteAsync(ctx, Fixtures.Camera(), OverlaysJson.Serialize(payload), CancellationToken.None));
+        await StepRun.RunAsync(ctx.Steps, () => TaskPluginTests.For(payload.Mode).ExecuteAsync(ctx, Fixtures.Camera(), OverlaysJson.Serialize(new OverlayListPayload { Overlays = payload.Overlays }), CancellationToken.None));
         return ctx;
     }
 }

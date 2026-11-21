@@ -43,7 +43,7 @@ public sealed class ScaleTests(ITestOutputHelper output)
         var devices = Devices();
         var queries = 0;
         var watch = Stopwatch.StartNew();
-        var vm = new OverlaysDialogViewModel(devices, devices, (_, _, _) =>
+        var vm = new OverlaysDialogViewModel(OverlaysMode.Add, devices, devices, (_, _, _) =>
         {
             Interlocked.Increment(ref queries);
             return Task.FromResult<string?>(OverlaysJson.Serialize(ViewModelTests.Read()));
@@ -53,7 +53,8 @@ public sealed class ScaleTests(ITestOutputHelper output)
         watch.Stop();
 
         Assert.Equal(1, queries); // never one query per selected device
-        Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"{Count:N0} devices: {Count - (Count / 10):N0} compatible, {Count / 10:N0} not supported"), vm.DevicesText);
+        Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"{Count / 10:N0} of {Count:N0} cameras are not supported."), vm.UnsupportedText);
+        Assert.Equal(Count - (Count / 10), vm.CompatibleCount);
         Assert.True(vm.CanApply);
         return watch.Elapsed;
     }
@@ -63,7 +64,7 @@ public sealed class ScaleTests(ITestOutputHelper output)
     public void CanRun_over_100000_devices_is_cheap()
     {
         var devices = Devices();
-        var plugin = new OverlaysTaskPlugin();
+        var plugin = new AddOverlaysTask();
         var watch = Stopwatch.StartNew();
         var runnable = 0;
         for (var round = 0; round < 10; round++)
