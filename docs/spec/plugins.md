@@ -51,9 +51,9 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
 - `ClockTexts` (SDK 0.7.0, `Oadm.Sdk.Devices`): the clock texts of the Clock column and the Clock compliance check, one
   implementation for host and plugins: `OffsetText` ("OK" below 1 s, "50 s ahead", "2 min behind"), `NtpNotSynced`,
   `NtpOff`.
-- `ITaskPlugin`: `Group` (context menu submenu, `TaskGroups`), `ShowInToolbar`, `RequiresDialog`, `CanRun` (cached data
-  only) and `NotSupportedReason` (only when `CanRun` is false: plain language, what is missing and what to do, a device
-  detail last as " (this device ...)"; empty or throwing = "Not supported on this device"; helpers `TaskSupportReasons`),
+- `ITaskPlugin`: `Group` (context menu submenu, `TaskGroups`), `ShowInToolbar`, `RequiresDialog`, `IsDestructive` (SDK
+  0.15.0: last in its group after a separator), `CanRun` (cached data only) and `NotSupportedReason` (only when `CanRun`
+  is false: plain language, what is missing and what to do, a device detail last as " (this device ...)"; empty or throwing = "Not supported on this device"; helpers `TaskSupportReasons`),
   `MaxParallelDevices` (only lowers the setting), `ShowInMenus` (false: started by its core plugin only; the role editor
   then lists only the permissions it declares, none without; without any it is a page task: `call.Tasks` of a page method
   of its own package starts it on that method's permission, `TaskService.Run` refuses it, see
@@ -436,17 +436,19 @@ The Devices page toolbar is made of toolbar plugins. Built in (compiled into the
 - **Add** (`oadm.toolbar.add`, group Add, the main one: `IsPrimary`, flat; icon `add`): a `MenuFlyout` with Discovery
   (`HostPages.AddScan`, icon `search`), Network range (`AddIpRange`, `range`), Add manually (`AddManually`, `add`), Import
   from file (`AddImport`, `download`) and Import from ADM (`AddImportAdm`, `download`); see `docs/spec/add-devices.md`.
+- **Export** (Add, order 10: what needs no selection comes first, then the Provisioning plugin's button; icon `export`,
+  `HostPages.ExportDevices`): the selected devices, or every device the search shows when none is selected, the tooltip
+  says which. `Devices/DeviceListCsv`: header + every grid column as text (MAC address, Status, Address, Tags, Site,
+  Host name, Model, AXIS OS, SoC, Architecture, Category, Product type, DHCP, HTTPS, Certificate expires as ISO date
+  yyyy-MM-dd, Certificate, IEEE 802.1X, Compliance) in the grid's unsorted order, RFC 4180 quoting
+  (`Infrastructure/Csv`), CRLF, UTF-8 with BOM, a cell starting with = + - @ gets a leading `'` (no formula injection),
+  no password (the client has none); save picker `IDialogService.SaveFileAsync`, default name
+  `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a failed save = `ui:MessageWindow`; O(n), tested at the device
+  limit.
 - **Remove** (Manage; confirmation, the context menu uses the same flow).
 - **Refresh** (Manage, order 5, icon `refresh`, enabled with a selection): `IToolbarContext.RefreshDevicesAsync` = one
   `DeviceService.Refresh` for the whole selection, the server queues a full refresh per device; the context menu entry
   "Refresh" uses the same flow.
-- **Export** (Manage, order 10, icon `export`, `HostPages.ExportDevices`): the selected devices, or every device the
-  search shows when none is selected, the tooltip says which. `Devices/DeviceListCsv`: header + every grid column as text
-  (MAC address, Status, Address, Tags, Site, Host name, Model, AXIS OS, SoC, Architecture, Category, Product type, DHCP,
-  HTTPS, Certificate expires as ISO date yyyy-MM-dd, Certificate, IEEE 802.1X, Compliance) in the grid's unsorted order,
-  RFC 4180 quoting (`Infrastructure/Csv`), CRLF, UTF-8 with BOM, a cell starting with = + - @ gets a leading `'` (no
-  formula injection), no password (the client has none); save picker `IDialogService.SaveFileAsync`, default name
-  `oadm-devices-<yyyy-MM-dd>.csv`; nothing to export or a failed save = `ui:MessageWindow`; O(n), tested at the device limit.
 - One generic plugin with a button per task plugin that declares `ShowInToolbar` (Tasks; enabled when it can run on the
   whole selection, otherwise disabled with the reason as tooltip).
 - **AXIS OS - Release Notes** (Plugins, order 1000): an icon-only `ui:ToolbarButton` (icon `externalLink`, class

@@ -39,17 +39,19 @@ hides some is cleared, the view selects the rows in one step with the ring above
 
 Layout, top to bottom:
 1. Title "Devices". Left navigation rail as described in [visual-style.md](visual-style.md).
-2. Toolbar: toolbar plugins (**Add** menu, Export, **Provisioning** (plugin; **Provisioning active** with a
-   green icon while provisioning is on, [provisioning.md](provisioning.md)): what needs no selection | Remove, Refresh | task plugin actions that declare `ShowInToolbar`,
-   then System report (plugin) | plugin entries) in `ui:ToolbarOverflowPanel`: entries that do not fit (narrow
-   window, live view open) move into a **More** menu (icon `more`, right of the toolbar). Right-aligned: the AXIS OS
-   release notes link (icon only, toolbar controls with the class `trailing` go here), **Group by tag** icon button (icon
-   `groupBy`, class `active` while on), **Show each compliance check** icon button (icon `squareActivity`, class `active`
-   while on, only while the Compliance column is on), Columns icon button (tooltip "Choose columns") and search box (host parts);
-   everything fits on one line at a 1800 px window width with the rail expanded and the live view closed. One main **Add** button (`IsPrimary`: class `main`, flat like every toolbar button) with a menu Discovery, Network range,
-   Add manually, Import from file, Import from ADM instead of five buttons ([add-devices.md](add-devices.md)); every toolbar entry is a button with text (only Columns, Group by tag, Show each compliance check
-   and the release notes link are icons). The empty Devices page shows a primary **Add devices** button with the same
-   menu.
+2. Toolbar: toolbar plugins (**Add** menu, Export, **Provisioning** (plugin; **Provisioning active** with a green icon
+   while provisioning is on, [provisioning.md](provisioning.md)): what needs no selection | Remove, Refresh | task
+   plugin actions that declare `ShowInToolbar`, then System report (plugin) | plugin entries) in
+   `ui:ToolbarOverflowPanel`: entries that do not fit (narrow window, live view open) move into a **More** menu (icon
+   `more`, right of the toolbar). Right-aligned: the AXIS OS release notes link (icon only, toolbar controls with the
+   class `trailing` go here), **Group by tag** icon button (icon `groupBy`, class `active` while on), **Show each
+   compliance check** icon button (icon `squareActivity`, class `active` while on, only while the Compliance column is
+   on), Columns icon button (tooltip "Choose columns") and search box (host parts); everything fits on one line at a
+   1800 px window width with the rail expanded and the live view closed. One main **Add** button (`IsPrimary`: class
+   `main`, flat like every toolbar button) with a menu Discovery, Network range, Add manually, Import from file, Import
+   from ADM instead of five buttons ([add-devices.md](add-devices.md)); every toolbar entry is a button with text (only
+   Columns, Group by tag, Show each compliance check and the release notes link are icons). The empty Devices page shows
+   a primary **Add devices** button with the same menu.
 3. Status line: "N devices, M selected". A user with a device group sees only the devices of the group; a device that
    leaves or enters it leaves or enters the grid ([device-scope.md](device-scope.md)).
 4. Device grid (virtualized): sortable, column chooser, column order and width persisted per
