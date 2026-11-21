@@ -416,6 +416,7 @@ public sealed partial class CanaryTests
     internal static readonly Dictionary<string, string> WithoutDevices = new(StringComparer.Ordinal)
     {
         ["/oadm.v1.AuthService/Status"] = "open: server name and version",
+        ["/oadm.v1.LogExportService/ExportClientLog"] = "the client's own log rows it sends, written back as a file; the server reads no device",
         ["/oadm.v1.TagService/Create"] = "a tag definition: a name and a color, no device",
         ["/oadm.v1.ComplianceService/GetCatalog"] = "the kinds of checks and their settings, no device",
         ["/oadm.v1.VulnerabilityService/Get"] = "the public list of Axis CVEs, no device (the client matches its own view)",
