@@ -458,4 +458,33 @@ public sealed class LogsExportTests
             frame.Save(Path.Combine(outDir, name), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
         }
     }
+
+    [Fact]
+    public async Task Clear_with_a_range_set_reads_nothing_and_leaves_no_error()
+    {
+        var time = Clock();
+        var api = Substitute.For<IOadmApi>();
+        api.ListAuditAsync(Arg.Any<ListAuditRequest>(), Arg.Any<CancellationToken>())
+            .Returns<Task<AuditList>>(_ => throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "down")));
+        api.ListServerLogAsync(Arg.Any<ListServerLogRequest>(), Arg.Any<CancellationToken>())
+            .Returns<Task<ServerLogPage>>(_ => throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unavailable, "down")));
+        var audit = new AuditLogViewModel(api, time);
+        var server = new ServerLogViewModel(api, time);
+        audit.Range.SetCustom(Local(20, 9), Local(21, 9));
+        server.Range.SetCustom(Local(20, 9), Local(21, 9));
+        await Eventually.TrueAsync(() => audit.Error is not null && server.Error is not null, "the failed reads of the range");
+        api.ClearReceivedCalls();
+
+        audit.Clear();
+        server.Clear();
+
+        Assert.True(audit.Range.IsAll);
+        Assert.True(server.Range.IsAll);
+        Assert.Null(audit.Error);
+        Assert.Null(server.Error);
+        Assert.False(audit.IsLoading);
+        Assert.False(server.IsLoading);
+        await api.DidNotReceive().ListAuditAsync(Arg.Any<ListAuditRequest>(), Arg.Any<CancellationToken>());
+        await api.DidNotReceive().ListServerLogAsync(Arg.Any<ListServerLogRequest>(), Arg.Any<CancellationToken>());
+    }
 }

@@ -62,12 +62,19 @@ public sealed partial class AuditLogViewModel : ObservableObject, ILogPages
     /// <summary>The before_id of each page shown so far: 0 for the newest, then the last id of the page before.</summary>
     private readonly List<long> _pageStarts = [0];
     private CancellationTokenSource? _load;
+    private bool _clearing; // Clear resets the range without a read
 
     public AuditLogViewModel(IOadmApi api, TimeProvider? time = null)
     {
         _api = api ?? throw new ArgumentNullException(nameof(api));
         Range = new DateRangeChoice(time);
-        Range.Changed += (_, _) => _ = LoadAsync(0);
+        Range.Changed += (_, _) =>
+        {
+            if (!_clearing)
+            {
+                _ = LoadAsync(0);
+            }
+        };
     }
 
     public RangeObservableCollection<AuditRowViewModel> Entries { get; } = [];
@@ -280,7 +287,17 @@ public sealed partial class AuditLogViewModel : ObservableObject, ILogPages
     public void Clear()
     {
         _load?.Cancel();
-        Range.Reset();
+        _clearing = true;
+        try
+        {
+            Range.Reset();
+        }
+        finally
+        {
+            _clearing = false;
+        }
+
+        Error = null;
         _pageStarts.RemoveRange(1, _pageStarts.Count - 1);
         TotalCount = 0;
         MatchCount = 0;

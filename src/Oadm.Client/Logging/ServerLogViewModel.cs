@@ -55,12 +55,19 @@ public sealed partial class ServerLogViewModel : ObservableObject, ILogPages
 
     private readonly IOadmApi _api;
     private CancellationTokenSource? _load;
+    private bool _clearing; // Clear resets the range without a read
 
     public ServerLogViewModel(IOadmApi api, TimeProvider? time = null)
     {
         _api = api ?? throw new ArgumentNullException(nameof(api));
         Range = new DateRangeChoice(time);
-        Range.Changed += (_, _) => _ = LoadAsync(0);
+        Range.Changed += (_, _) =>
+        {
+            if (!_clearing)
+            {
+                _ = LoadAsync(0);
+            }
+        };
     }
 
     /// <summary>The date range left of the search (All at each start).</summary>
@@ -211,7 +218,17 @@ public sealed partial class ServerLogViewModel : ObservableObject, ILogPages
     public void Clear()
     {
         _load?.Cancel();
-        Range.Reset();
+        _clearing = true;
+        try
+        {
+            Range.Reset();
+        }
+        finally
+        {
+            _clearing = false;
+        }
+
+        Error = null;
         Entries.ReplaceAll([]);
         Page = 0;
         HasMore = false;
