@@ -23,7 +23,6 @@
           <StackPanel Orientation="Horizontal" Spacing="16">
             <ui:OnOffSwitch x:Name="OnSwitch" IsChecked="{Binding IsOn, Mode=OneWay}" Command="{Binding ToggleCommand}"
                             ToolTip.Tip="{Binding SwitchTip}" />
-            <TextBlock Classes="secondary" VerticalAlignment="Center" Text="{Binding OnText}" IsVisible="{Binding HasOnText}" />
           </StackPanel>
         </ui:FormField>
         <ui:FormField Label="{x:Static vm:ProvisioningTexts.ActiveProfile}" Error="{Binding ActiveError}">

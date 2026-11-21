@@ -60,16 +60,11 @@ public sealed partial class ProvisioningDialogViewModel : ObservableObject
 
     /// <summary>The server's status: on or off, the active profile, why On is refused, the warnings, the DHCP server.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsOn), nameof(OnText), nameof(HasOnText), nameof(Warnings), nameof(HasWarnings), nameof(SwitchTip))]
+    [NotifyPropertyChangedFor(nameof(IsOn), nameof(Warnings), nameof(HasWarnings), nameof(SwitchTip))]
     public partial StatusReply Status { get; private set; } = new();
 
     /// <summary>Provisioning is on (the switch).</summary>
     public bool IsOn => Status.On;
-
-    /// <summary>"Turned on 2026-11-18 14:02 by anna" while on; empty while off.</summary>
-    public string OnText => Status is { On: true, OnAt: { } at } ? ProvisioningTexts.TurnedOn(at, Status.OnBy) : string.Empty;
-
-    public bool HasOnText => OnText.Length > 0;
 
     /// <summary>Why On does not work now (the switch's tooltip while off); null when it would.</summary>
     public string? SwitchTip => Status.On ? null : Status.TurnOnRefusal;

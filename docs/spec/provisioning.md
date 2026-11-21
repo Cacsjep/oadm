@@ -52,7 +52,7 @@ changes nothing by itself: provisioning itself is **Off** until an Administrator
   button is disabled, its tooltip says so).
 - **Provisioning management** (dialog `ProvisioningWindow`): the **On / Off** switch (the theme's `ToggleSwitch`; a refused
   On shows `TurnOnRefusal` or the server's reason directly below the switch and the switch stays Off; who turned it on and
-  when beside it), the **active profile** (a choice of the profiles without errors; choosing one activates it, a refusal
+  when is in the audit log, not beside it), the **active profile** (a choice of the profiles without errors; choosing one activates it, a refusal
   below the choice), the warnings, and the profile list (every profile with its state, Active or Has errors; no node count,
   decision 2026-11-20; New and Edit open the profile editor with the status's DHCP server for a new Network node, Activate, Delete
   with a red confirmation). One card for the switch, one for the list, a lone Close; it follows the `status` event while

@@ -34,10 +34,6 @@ public static class ProvisioningTexts
 
     public static string DeleteProfileMessage(string name) => $"The profile {name} is deleted.";
 
-    /// <summary>"Turned on 2026-11-18 14:02 by anna".</summary>
-    public static string TurnedOn(DateTimeOffset at, string? by) =>
-        "Turned on " + at.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + (string.IsNullOrEmpty(by) ? string.Empty : " by " + by);
-
     // ---- Tasks pane ----
     public const string RunAgain = "Run again";
     public const string RunAgainTip = "Runs only the failed steps again";

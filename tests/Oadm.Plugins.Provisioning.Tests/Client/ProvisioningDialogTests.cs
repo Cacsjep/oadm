@@ -43,8 +43,6 @@ public sealed class ProvisioningDialogTests
     {
         var (dialog, _, _) = await OpenAsync();
         Assert.True(dialog.IsOn);
-        Assert.StartsWith("Turned on 2026-11-18 ", dialog.OnText, StringComparison.Ordinal);
-        Assert.EndsWith(" by anna", dialog.OnText, StringComparison.Ordinal);
         Assert.Equal("Lobby cameras", dialog.ActiveChoice?.Name);
         Assert.Equal(["Lobby cameras", "Parking"], dialog.ActiveChoices.Select(r => r.Name));
         Assert.True(dialog.HasWarnings);
@@ -52,7 +50,6 @@ public sealed class ProvisioningDialogTests
 
         var (off, _, _) = await OpenAsync(status: Off());
         Assert.False(off.IsOn);
-        Assert.False(off.HasOnText);
         Assert.False(off.HasWarnings);
     }
 
