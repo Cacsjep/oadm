@@ -321,6 +321,7 @@ public static class Mappers
             ShowInToolbar = plugin.Plugin.ShowInToolbar,
             RequiresDialog = plugin.Plugin.RequiresDialog,
             OwnerCorePluginId = plugin.Owner?.Id ?? string.Empty,
+            Destructive = plugin.Plugin.IsDestructive,
         };
         proto.RunnableDeviceIds.AddRange(runnableDeviceIds.Select(id => id.ToString()));
         return proto;

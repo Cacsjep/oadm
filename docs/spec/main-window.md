@@ -56,8 +56,10 @@ Layout, top to bottom:
    client, horizontal scroll, multi-select, right-click context menu: the core actions (Open web
    interface, Refresh, **Log in**, **Set password**, **Trust new certificate**, **Tags**, **Vulnerabilities** when a selected device has known CVEs), a separator, then one **submenu per task group** (`TaskPluginInfo.group`, sorted
    by name, with a group icon: Applications app, Maintenance settings, Network network, Security key,
-   Users users, Video video, others plugin; a group is a submenu even with one entry)
-   holding **every** menu Task plugin (`ShowInMenus`), sorted by name, with their icons. A plugin whose `CanRun` is
+   Users users, Video video, Overlays text, others plugin; a group is a submenu even with one entry)
+   holding **every** menu Task plugin (`ShowInMenus`), sorted by name, with their icons; a destructive task
+   (`ITaskPlugin.IsDestructive`, `TaskPluginInfo.destructive`: Remove all overlays) sits last in its group after a
+   separator. A plugin whose `CanRun` is
    false for any selected device stays visible but **disabled** (theme's disabled menu look) with the reason as tooltip
    (`ToolTip.ShowOnDisabled`): one device the plugin's text, e.g. "Needs AXIS OS 11.11 or
    later (this device has 11.9.65)"; several devices the most common reason without the device detail and how many of

@@ -935,11 +935,11 @@ public sealed partial class DevicesViewModel : ObservableObject
             .Select(p => (Plugin: p, Reason: notRunnableReason?.Invoke(p)))
             .GroupBy(e => TaskPluginNames.NormalizeGroup(e.Plugin.Group), StringComparer.OrdinalIgnoreCase)
             .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase)
-            .Select(g => new MenuEntryViewModel
+            .Select(g =>
             {
-                Header = g.Key,
-                IconKey = GroupIconKey(g.Key),
-                Items = g
+                // Destructive entries (ITaskPlugin.IsDestructive) last, after a separator: away from the everyday ones.
+                List<MenuEntryViewModel> Entries(bool destructive) => [.. g
+                    .Where(e => e.Plugin.Destructive == destructive)
                     .Select(e => new MenuEntryViewModel
                     {
                         Header = TaskPluginNames.Normalize(e.Plugin.DisplayName),
@@ -949,8 +949,15 @@ public sealed partial class DevicesViewModel : ObservableObject
                         IsEnabled = e.Reason is null,
                         ToolTip = e.Reason,
                     })
-                    .OrderBy(e => e.Header, StringComparer.CurrentCultureIgnoreCase)
-                    .ToList(),
+                    .OrderBy(e => e.Header, StringComparer.CurrentCultureIgnoreCase)];
+                var everyday = Entries(false);
+                var destructive = Entries(true);
+                return new MenuEntryViewModel
+                {
+                    Header = g.Key,
+                    IconKey = GroupIconKey(g.Key),
+                    Items = everyday.Count > 0 && destructive.Count > 0 ? [.. everyday, MenuEntryViewModel.Separator(), .. destructive] : [.. everyday, .. destructive],
+                };
             });
 
     /// <summary>Icon of a well-known group; other groups show the plugin icon.</summary>
@@ -962,6 +969,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         TaskGroups.Security => "key",
         TaskGroups.Users => "users",
         TaskGroups.Video => "video",
+        TaskGroups.Overlays => "text",
         _ => "plugin",
     };
 

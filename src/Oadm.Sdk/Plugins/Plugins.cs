@@ -75,6 +75,12 @@ public interface ITaskPlugin : IPlugin
     bool ShowInMenus => true;
 
     /// <summary>
+    /// The task deletes or removes something on the device as a whole (Remove all overlays): the host puts its entry last
+    /// in its context menu group, after a separator, away from the everyday entries. Default false. SDK 0.15.0.
+    /// </summary>
+    bool IsDestructive => false;
+
+    /// <summary>
     /// The name of one task in the tasks pane: exactly what this task does with this payload, e.g.
     /// "Add user joe", "Set static IP 10.0.0.60", "Upgrade AXIS OS to 12.11.77", not the menu name.
     /// At most <see cref="TaskPluginNames.MaxTaskNameLength"/> characters (the host shortens longer names
@@ -786,6 +792,8 @@ public static class TaskGroups
     public const string Users = "Users";
     /// <summary>Video and image settings.</summary>
     public const string Video = "Video";
+    /// <summary>Text overlays on the video: add, replace, remove. SDK 0.15.0.</summary>
+    public const string Overlays = "Overlays";
 
     /// <summary>Longest group name; longer ones are shortened like display names.</summary>
     public const int MaxLength = 32;

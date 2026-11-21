@@ -154,6 +154,59 @@ public sealed class PasswordBoxAndMenuTests
         }, CancellationToken.None);
     }
 
+    [Fact]
+    public async Task A_destructive_task_sits_last_in_its_group_after_a_separator()
+    {
+        string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
+        HeadlessUnitTestSession session = HeadlessSession.Shared;
+        await session.Dispatch(() =>
+        {
+            TaskPluginInfo Plugin(string id, string name, string icon, bool destructive = false) =>
+                new() { Id = id, DisplayName = name, Group = Oadm.Sdk.Plugins.TaskGroups.Overlays, IconKey = icon, Destructive = destructive };
+
+            // The Overlays group of the Text overlays package (ITaskPlugin.IsDestructive on Remove all).
+            TaskPluginInfo[] plugins =
+            [
+                Plugin("oadm.overlays.remove-all", "Remove all overlays", "deleteAll", destructive: true),
+                Plugin("oadm.overlays.replace", "Replace overlays", "text"),
+                Plugin("oadm.overlays.add", "Add overlays", "add"),
+                Plugin("oadm.overlays.remove-matching", "Remove matching overlays", "eraser"),
+                new() { Id = "oadm.restart", DisplayName = "Restart", Group = "Maintenance", IconKey = "restart" },
+            ];
+            List<MenuEntryViewModel> groups = [.. DevicesViewModel.TaskMenuGroups(plugins, new CommunityToolkit.Mvvm.Input.RelayCommand(() => { }))];
+            MenuEntryViewModel overlays = groups.Single(e => e.Header == Oadm.Sdk.Plugins.TaskGroups.Overlays);
+            Assert.Equal("text", overlays.IconKey);
+            Assert.Equal(["Add overlays", "Remove matching overlays", "Replace overlays", "-", "Remove all overlays"], overlays.Items!.Select(i => i.Header));
+            Assert.Equal(["Restart"], groups.Single(e => e.Header == "Maintenance").Items!.Select(i => i.Header)); // no separator without one
+
+            var window = new Window
+            {
+                Width = 560,
+                Height = 260,
+                Content = new StackPanel
+                {
+                    Orientation = Avalonia.Layout.Orientation.Horizontal,
+                    Spacing = 4,
+                    Margin = new Thickness(16),
+                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top,
+                    Children = { Presenter(groups), Presenter(overlays.Items!) },
+                },
+            };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            WriteableBitmap? frame = window.CaptureRenderedFrame();
+            Assert.NotNull(frame);
+            if (!string.IsNullOrEmpty(outDir))
+            {
+                Directory.CreateDirectory(outDir);
+                frame.Save(Path.Combine(outDir, "client-context-menu-overlays.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+            }
+
+            window.Close();
+            return Task.CompletedTask;
+        }, CancellationToken.None);
+    }
+
     /// <summary>Menu items built like the device grid's ContextMenu item style (header, icon, submenu entries).</summary>
     private static MenuFlyoutPresenter Presenter(IEnumerable<MenuEntryViewModel> entries) =>
         new()

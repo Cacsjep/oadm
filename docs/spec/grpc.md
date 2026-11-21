@@ -174,7 +174,7 @@ used again.
 - **`TaskService`** (`tasks.proto`): every method works on the caller's view; users with all devices get the unfiltered
   answers.
   - `ListTaskPlugins(ListTaskPluginsRequest)`: the context menu entries, also those of core plugins;
-    `TaskPluginInfo.display_name` normalized by the server, `group = 8` never empty. Runnable sets cached by
+    `TaskPluginInfo.display_name` normalized by the server, `group = 8` never empty, `destructive = 14` (`ITaskPlugin.IsDestructive`: the entry sits last in its group, after a separator). Runnable sets cached by
     `TaskPluginRunnableCache` per device-table version, at most 10 s old, intersected with the view before they are
     encoded. With `compact = 1` a plugin carries the shorter of `runnable_device_ids` or `runnable_on_all_except = 9` +
     `not_runnable_device_ids = 10` (74 KB instead of 1.8 MB for 5,000 devices x 10 plugins). `not_runnable_groups = 11`

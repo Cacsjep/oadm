@@ -77,6 +77,8 @@ message TaskPluginInfo {
   // With ListTaskPluginsRequest.filter: the devices of the filter the task can run on (no id lists are sent; the groups
   // count the others).
   int32 runnable_count = 13;
+  // ITaskPlugin.IsDestructive: the entry sits last in its context menu group, after a separator.
+  bool destructive = 14;
 }
 
 message NotRunnableGroup {

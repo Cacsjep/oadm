@@ -42,7 +42,7 @@ sequenceDiagram
 | `Id` | Stable id, e.g. `acme.upnp-name` |
 | `DisplayName` | The menu and toolbar name, at most 32 characters (`TaskPluginNames.MaxDisplayNameLength`), never ending in "...", also for a task that opens a dialog. The server shortens a longer name with "…" and logs a warning |
 | `IconKey` | An icon of the [icon list](../ui/#icons), e.g. `restart` |
-| `Group` | The context menu submenu: a `TaskGroups` constant (`Applications`, `Maintenance`, `Network`, `Security`, `Users`, `Video`, `General`) or your own. Groups are always submenus, sorted by name, even with one task |
+| `Group` | The context menu submenu: a `TaskGroups` constant (`Applications`, `Maintenance`, `Network`, `Overlays`, `Security`, `Users`, `Video`, `General`) or your own. Groups are always submenus, sorted by name, even with one task |
 | `RequiresDialog` | The client opens your `ITaskPluginDialog` first |
 | `ShowInToolbar` | Also a button in the Devices toolbar |
 | `CanRun(device)` | Whether the entry is enabled for this device. Cached data only, no requests |
@@ -51,6 +51,7 @@ sequenceDiagram
 | `ExecuteAsync(ctx, device, payload, ct)` | The work, once per device |
 | `MaxParallelDevices` | Lowers how many devices run at once (Upgrade AXIS OS uses 4); null = the server setting (16, **Settings** page). It can only lower that setting: the server uses the smaller value |
 | `ShowInMenus` | False: not in menus; a core plugin starts it from its page, see [Tasks from a page](../core-plugins/#tasks-from-a-page) |
+| `IsDestructive` | SDK 0.15.0: true for a task that removes something as a whole (Remove all overlays): its entry sits last in its group, after a separator. Ask in its dialog before it runs |
 | `Permissions`, `RequiredPermissions(payload)` | Finer rights for choices of different risk, see [Permissions](#permissions) |
 | `SiteSupport` | Whether this task works for devices at a site; null = the package's `siteSupport`, see [Sites](../sites/) |
 
