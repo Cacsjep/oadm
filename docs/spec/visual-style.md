@@ -156,6 +156,8 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   Scroll bars inside a text box are 4 px (thumb and bar, a third of Fluent's expanded bar, no arrows, no shrink
   transform) and never grow under the pointer, so they sit on the edge below the text of a one-line box instead of
   covering it (decision 2026-11-21, `OadmTheme.axaml` "Scroll bars inside a text box").
+  `TextBox.oneLine`: a text box one line high that still takes line breaks (the text area is capped at one line, not
+  the box, so an error below it never squeezes the box; the Text column of Text overlays).
 - Icons: one outline icon set (Fluent System Icons / Lucide geometry), monochrome in the text colour (`#CFCFCF` dark),
   16 px. Exception: command buttons (toolbars, card header rows) show their icon in the accent colour; icon-only buttons
   take the accent only on hover (CLAUDE.md "buttons follow Fluent"). Toolbar uses icon + text buttons, not ADM's icon-only bar.

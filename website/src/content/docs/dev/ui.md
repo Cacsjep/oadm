@@ -117,6 +117,7 @@ The styles come from the host theme. The classes you need most:
 | `StackPanel.form` | A stack of `ui:FormField`s, with the row spacing |
 | `StackPanel.inputRow` | Several inputs in one line, top-aligned, so an error below one input moves nothing else |
 | `StackPanel.optionDetail` | The inputs of a radio button choice, indented below it |
+| `TextBox.oneLine` | A text box one line high that still takes line breaks (5.3); an error below it never squeezes it |
 | `TextBlock.secondary`, `TextBlock.fieldLabel`, `TextBlock.warning`, `TextBlock.error` | Text roles |
 | `Button.primary`, `Button.secondary`, `Button.toolbar`, `Button.danger`, `Button.toolbar.danger`, `Button.link.danger` | See [Buttons](#buttons) |
 | `Border.vseparator` | A vertical line |
