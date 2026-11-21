@@ -1,12 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 
-using Oadm.Sdk.Client.Controls;
-using Oadm.Sdk.Devices;
-
 namespace Oadm.Plugins.Provisioning.Client;
 
-/// <summary>The profile editor window. View only: wiring to the view model, the file picker and the device choice.</summary>
+/// <summary>The profile editor window. View only: wiring to the view model and the file picker.</summary>
 public partial class ProfileEditorWindow : Window, IProfileEditorUi
 {
     public ProfileEditorWindow()
@@ -33,7 +30,4 @@ public partial class ProfileEditorWindow : Window, IProfileEditorUi
         }).ConfigureAwait(true);
         return [.. files.Select(f => f.TryGetLocalPath()).OfType<string>()];
     }
-
-    public Task<Guid?> PickDeviceAsync(IReadOnlyList<IDeviceInfo> devices, Guid? selected) =>
-        DevicePickerWindow.ShowOneAsync(this, devices, selected, heading: ProvisioningTexts.ChooseTemplateHeading);
 }

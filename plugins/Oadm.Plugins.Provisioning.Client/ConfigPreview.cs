@@ -47,13 +47,12 @@ public sealed record ConfigFileContent(IReadOnlyList<NameValue> Parameters, int 
 }
 
 /// <summary>
-/// The file preview below a Configuration node's settings (Settings from: A configuration file): per ticked area its heading
-/// with the count and its entries, read only. The file is read from the server once per file (<see cref="INodeFormServices.ReadConfigFileAsync"/>),
+/// The file preview below a Configuration node's settings once a file is chosen: per ticked area its heading with the
+/// count and its entries, read only. The file is read from the server once per file (<see cref="INodeFormServices.ReadConfigFileAsync"/>),
 /// parsed off the UI thread; ticking an area rebuilds the rows from that read. One list of rows for the virtualized list.
 /// </summary>
 public sealed partial class ConfigPreviewViewModel : ObservableObject
 {
-    private readonly ChoiceFieldViewModel _source;
     private readonly FileFieldViewModel _file;
     private readonly BoolFieldViewModel _parameters;
     private readonly BoolFieldViewModel _actionRules;
@@ -63,10 +62,9 @@ public sealed partial class ConfigPreviewViewModel : ObservableObject
     private ConfigFileContent? _content;
     private int _version;
 
-    public ConfigPreviewViewModel(ChoiceFieldViewModel source, FileFieldViewModel file, BoolFieldViewModel parameters, BoolFieldViewModel actionRules,
+    public ConfigPreviewViewModel(FileFieldViewModel file, BoolFieldViewModel parameters, BoolFieldViewModel actionRules,
         BoolFieldViewModel schedules, INodeFormServices services)
     {
-        _source = source ?? throw new ArgumentNullException(nameof(source));
         _file = file ?? throw new ArgumentNullException(nameof(file));
         _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
         _actionRules = actionRules ?? throw new ArgumentNullException(nameof(actionRules));
@@ -77,8 +75,8 @@ public sealed partial class ConfigPreviewViewModel : ObservableObject
     /// <summary>The rows: per ticked area its heading, its note and its entries.</summary>
     public RangeObservableCollection<object> Rows { get; } = [];
 
-    /// <summary>A configuration file is the source and one is chosen.</summary>
-    public bool IsShown => _source.Is("file") && _file.FileId is not null;
+    /// <summary>A configuration file is chosen.</summary>
+    public bool IsShown => _file.FileId is not null;
 
     [ObservableProperty]
     public partial bool IsLoading { get; private set; }

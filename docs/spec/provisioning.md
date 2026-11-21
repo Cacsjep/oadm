@@ -115,9 +115,9 @@ one line), moved up and down, removed (except Set password) and configured in th
 a short help (`FormField.Help`). The profile is checked before it can be active (one error per node, the same check in
 the editor); a profile with errors is saved as a draft.
 
-**The file preview** (Configuration with Settings from: A configuration file): below Continue on error, a separator and a
-read-only list of what the file holds of the ticked areas: per area a heading with its count ("Parameters, 1,117"), then
-the parameters as "Name = value" by their `param.cgi` names, the action rules and the schedules by name; an empty area
+**The file preview** (Configuration, once a file is chosen): below Continue on error, a separator and a read-only list
+(its own space below the separator, group headings in the theme's `groupHeader` style) of what the file holds of the
+ticked areas: per area a heading with its count ("Parameters, 1,117"), then the parameters as "Name = value" by their `param.cgi` names, the action rules and the schedules by name; an empty area
 says so ("The file has no action rules."). The parameters are exactly what Import configuration applies
 (`ConfigIdentity.Clean`); the ones it never writes (address, names, connection settings, time zone parameters) are left
 out and counted in one line ("66 more stay as they are on each camera: address, names and connection settings."). The
@@ -155,10 +155,10 @@ this model."). A node that does not apply (no SD card, no remote focus) is Succe
    model: Warning. Never a downgrade.
 5. **Date and time**: NTP servers (NTS where the camera has it), the ones DHCP gives or OADM's NTP server, and the time
    zone (the shared `TimeZoneChoice`).
-6. **Configuration**: a configuration file of Device configuration **or** a template camera read at run time; the areas
-   to apply. Device-specific values (address, host name, certificates, passwords) are never copied; a file or template
-   camera of another model works (decision 2026-11-20): the camera leaves out what it does not have, a value it refuses
-   is a Warning listing it. A camera below AXIS OS 12.5 takes only the parameters, through `param.cgi` (Import
+6. **Configuration**: a configuration file of Device configuration (Export configuration), the only source (decision
+   2026-11-21: no template camera); the areas to apply. Device-specific values (address, host name, certificates,
+   passwords) are never copied; a file of another model works (decision 2026-11-20): the camera leaves out what it does
+   not have, a value it refuses is a Warning listing it. A camera below AXIS OS 12.5 takes only the parameters, through `param.cgi` (Import
    configuration's way, decision 2026-11-21); action rules and schedules are then a Warning ("Event rules and schedules
    were not applied: this needs AXIS OS 12.5 or later."). The editor's panel shows what a chosen file holds (see "The
    file preview").

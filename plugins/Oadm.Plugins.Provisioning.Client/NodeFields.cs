@@ -546,12 +546,6 @@ public interface INodeFormServices
     /// <summary>Lets the user choose files, uploads and keeps them for the profile (<c>storeFile</c>); empty when closed.</summary>
     Task<IReadOnlyList<StoredFile>> ChooseFilesAsync(string title, bool multiple, IReadOnlyList<string> patterns);
 
-    /// <summary>Lets the user choose one camera OADM manages; its serial number, or null when closed.</summary>
-    Task<string?> ChooseCameraAsync(string? serial);
-
-    /// <summary>"AXIS P3265-LVE, 10.0.0.48" of a managed camera by serial number, or null.</summary>
-    string? CameraText(string serial);
-
     /// <summary>The text of a configuration file kept for a node (<c>readConfigFile</c>), for the file preview.</summary>
     Task<string> ReadConfigFileAsync(Guid fileId, CancellationToken ct) => throw new NotSupportedException("This editor cannot read kept files.");
 }
@@ -745,53 +739,6 @@ public sealed partial class FilesFieldViewModel : NodeFieldViewModel
         }
 
         return null;
-    }
-}
-
-/// <summary>A camera OADM manages, chosen with the device choice (Configuration's template camera): its serial number.</summary>
-public sealed partial class CameraFieldViewModel : NodeFieldViewModel
-{
-    private readonly INodeFormServices _services;
-
-    public CameraFieldViewModel(string key, string label, string? serial, INodeFormServices services)
-        : base(key, label)
-    {
-        _services = services ?? throw new ArgumentNullException(nameof(services));
-        Serial = string.IsNullOrWhiteSpace(serial) ? null : serial.Trim();
-        Rule(nameof(Serial), () => Serial is null ? ProvisioningTexts.ChooseTemplate : null);
-        Ready();
-    }
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ButtonText))]
-    public partial string? Serial { get; private set; }
-
-    /// <summary>The camera's model and address (or its serial number when OADM no longer has it), else "Choose camera".</summary>
-    public string ButtonText => Serial is { } s ? _services.CameraText(s) ?? s : ProvisioningTexts.ChooseCamera;
-
-    public string? Error => ErrorOf(nameof(Serial));
-
-    public override JsonNode? Value => Serial is { } s ? JsonValue.Create(s) : null;
-
-    [RelayCommand]
-    public async Task ChooseAsync()
-    {
-        if (await _services.ChooseCameraAsync(Serial).ConfigureAwait(true) is { } serial)
-        {
-            Serial = serial;
-        }
-
-        Validation.Touch(nameof(Serial));
-        OnPropertyChanged(nameof(Error));
-    }
-
-    protected override void OnPropertyChanged(PropertyChangedEventArgs e)
-    {
-        base.OnPropertyChanged(e);
-        if (e.PropertyName is nameof(HasErrors))
-        {
-            OnPropertyChanged(nameof(Error));
-        }
     }
 }
 

@@ -10,23 +10,13 @@ using Oadm.Sdk.Testing;
 
 namespace Oadm.Plugins.Provisioning.Tests.Client;
 
-/// <summary>The pickers of the editor window: the files and the camera a test chooses.</summary>
+/// <summary>The file picker of the editor window: the files a test chooses.</summary>
 internal sealed class FakeEditorUi : IProfileEditorUi
 {
     public List<string> Files { get; } = [];
 
-    public Guid? Device { get; set; }
-
-    public List<IReadOnlyList<IDeviceInfo>> DeviceLists { get; } = [];
-
     public Task<IReadOnlyList<string>> PickFilesAsync(string title, bool multiple, IReadOnlyList<string> patterns) =>
         Task.FromResult<IReadOnlyList<string>>([.. Files]);
-
-    public Task<Guid?> PickDeviceAsync(IReadOnlyList<IDeviceInfo> devices, Guid? selected)
-    {
-        DeviceLists.Add(devices);
-        return Task.FromResult(Device);
-    }
 }
 
 /// <summary>The form of every node kind: its fields, their rules (as the server checks the node) and what Save stores.</summary>
@@ -178,13 +168,12 @@ public sealed class NodeFormsTests
     }
 
     [Fact]
-    public async Task Configuration_takes_a_file_or_a_template_camera_and_what_to_apply()
+    public async Task Configuration_takes_a_configuration_file_and_what_to_apply()
     {
         var (editor, ctx, ui, node) = await AddAsync(NodeKind.Configuration);
         var file = node.Field<FileFieldViewModel>("fileId");
-        var camera = node.Field<CameraFieldViewModel>("templateSerial");
         Assert.True(file.IsShown);
-        Assert.False(camera.IsShown);
+        Assert.Equal(2, node.Fields.Count); // the file and the areas, no other source
         Assert.Equal(ProvisioningTexts.ChooseIt(ProvisioningTexts.ConfigFile), node.FirstError);
 
         ui.Files.Add("C:/cfg/lobby.json");
@@ -196,23 +185,13 @@ public sealed class NodeFormsTests
         areas.Items[0].IsChecked = false;
         Assert.Equal(ProvisioningTexts.ChooseAreas, node.FirstError);
         areas.Items[1].IsChecked = true;
-
-        // The template camera, with the device choice over the cameras OADM manages.
-        var template = new FakeDevice { Serial = "ACCC8E000048", Address = "10.0.0.48", Model = "AXIS P3265-LVE" };
-        ctx.DeviceList.Add(template);
-        var source = node.Field<ChoiceFieldViewModel>("source");
-        source.Selected = source.Choices.Single(c => c.Value == "templateCamera");
-        Assert.False(file.IsShown);
-        Assert.Equal(ProvisioningTexts.ChooseTemplate, node.FirstError);
-        ui.Device = template.Id;
-        await camera.ChooseCommand.ExecuteAsync(null);
-        Assert.Same(template, Assert.Single(Assert.Single(ui.DeviceLists)));
-        Assert.Equal("AXIS P3265-LVE, 10.0.0.48", camera.ButtonText);
         await NoErrorAsync(editor, node);
+        Assert.Equal("Action rules from lobby.json", node.Summary);
 
         var settings = await SaveAsync(editor, ctx, NodeKind.Configuration);
-        Assert.Equal("templateCamera", (string?)settings["source"]);
-        Assert.Equal("ACCC8E000048", (string?)settings["templateSerial"]);
+        Assert.NotNull((string?)settings["fileId"]);
+        Assert.Null(settings["source"]);
+        Assert.Null(settings["templateSerial"]);
         Assert.False((bool)settings["parameters"]!);
         Assert.True((bool)settings["actionRules"]!);
     }
@@ -263,11 +242,6 @@ public sealed class NodeFormsTests
         areas.Items[0].IsChecked = false;
         Assert.Equal("# Action rules, 2", Texts(preview)[0]);
         Assert.Equal(1, ctx.CallsOf(ProvisioningMethods.ReadConfigFile));
-
-        // A template camera has no file to show.
-        var source = node.Field<ChoiceFieldViewModel>("source");
-        source.Selected = source.Choices.Single(c => c.Value == "templateCamera");
-        Assert.False(preview.IsShown);
         Assert.NotNull(editor);
     }
 

@@ -74,7 +74,7 @@ public interface INodeHost
     /// <summary>The managed devices.</summary>
     IDeviceRepository Devices { get; }
 
-    /// <summary>VAPIX of the managed devices (Autofocus, the template camera of Configuration).</summary>
+    /// <summary>VAPIX of the managed devices (Autofocus).</summary>
     IVapixClientFactory Vapix { get; }
 
     /// <summary>

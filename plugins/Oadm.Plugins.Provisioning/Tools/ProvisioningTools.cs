@@ -186,7 +186,7 @@ internal sealed record NodeArgs(
         + "upgrade_online: target (ownTrack, latestLts, latestActive), only_if_older_than (e.g. 12.6.95). "
         + "upgrade_files: files [{file_id, name}] (one AXIS OS file per model; never a downgrade). "
         + "date_time: time_zone, ntp_servers (none: from DHCP), nts, oadm_ntp (OADM's NTP server). "
-        + "configuration: source (file, templateCamera), file_id or template_serial, parameters, action_rules, schedules. "
+        + "configuration: file_id, parameters, action_rules, schedules. "
         + "users: accounts [{name, role (viewer, operator, administrator), ptz, secret_id}]. "
         + "certificate: mode (policy, est), policy_id (none: the first HTTPS certificate policy). dot1x: none. "
         + "sd_card: format, encrypt, secret_id (the passphrase), max_age_days. autofocus: none. "

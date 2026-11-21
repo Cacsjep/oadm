@@ -88,15 +88,8 @@ public static class ProvisioningTexts
     public const string NtpOadm = "OADM's NTP server";
 
     // Configuration
-    public const string ConfigSource = "Settings from";
-    public const string ConfigFromFile = "A configuration file";
-    public const string ConfigFromCamera = "A template camera";
     public const string ConfigFile = "Configuration file";
     public const string ConfigFileRule = "Choose a file of Export configuration (.json).";
-    public const string TemplateCamera = "Template camera";
-    public const string ChooseCamera = "Choose camera";
-    public const string ChooseTemplate = "Choose the template camera.";
-    public const string ChooseTemplateHeading = "Choose the template camera";
     public const string Apply = "Apply";
     public const string Parameters = "Parameters";
     public const string ActionRules = "Action rules";
@@ -227,9 +220,7 @@ public static class ProvisioningTexts
     public const string OnlyIfOlderHelp = "Cameras with this version or newer skip it";
     public const string OsFilesHelp = "One file per camera model";
     public const string SearchDomainHelp = "Added to short host names";
-    public const string ConfigSourceHelp = "Where the settings are copied from";
     public const string ConfigFileHelp = "A file of Export configuration";
-    public const string TemplateCameraHelp = "A camera set up the way you want";
     public const string ApplyHelp = "What is copied to each camera";
     public const string AccountNameHelp = "1 to 14 letters and digits";
     public const string RoleHelp = "What the account may do";

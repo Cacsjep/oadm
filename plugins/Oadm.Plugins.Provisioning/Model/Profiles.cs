@@ -33,7 +33,7 @@ public enum NodeKind
     /// <summary>Gone (2026-11-19): part of <see cref="Network"/> now. Converted when a profile loads.</summary>
     NetworkSettings = 7,
 
-    /// <summary>Configuration: a configuration file or a template camera, the chosen areas.</summary>
+    /// <summary>Configuration: a configuration file, the chosen areas.</summary>
     Configuration = 8,
 
     /// <summary>Users: more accounts on the camera.</summary>
@@ -166,21 +166,9 @@ public sealed record NetworkSettingsSettings(
     IReadOnlyList<string>? DnsServers = null,
     string? SearchDomain = null);
 
-/// <summary>Where Configuration takes the settings from.</summary>
-public enum ConfigSource
-{
-    /// <summary>A configuration file of Device configuration (Export configuration).</summary>
-    File = 0,
-
-    /// <summary>A camera OADM manages, read when the node runs.</summary>
-    TemplateCamera = 1,
-}
-
-/// <summary>Settings of Configuration: the file (<c>fileId</c>) or the template camera's serial number, and the areas to apply.</summary>
+/// <summary>Settings of Configuration: the configuration file of Export configuration (<c>fileId</c>) and the areas to apply.</summary>
 public sealed record ConfigurationSettings(
-    ConfigSource Source = ConfigSource.File,
     Guid? FileId = null,
-    string? TemplateSerial = null,
     bool Parameters = true,
     bool ActionRules = false,
     bool Schedules = false);

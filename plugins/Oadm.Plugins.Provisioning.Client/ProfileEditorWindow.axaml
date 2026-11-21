@@ -158,13 +158,6 @@
                       </StackPanel>
                     </ui:FormField>
                   </DataTemplate>
-                  <DataTemplate x:DataType="vm:CameraFieldViewModel">
-                    <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Error="{Binding Error}" Help="{Binding Help}" IsVisible="{Binding IsShown}">
-                      <Button Classes="secondary" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Command="{Binding ChooseCommand}">
-                        <ui:IconLabel Icon="{DynamicResource Icon.devices}" Text="{Binding ButtonText}" />
-                      </Button>
-                    </ui:FormField>
-                  </DataTemplate>
                   <DataTemplate x:DataType="vm:UsersFieldViewModel">
                     <StackPanel Classes="form" IsVisible="{Binding IsShown}">
                       <ItemsControl ItemsSource="{Binding Rows}">

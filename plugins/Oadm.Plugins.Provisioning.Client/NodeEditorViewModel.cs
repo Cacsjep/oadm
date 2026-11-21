@@ -324,25 +324,16 @@ public static class NodeForms
 
     private static IReadOnlyList<NodeFieldViewModel> Configuration(JsonObject s, INodeFormServices services)
     {
-        var source = new ChoiceFieldViewModel("source", ProvisioningTexts.ConfigSource,
-            [new("file", ProvisioningTexts.ConfigFromFile), new("templateCamera", ProvisioningTexts.ConfigFromCamera)], Text(s["source"])) { Help = ProvisioningTexts.ConfigSourceHelp };
         BoolFieldViewModel Area(string key, string label, bool fallback) =>
             new(key, label, s[key]?.GetValueKind() is { } k && k is JsonValueKind.True or JsonValueKind.False ? k == JsonValueKind.True : fallback);
         var areas = new[] { Area("parameters", ProvisioningTexts.Parameters, true), Area("actionRules", ProvisioningTexts.ActionRules, false), Area("schedules", ProvisioningTexts.Schedules, false) };
         return
         [
-            source,
             new FileFieldViewModel("fileId", ProvisioningTexts.ConfigFile, FieldRules.ToGuid(s["fileId"]), Text(s["fileName"]), services, ["*.json"],
                 name => name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? null : ProvisioningTexts.ConfigFileRule)
             {
                 NameKey = "fileName",
                 Help = ProvisioningTexts.ConfigFileHelp,
-                ShownWhen = () => source.Is("file"),
-            },
-            new CameraFieldViewModel("templateSerial", ProvisioningTexts.TemplateCamera, Text(s["templateSerial"]), services)
-            {
-                ShownWhen = () => source.Is("templateCamera"),
-                Help = ProvisioningTexts.TemplateCameraHelp,
             },
             new CheckGroupFieldViewModel(ProvisioningTexts.Apply, areas, () => areas.Any(a => a.IsChecked) ? null : ProvisioningTexts.ChooseAreas) { Help = ProvisioningTexts.ApplyHelp },
         ];
@@ -354,7 +345,6 @@ public static class NodeForms
         ArgumentNullException.ThrowIfNull(fields);
         var areas = fields.OfType<CheckGroupFieldViewModel>().Single().Items;
         return new ConfigPreviewViewModel(
-            fields.OfType<ChoiceFieldViewModel>().Single(f => f.Key == "source"),
             fields.OfType<FileFieldViewModel>().Single(f => f.Key == "fileId"),
             areas.Single(a => a.Key == "parameters"),
             areas.Single(a => a.Key == "actionRules"),
@@ -431,12 +421,9 @@ public static class NodeForms
                 var files = node.Field<FilesFieldViewModel>("files").Count;
                 return files == 0 ? string.Empty : ProvisioningTexts.FileCount(files);
             case NodeKind.Configuration:
-                var from = node.Field<ChoiceFieldViewModel>("source");
                 var areas = node.Fields.OfType<CheckGroupFieldViewModel>().First().Items.Where(i => i.IsChecked).Select(i => i.Label.ToLowerInvariant()).ToList();
                 var what = areas.Count == 0 ? string.Empty : string.Join(", ", areas);
-                var where = from.Is("file")
-                    ? node.Field<FileFieldViewModel>("fileId").FileName ?? string.Empty
-                    : node.Field<CameraFieldViewModel>("templateSerial").Serial is { } serial ? "like " + node.Field<CameraFieldViewModel>("templateSerial").ButtonText : string.Empty;
+                var where = node.Field<FileFieldViewModel>("fileId").FileName ?? string.Empty;
                 return string.Join(" from ", new[] { char.ToUpperInvariant(what.FirstOrDefault(' ')) + (what.Length > 1 ? what[1..] : string.Empty), where }.Where(p => p.Trim().Length > 0));
             case NodeKind.Users:
                 var users = node.Field<UsersFieldViewModel>("accounts").Rows.Select(r => r.Name.Trim()).Where(n => n.Length > 0).ToList();

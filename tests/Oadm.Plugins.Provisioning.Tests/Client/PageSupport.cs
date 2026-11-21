@@ -104,7 +104,7 @@ internal sealed class FakePageContext : ICorePluginClientContext
 
     public HashSet<string> Denied { get; } = new(StringComparer.Ordinal);
 
-    /// <summary>The managed devices (the template camera's choice).</summary>
+    /// <summary>The managed devices.</summary>
     public List<IDeviceInfo> DeviceList { get; } = [];
 
     public IReadOnlyList<IDeviceInfo> Devices => DeviceList;
@@ -283,7 +283,7 @@ internal static class Samples
             new FlowNode
             {
                 Id = "n6", Kind = NodeKind.Configuration,
-                Settings = JsonSerializer.SerializeToElement(new { source = "file", fileId = "1f1f1f1f-6666-4c2d-9e8f-0a1b2c3d4e5f", fileName = "parking-p3265.json", parameters = true, actionRules = true, schedules = false }),
+                Settings = JsonSerializer.SerializeToElement(new { fileId = "1f1f1f1f-6666-4c2d-9e8f-0a1b2c3d4e5f", fileName = "parking-p3265.json", parameters = true, actionRules = true, schedules = false }),
             },
             new FlowNode
             {

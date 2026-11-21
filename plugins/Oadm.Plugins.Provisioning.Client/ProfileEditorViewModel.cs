@@ -23,9 +23,6 @@ public interface IProfileEditorUi
 {
     /// <summary>The local files the user chose; empty when closed.</summary>
     Task<IReadOnlyList<string>> PickFilesAsync(string title, bool multiple, IReadOnlyList<string> patterns);
-
-    /// <summary>The device the user chose among <paramref name="devices"/>, or null when closed (the device choice).</summary>
-    Task<Guid?> PickDeviceAsync(IReadOnlyList<IDeviceInfo> devices, Guid? selected);
 }
 
 /// <summary>
@@ -411,20 +408,6 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
         PluginJson.Parse<ConfigFileReply>(
             await _ctx.InvokeAsync(ProvisioningMethods.ReadConfigFile, PluginJson.Serialize(new IdRequest(fileId), ProvisioningJson.Options), ct).ConfigureAwait(true),
             ProvisioningJson.Options).Content;
-
-    async Task<string?> INodeFormServices.ChooseCameraAsync(string? serial)
-    {
-        var devices = _ctx.Devices.Where(d => d.HasVideo).ToList();
-        var selected = devices.FirstOrDefault(d => string.Equals(d.Serial, serial, StringComparison.OrdinalIgnoreCase))?.Id;
-        return Ui is { } ui && await ui.PickDeviceAsync(devices, selected).ConfigureAwait(true) is { } id
-            ? devices.FirstOrDefault(d => d.Id == id)?.Serial
-            : null;
-    }
-
-    string? INodeFormServices.CameraText(string serial) =>
-        _ctx.Devices.FirstOrDefault(d => string.Equals(d.Serial, serial, StringComparison.OrdinalIgnoreCase)) is { } d
-            ? string.Join(", ", new[] { d.Model, d.Address }.Where(p => !string.IsNullOrEmpty(p)))
-            : null;
 
     /// <summary>Every node in the view again.</summary>
     [RelayCommand]

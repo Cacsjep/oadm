@@ -209,7 +209,7 @@ public sealed class StageTwoNodeTests
         await using var h = await StartedAsync();
         var camera = Camera(Device(h));
         var file = await h.FileAsync("lobby.json", Encoding.UTF8.GetBytes("""{"data":{}}"""));
-        var settings = new ConfigurationSettings(ConfigSource.File, file.Id, Parameters: true, ActionRules: true);
+        var settings = new ConfigurationSettings(file.Id, Parameters: true, ActionRules: true);
         var node = new ConfigurationNode();
 
         Assert.Equal(NodeResult.Success("Parameters and action rules applied."), await RunAsync(h, node, settings, camera));
@@ -228,36 +228,16 @@ public sealed class StageTwoNodeTests
     }
 
     [Fact]
-    public async Task Configuration_reads_the_template_camera_when_it_runs()
+    public void Configuration_needs_a_configuration_file_and_an_area()
     {
-        await using var h = await StartedAsync();
-        var camera = Camera(Device(h, i: 1), 1);
-        var template = Device(h, i: 9);
-        const string export = """{"data":{"param.v2":{"Image":{"I0":{"Text":{"String":"Lobby"}}}}}}""";
-        var client = h.Vapix.For(template.Id);
-        client.Handler = (request, _, _) => Task.FromResult(request.RequestUri!.OriginalString == ConfigurationNode.ExportPath
-            ? ScriptedVapix.Json(export)
-            : new HttpResponseMessage(HttpStatusCode.NotFound));
-        var settings = new ConfigurationSettings(ConfigSource.TemplateCamera, TemplateSerial: template.Serial);
         var node = new ConfigurationNode();
-
-        Assert.Equal(NodeResult.Success("Parameters of the template camera applied."), await RunAsync(h, node, settings, camera));
-        Assert.Equal(("GET", ConfigurationNode.ExportPath), client.Requests.Select(r => (r.Method, r.Path)).Single());
-        var uploadId = Payload(Assert.Single(h.Ctx.TaskRuns)).GetProperty("fileId").GetString()!;
-        await using (var read = await h.Ctx.FakeUploads.OpenReadAsync(uploadId, CancellationToken.None))
-        {
-            Assert.Equal(export, await new StreamReader(read).ReadToEndAsync());
-        }
-
-        // The template itself and a template OADM does not have.
-        Assert.Equal(NodeResult.NotNeeded("this is the template camera."), await RunAsync(h, node, settings, Camera(template, 9)));
-        Assert.Equal(NodeResult.Error("The template camera ACCC8E0000FF is not in OADM."),
-            await RunAsync(h, node, settings with { TemplateSerial = "ACCC8E0000FF" }, camera));
-        Assert.Single(h.Ctx.TaskRuns);
-
-        Assert.Equal("Choose what to apply.", node.Check(Harness.Json(settings with { Parameters = false }), ProfileCheckContext.Empty));
-        Assert.Equal("Choose the template camera.", node.Check(Harness.Json(new ConfigurationSettings(ConfigSource.TemplateCamera)), ProfileCheckContext.Empty));
         Assert.Equal("Choose a configuration file.", node.Check(Harness.Json(new ConfigurationSettings()), ProfileCheckContext.Empty));
+        Assert.Equal("Choose what to apply.", node.Check(Harness.Json(new ConfigurationSettings(Guid.NewGuid(), Parameters: false)), ProfileCheckContext.Empty));
+        Assert.Null(node.Check(Harness.Json(new ConfigurationSettings(Guid.NewGuid())), ProfileCheckContext.Empty));
+
+        // A camera as the source is gone: such settings have no file.
+        using var stored = JsonDocument.Parse("""{"source":"templateCamera","templateSerial":"ACCC8E000048","parameters":true}""");
+        Assert.Equal("Choose a configuration file.", node.Check(stored.RootElement.Clone(), ProfileCheckContext.Empty));
     }
 
     // ---- Users ----

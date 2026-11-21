@@ -232,15 +232,6 @@ public sealed class NodeVault(IPluginSettings settings, ISecretProtector? protec
         return await reader.ReadToEndAsync(ct).ConfigureAwait(false);
     }
 
-    /// <summary>A file made while a node runs (a template camera's configuration) as an upload for its task; never kept.</summary>
-    public async Task<string> UploadAsync(string name, byte[] content, CancellationToken ct)
-    {
-        ArgumentNullException.ThrowIfNull(content);
-        var target = uploads ?? throw new InvalidOperationException(NoFiles);
-        using var stream = new MemoryStream(content, writable: false);
-        return (await target.AddAsync(name, stream, content.Length, ct).ConfigureAwait(false)).Id;
-    }
-
     /// <summary>Removes the secrets and files no profile names and that were added more than a day ago.</summary>
     public async Task PruneAsync(IEnumerable<Profile> named, CancellationToken ct)
     {

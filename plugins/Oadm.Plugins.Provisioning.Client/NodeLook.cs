@@ -69,7 +69,7 @@ public static class NodeLook
         NodeKind.UpgradeFiles => "AXIS OS from your files, per model",
         NodeKind.Network => "Address, DNS servers and search domain",
         NodeKind.DateTime => "Time zone and NTP servers",
-        NodeKind.Configuration => "Settings from a file or a template camera",
+        NodeKind.Configuration => "Settings from a configuration file",
         NodeKind.Users => "Adds user accounts",
         NodeKind.Certificate => "The HTTPS certificate from PKI",
         NodeKind.Dot1x => "Network access with PKI's 802.1X policy",
