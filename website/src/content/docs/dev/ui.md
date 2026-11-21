@@ -29,6 +29,7 @@ Add the namespace `xmlns:ui="using:Oadm.Sdk.Client.Controls"` to your XAML.
 | `ui:LeadingIcon Icon` | Wraps one `TextBox` or `ComboBox` and puts an icon at its left inside. Class `accent`: the icon in the accent colour; `found`: a green check (the value is what a check found); `changed`: a warning triangle (the user picked another) |
 | `ui:NumberSlider Text Minimum Maximum Step Unit` | A number users tune: the input, its unit, then a slider; both change the one value. `HasError` gives the input the red border, the error goes below the row through `FormField.Error` |
 | `ui:DayChips` + `DayChoice.Week()` | The weekday toggle chips, Monday first (`IDayChoice` items) |
+| `ui:DateTimeInput SelectedDate SelectedTime` | A date and a 24-hour time side by side (SDK 0.15.0); put it in a `ui:FormField` and give the pair's error through `Error` |
 | `ui:EventPicker Tree Selected` | The event select: an `EventTree` of `EventChoice`s with search, folders and the event's description |
 | `ui:FlowColumns MinColumnWidth MaxColumns Packing` | A panel that uses its width: as many equal columns as fit, row by row (`FlowPacking.Rows`, form fields) or each child into the shortest column (`Columns`, cards) |
 | `ui:FileRow FileName Details Error Command` | A chosen local file with its "Choose file" button; write sizes with `ByteSize.Text` |
@@ -53,6 +54,8 @@ Add the namespace `xmlns:ui="using:Oadm.Sdk.Client.Controls"` to your XAML.
 | `ui:ToolbarOverflowPanel Spacing` | Every row of toolbar buttons on a page: what does not fit on a small or scaled screen goes behind a More button. Keep the device choice button and the search box outside it |
 | `PageDeviceChoice` | The device choice of a page that reads many devices: a toolbar button with the devices icon ("Choose devices", "Selected devices: ..."), see [Core plugins](../core-plugins/#choose-devices-first) |
 | `ui:SearchBox Text` | Every search field. Class `stretch` fills a narrow card |
+| `ui:DateRangeButton Range` | The date range of a log or list, left of the search (SDK 0.15.0): the applied range as a command button ("Last 24 hours"), a flyout with Last hour, Today, Last 24 hours, Last 7 days, All and Custom. Bind `Range` to a `DateRangeChoice`, read again on its `Changed` and query with `Resolve()` (From and To as instants of now, null for an open end) |
+| `ui:ExportButton CsvCommand PdfCommand` | The Export command of a list that saves as CSV or PDF (SDK 0.15.0): a command button with a menu CSV / PDF. Disable it while the file is made and show a `ui:ProgressRow` with Cancel |
 | `ui:IconLabel Icon Text`, `ui:OadmIcon Data` | An icon with text (button content), a single icon |
 | `ui:StatusChip Text` | Every status: a colored icon (`IsOk`, `IsWarning`, `IsError`, `IsAccent`, `IsInfo`) and plain text; in a grid cell with `Margin="10,0"`. `MaxLines` 2 in a grid with `wrapRows` |
 | `ui:StatCard Title Value Detail` | A count card of a monitoring page: a large count and a detail line. Set `IsOk`, `IsWarning` or `IsError` only while the count needs attention |

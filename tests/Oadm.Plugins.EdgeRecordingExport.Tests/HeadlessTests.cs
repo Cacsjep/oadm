@@ -54,8 +54,11 @@ public sealed class HeadlessTests
         var grid = view.GetVisualDescendants().OfType<DataGrid>().Single();
         Assert.Equal(5, grid.ItemsSource!.Cast<object>().Count());
         Assert.Contains("Tag Building A", vm.CamerasText, StringComparison.Ordinal);
-        Assert.Equal(new DateTimeOffset(new DateTime(2026, 10, 12)), view.GetVisualDescendants().OfType<DatePicker>().Single(p => p.Name == "StartDatePicker").SelectedDate);
-        Assert.Equal(TimeSpan.Zero, view.GetVisualDescendants().OfType<TimePicker>().Single(p => p.Name == "StopTimePicker").SelectedTime);
+        // The shared date and time input (DateTimeInput) shows the range in its pickers.
+        var inputs = view.GetVisualDescendants().OfType<DateTimeInput>().ToDictionary(i => i.Name ?? string.Empty);
+        Assert.Equal(new DateTimeOffset(new DateTime(2026, 10, 12)), inputs["StartInput"].DatePicker.SelectedDate);
+        Assert.Equal(TimeSpan.Zero, inputs["StopInput"].TimePicker.SelectedTime);
+        Assert.Equal("24HourClock", inputs["StopInput"].TimePicker.ClockIdentifier);
         var download = view.GetVisualDescendants().OfType<Button>().Single(b => b.Name == "DownloadButton");
         Assert.True(download.IsEnabled);
         Assert.EndsWith(" recordings found", vm.Rows.Single(r => r.Device.Id == a.Id).StatusText, StringComparison.Ordinal);

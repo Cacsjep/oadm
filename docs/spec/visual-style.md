@@ -184,6 +184,15 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   minutes); every other number stays a plain input.
 - `DayChips` (`IDayChoice`, `DayChoice.Week()`): the weekday toggle chips, Monday first (the event rules' schedule, Vision
   Center's Time window).
+- `DateTimeInput`: a date picker and a 24-hour time picker side by side, in a `FormField` whose `Error` covers the pair
+  (Edge recording's From and To, the custom range of `DateRangeButton`).
+- `DateRangeButton` (`DateRangeChoice`, `DateRangePanel`): the date range of a log or list, a command button with the
+  applied range ("All", "Last 24 hours", "12 Nov 09:00 – 14 Nov 18:00") left of the search, its flyout (aligned to the
+  button's right edge) with the presets Last hour, Today, Last 24 hours, Last 7 days, All (a preset applies at once) and
+  Custom with From and To and the primary Apply (To after From, the error below To). The tabs of the Logs page; later the
+  event log, 802.1X and EST logs.
+- `ExportButton`: the one Export command of a list that saves as CSV or PDF: a command button with the export icon and a
+  menu CSV / PDF (the tabs of the Logs page).
 - `EventPicker` over an `EventTree` of `EventChoice` (id, name, folders, available, description): the event select, a
   field with the chosen event's folders, its panel with search, the folder tree and the event's description (the event
   rule dialog's events, Vision Center's Choose event).
