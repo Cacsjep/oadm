@@ -130,7 +130,7 @@ public sealed class RoutingTests
         site.RoundTrip = TimeSpan.FromMilliseconds(600);
         var router = new DeviceRouter(transport, states);
 
-        using var client = VapixClient.Create(Options(site.Id, "192.168.0.20"), router);
+        using var client = VapixClient.Create(Options(site.Id, "192.168.0.20", timeout: DeviceConnections.DefaultTimeout), router);
         await Assert.ThrowsAsync<HttpRequestException>(() => client.GetBasicDeviceInfoAsync(TimeSpan.FromSeconds(3), CancellationToken.None));
         await Assert.ThrowsAsync<HttpRequestException>(() => GetAsync(client));
 
@@ -421,8 +421,9 @@ public sealed class RoutingTests
         Assert.Null(await lookup.LookupAsync(IPAddress.Parse("192.168.0.20"), route, CancellationToken.None));
     }
 
-    private static VapixConnectionOptions Options(Guid siteId, string address, string scheme = "https") =>
-        DeviceConnections.For(Discovered(DeviceRoute.ViaSite(siteId), address), scheme, DeviceConnections.DefaultTimeout);
+    /// <summary>A device at a site; a generous timeout (a slow CI runner), the real default only where a test checks it.</summary>
+    private static VapixConnectionOptions Options(Guid siteId, string address, string scheme = "https", TimeSpan? timeout = null) =>
+        DeviceConnections.For(Discovered(DeviceRoute.ViaSite(siteId), address), scheme, timeout ?? Generous);
 
     private static DiscoveredDevice Discovered(DeviceRoute route, string address = "192.168.0.20")
     {
