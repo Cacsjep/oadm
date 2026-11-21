@@ -197,6 +197,29 @@ public static class ImportTexts
         ? (total == 1 ? "The device is another model than the file: it takes only the settings it has." : "The devices are another model than the file: each takes only the settings it has.")
         : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{others:N0} of {total:N0} devices are another model than the file: each takes only the settings it has.");
 
+    /// <summary>
+    /// "2 of 6 devices have AXIS OS older than 12.5: they take only the network and system settings." (all: "The devices have
+    /// ..."): below 12.5 the parameters are set the old way, every other area needs the configuration API.
+    /// </summary>
+    public static string OlderOsNote(int older, int total) => older == total
+        ? (total == 1
+            ? $"The device has AXIS OS older than {DeviceConfigIds.MinFirmwareText}: it takes only the network and system settings."
+            : $"The devices have AXIS OS older than {DeviceConfigIds.MinFirmwareText}: they take only the network and system settings.")
+        : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{older:N0} of {total:N0} devices have AXIS OS older than {DeviceConfigIds.MinFirmwareText}: they take only the network and system settings.");
+
+    /// <summary>
+    /// The task's warning on a device below 12.5 for the areas it left out: "Event rules and schedules were not applied: this
+    /// needs AXIS OS 12.5 or later." (one: "Time zone was not applied: ...").
+    /// </summary>
+    public static string NotAppliedNote(IReadOnlyList<string> areas)
+    {
+        ArgumentNullException.ThrowIfNull(areas);
+        var names = areas.Select((a, i) => i == 0 || a.StartsWith("MQTT", StringComparison.Ordinal) ? a : char.ToLowerInvariant(a[0]) + a[1..]).ToList();
+        var list = names.Count == 1 ? names[0] : string.Join(", ", names.Take(names.Count - 1)) + " and " + names[^1];
+        var verb = names.Count > 1 || list.EndsWith('s') ? "were" : "was";
+        return $"{list} {verb} not applied: this needs AXIS OS {DeviceConfigIds.MinFirmwareText} or later.";
+    }
+
     /// <summary>Warning when the file has connection settings (off by default in the dialog).</summary>
     public const string ConnectionNote = "Connection settings (HTTPS, ports, login method, IEEE 802.1X, IPv6, DNS, network link, web interface) can make the devices unreachable.";
 

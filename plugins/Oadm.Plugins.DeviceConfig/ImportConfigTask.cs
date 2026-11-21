@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
+using Oadm.Plugins.DeviceConfig.Configure;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 
@@ -14,7 +15,9 @@ namespace Oadm.Plugins.DeviceConfig;
 /// areas OADM knows are sent (<see cref="ConfigSections.Known"/>). The device
 /// validates each area itself; OADM shows its answer. Steps: Read configuration file, Check compatibility, Import &lt;area&gt;
 /// (one per area; a failing area does not stop the others), Import connection settings (only when chosen, always last: it can
-/// cut OADM off from the device), Verify configuration.
+/// cut OADM off from the device), Verify configuration. Below AXIS OS 12.5 (no configuration API) the parameters are set
+/// through param.cgi like Configure devices sets them (checked against the device's own definitions first, the same values
+/// left out), every other area is skipped with a warning.
 /// </summary>
 public sealed class ImportConfigTask : ITaskPlugin
 {
@@ -54,9 +57,19 @@ public sealed class ImportConfigTask : ITaskPlugin
 
     public bool RequiresDialog => true;
 
-    public bool CanRun(IDeviceInfo device) => DeviceConfigSupport.CanRun(device);
+    /// <summary>AXIS OS 12.5 or later, or an older one with the parameter API (it takes only the parameters).</summary>
+    public bool CanRun(IDeviceInfo device) => DeviceConfigSupport.CanRun(device) || ConfigureSupport.CanRun(device);
 
-    public string? NotSupportedReason(IDeviceInfo device) => DeviceConfigSupport.NotSupportedReason(device);
+    public string? NotSupportedReason(IDeviceInfo device) => CanRun(device) ? null : ConfigureSupport.NotSupportedReason(device);
+
+    /// <summary>The device's AXIS OS has no configuration API: only the parameters are set, the old way.</summary>
+    public static bool IsOlderOs(string? version) => !FirmwareVersions.SupportsConfigFiles(version);
+
+    /// <summary>The areas a device below AXIS OS 12.5 takes: the parameters (and their connection part).</summary>
+    public static bool IsParameterArea(string key) => key is ConfigSections.Param or ConfigSections.Connection;
+
+    /// <summary>Why an area other than the parameters is skipped below AXIS OS 12.5.</summary>
+    public const string OlderOsReason = "Needs AXIS OS 12.5 or later";
 
     /// <summary>
     /// Importing the connection settings (HTTPS, ports, login method, 802.1X, DNS, the network link: every parameter of
@@ -160,12 +173,18 @@ public sealed class ImportConfigTask : ITaskPlugin
         }
 
         var plan = new List<Oadm.Sdk.Tasks.TaskPlanDevice>(devices.Count);
+        var hasParameters = payload.Sections.Any(IsParameterArea);
+        var older = 0;
         foreach (var device in devices)
         {
             string? reason;
             if (!CanRun(device))
             {
                 reason = NotSupportedReason(device) ?? TaskSupportReasons.Default;
+            }
+            else if (IsOlderOs(device.FirmwareVersion) && !hasParameters)
+            {
+                reason = TaskSupportReasons.NeedsFirmware(DeviceConfigIds.MinFirmwareText, device);
             }
             else if (fileProblem is not null)
             {
@@ -181,6 +200,12 @@ public sealed class ImportConfigTask : ITaskPlugin
             }
 
             plan.Add(new(device.Id, reason));
+            older += reason is null && IsOlderOs(device.FirmwareVersion) ? 1 : 0;
+        }
+
+        if (older > 0 && payload.Sections.Any(key => !IsParameterArea(key)))
+        {
+            warnings.Add(ImportTexts.OlderOsNote(older, plan.Count(p => p.SkipReason is null)));
         }
 
         if (payload.ForEveryDevice && file is not null)
@@ -255,6 +280,7 @@ public sealed class ImportConfigTask : ITaskPlugin
         }
 
         IReadOnlySet<string> available;
+        Dictionary<string, ParamDefinition>? olderDefinitions = null;
         using (var step = ctx.BeginStep(Steps.CheckCompatibility))
         {
             if (TaskSupportReasons.ForStatus(device) is { } refused)
@@ -263,20 +289,29 @@ public sealed class ImportConfigTask : ITaskPlugin
             }
 
             var info = await ctx.Vapix.GetBasicDeviceInfoAsync(ct).ConfigureAwait(false);
-            if (!FirmwareVersions.SupportsConfigFiles(info.Version))
+            if (IsOlderOs(info.Version))
             {
-                throw new ConfigDeviceException($"Needs AXIS OS {DeviceConfigIds.MinFirmwareText} or later (this device has {info.Version}). Nothing was changed.");
+                // No configuration API: the parameters the old way, checked against this device's own definitions.
+                olderDefinitions = await CheckOlderAsync(ctx, file, sections, info.Version, ct).ConfigureAwait(false);
+                available = new HashSet<string>(StringComparer.Ordinal);
             }
-
-            available = await ConfigApi.DiscoverAsync(ctx.Vapix, ct).ConfigureAwait(false);
-            if (!sections.Any(key => ConfigSections.IsKnown(key) && file.Data[ConfigSections.SourceKey(key)] is JsonObject && available.Contains(ConfigSections.SourceKey(key))))
+            else
             {
-                throw new ConfigDeviceException("None of the settings in the file exist on this device. Nothing was changed.");
+                available = await ConfigApi.DiscoverAsync(ctx.Vapix, ct).ConfigureAwait(false);
+                if (!sections.Any(key => ConfigSections.IsKnown(key) && file.Data[ConfigSections.SourceKey(key)] is JsonObject && available.Contains(ConfigSections.SourceKey(key))))
+                {
+                    throw new ConfigDeviceException("None of the settings in the file exist on this device. Nothing was changed.");
+                }
             }
 
             // Another model takes only what it has: the device leaves out unknown settings and refuses single values.
-            step.Complete($"{ModelNames.Display(info.ProdNbr)}, AXIS OS {info.Version}"
-                + (ModelNames.Same(file.Model, info.ProdNbr) ? string.Empty : $" (file of {ModelNames.Display(file.Model)})"));
+            step.Complete(CompatibilityText(file, info));
+        }
+
+        if (olderDefinitions is not null)
+        {
+            await ImportOlderAsync(ctx, file, sections, olderDefinitions, ct).ConfigureAwait(false);
+            return;
         }
 
         var imported = new List<(string Key, JsonNode Data, HashSet<string> Removed)>();
@@ -369,6 +404,213 @@ public sealed class ImportConfigTask : ITaskPlugin
                 ? failures[0]
                 : string.Create(CultureInfo.InvariantCulture, $"{failures[0]} (+{failures.Count - 1} more failed)"));
         }
+    }
+
+    /// <summary>"AXIS P3265-V, AXIS OS 12.11.77 (file of AXIS Q6135-LE)".</summary>
+    private static string CompatibilityText(ConfigFile file, Oadm.Sdk.Vapix.BasicDeviceInfo info) =>
+        $"{ModelNames.Display(info.ProdNbr)}, AXIS OS {info.Version}"
+        + (ModelNames.Same(file.Model, info.ProdNbr) ? string.Empty : $" (file of {ModelNames.Display(file.Model)})");
+
+    /// <summary>
+    /// The check of a device below AXIS OS 12.5, before any write: the parameter API (a fresh API list), parameters among the
+    /// chosen areas, and this device's definitions of their groups (each value is checked against them before the write).
+    /// </summary>
+    private static async Task<Dictionary<string, ParamDefinition>> CheckOlderAsync(ITaskExecutionContext ctx, ConfigFile file, IReadOnlyList<string> sections,
+        string version, CancellationToken ct)
+    {
+        var needs = $"Needs AXIS OS {DeviceConfigIds.MinFirmwareText} or later (this device has {version}). Nothing was changed.";
+        var apis = await ctx.Vapix.GetApiListAsync(ct).ConfigureAwait(false);
+        if (apis.Count > 0 && !apis.Any(a => string.Equals(a.Id, ConfigureDevicesTask.ParamApi, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new ConfigDeviceException(needs);
+        }
+
+        var names = file.Data[ConfigSections.Param] is JsonObject param
+            ? sections.Where(IsParameterArea).SelectMany(key => ConfigParameters.Flatten(ConfigIdentity.Clean(key, param))).Select(p => p.Name).ToList()
+            : [];
+        if (names.Count == 0)
+        {
+            throw new ConfigDeviceException(needs);
+        }
+
+        var definitions = new Dictionary<string, ParamDefinition>(StringComparer.Ordinal);
+        foreach (var definition in await ParamDefinitionsReader.ReadAsync(ctx.Vapix, ct, names).ConfigureAwait(false))
+        {
+            definitions[definition.Name] = definition;
+        }
+
+        return definitions;
+    }
+
+    /// <summary>
+    /// The import on a device below AXIS OS 12.5: each parameter area through param.cgi with the values of the 12.5 import
+    /// (identity, read-only and, unless chosen, connection values left out), only parameters this device can set, each
+    /// checked against its definition first, a refused one skipped by name; connection settings last. Every other area is
+    /// skipped, with one warning at the end. Then the written values are read back.
+    /// </summary>
+    private static async Task ImportOlderAsync(ITaskExecutionContext ctx, ConfigFile file, IReadOnlyList<string> sections,
+        Dictionary<string, ParamDefinition> definitions, CancellationToken ct)
+    {
+        var written = new List<NameValue>();
+        var notApplied = new List<string>();
+        var failures = new List<string>();
+        var connectionWritten = false;
+        foreach (var key in sections)
+        {
+            var name = Steps.Import(key);
+            if (!ConfigSections.IsKnown(key))
+            {
+                ctx.SkipStep(name, ConfigSections.UnknownReason);
+                continue;
+            }
+
+            if (file.Data[ConfigSections.SourceKey(key)] is not JsonObject section)
+            {
+                ctx.SkipStep(name, "Not in the file");
+                continue;
+            }
+
+            if (!IsParameterArea(key))
+            {
+                ctx.SkipStep(name, OlderOsReason);
+                notApplied.Add(ConfigSections.Name(key));
+                continue;
+            }
+
+            var values = ConfigParameters.Flatten(ConfigIdentity.Clean(key, section));
+            if (values.Count == 0)
+            {
+                ctx.SkipStep(name, "Nothing to import");
+                continue;
+            }
+
+            var secrets = values.Where(v => definitions.GetValueOrDefault(v.Name)?.Kind == ParamKind.Password || SecretNames.IsSecret(v.Name)).Select(v => v.Value).ToList();
+            using var step = ctx.BeginStep(name);
+            try
+            {
+                var apply = new List<NameValue>();
+                var skipped = new List<string>();
+                var missing = 0;
+                foreach (var value in values)
+                {
+                    if (!definitions.TryGetValue(value.Name, out var definition))
+                    {
+                        missing++; // not on this device, or one nobody may set (read-only, internal)
+                    }
+                    else if (ParamRules.Problem(definition, value.Value) is { } problem)
+                    {
+                        skipped.Add($"{value.Name} ({problem.TrimEnd('.')})");
+                    }
+                    else
+                    {
+                        // Written like Configure devices writes it: trimmed; text and passwords exactly as in the file.
+                        apply.Add(definition.Kind is ParamKind.Text or ParamKind.Password ? value : value with { Value = value.Value.Trim() });
+                    }
+                }
+
+                foreach (var (bad, message) in await ParamWriter.UpdateSkippingRefusedAsync(ctx.Vapix, apply, secrets, ct).ConfigureAwait(false))
+                {
+                    skipped.Add($"{bad} (the device refused it)");
+                    ctx.Log(TaskLogLevel.Warning, $"{ConfigSections.Name(key)}: {message}");
+                }
+
+                foreach (var item in skipped)
+                {
+                    ctx.Log(TaskLogLevel.Warning, $"{ConfigSections.Name(key)}: skipped {item}");
+                }
+
+                written.AddRange(apply.Where(v => definitions[v.Name].Kind != ParamKind.Password));
+                connectionWritten |= key == ConfigSections.Connection && apply.Count > 0;
+                var done = DeviceConfigIds.Count(apply.Count, "value")
+                    + (missing > 0 ? string.Create(CultureInfo.InvariantCulture, $", {missing:N0} not on this device or read-only") : string.Empty);
+                if (skipped.Count > 0)
+                {
+                    step.Warn(string.Create(CultureInfo.InvariantCulture, $"{done}, {skipped.Count:N0} skipped: {Summary(skipped, 3)}"));
+                }
+                else
+                {
+                    step.Complete(done);
+                }
+            }
+            catch (Exception ex) when (!DeviceErrors.IsCancelled(ex, ct))
+            {
+                // A changed certificate stops the import: every later request fails the same way.
+                if (DeviceErrors.IsCertificateChanged(ex))
+                {
+                    throw new ConfigDeviceException(DeviceMessages.CertificateChanged, ex);
+                }
+
+                var message = ParamWriter.Scrub(DeviceErrors.Describe(ex, ParamWriter.Timeout), secrets);
+                step.Fail(message);
+                ctx.Log(TaskLogLevel.Error, $"{ConfigSections.Name(key)}: {message}");
+                failures.Add($"{ConfigSections.Name(key)}: {message}");
+            }
+        }
+
+        if (await VerifyOlderAsync(ctx, written, connectionWritten, ct).ConfigureAwait(false) is { } verifyFailure)
+        {
+            failures.Add(verifyFailure);
+        }
+
+        if (failures.Count > 0)
+        {
+            throw new ConfigDeviceException(failures.Count == 1
+                ? failures[0]
+                : string.Create(CultureInfo.InvariantCulture, $"{failures[0]} (+{failures.Count - 1} more failed)"));
+        }
+
+        // Last, so it is the task's message: what the user chose and this device cannot take.
+        if (notApplied.Count > 0)
+        {
+            ctx.ReportWarning(ImportTexts.NotAppliedNote(notApplied));
+        }
+    }
+
+    /// <summary>Reads the values written through param.cgi back (passwords are not); differences are a warning.</summary>
+    private static async Task<string?> VerifyOlderAsync(ITaskExecutionContext ctx, List<NameValue> written, bool connectionWritten, CancellationToken ct)
+    {
+        if (written.Count == 0)
+        {
+            ctx.SkipStep(Steps.Verify, "Nothing was imported");
+            return null;
+        }
+
+        using var step = ctx.BeginStep(Steps.Verify);
+        Dictionary<string, string> now;
+        try
+        {
+            now = await ParamWriter.ReadBackAsync(ctx.Vapix, written.Select(v => v.Name), ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (!DeviceErrors.IsCancelled(ex, ct))
+        {
+            var message = DeviceErrors.IsCertificateChanged(ex) ? DeviceMessages.CertificateChanged : DeviceErrors.Describe(ex, timeout: null);
+            if (connectionWritten)
+            {
+                // After new connection settings the device may be gone for OADM: expected, a warning.
+                step.Warn("The device could not be read after the connection settings changed: " + message);
+                return null;
+            }
+
+            step.Fail(message);
+            ctx.Log(TaskLogLevel.Error, $"{Steps.Verify}: {message}");
+            return $"{Steps.Verify}: {message}";
+        }
+
+        var differences = written.Where(v => !now.TryGetValue(v.Name, out var value) || !string.Equals(value, v.Value, StringComparison.Ordinal)).Select(v => v.Name).ToList();
+        if (differences.Count == 0)
+        {
+            step.Complete("All imported values match");
+            return null;
+        }
+
+        foreach (var path in differences)
+        {
+            ctx.Log(TaskLogLevel.Warning, "Differs after the import: " + path);
+        }
+
+        var count = differences.Count == 1 ? "1 setting differs" : DeviceConfigIds.Count(differences.Count, "setting") + " differ";
+        step.Warn($"{count} after the import: {Summary(differences, MaxNamedDifferences)}");
+        return null;
     }
 
     private static async Task<ConfigFile> ReadFileAsync(ITaskExecutionContext ctx, ImportPayload payload, string entry, IDeviceInfo device, CancellationToken ct)

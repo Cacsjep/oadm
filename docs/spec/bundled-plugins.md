@@ -737,7 +737,8 @@ Spec: `docs/spec/overlays.md`.
 
 `plugins/Oadm.Plugins.DeviceConfig` (+ `.Client`), id `oadm.device-config`, always on, context menu (Maintenance)
 **Export configuration** and **Import configuration** (AXIS OS 12.5 or later: the device's own configuration export and
-import, `/config/rest/$export`, `$import`, like its web interface), **Configure devices** and **Create configuration file**
+import, `/config/rest/$export`, `$import`, like its web interface; below 12.5 Import sets only the file's parameters,
+through `param.cgi`), **Configure devices** and **Create configuration file**
 (ADM's Configure Devices: any AXIS OS with `param.cgi`). Compliance check type **Matches configuration file**
 (`Configure/ConfigMatchCheck`, `docs/spec/compliance.md`).
 
@@ -749,7 +750,10 @@ import, `/config/rest/$export`, `$import`, like its web interface), **Configure 
   imported, never accounts (no lock-out); only the seven areas OADM knows are imported, any other
   area of a file and the left-out part of the password policy area are shown as not imported and never sent; any model (decision
   2026-11-20): the device leaves out what it does not have and refuses single values, the dialog says how many devices are
-  another model; no backup by OADM (export first); the device validates and OADM shows its answer per
+  another model; below AXIS OS 12.5 (decision 2026-11-21) only the parameters are set, through `param.cgi` with the
+  checks of Configure devices (fresh API list, the device's own definitions, every value checked before the one write,
+  the same identity and connection values left out), the other areas are skipped and the task ends with warnings
+  ("Event rules and schedules were not applied: this needs AXIS OS 12.5 or later."); no backup by OADM (export first); the device validates and OADM shows its answer per
   area, one failed area does not stop the others; a ZIP entry must carry the device's MAC address; Export is a dialog
   in the client (an agent's run is a read-only task whose result is the export in its log).
 - **Configure devices** rules that must hold: values come from the source (a device or an ADM `.cfg` file), definitions

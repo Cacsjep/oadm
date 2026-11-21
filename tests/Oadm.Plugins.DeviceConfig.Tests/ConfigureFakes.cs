@@ -91,7 +91,10 @@ internal sealed class ConfigureCamera : IVapixClient
     public Func<string, Exception?>? Fail { get; set; }
 
     public Task<BasicDeviceInfo> GetBasicDeviceInfoAsync(CancellationToken ct) =>
-        Task.FromResult(new BasicDeviceInfo("B8A44F631339", "P3265-V", "P3265-V", "AXIS P3265-V Dome Camera", "12.11.77", "9A3", "aarch64", "Dome Camera", "Axis Artpec-8"));
+        Task.FromResult(new BasicDeviceInfo("B8A44F631339", "P3265-V", "P3265-V", "AXIS P3265-V Dome Camera", Version, "9A3", "aarch64", "Dome Camera", "Axis Artpec-8"));
+
+    /// <summary>The AXIS OS version basicdeviceinfo answers (a camera below 12.5: no configuration API, the import uses param.cgi).</summary>
+    public string Version { get; set; } = "12.11.77";
 
     public Task<IReadOnlyDictionary<string, string>> ListParametersAsync(IEnumerable<string> groups, CancellationToken ct)
     {

@@ -4,7 +4,8 @@ Task plugins (+ `.Client`) and the read-only [tools](#tools) for the Assistant a
 handling. Rules: [Bundled plugins](../../docs/spec/bundled-plugins.md#device-configuration).
 
 - **Export configuration**: save the configuration of the selected devices to files (AXIS OS 12.5 or later).
-- **Import configuration**: apply one configuration file to the selected devices (AXIS OS 12.5 or later).
+- **Import configuration**: apply one configuration file to the selected devices (AXIS OS 12.5 or later; below 12.5 only
+  the file's parameters, through `param.cgi`).
 - **Configure devices**: ADM's Configure Devices: set chosen parameters, action rules and stream profiles on many devices,
   taken from a device or an ADM configuration file (any AXIS OS with `param.cgi`).
 - **Create configuration file**: save chosen settings of one device as an ADM file.
@@ -83,6 +84,7 @@ The export contains values that belong to **one device** and some that cannot be
 | Any model (decision 2026-11-20) | A file goes to devices of any model and AXIS OS version. The device itself leaves out the settings it does not have ("Field 'x' has been removed from the request": "3 not on this device") and refuses single values it cannot take ("Failed to set property": a warning, the rest of the area is set); the dialog and the plan say how many devices are another model. Was "same model only". |
 | The device validates | OADM only uses `$export` / `$import` and does not check the file against the device's OpenAPI schema; it removes the identity values, sends each area and shows the device's answer per step. |
 | Two import modes | One `.json` file applied to every selected device, or the ZIP of a multi-device export where each device gets its own file back (matched by MAC address). |
+| Below AXIS OS 12.5 (decision 2026-11-21) | A camera without the configuration API takes the file's parameters (`param.v2`) through `param.cgi`, the way Configure devices writes them; every other area needs 12.5 and is skipped with a warning. See [Below AXIS OS 12.5](#below-axis-os-125). |
 | Connection settings | Their own area, off by default: listed after the file's areas (unchecked) with a warning; unchecked, their values are left out of "Network and system settings" and of the verify like identity values; checked, they are written last in their own step and the confirmation warns. Which values: `DangerousParameters`, shared with Configure devices, so both ask for their restricted right (`connection`, `dangerous`) for the same parameters. |
 | Known areas only | An area of a file that is not one of the seven is shown as not imported ("Not imported: firewall.v1. OADM does not import these settings.") and never sent; the task skips it too when a payload names it ("OADM does not import these settings"). |
 | No accounts | Of `user-management.v2` only the password policy (`settings.passphraseComplexity`) is imported (`ConfigIdentity.Clean`), in the dialog and in the task. A camera exports nothing else there, but accounts in a file made by hand could change or demote the account OADM uses on every device. The rest of the area is named like an unknown area ("Not imported: user-management.v2 (users). OADM does not import these settings.", `ConfigFile.NotImported`) and never sent. |
@@ -156,7 +158,40 @@ The export contains values that belong to **one device** and some that cannot be
    differences -> Warning "2 settings differ after the import: Network.DNSServer1; ...", all in the task log. A device that
    cannot be read fails the step ("Verify configuration: Unreachable - ...").
 
-Task name: "Import configuration <file name>" (the engine shortens it to 48 characters).
+Task name: "Import configuration <file name>" (the engine shortens it to 120 characters).
+
+### Below AXIS OS 12.5
+
+A camera below 12.5 (fresh basicdeviceinfo; an unknown version counts as older) has no `/config` API. On 12.5 and later
+nothing of this applies.
+
+- `CanRun`: 12.5 or later from the cached version, or the parameter API like Configure devices (`ConfigureSupport`: status
+  Ok, `param-cgi` in the cached API list or the list not read yet). The plan skips an older device only when no parameter
+  area is chosen ("Needs AXIS OS 12.5 or later (this device has 11.9.65)") and warns "1 of 2 devices have AXIS OS older
+  than 12.5: they take only the network and system settings." when other areas are chosen; the dialog shows the same
+  note.
+- **Check compatibility**, before any write: a fresh API list with `param-cgi` and parameters among the chosen areas,
+  else "Needs AXIS OS 12.5 or later (this device has 11.9.65). Nothing was changed."; then the device's definitions of the
+  groups in the file (`ParamDefinitionsReader`, only those top-level groups).
+- **Names** (`ConfigParameters.Flatten`): groups joined with ".", a collection item named by its `groupId` without
+  "Collection" ("ImageCollection" item I0 -> `Image.I0.Appearance.Compression`), a list of plain values one parameter
+  joined with ",". All 1,183 values of the recorded P3265-V export have a parameter of that name in its `param.cgi` list.
+- **Values**: exactly the values of the 12.5 import (`ConfigIdentity.Clean`: identity, read-only, time zone, clips,
+  rotation with auto rotation, and the connection values unless "Connection settings" is chosen, then written last in
+  their own step). Each one is checked against this device's definition (`ParamRules.Problem`); a parameter the device
+  does not have or nobody may set is counted ("1,050 values, 133 not on this device or read-only"); an invalid or refused
+  one is skipped by name (step Warning, all in the log); one `param.cgi` update per area, a refused name taken out and
+  the rest sent again (`ParamWriter.UpdateSkippingRefusedAsync`, shared with Configure devices). Passwords and secret
+  names are masked.
+- **Other areas** (event rules, schedules, MQTT events, time zone, power, password policy): step Skipped "Needs AXIS OS
+  12.5 or later"; the task ends with warnings "Event rules and schedules were not applied: this needs AXIS OS 12.5 or
+  later." (`ImportTexts.NotAppliedNote`, the last warning, so it is the task's message and Provisioning's node result).
+- **Verify configuration** reads the written values back through `param.cgi` (not passwords); after connection settings
+  an unreadable device is a warning.
+- `ImportOlderOsHardwareWriteTests` (`Category=HardwareWrite`, `OADM_CONFIG_OLDER_WRITE=<address>`): the real task with
+  the AXIS OS reported as 11.9.65 set `Image.I0.Name` of an AXIS M3215-LVE (AXIS OS 12.11.147) through `param.cgi` and
+  skipped the event rules with the warning; the name was set back and read back (2026-11-21). 10.0.0.12 (AXIS P12 Mk III,
+  AXIS OS 11.9.65) refused the stored login and was not used.
 
 ### Device answers to imports
 
@@ -370,6 +405,10 @@ own run): the server keeps no shared file with saved passwords. Tests: server `D
 - Fixtures `export-all.json`, `discover.json` recorded read-only from an AXIS P3265-V.
 - File format, identity filter, file names and MAC notations, models, AXIS OS version check, payload, discover, device answers and
   error texts, verify comparison.
+- Below 12.5 (`ImportOlderOsTests`, against `ConfigureCamera` with AXIS OS 11.9.65): the names of the recorded export
+  against the recorded parameter list, parameters through `param.cgi` without identity and connection values, rules and
+  schedules skipped with the warning, connection settings last, invalid and refused values skipped, no parameter area or
+  no parameter API changes nothing, the plan and the dialog note.
 - Import task against a stateful fake camera (`ConfigCamera`): every area as merge without identity, chosen areas, ZIP
   entry, another model imported with the device's answer, old AXIS OS version / feature off with no write, missing areas skipped, a refused area while the others
   run, device warnings and differing values, devices left out, broken or missing file, connection settings only when

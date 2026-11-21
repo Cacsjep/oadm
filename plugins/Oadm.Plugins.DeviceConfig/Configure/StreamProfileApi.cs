@@ -148,6 +148,55 @@ public static class ParamWriter
         }
     }
 
+    /// <summary>Most retries when the device refuses single parameters of an update.</summary>
+    public const int MaxRefusedRetries = 20;
+
+    /// <summary>
+    /// Sets <paramref name="apply"/> in one request; a parameter the device refuses is taken out of the list by name and the rest
+    /// sent again (at most <see cref="MaxRefusedRetries"/> times). Answers the refused ones with the device's text (secrets
+    /// masked); <paramref name="apply"/> then holds what was set (empty: nothing).
+    /// </summary>
+    public static async Task<IReadOnlyList<(string Name, string Message)>> UpdateSkippingRefusedAsync(IVapixClient vapix, List<NameValue> apply,
+        IReadOnlyCollection<string> secrets, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(apply);
+        var refused = new List<(string Name, string Message)>();
+        for (var retry = 0; apply.Count > 0; retry++)
+        {
+            try
+            {
+                await UpdateAsync(vapix, apply, secrets, ct).ConfigureAwait(false);
+                break;
+            }
+            catch (ParamRefusedException ex) when (ex.Parameter is { } bad && retry < MaxRefusedRetries && apply.Any(p => p.Name == bad))
+            {
+                apply.RemoveAll(p => p.Name == bad);
+                refused.Add((bad, ex.Message));
+            }
+        }
+
+        return refused;
+    }
+
+    /// <summary>Characters of parameter names per read-back request.</summary>
+    public const int MaxReadUrlCharacters = 2000;
+
+    /// <summary>The current values of the named parameters, read in requests whose names stay far below the request line limit.</summary>
+    public static async Task<Dictionary<string, string>> ReadBackAsync(IVapixClient vapix, IEnumerable<string> names, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(vapix);
+        var now = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var chunk in ConfigureDevicesTask.Chunks(names, MaxReadUrlCharacters))
+        {
+            foreach (var (key, value) in await vapix.ListParametersAsync(chunk, ct).ConfigureAwait(false))
+            {
+                now[key] = value;
+            }
+        }
+
+        return now;
+    }
+
     /// <summary>"Error setting 'root.Image.I0.Appearance.Compression' to '200'!" -> "Image.I0.Appearance.Compression".</summary>
     public static string? RefusedName(string text)
     {

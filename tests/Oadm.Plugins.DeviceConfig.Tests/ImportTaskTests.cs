@@ -357,9 +357,10 @@ public sealed class ImportTaskTests
     }
 
     [Fact]
-    public async Task Old_firmware_and_a_turned_off_feature_are_refused()
+    public async Task Old_firmware_without_parameters_and_a_turned_off_feature_are_refused()
     {
-        var old = Setup(camera: c => c.Version = "12.4.59");
+        // Below 12.5 only the parameters can be set (ImportOlderOsTests): a file without them changes nothing.
+        var old = Setup(sections: ["time.v2"], camera: c => c.Version = "12.4.59");
         var ex = await Assert.ThrowsAsync<ConfigDeviceException>(() => RunAsync(old));
         Assert.Equal("Needs AXIS OS 12.5 or later (this device has 12.4.59). Nothing was changed.", ex.Message);
         Assert.Empty(old.Camera.Imports);
@@ -482,14 +483,15 @@ public sealed class ImportTaskTests
     }
 
     [Fact]
-    public void Both_entries_are_in_the_maintenance_menu_and_only_for_axis_os_12_5()
+    public void Both_entries_are_in_the_maintenance_menu_and_export_only_for_axis_os_12_5()
     {
         ITaskPlugin export = new ExportConfigTask();
         ITaskPlugin import = new ImportConfigTask();
         Assert.Equal((TaskGroups.Maintenance, TaskGroups.Maintenance), (export.Group, import.Group));
         Assert.True(export.RequiresDialog && import.RequiresDialog);
         Assert.False(export.ShowInToolbar || import.ShowInToolbar);
-        Assert.False(import.CanRun(new FakeDevice { FirmwareVersion = "11.11.160" }));
+        Assert.False(export.CanRun(new FakeDevice { FirmwareVersion = "11.11.160" }));
+        Assert.True(import.CanRun(new FakeDevice { FirmwareVersion = "11.11.160" })); // the parameters, through param.cgi
         Assert.True(import.CanRun(new FakeDevice()));
         Assert.False(export.CanRun(new FakeDevice { Status = DeviceStatus.Unreachable }));
     }

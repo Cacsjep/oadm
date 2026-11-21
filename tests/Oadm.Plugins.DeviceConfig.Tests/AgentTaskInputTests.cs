@@ -369,8 +369,8 @@ public sealed class AgentTaskInputTests
         var plan = await task.PlanAsync(AgentImport(fileId, ConfigSections.Param, ConfigSections.Connection), [same, other, old], uploads, CancellationToken.None);
         Assert.Null(plan.Devices[0].SkipReason);
         Assert.Null(plan.Devices[1].SkipReason); // another model takes the settings it has
-        Assert.StartsWith("Needs AXIS OS 12.5 or later", plan.Devices[2].SkipReason, StringComparison.Ordinal);
-        Assert.Equal([ImportTexts.ReplaceNote, ImportTexts.ConnectionNote, ImportTexts.IdentityNote, ImportTexts.OtherModelNote(1, 2)], plan.Warnings);
+        Assert.Null(plan.Devices[2].SkipReason); // below 12.5 the parameters are set through param.cgi
+        Assert.Equal([ImportTexts.ReplaceNote, ImportTexts.ConnectionNote, ImportTexts.IdentityNote, ImportTexts.OtherModelNote(1, 3)], plan.Warnings);
         Assert.Equal("lobby.json", Assert.Single(plan.Files).Name);
 
         var calm = await task.PlanAsync(AgentImport(fileId, "time.v2"), [same], uploads, CancellationToken.None);

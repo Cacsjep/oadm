@@ -13,7 +13,8 @@ import configureOverviewShot from '../../../assets/screens/device-config-configu
 import createShot from '../../../assets/screens/device-config-create-file.png';
 
 **Export configuration** saves the configuration of devices to files. **Import configuration** applies such a file to
-other devices, also of another model, or puts the configuration of each device back. Both need AXIS OS 12.5 or later.
+other devices, also of another model, or puts the configuration of each device back. Both need AXIS OS 12.5 or later;
+a device with an older AXIS OS takes only the file's network and system settings.
 
 **Configure devices** sets chosen parameters, action rules and stream profiles on many devices at once, like ADM's
 Configure devices. **Create configuration file** saves chosen settings of one device as a file. Both work with AXIS Device
@@ -86,11 +87,18 @@ The settings in the file replace the current ones. Export the devices first if y
 | Step | What happens |
 |---|---|
 | Read configuration file | Reads the file the device gets. |
-| Check compatibility | AXIS OS 12.5 or later, otherwise the task fails with "Nothing was changed". Shows the file's model when it is another one. |
+| Check compatibility | Shows the file's model when it is another one. AXIS OS older than 12.5: see below. |
 | Import network and system settings (another model) | Settings the device does not have are left out ("3 not on this device"); a value it cannot take is a warning, the rest is set. |
 | Import network and system settings, Import event rules, ... | One step per settings area. The device checks the values itself; its warnings or errors show in the step. A refused area does not stop the others. |
 | Import connection settings | Only when the area is ticked, always the last import. |
 | Verify configuration | Exports again and compares. Settings that differ make the task end with warnings. |
+
+## AXIS OS older than 12.5
+
+A device with an older AXIS OS takes only the **Network and system settings** of the file, the same values as a newer
+device. Each value is checked against the device first; settings it does not have are left out. Event rules, schedules
+and the other areas are not applied, and the task ends with a warning such as "Event rules and schedules were not
+applied: this needs AXIS OS 12.5 or later." With only those areas ticked, nothing is changed.
 
 ## Configure devices
 

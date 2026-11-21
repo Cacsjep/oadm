@@ -427,7 +427,7 @@ public sealed class ConfigureDevicesTask : ITaskPlugin, ITaskPluginQuery
     }
 
     /// <summary>Most retries when the device refuses single parameters of an update.</summary>
-    public const int MaxRefusedRetries = 20;
+    public const int MaxRefusedRetries = ParamWriter.MaxRefusedRetries;
 
     /// <summary>
     /// Checks each parameter against this device's definition and writes the ones that fit in one request; the others are
@@ -477,24 +477,16 @@ public sealed class ConfigureDevicesTask : ITaskPlugin, ITaskPluginQuery
                 return;
             }
 
-            for (var retry = 0; ; retry++)
+            foreach (var (bad, message) in await ParamWriter.UpdateSkippingRefusedAsync(ctx.Vapix, apply, secrets, ct).ConfigureAwait(false))
             {
-                try
-                {
-                    await ParamWriter.UpdateAsync(ctx.Vapix, apply, secrets, ct).ConfigureAwait(false);
-                    break;
-                }
-                catch (ParamRefusedException refused) when (refused.Parameter is { } bad && retry < MaxRefusedRetries && apply.Any(p => p.Name == bad))
-                {
-                    apply.RemoveAll(p => p.Name == bad);
-                    skipped.Add($"{bad} (the device refused it)");
-                    ctx.Log(TaskLogLevel.Warning, "Skipped " + bad + ": " + refused.Message);
-                    if (apply.Count == 0)
-                    {
-                        step.Warn("Nothing set: " + Summary(skipped));
-                        return;
-                    }
-                }
+                skipped.Add($"{bad} (the device refused it)");
+                ctx.Log(TaskLogLevel.Warning, "Skipped " + bad + ": " + message);
+            }
+
+            if (apply.Count == 0)
+            {
+                step.Warn("Nothing set: " + Summary(skipped));
+                return;
             }
 
             written.AddRange(apply);
@@ -520,17 +512,11 @@ public sealed class ConfigureDevicesTask : ITaskPlugin, ITaskPluginQuery
         }
 
         using var step = ctx.BeginStep(Steps.Verify);
-        var now = new Dictionary<string, string>(StringComparer.Ordinal);
+        Dictionary<string, string> now;
         try
         {
             // The names go into the URL: read in chunks that stay far below the web server's request line limit.
-            foreach (var chunk in Chunks(check.Select(p => p.Name), MaxVerifyUrlCharacters))
-            {
-                foreach (var (key, value) in await ctx.Vapix.ListParametersAsync(chunk, ct).ConfigureAwait(false))
-                {
-                    now[key] = value;
-                }
-            }
+            now = await ParamWriter.ReadBackAsync(ctx.Vapix, check.Select(p => p.Name), ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (!DeviceErrors.IsCancelled(ex, ct))
         {
@@ -562,7 +548,7 @@ public sealed class ConfigureDevicesTask : ITaskPlugin, ITaskPluginQuery
     }
 
     /// <summary>Characters of parameter names per read-back request.</summary>
-    public const int MaxVerifyUrlCharacters = 2000;
+    public const int MaxVerifyUrlCharacters = ParamWriter.MaxReadUrlCharacters;
 
     /// <summary>The names in groups whose joined length stays below <paramref name="max"/>.</summary>
     internal static IEnumerable<List<string>> Chunks(IEnumerable<string> names, int max)

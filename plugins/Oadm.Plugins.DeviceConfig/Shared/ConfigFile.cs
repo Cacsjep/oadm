@@ -352,13 +352,13 @@ public static class ConfigIdentity
     private const string CollectionSuffix = "Collection";
 
     /// <summary>The parameter name below <paramref name="parent"/>: "Network" + "HostName" = "Network.HostName".</summary>
-    private static string Join(string parent, string name) => parent.Length == 0 ? name : parent + "." + name;
+    internal static string Join(string parent, string name) => parent.Length == 0 ? name : parent + "." + name;
 
     /// <summary>
     /// The parameter name of a collection item: the collection without "Collection" and the item's <c>groupId</c>
     /// ("Network.Interface.I0" for <c>InterfaceCollection</c>, as param.cgi names it).
     /// </summary>
-    private static string ItemName(string parent, string collection, JsonNode? item, int index)
+    internal static string ItemName(string parent, string collection, JsonNode? item, int index)
     {
         var name = collection.EndsWith(CollectionSuffix, StringComparison.Ordinal) && collection.Length > CollectionSuffix.Length
             ? collection[..^CollectionSuffix.Length]
@@ -542,7 +542,7 @@ public static class ConfigIdentity
         _ => 1,
     };
 
-    private const string GroupId = "groupId";
+    internal const string GroupId = "groupId";
 
     private static void Remove(JsonNode? node, string[] path, int index)
     {
@@ -578,6 +578,73 @@ public static class ConfigIdentity
             obj.Remove(name);
         }
     }
+}
+
+/// <summary>
+/// The values of <c>param.v2</c> by their param.cgi names: groups joined with ".", a collection item named like param.cgi
+/// names it ("Image.I0.Appearance.Compression" for the item I0 of <c>ImageCollection</c>). Checked against an export and the
+/// parameter list of the same AXIS P3265-V (AXIS OS 12.11.77): all 1,183 values have a parameter of that name. Used where
+/// a file's parameters are written the old way (AXIS OS below 12.5) and shown (Provisioning's file preview).
+/// </summary>
+public static class ConfigParameters
+{
+    /// <summary>Every value in file order; a list of plain values is one parameter, its items separated by commas.</summary>
+    public static IReadOnlyList<NameValue> Flatten(JsonNode? param)
+    {
+        var result = new List<NameValue>();
+        Walk(param, string.Empty, result);
+        return result;
+    }
+
+    private static void Walk(JsonNode? node, string name, List<NameValue> result)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                foreach (var (key, value) in obj)
+                {
+                    if (key == ConfigIdentity.GroupId)
+                    {
+                        continue;
+                    }
+
+                    if (value is JsonArray array && array.Count > 0 && array.All(item => item is JsonObject))
+                    {
+                        for (var i = 0; i < array.Count; i++)
+                        {
+                            Walk(array[i], ConfigIdentity.ItemName(name, key, array[i], i), result);
+                        }
+                    }
+                    else
+                    {
+                        Walk(value, ConfigIdentity.Join(name, key), result);
+                    }
+                }
+
+                break;
+            case JsonArray list:
+                if (name.Length > 0 && list.Count > 0)
+                {
+                    result.Add(new NameValue(name, string.Join(",", list.Select(Text))));
+                }
+
+                break;
+            default:
+                if (name.Length > 0)
+                {
+                    result.Add(new NameValue(name, Text(node)));
+                }
+
+                break;
+        }
+    }
+
+    private static string Text(JsonNode? node) => node switch
+    {
+        null => string.Empty,
+        JsonValue value when value.TryGetValue<string>(out var text) => text,
+        _ => node.ToJsonString(),
+    };
 }
 
 /// <summary>File names of exported configurations; the MAC address in them is what a ZIP import matches on.</summary>

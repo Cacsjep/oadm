@@ -209,6 +209,26 @@ public sealed class ImportDialogTests(ITestOutputHelper output) : IDisposable
     }
 
     [Fact]
+    public async Task Devices_below_axis_os_12_5_are_told_they_take_only_the_parameters()
+    {
+        var vm = Dialog([new FakeDevice(), new FakeDevice { Serial = "B8A44F631340", Address = "10.0.0.12", FirmwareVersion = "11.9.65" }]);
+        await vm.LoadAsync(Write("lobby.json", FileFor("P3265-V")));
+        Assert.Contains("1 of 2 devices have AXIS OS older than 12.5: they take only the network and system settings.", vm.Notes);
+        Assert.Null(vm.ImportBlockedReason);
+
+        // A file with parameters only: nothing to say.
+        var export = (JsonObject)JsonNode.Parse(Fixtures.Export)!;
+        var data = (JsonObject)export["data"]!;
+        foreach (var key in data.Select(p => p.Key).Where(k => k != ConfigSections.Param).ToList())
+        {
+            data.Remove(key);
+        }
+
+        await vm.LoadAsync(Write("parameters.json", export.ToJsonString()));
+        Assert.DoesNotContain(vm.Notes, n => n.Contains("older than", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_file_of_another_model_imports_and_a_broken_file_blocks_import()
     {
         var vm = Dialog([new FakeDevice()]);

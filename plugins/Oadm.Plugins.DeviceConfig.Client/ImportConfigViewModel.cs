@@ -301,6 +301,8 @@ public sealed partial class ImportConfigViewModel : ObservableObject
         {
             Notes.Add(ImportTexts.OtherModelNote(others, _devices.Count));
         }
+
+        AddOlderOsNote(_devices, file.Sections.Select(s => s.Key));
     }
 
     private void Apply(ZipPlan plan)
@@ -325,6 +327,7 @@ public sealed partial class ImportConfigViewModel : ObservableObject
         }
 
         AddNotes(plan.SectionKeys.Contains(ConfigSections.Param), plan.HasRecipients, plan.UnknownSectionKeys);
+        AddOlderOsNote([.. _devices.Where(d => _targets.ContainsKey(d.Id))], plan.SectionKeys);
         var parts = new List<string> { string.Create(CultureInfo.InvariantCulture, $"{_targets.Count:N0} ready") };
         if (_leftOut.Count > 0)
         {
@@ -350,6 +353,19 @@ public sealed partial class ImportConfigViewModel : ObservableObject
         option.IsChecked = option.Key != ConfigSections.Connection;
         option.PropertyChanged += (_, _) => Refresh();
         Sections.Add(option);
+    }
+
+    /// <summary>
+    /// Devices below AXIS OS 12.5 take only the parameters (set the old way): said when the file has other areas
+    /// (<see cref="ImportTexts.OlderOsNote"/>).
+    /// </summary>
+    private void AddOlderOsNote(IReadOnlyList<IDeviceInfo> devices, IEnumerable<string> sectionKeys)
+    {
+        var older = devices.Count(d => ImportConfigTask.IsOlderOs(d.FirmwareVersion));
+        if (older > 0 && sectionKeys.Any(key => !ImportConfigTask.IsParameterArea(key)))
+        {
+            Notes.Add(ImportTexts.OlderOsNote(older, devices.Count));
+        }
     }
 
     private void AddNotes(bool hasParams, bool hasRecipients, IReadOnlyCollection<string> unknownSections)

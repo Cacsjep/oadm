@@ -21,6 +21,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Changed
 
 - Import configuration and provisioning: a configuration file also works on other models; each camera takes the settings it has.
+- Import configuration and provisioning: cameras with AXIS OS older than 12.5 take the parameters of a configuration file.
 - Provisioning: the Certificate and 802.1X nodes use the PKI policy you choose.
 - Settings: one column of settings with a search and one Save, in the look of the Windows settings.
 - Linux: the app menu and the dock show the OADM icon sharp in every size.
