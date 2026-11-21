@@ -46,6 +46,18 @@
     <None Include="..\Oadm.Plugins.VapixCommander\Library\*.json" Link="Library\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- The configuration file (.cfg) of Device configuration and the payload of its task Configure devices for the node
+       Configuration (the same file model, payload and rules as the Configure devices dialog; the client part uses them for
+       the file preview); compiled into this assembly (a project reference would copy the other plugin's Server.dll into
+       this folder). -->
+  <ItemGroup>
+    <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\AdmConfigFile.cs" Link="DeviceConfig\AdmConfigFile.cs" />
+    <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\AdmConfigApply.cs" Link="DeviceConfig\AdmConfigApply.cs" />
+    <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\ConfigureModels.cs" Link="DeviceConfig\ConfigureModels.cs" />
+    <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\ParamRules.cs" Link="DeviceConfig\ParamRules.cs" />
+    <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\DeviceConfigIds.cs" Link="DeviceConfig\DeviceConfigIds.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

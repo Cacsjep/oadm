@@ -1,7 +1,9 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
+using Oadm.Plugins.DeviceConfig;
 using Oadm.Sdk.Certificates;
 using Oadm.Plugins.Provisioning.Engine;
 using Oadm.Plugins.Provisioning.Model;
@@ -12,6 +14,7 @@ using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
 using Oadm.Sdk.Testing;
 using Oadm.Sdk.Vapix;
+using Oadm.Tests.Shared;
 
 namespace Oadm.Plugins.Provisioning.Tests;
 
@@ -203,41 +206,138 @@ public sealed class StageTwoNodeTests
 
     // ---- Configuration ----
 
-    [Fact]
-    public async Task Configuration_imports_the_kept_file_with_the_chosen_areas()
+    /// <summary>The configuration file ADM wrote from an AXIS P3265-V: 4 parameters, 1 action rule with its own schedule, 4 built-in schedules, 3 stream profiles.</summary>
+    private static byte[] AdmFile => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "adm-p3265v-12.11.77.cfg"));
+
+    /// <summary>The ADM file with values Configure devices never writes on every camera: an address, a name, a connection setting, an empty password.</summary>
+    private static byte[] AdmFileWithIdentity
     {
-        await using var h = await StartedAsync();
-        var camera = Camera(Device(h));
-        var file = await h.FileAsync("lobby.json", Encoding.UTF8.GetBytes("""{"data":{}}"""));
-        var settings = new ConfigurationSettings(file.Id, Parameters: true, ActionRules: true);
-        var node = new ConfigurationNode();
-
-        Assert.Equal(NodeResult.Success("Parameters and action rules applied."), await RunAsync(h, node, settings, camera));
-        var run = Assert.Single(h.Ctx.TaskRuns);
-        Assert.Equal("oadm.device-config.import", run.PluginId);
-        var payload = Payload(run);
-        Assert.Equal(["param.v2", "action-rules.v2"], payload.GetProperty("sections").EnumerateArray().Select(s => s.GetString()));
-        Assert.Equal("lobby.json", payload.GetProperty("fileName").GetString());
-        Assert.NotNull(await h.Ctx.FakeUploads.FindAsync(payload.GetProperty("fileId").GetString()!, CancellationToken.None));
-
-        h.Outcomes["oadm.device-config.import"] = (TaskEndState.DoneWithWarnings, "Parameters: 2 not on this device: Image.I0.Appearance.Mirror, PTZ.Limit");
-        Assert.Equal(NodeResult.Warning("Parameters: 2 not on this device: Image.I0.Appearance.Mirror, PTZ.Limit."), await RunAsync(h, node, settings, camera));
-
-        h.Outcomes["oadm.device-config.import"] = (TaskEndState.Failed, "The file is for AXIS M3086-V; this device is AXIS P3265-LVE. Nothing was changed.");
-        Assert.Equal(NodeResult.Error("The file is for AXIS M3086-V; this device is AXIS P3265-LVE. Nothing was changed."), await RunAsync(h, node, settings, camera));
+        get
+        {
+            var file = AdmConfigFile.Read(Encoding.UTF8.GetString(AdmFile));
+            return AdmConfigFile.Write(file with
+            {
+                Parameters =
+                [
+                    .. file.Parameters,
+                    new NameValue("Network.IPAddress", "10.0.0.48"),
+                    new NameValue("Network.HostName", "lobby-1"),
+                    new NameValue("HTTPS.Enabled", "yes"),
+                    new NameValue("SNMP.V2.Community", ""),
+                    new NameValue("Image.I0.Appearance.Compression", "30"),
+                ],
+            });
+        }
     }
 
     [Fact]
-    public void Configuration_needs_a_configuration_file_and_an_area()
+    public async Task Configuration_runs_Configure_devices_with_the_settings_of_the_kept_file()
+    {
+        await using var h = await StartedAsync();
+        var camera = Camera(Device(h));
+        var file = await h.FileAsync("lobby.cfg", AdmFileWithIdentity);
+        var node = new ConfigurationNode();
+
+        Assert.Equal(NodeResult.Success("Parameters, action rules and stream profiles applied."), await RunAsync(h, node, new ConfigurationSettings(file.Id), camera));
+        var run = Assert.Single(h.Ctx.TaskRuns);
+        Assert.Equal(ConfigureIds.Configure, run.PluginId);
+        var payload = ConfigurePayload.Parse(run.PayloadJson);
+        Assert.Equal(
+            ["ImageSource.I0.CaptureFrequency", "ImageSource.I0.Sensor.CaptureMode", "System.CaptureFrequencySet", "System.CaptureModeSet", "Image.I0.Appearance.Compression"],
+            payload.Parameters.Select(p => p.Name));
+        Assert.Equal("60Hz", payload.Parameters[0].Value);
+        Assert.Equal(["re"], payload.Rules.Select(r => r.Name));
+        Assert.Equal(["com.axis.schedules.genid.id-0"], payload.Schedules.Select(s => s.Id)); // the rule's own schedule, never the built-in ones
+        Assert.Equal(["View Area 1_ACS_Pro_High", "View Area 1_ACS_Pro_Low", "View Area 1_ACS_Pro_Medium"], payload.StreamProfiles.Select(p => p.Name));
+        Assert.Equal("lobby.cfg", payload.Source);
+        Assert.Null(payload.SourceDeviceId);
+        Assert.DoesNotContain(payload.Parameters, p => DangerousParameters.IsDangerous(p.Name));
+
+        // The chosen areas only.
+        lock (h.Ctx.TaskRuns)
+        {
+            h.Ctx.TaskRuns.Clear();
+        }
+        Assert.Equal(NodeResult.Success("Stream profiles applied."),
+            await RunAsync(h, node, new ConfigurationSettings(file.Id, Parameters: false, ActionRules: false, StreamProfiles: true), camera));
+        payload = ConfigurePayload.Parse(Assert.Single(h.Ctx.TaskRuns).PayloadJson);
+        Assert.Empty(payload.Parameters);
+        Assert.Empty(payload.Rules);
+        Assert.Empty(payload.Schedules);
+        Assert.Equal(3, payload.StreamProfiles.Count);
+
+        // The task's end: parameters this camera does not have are skipped with a warning.
+        h.Outcomes[ConfigureIds.Configure] = (TaskEndState.DoneWithWarnings, "Set parameters: 1 not on this device: System.CaptureModeSet");
+        Assert.Equal(NodeResult.Warning("Set parameters: 1 not on this device: System.CaptureModeSet."), await RunAsync(h, node, new ConfigurationSettings(file.Id), camera));
+        h.Outcomes[ConfigureIds.Configure] = (TaskEndState.Failed, "Needs the parameter API. Nothing was changed.");
+        Assert.Equal(NodeResult.Error("Needs the parameter API. Nothing was changed."), await RunAsync(h, node, new ConfigurationSettings(file.Id), camera));
+    }
+
+    [Fact]
+    public async Task Configuration_starts_no_task_for_a_file_that_is_no_configuration_file_or_applies_nothing()
+    {
+        await using var h = await StartedAsync();
+        var camera = Camera(Device(h));
+        var node = new ConfigurationNode();
+
+        var json = await h.FileAsync("lobby.json", Encoding.UTF8.GetBytes("""{"data":{}}"""));
+        Assert.Equal(NodeResult.Error(ConfigurationNode.WrongFile), await RunAsync(h, node, new ConfigurationSettings(json.Id), camera));
+
+        var broken = await h.FileAsync("broken.cfg", Encoding.UTF8.GetBytes("<Configuration />"));
+        Assert.Equal(NodeResult.Error(AdmConfigFile.NotAnAdmFile), await RunAsync(h, node, new ConfigurationSettings(broken.Id), camera));
+
+        var empty = await h.FileAsync("empty.cfg", AdmConfigFile.Write(new AdmConfig { Parameters = [new NameValue("Network.IPAddress", "10.0.0.48")] }));
+        Assert.Equal(NodeResult.Error(ConfigurePayload.NothingToApply), await RunAsync(h, node, new ConfigurationSettings(empty.Id), camera));
+
+        Assert.Equal(NodeResult.Error(NodeVault.FileGone), await RunAsync(h, node, new ConfigurationSettings(Guid.NewGuid()), camera));
+        Assert.Empty(h.Ctx.TaskRuns);
+    }
+
+    [Fact]
+    public async Task Configuration_needs_a_configuration_file_and_an_area()
     {
         var node = new ConfigurationNode();
         Assert.Equal("Choose a configuration file.", node.Check(Harness.Json(new ConfigurationSettings()), ProfileCheckContext.Empty));
-        Assert.Equal("Choose what to apply.", node.Check(Harness.Json(new ConfigurationSettings(Guid.NewGuid(), Parameters: false)), ProfileCheckContext.Empty));
+        Assert.Equal("Choose what to apply.", node.Check(Harness.Json(new ConfigurationSettings(Guid.NewGuid(), Parameters: false, ActionRules: false, StreamProfiles: false)), ProfileCheckContext.Empty));
         Assert.Null(node.Check(Harness.Json(new ConfigurationSettings(Guid.NewGuid())), ProfileCheckContext.Empty));
+
+        // The kept file: a .cfg of at most 1 MB.
+        await using var h = await StartedAsync();
+        var cfg = await h.FileAsync("lobby.cfg", AdmFile);
+        var json = await h.FileAsync("lobby.json", Encoding.UTF8.GetBytes("""{"data":{}}"""));
+        var large = await h.FileAsync("large.cfg", new byte[AdmConfigFile.MaxFileBytes + 1]);
+        Assert.Null(node.Check(Harness.Json(new ConfigurationSettings(cfg.Id)), Kept(h)));
+        Assert.Equal(ConfigurationNode.WrongFile, node.Check(Harness.Json(new ConfigurationSettings(json.Id)), Kept(h)));
+        Assert.Equal(ConfigurationNode.TooLarge, node.Check(Harness.Json(new ConfigurationSettings(large.Id)), Kept(h)));
+        Assert.Equal("The configuration file is no longer on the server. Choose it again.", node.Check(Harness.Json(new ConfigurationSettings(Guid.NewGuid())), Kept(h)));
 
         // A camera as the source is gone: such settings have no file.
         using var stored = JsonDocument.Parse("""{"source":"templateCamera","templateSerial":"ACCC8E000048","parameters":true}""");
         Assert.Equal("Choose a configuration file.", node.Check(stored.RootElement.Clone(), ProfileCheckContext.Empty));
+    }
+
+    /// <summary>
+    /// Every task a node starts by its id is declared in the source of a shipped plugin (a task id that is gone or renamed
+    /// fails here, not on a camera).
+    /// </summary>
+    [Fact]
+    public void Every_task_a_node_starts_is_a_task_of_a_shipped_plugin()
+    {
+        var ids = NodeRegistry.Default.All
+            .Select(n => n.GetType().GetProperty(nameof(ConfigurationNode.TaskPluginId))?.GetValue(n) as string)
+            .OfType<string>()
+            .Concat(Directory.EnumerateFiles(TestRepository.Path("plugins", "Oadm.Plugins.Provisioning", "Nodes"), "*.cs")
+                .SelectMany(f => Regex.Matches(File.ReadAllText(f), "TaskId\\s*=\\s*\"([^\"]+)\"").Select(m => m.Groups[1].Value)))
+            .ToHashSet(StringComparer.Ordinal);
+        var shipped = Directory.EnumerateFiles(TestRepository.Path("plugins"), "*.cs", SearchOption.AllDirectories)
+            .Where(f => !Path.GetRelativePath(TestRepository.Path("plugins"), f).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .Any(part => part.StartsWith("Oadm.Plugins.Provisioning", StringComparison.Ordinal) || part is "obj" or "bin"))
+            .Select(File.ReadAllText)
+            .ToList();
+
+        Assert.Contains(ConfigureIds.Configure, ids);
+        Assert.DoesNotContain("oadm.device-config.import", ids);
+        Assert.All(ids, id => Assert.True(shipped.Any(s => s.Contains('"' + id + '"', StringComparison.Ordinal)), id + " is not a task of a shipped plugin"));
     }
 
     // ---- Users ----

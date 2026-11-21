@@ -306,7 +306,6 @@
                   <ui:ProgressRing Width="16" Height="16" VerticalAlignment="Center" />
                   <TextBlock Classes="secondary" Text="{x:Static vm:ProvisioningTexts.ReadingFile}" VerticalAlignment="Center" />
                 </StackPanel>
-                <TextBlock Classes="secondary" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
                 <ListBox x:Name="PreviewList" Classes="readOnlyList belowSeparator" ItemsSource="{Binding Rows}" MaxHeight="300" IsVisible="{Binding HasRows}"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                   <ListBox.ItemsPanel>

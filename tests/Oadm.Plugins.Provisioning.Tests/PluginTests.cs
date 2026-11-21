@@ -108,19 +108,23 @@ public sealed class PluginTests : IAsyncLifetime
     [Fact]
     public async Task A_kept_configuration_file_is_read_back_for_the_preview_and_nothing_else()
     {
-        var text = """{"status":"success","data":{"time.v2":{}},"metadata":{"prodNbr":"P3265-V"}}""";
-        var upload = ((FakeUploadedFiles)_admin.Uploads).Add("lobby.json", System.Text.Encoding.UTF8.GetBytes(text));
+        var text = "<AcmDeviceParameterExport><FileFormatVersion>3</FileFormatVersion></AcmDeviceParameterExport>";
+        var upload = ((FakeUploadedFiles)_admin.Uploads).Add("lobby.cfg", System.Text.Encoding.UTF8.GetBytes(text));
         var file = await CallAsync<StoredFile>(ProvisioningMethods.StoreFile, new FileRequest(upload.Id));
 
         var read = await CallAsync<ConfigFileReply>(ProvisioningMethods.ReadConfigFile, new IdRequest(file.Id));
-        Assert.Equal(("lobby.json", text), (read.Name, read.Content));
+        Assert.Equal(("lobby.cfg", text), (read.Name, read.Content));
         Assert.True(ProvisioningMethods.IsRead(ProvisioningMethods.ReadConfigFile));
         Assert.Equal(PermissionKeys.Show, _plugin.RequiredPermission(ProvisioningMethods.ReadConfigFile));
         Assert.False(_plugin.IsAudited(ProvisioningMethods.ReadConfigFile));
 
-        // An AXIS OS file is never sent back; a file that is gone says so.
+        // An AXIS OS file or a file of Export configuration is never sent back, nor a file over 1 MB; a file that is gone says so.
         var os = await CallAsync<StoredFile>(ProvisioningMethods.StoreFile, new FileRequest(((FakeUploadedFiles)_admin.Uploads).Add("P3265-LVE_12_6_95.bin", [1, 2, 3]).Id));
-        await Assert.ThrowsAsync<ArgumentException>(() => CallAsync<ConfigFileReply>(ProvisioningMethods.ReadConfigFile, new IdRequest(os.Id)));
+        Assert.Equal(ConfigurationNode.WrongFile, (await Assert.ThrowsAsync<ArgumentException>(() => CallAsync<ConfigFileReply>(ProvisioningMethods.ReadConfigFile, new IdRequest(os.Id)))).Message);
+        var json = await CallAsync<StoredFile>(ProvisioningMethods.StoreFile, new FileRequest(((FakeUploadedFiles)_admin.Uploads).Add("lobby.json", "{}"u8.ToArray()).Id));
+        Assert.Equal(ConfigurationNode.WrongFile, (await Assert.ThrowsAsync<ArgumentException>(() => CallAsync<ConfigFileReply>(ProvisioningMethods.ReadConfigFile, new IdRequest(json.Id)))).Message);
+        var large = await CallAsync<StoredFile>(ProvisioningMethods.StoreFile, new FileRequest(((FakeUploadedFiles)_admin.Uploads).Add("large.cfg", new byte[DeviceConfig.AdmConfigFile.MaxFileBytes + 1]).Id));
+        Assert.Equal(ConfigurationNode.TooLarge, (await Assert.ThrowsAsync<ArgumentException>(() => CallAsync<ConfigFileReply>(ProvisioningMethods.ReadConfigFile, new IdRequest(large.Id)))).Message);
         var gone = await Assert.ThrowsAsync<KeyNotFoundException>(() => CallAsync<ConfigFileReply>(ProvisioningMethods.ReadConfigFile, new IdRequest(Guid.NewGuid())));
         Assert.Equal(NodeVault.FileGone, gone.Message);
     }

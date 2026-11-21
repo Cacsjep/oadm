@@ -565,9 +565,39 @@ public sealed partial class FileFieldViewModel : NodeFieldViewModel
         _nameRule = nameRule;
         FileId = fileId;
         FileName = name ?? (fileId is null ? null : ProvisioningTexts.StoredFile);
-        Rule(nameof(FileName), () => FileId is null ? ProvisioningTexts.ChooseIt(Label) : FileName is { } n && _nameRule is not null ? _nameRule(n) : null);
+        Rule(nameof(FileName), () => FileId is null ? ProvisioningTexts.ChooseIt(Label) : (FileName is { } n && _nameRule is not null ? _nameRule(n) : null) ?? ContentError);
         Ready();
     }
+
+    /// <summary>What is wrong with the chosen file's content (Configuration's preview read it), or null; shown below the field.</summary>
+    public string? ContentError { get; private set; }
+
+    /// <summary>
+    /// Sets <see cref="ContentError"/>: an error shows at once below the field and keeps Save disabled until another file is
+    /// chosen. Raises a change only when it changed.
+    /// </summary>
+    public void SetContentError(string? error)
+    {
+        if (string.Equals(ContentError, error, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        ContentError = error;
+        if (error is null)
+        {
+            Validation.Validate();
+        }
+        else
+        {
+            Validation.Touch(nameof(FileName));
+        }
+
+        OnPropertyChanged(nameof(Error));
+        RaiseChanged();
+    }
+
+    partial void OnFileIdChanged(Guid? value) => ContentError = null;
 
     [ObservableProperty]
     public partial Guid? FileId { get; private set; }

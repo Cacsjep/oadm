@@ -17,9 +17,9 @@
     <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
   </ItemGroup>
 
-  <!-- The recorded export of Device configuration's tests: the file of the Configuration node's preview. -->
+  <!-- The configuration file ADM wrote from an AXIS P3265-V (Device configuration's tests): the file of the Configuration node. -->
   <ItemGroup>
-    <None Include="..\Oadm.Plugins.DeviceConfig.Tests\Fixtures\export-all.json" Link="Fixtures\export-all.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Oadm.Plugins.DeviceConfig.Tests\Fixtures\configure\adm-p3265v-12.11.77.cfg" Link="Fixtures\adm-p3265v-12.11.77.cfg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

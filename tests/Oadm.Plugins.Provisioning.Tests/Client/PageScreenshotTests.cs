@@ -65,7 +65,7 @@ public sealed class PageScreenshotTests
             Assert.All(editor.Nodes, n => Assert.Null(n.CanvasError));
             Assert.False(editor.IsDraft);
             Assert.True(window.FindControl<Button>("SaveButton")!.IsEffectivelyEnabled);
-            Assert.Equal("parking-p3265.json", editor.SelectedNode.Field<FileFieldViewModel>("fileId").FileName);
+            Assert.Equal("parking-p3265.cfg", editor.SelectedNode.Field<FileFieldViewModel>("fileId").FileName);
             Assert.Contains(window.GetVisualDescendants().OfType<CheckBox>(), c => c.IsEffectivelyVisible && Equals(c.Content, ProvisioningTexts.ActionRules) && c.IsChecked == true);
             Headless.Capture(window, $"provisioning-editor-full-{suffix}.png");
 
@@ -117,10 +117,11 @@ public sealed class PageScreenshotTests
             Assert.True(list.GetRealizedContainers().Count() < node.Preview.Rows.Count, "the list creates rows only for what it shows");
             Headless.Capture(window, $"provisioning-config-preview-{suffix}.png");
 
-            areas.Items[1].IsChecked = true; // Parameters and action rules
+            areas.Items[1].IsChecked = true; // every area: parameters, action rules with their schedule, stream profiles
+            areas.Items[2].IsChecked = true;
             list.ScrollIntoView(node.Preview.Rows.Count - 1);
             Headless.Pump();
-            Assert.Contains(list.GetRealizedContainers().Select(c => c.DataContext), r => r is PreviewHeading { Text: "Action rules, 2" });
+            Assert.Contains(list.GetRealizedContainers().Select(c => c.DataContext), r => r is PreviewHeading { Text: "Stream profiles, 3" });
             Headless.Capture(window, $"provisioning-config-preview-rules-{suffix}.png");
             window.Close();
             return true;

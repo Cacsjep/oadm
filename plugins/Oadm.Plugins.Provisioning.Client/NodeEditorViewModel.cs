@@ -326,11 +326,11 @@ public static class NodeForms
     {
         BoolFieldViewModel Area(string key, string label, bool fallback) =>
             new(key, label, s[key]?.GetValueKind() is { } k && k is JsonValueKind.True or JsonValueKind.False ? k == JsonValueKind.True : fallback);
-        var areas = new[] { Area("parameters", ProvisioningTexts.Parameters, true), Area("actionRules", ProvisioningTexts.ActionRules, false), Area("schedules", ProvisioningTexts.Schedules, false) };
+        var areas = new[] { Area("parameters", ProvisioningTexts.Parameters, true), Area("actionRules", ProvisioningTexts.ActionRules, true), Area("streamProfiles", ProvisioningTexts.StreamProfiles, true) };
         return
         [
-            new FileFieldViewModel("fileId", ProvisioningTexts.ConfigFile, FieldRules.ToGuid(s["fileId"]), Text(s["fileName"]), services, ["*.json"],
-                name => name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ? null : ProvisioningTexts.ConfigFileRule)
+            new FileFieldViewModel("fileId", ProvisioningTexts.ConfigFile, FieldRules.ToGuid(s["fileId"]), Text(s["fileName"]), services, ["*." + DeviceConfig.AdmConfigFile.Extension],
+                name => Nodes.ConfigurationNode.IsConfigFile(name) ? null : ProvisioningTexts.ConfigFileRule)
             {
                 NameKey = "fileName",
                 Help = ProvisioningTexts.ConfigFileHelp,
@@ -348,7 +348,7 @@ public static class NodeForms
             fields.OfType<FileFieldViewModel>().Single(f => f.Key == "fileId"),
             areas.Single(a => a.Key == "parameters"),
             areas.Single(a => a.Key == "actionRules"),
-            areas.Single(a => a.Key == "schedules"),
+            areas.Single(a => a.Key == "streamProfiles"),
             services);
     }
 

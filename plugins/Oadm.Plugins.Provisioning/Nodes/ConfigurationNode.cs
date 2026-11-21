@@ -1,18 +1,21 @@
-using System.Text.Json.Nodes;
-
+using Oadm.Plugins.DeviceConfig;
 using Oadm.Plugins.Provisioning.Model;
 using Oadm.Sdk.Tasks;
 
 namespace Oadm.Plugins.Provisioning.Nodes;
 
 /// <summary>
-/// Configuration (spec node 7): a configuration file of Device configuration (Export configuration), applied with
-/// Device configuration's task "Import configuration" (<c>oadm.device-config.import</c>): only the chosen areas,
-/// device-specific values (address, host name, certificates, passwords) never, settings the model lacks a Warning listing them (the task's own checks and texts).
+/// Configuration (spec node 7): a configuration file (.cfg) of Create configuration file or ADM, applied with Device
+/// configuration's task "Configure devices" (<see cref="ConfigureIds.Configure"/>) on any AXIS OS with the parameter API:
+/// the payload the Configure devices dialog builds for every setting of the chosen areas (<see cref="AdmConfigApply.ForEveryDevice"/>:
+/// never an address, a per-device name, an identity or connection parameter); the task checks every value against the
+/// camera's own parameters and skips the ones it does not have (Done with warnings).
 /// </summary>
 public sealed class ConfigurationNode : TaskNode<ConfigurationSettings>
 {
-    public const string ImportTaskId = "oadm.device-config.import";
+    public const string WrongFile = "Choose a configuration file (.cfg).";
+
+    public const string TooLarge = "The configuration file is larger than 1 MB.";
 
     public override NodeKind Kind => NodeKind.Configuration;
 
@@ -20,9 +23,13 @@ public sealed class ConfigurationNode : TaskNode<ConfigurationSettings>
 
     public override string StepName => "Apply the configuration";
 
-    public override string TaskPluginId => ImportTaskId;
+    public override string TaskPluginId => ConfigureIds.Configure;
 
     public override object DefaultSettings => new ConfigurationSettings();
+
+    /// <summary>A kept file's name that a Configuration node takes.</summary>
+    public static bool IsConfigFile(string name) =>
+        name?.EndsWith("." + AdmConfigFile.Extension, StringComparison.OrdinalIgnoreCase) == true;
 
     protected override string? CheckSettings(ConfigurationSettings settings, ProfileCheckContext context)
     {
@@ -38,12 +45,20 @@ public sealed class ConfigurationNode : TaskNode<ConfigurationSettings>
             return "The configuration file is no longer on the server. Choose it again.";
         }
 
-        if (context.Files?.GetValueOrDefault(id) is { } file && !file.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        if (context.Files?.GetValueOrDefault(id) is { } file)
         {
-            return "Choose a configuration file of Export configuration (.json).";
+            if (!IsConfigFile(file.Name))
+            {
+                return WrongFile;
+            }
+
+            if (file.Size > AdmConfigFile.MaxFileBytes)
+            {
+                return TooLarge;
+            }
         }
 
-        return Sections(settings).Count == 0 ? "Choose what to apply." : null;
+        return Areas(settings) is { Parameters: false, ActionRules: false, StreamProfiles: false } ? "Choose what to apply." : null;
     }
 
     protected override async Task<string> PayloadAsync(ConfigurationSettings settings, NodeRun run, CancellationToken ct)
@@ -51,19 +66,42 @@ public sealed class ConfigurationNode : TaskNode<ConfigurationSettings>
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(run);
         var id = settings.FileId!.Value;
-        var fileName = run.Host.Vault.Files.GetValueOrDefault(id)?.Name ?? "configuration.json";
-        var fileId = await run.Host.Vault.UploadIdAsync(id, ct).ConfigureAwait(false);
-        return new JsonObject
+        var name = run.Host.Vault.Files.GetValueOrDefault(id)?.Name;
+        if (name is not null && !IsConfigFile(name))
         {
-            ["fileId"] = fileId,
-            ["fileName"] = fileName,
-            ["isZip"] = false,
-            ["sections"] = new JsonArray([.. Sections(settings).Select(s => JsonValue.Create(s))]),
-        }.ToJsonString();
+            throw new InvalidOperationException(WrongFile);
+        }
+
+        string text;
+        try
+        {
+            text = await run.Host.Vault.ReadTextAsync(id, AdmConfigFile.MaxFileBytes, ct).ConfigureAwait(false);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            throw new InvalidOperationException(ex.Message, ex);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new InvalidOperationException(TooLarge, ex);
+        }
+
+        AdmConfig file;
+        try
+        {
+            file = AdmConfigFile.Read(text);
+        }
+        catch (FormatException ex)
+        {
+            throw new InvalidOperationException(ex.Message, ex);
+        }
+
+        var plan = AdmConfigApply.ForEveryDevice(file, Areas(settings), name);
+        return plan.IsValid ? plan.Payload.ToJson() : throw new InvalidOperationException(plan.Errors[0].Message);
     }
 
     protected override string Payload(ConfigurationSettings settings, NodeRun run) =>
-        throw new NotSupportedException("The payload needs the file as an upload.");
+        throw new NotSupportedException("The payload needs the kept file.");
 
     protected override string Done(ConfigurationSettings settings, NodeRun run)
     {
@@ -79,9 +117,9 @@ public sealed class ConfigurationNode : TaskNode<ConfigurationSettings>
             areas.Add("action rules");
         }
 
-        if (settings.Schedules)
+        if (settings.StreamProfiles)
         {
-            areas.Add("schedules");
+            areas.Add("stream profiles");
         }
 
         var applied = NodeRules.List(areas);
@@ -96,26 +134,10 @@ public sealed class ConfigurationNode : TaskNode<ConfigurationSettings>
             : base.Map(outcome, settings, run);
     }
 
-    /// <summary>The configuration areas of the import ("param.v2") in the order the task applies them.</summary>
-    public static IReadOnlyList<string> Sections(ConfigurationSettings settings)
+    /// <summary>The areas of the file the node applies.</summary>
+    public static AdmConfigAreas Areas(ConfigurationSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        var sections = new List<string>();
-        if (settings.Parameters)
-        {
-            sections.Add("param.v2");
-        }
-
-        if (settings.ActionRules)
-        {
-            sections.Add("action-rules.v2");
-        }
-
-        if (settings.Schedules)
-        {
-            sections.Add("event-schedules.v2");
-        }
-
-        return sections;
+        return new AdmConfigAreas(settings.Parameters, settings.ActionRules, settings.StreamProfiles);
     }
 }

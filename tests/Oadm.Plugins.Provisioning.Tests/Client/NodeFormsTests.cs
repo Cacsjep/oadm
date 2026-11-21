@@ -15,8 +15,14 @@ internal sealed class FakeEditorUi : IProfileEditorUi
 {
     public List<string> Files { get; } = [];
 
-    public Task<IReadOnlyList<string>> PickFilesAsync(string title, bool multiple, IReadOnlyList<string> patterns) =>
-        Task.FromResult<IReadOnlyList<string>>([.. Files]);
+    /// <summary>The file types of the last file dialog.</summary>
+    public IReadOnlyList<string> LastPatterns { get; private set; } = [];
+
+    public Task<IReadOnlyList<string>> PickFilesAsync(string title, bool multiple, IReadOnlyList<string> patterns)
+    {
+        LastPatterns = patterns;
+        return Task.FromResult<IReadOnlyList<string>>([.. Files]);
+    }
 }
 
 /// <summary>The form of every node kind: its fields, their rules (as the server checks the node) and what Save stores.</summary>
@@ -176,24 +182,42 @@ public sealed class NodeFormsTests
         Assert.Equal(2, node.Fields.Count); // the file and the areas, no other source
         Assert.Equal(ProvisioningTexts.ChooseIt(ProvisioningTexts.ConfigFile), node.FirstError);
 
+        // Only a configuration file (.cfg): the error directly below the field.
         ui.Files.Add("C:/cfg/lobby.json");
         await file.ChooseCommand.ExecuteAsync(null);
-        Assert.Equal("lobby.json", file.FileName);
+        Assert.Equal(["*.cfg"], ui.LastPatterns);
+        Assert.Equal(ProvisioningTexts.ConfigFileRule, file.Error);
+        Assert.Equal(ProvisioningTexts.ConfigFileRule, node.FirstError);
+
+        ui.Files.Clear();
+        ui.Files.Add("C:/cfg/lobby.cfg");
+        await file.ChooseCommand.ExecuteAsync(null);
+        await node.Preview!.LoadTask;
+        Assert.Equal("lobby.cfg", file.FileName);
+        Assert.Null(file.Error);
         await NoErrorAsync(editor, node);
 
+        // Every area of the file at the start, like Configure devices with a file.
         var areas = node.Fields.OfType<CheckGroupFieldViewModel>().Single();
-        areas.Items[0].IsChecked = false;
+        Assert.Equal([ProvisioningTexts.Parameters, ProvisioningTexts.ActionRules, ProvisioningTexts.StreamProfiles], areas.Items.Select(i => i.Label));
+        Assert.All(areas.Items, i => Assert.True(i.IsChecked));
+        foreach (var item in areas.Items)
+        {
+            item.IsChecked = false;
+        }
+
         Assert.Equal(ProvisioningTexts.ChooseAreas, node.FirstError);
         areas.Items[1].IsChecked = true;
         await NoErrorAsync(editor, node);
-        Assert.Equal("Action rules from lobby.json", node.Summary);
+        Assert.Equal("Action rules from lobby.cfg", node.Summary);
 
         var settings = await SaveAsync(editor, ctx, NodeKind.Configuration);
         Assert.NotNull((string?)settings["fileId"]);
-        Assert.Null(settings["source"]);
-        Assert.Null(settings["templateSerial"]);
+        Assert.Equal("lobby.cfg", (string?)settings["fileName"]);
         Assert.False((bool)settings["parameters"]!);
         Assert.True((bool)settings["actionRules"]!);
+        Assert.False((bool)settings["streamProfiles"]!);
+        Assert.Null(settings["schedules"]);
     }
 
     private static IReadOnlyList<string> Texts(ConfigPreviewViewModel preview) =>
@@ -210,9 +234,11 @@ public sealed class NodeFormsTests
         // Reading the file: the ring in place until the server answered.
         var gate = new TaskCompletionSource();
         ctx.MethodGates[ProvisioningMethods.ReadConfigFile] = gate.Task;
-        ui.Files.Add("C:/cfg/parking-p3265.json");
+        ui.Files.Add("C:/cfg/parking-p3265.cfg");
         await node.Field<FileFieldViewModel>("fileId").ChooseCommand.ExecuteAsync(null);
-        node.Fields.OfType<CheckGroupFieldViewModel>().Single().Items[2].IsChecked = false; // a change while the read waits reads nothing more
+        var areas = node.Fields.OfType<CheckGroupFieldViewModel>().Single();
+        areas.Items[1].IsChecked = false; // a change while the read waits reads nothing more
+        areas.Items[2].IsChecked = false;
         Assert.True(preview.IsShown);
         Assert.True(preview.IsLoading);
         Assert.False(preview.HasRows);
@@ -221,50 +247,87 @@ public sealed class NodeFormsTests
         Assert.False(preview.IsLoading);
         Assert.Equal(1, ctx.CallsOf(ProvisioningMethods.ReadConfigFile));
 
-        // Parameters only (the default): what Import configuration applies, the left-out ones in one line.
+        // Parameters only: what Configure devices applies on every camera (the payload of the run), the left-out ones in one line.
         var texts = Texts(preview);
-        Assert.StartsWith("# Parameters, ", texts[0], StringComparison.Ordinal);
-        Assert.Matches(@"^- [0-9,]+ more stay as they are on each camera: address, names and connection settings\.$", texts[1]);
+        Assert.Equal("# Parameters, 22", texts[0]);
+        Assert.Equal("- 5 more stay as they are on each camera: address, names and connection settings.", texts[1]);
+        Assert.Contains("ImageSource.I0.CaptureFrequency = 60Hz", texts);
         Assert.Contains("Image.I0.Appearance.Compression = 30", texts);
         Assert.Contains("Image.I0.Name = View Area 1", texts);
-        Assert.DoesNotContain(texts, t => t.StartsWith("Network.HostName", StringComparison.Ordinal) || t.StartsWith("Network.IPAddress", StringComparison.Ordinal)
-            || t.StartsWith("HTTPS.", StringComparison.Ordinal) || t.StartsWith("Network.DNSServer1", StringComparison.Ordinal));
-        var count = int.Parse(texts[0]["# Parameters, ".Length..], System.Globalization.NumberStyles.AllowThousands, System.Globalization.CultureInfo.InvariantCulture);
-        Assert.Equal(count, texts.Count(t => !t.StartsWith('#') && !t.StartsWith('-')));
+        Assert.DoesNotContain(texts, t => t.StartsWith("Network.", StringComparison.Ordinal) || t.StartsWith("HTTPS.", StringComparison.Ordinal) || t.StartsWith("SNMP.V2.", StringComparison.Ordinal));
+        Assert.Equal(22, texts.Count(t => !t.StartsWith('#') && !t.StartsWith('-')));
+        var plan = DeviceConfig.AdmConfigApply.ForEveryDevice(DeviceConfig.AdmConfigFile.Read(Samples.ConfigFile), new(true, false, false), "parking-p3265.cfg");
+        Assert.Equal(plan.Payload.Parameters.Select(p => p.Name + " = " + p.Value), texts.Skip(2));
 
-        // Ticking an area adds its heading and names; no second read.
-        var areas = node.Fields.OfType<CheckGroupFieldViewModel>().Single();
+        // Ticking an area adds its heading and names (the action rules with the own schedule they use); no second read.
         areas.Items[1].IsChecked = true;
         areas.Items[2].IsChecked = true;
         texts = Texts(preview);
-        Assert.Equal(["# Action rules, 2", "Motion: record to SD card", "Tampering: notify", "# Schedules, 4", "Weekends", "Weekdays", "Office Hours", "After Hours"],
-            texts.SkipWhile(t => t != "# Action rules, 2"));
+        Assert.Equal(["# Action rules, 1", "re", "# Schedules, 1", "10", "# Stream profiles, 3", "View Area 1_ACS_Pro_High", "View Area 1_ACS_Pro_Low", "View Area 1_ACS_Pro_Medium"],
+            texts.SkipWhile(t => t != "# Action rules, 1"));
         areas.Items[0].IsChecked = false;
-        Assert.Equal("# Action rules, 2", Texts(preview)[0]);
+        Assert.Equal("# Action rules, 1", Texts(preview)[0]);
         Assert.Equal(1, ctx.CallsOf(ProvisioningMethods.ReadConfigFile));
+        Assert.Null(node.FirstError);
         Assert.NotNull(editor);
     }
+
+    [Fact]
+    public async Task Configuration_hides_the_passwords_of_the_file_in_the_preview()
+    {
+        var (_, ctx, ui, node) = await AddAsync(NodeKind.Configuration);
+        ctx.Answers[ProvisioningMethods.ReadConfigFile] = _ => JsonSerializer.Serialize(new ConfigFileReply("snmp.cfg", Cfg(new DeviceConfig.AdmConfig
+        {
+            Parameters = [new("SNMP.V2.Community", "s3cret-community"), new("SNMP.Enabled", "yes")],
+        })), Samples.Json);
+        ui.Files.Add("C:/cfg/snmp.cfg");
+        await node.Field<FileFieldViewModel>("fileId").ChooseCommand.ExecuteAsync(null);
+        await node.Preview!.LoadTask;
+        var texts = Texts(node.Preview);
+        Assert.Contains("SNMP.V2.Community = " + ConfigPreviewViewModel.Hidden, texts);
+        Assert.DoesNotContain(texts, t => t.Contains("s3cret", StringComparison.Ordinal));
+    }
+
+    private static string Cfg(DeviceConfig.AdmConfig file) => System.Text.Encoding.UTF8.GetString(DeviceConfig.AdmConfigFile.Write(file));
 
     [Fact]
     public async Task Configuration_says_when_a_ticked_area_is_empty_or_the_file_cannot_be_read()
     {
         var (_, ctx, ui, node) = await AddAsync(NodeKind.Configuration);
-        ctx.Answers[ProvisioningMethods.ReadConfigFile] = _ => JsonSerializer.Serialize(new ConfigFileReply("empty.json",
-            """{"status":"success","data":{"time.v2":{}},"metadata":{"prodNbr":"P3265-V"}}"""), Samples.Json);
-        ui.Files.Add("C:/cfg/empty.json");
-        await node.Field<FileFieldViewModel>("fileId").ChooseCommand.ExecuteAsync(null);
-        var areas = node.Fields.OfType<CheckGroupFieldViewModel>().Single();
-        areas.Items[1].IsChecked = true;
+        var file = node.Field<FileFieldViewModel>("fileId");
+        ctx.Answers[ProvisioningMethods.ReadConfigFile] = _ => JsonSerializer.Serialize(new ConfigFileReply("empty.cfg",
+            Cfg(new DeviceConfig.AdmConfig { StreamProfiles = [new("Low", null, "resolution=640x360")] })), Samples.Json);
+        ui.Files.Add("C:/cfg/empty.cfg");
+        await file.ChooseCommand.ExecuteAsync(null);
         await node.Preview!.LoadTask;
-        Assert.Equal(["# Parameters, 0", "- " + ProvisioningTexts.NoParameters, "# Action rules, 0", "- " + ProvisioningTexts.NoActionRules], Texts(node.Preview));
+        Assert.Equal(["# Parameters, 0", "- " + ProvisioningTexts.NoParameters, "# Action rules, 0", "- " + ProvisioningTexts.NoActionRules, "# Stream profiles, 1", "Low"],
+            Texts(node.Preview));
+        Assert.Null(file.Error);
 
-        // A file that is no longer on the server: the server's text, no rows.
+        // Nothing of the ticked areas in the file: Configure devices would refuse, the error below the file.
+        node.Fields.OfType<CheckGroupFieldViewModel>().Single().Items[2].IsChecked = false;
+        Assert.Equal(DeviceConfig.ConfigurePayload.NothingToApply, file.Error);
+        Assert.Equal(DeviceConfig.ConfigurePayload.NothingToApply, node.FirstError);
+        node.Fields.OfType<CheckGroupFieldViewModel>().Single().Items[2].IsChecked = true;
+        Assert.Null(file.Error);
+
+        // A .cfg that is no configuration file: the reader's text below the field, no rows, Save stays off.
+        ctx.Answers[ProvisioningMethods.ReadConfigFile] = _ => JsonSerializer.Serialize(new ConfigFileReply("notes.cfg", "[General]\nname=lobby"), Samples.Json);
+        ui.Files.Clear();
+        ui.Files.Add("C:/cfg/notes.cfg");
+        await file.ChooseCommand.ExecuteAsync(null);
+        await node.Preview.LoadTask;
+        Assert.Equal(DeviceConfig.AdmConfigFile.NotAnAdmFile, file.Error);
+        Assert.Equal(DeviceConfig.AdmConfigFile.NotAnAdmFile, node.FirstError);
+        Assert.False(node.Preview.HasRows);
+
+        // A file that is no longer on the server: the server's text below the field.
         ctx.Answers[ProvisioningMethods.ReadConfigFile] = _ => throw new KeyNotFoundException("The file is no longer on the server. Choose it again.");
         ui.Files.Clear();
-        ui.Files.Add("C:/cfg/other.json");
-        await node.Field<FileFieldViewModel>("fileId").ChooseCommand.ExecuteAsync(null);
+        ui.Files.Add("C:/cfg/other.cfg");
+        await file.ChooseCommand.ExecuteAsync(null);
         await node.Preview.LoadTask;
-        Assert.Equal("The file is no longer on the server. Choose it again.", node.Preview.Error);
+        Assert.Equal("The file is no longer on the server. Choose it again.", file.Error);
         Assert.False(node.Preview.HasRows);
         Assert.False(node.Preview.IsLoading);
     }

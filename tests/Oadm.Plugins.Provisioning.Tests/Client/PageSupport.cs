@@ -10,6 +10,7 @@ using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Styling;
 using Avalonia.Threading;
 
+using Oadm.Plugins.DeviceConfig;
 using Oadm.Sdk.Certificates;
 using Oadm.Plugins.Provisioning.Client;
 using Oadm.Plugins.Provisioning.Engine;
@@ -283,7 +284,7 @@ internal static class Samples
             new FlowNode
             {
                 Id = "n6", Kind = NodeKind.Configuration,
-                Settings = JsonSerializer.SerializeToElement(new { fileId = "1f1f1f1f-6666-4c2d-9e8f-0a1b2c3d4e5f", fileName = "parking-p3265.json", parameters = true, actionRules = true, schedules = false }),
+                Settings = JsonSerializer.SerializeToElement(new { fileId = "1f1f1f1f-6666-4c2d-9e8f-0a1b2c3d4e5f", fileName = "parking-p3265.cfg", parameters = true, actionRules = true, streamProfiles = false }),
             },
             new FlowNode
             {
@@ -316,16 +317,27 @@ internal static class Samples
     public static ProfilesReply Profiles(bool valid = true) =>
         new([new ProfileSummary(ProfileId, "Lobby cameras", 5, true, valid), new ProfileSummary(Guid.Parse("7a7a7a7a-4444-4c2d-9e8f-0a1b2c3d4e5f"), "Parking", 3, false, true)], ProfileId);
 
-    /// <summary>The configuration file of the previews: the recorded export of an AXIS P3265-V (AXIS OS 12.11.77) with two action rules.</summary>
-    public static string ConfigExport
+    /// <summary>
+    /// The configuration file of the previews: the file ADM wrote from an AXIS P3265-V (AXIS OS 12.11.77; 1 action rule with
+    /// its own schedule, 3 stream profiles) with more image parameters, an address, a host name, a connection setting and an
+    /// empty community string, which Configure devices never writes on every camera.
+    /// </summary>
+    public static string ConfigFile
     {
         get
         {
-            var export = (JsonObject)JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "export-all.json")))!;
-            export["data"]!["action-rules.v2"]!["rules"] = new JsonArray(
-                new JsonObject { ["id"] = 1, ["name"] = "Motion: record to SD card", ["enabled"] = true },
-                new JsonObject { ["id"] = 2, ["name"] = "Tampering: notify", ["enabled"] = true });
-            return export.ToJsonString();
+            var file = AdmConfigFile.Read(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "adm-p3265v-12.11.77.cfg")));
+            NameValue[] more =
+            [
+                new("Image.I0.Appearance.Compression", "30"), new("Image.I0.Appearance.Resolution", "1920x1080"), new("Image.I0.Appearance.Mirror", "no"),
+                new("Image.I0.Name", "View Area 1"), new("Image.I0.Stream.FPS", "25"), new("Image.I0.Text.TextEnabled", "yes"),
+                new("Image.I0.Text.String", "Parking garage"), new("Image.I0.Text.DateEnabled", "yes"), new("Image.I0.Text.ClockEnabled", "yes"),
+                new("Image.I0.RateControl.Mode", "vbr"), new("Image.I0.RateControl.TargetBitrate", "4000"), new("Image.I0.MPEG.ZStrength", "20"),
+                new("ImageSource.I0.Sensor.WDR", "on"), new("ImageSource.I0.DayNight.IrCutFilter", "auto"), new("ImageSource.I0.Sensor.Brightness", "50"),
+                new("ImageSource.I0.Sensor.Sharpness", "50"), new("Audio.A0.Enabled", "no"), new("SNMP.Enabled", "no"), new("SNMP.V2.Community", ""),
+                new("Network.HostName", "lobby-1"), new("Network.IPAddress", "10.0.0.48"), new("Network.DNSServer1", "10.0.0.1"), new("HTTPS.Enabled", "yes"),
+            ];
+            return System.Text.Encoding.UTF8.GetString(AdmConfigFile.Write(file with { Parameters = [.. file.Parameters, .. more] }));
         }
     }
 
@@ -341,7 +353,7 @@ internal static class Samples
         ctx.Answers[ProvisioningMethods.Policies] = _ => Serialize(Policies);
         ctx.Answers[ProvisioningMethods.VapixCommands] = _ => Serialize(Commands);
         ctx.Answers[ProvisioningMethods.StoreSecret] = _ => Serialize(new SecretReply(Guid.NewGuid()));
-        ctx.Answers[ProvisioningMethods.ReadConfigFile] = _ => Serialize(new ConfigFileReply("parking-p3265.json", ConfigExport));
+        ctx.Answers[ProvisioningMethods.ReadConfigFile] = _ => Serialize(new ConfigFileReply("parking-p3265.cfg", ConfigFile));
         ctx.Answers[ProvisioningMethods.StoreFile] = payload =>
         {
             var upload = ctx.Uploads.Single(u => u.Id == JsonSerializer.Deserialize<FileRequest>(payload!, Json)!.UploadId);

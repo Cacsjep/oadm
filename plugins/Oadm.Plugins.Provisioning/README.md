@@ -63,7 +63,7 @@ pane (stage 2). The Add devices page's Ready for provisioning is the host's (it 
 | Network | DNS servers and search domain first with Network settings (`oadm.network`; none: the camera keeps its domains), then the address with "Assign IP address" (`oadm.network.assign-ip`, static, the same DNS servers, domains kept): the next free address of the pool, taken under a lock (`TakeAddressAsync`); Keep writes no address; never the host name. A failed DNS write writes no address | "192.168.15.12 is in use, 192.168.15.13 assigned. DNS 10.0.0.1, search domain site.local.", "192.168.15.20 assigned." (its current address, written as a fixed one), "No free address left in the pool.", on failure both addresses |
 | Upgrade AXIS OS online | Upgrade AXIS OS (`oadm.firmware`) with `"latest":{"target"}` (own track, latest LTS, latest active; the task picks the version on axis.com for the camera's model), started with the tasks of the administrator who turned provisioning on (`INodeHost.StarterTasks`: their MyAxis sign-in, kept after Off; null after a restart). Only if older than: the device's version first, no task | "AXIS OS from axis.com installed.", "Already 12.6.95.", Error "Sign in to MyAxis." (no or expired sign-in), "Turn provisioning off and on again: ..." |
 | Upgrade AXIS OS from files | Upgrade AXIS OS with every file of the node as an upload (`files`), the task takes the file whose product is the camera's model; never a downgrade (`allowDowngrade` false: the task refuses an older file before any write, the node maps that refusal to Success) | "AXIS OS 12.6.95 installed.", "Already 12.6.95." (same or newer AXIS OS on the camera), Warning "No file for this model.", Error "The file is no longer on the server. Choose it again." |
-| Configuration | Import configuration (`oadm.device-config.import`) of the kept configuration file (the only source); the areas `param.v2`, `action-rules.v2`, `event-schedules.v2`; the task leaves out device-specific values; any model (the camera leaves out what it does not have) | "Parameters and action rules applied.", Warning with the task's list of values the camera refused, Error with the task's text |
+| Configuration | Configure devices (`ConfigureIds.Configure`, `oadm.device-config.configure`) with the payload of the kept `.cfg` (Create configuration file or ADM; the only source) for the ticked areas Parameters, Action rules (with their own schedules), Stream profiles: `AdmConfigApply.ForEveryDevice`, the dialog's payload for every setting of the file on several devices without the dangerous right (no address, per-device name, identity or connection parameter, no empty password). A file that is gone, no `.cfg`, not readable or refused by the payload check is an Error before any task. Any AXIS OS with `param.cgi`, any model: the task checks each value against the camera's own parameters | "Parameters, action rules and stream profiles applied.", Warning with the task's list of skipped values, Error with the task's text |
 | Users | One Users task (`oadm.users`, mode add) per account, the password from the vault in the payload; the task protects OADM's account | "Added op1 and view1.", Warning or Error per account ("op1: ...") |
 | Certificate | PKI's "Enable HTTPS" (`oadm.pki.https-enable`) with the chosen HTTPS certificate policy (`IIssuingPolicies` of PKI: chosen, and still in PKI, else an error), or "Set up EST" (`oadm.est.setup`); the clock is never confirmed (a clock that is behind refuses) | "Certificate installed, HTTPS on.", "EST enrollment set up.", Error "OADM PRO is not active. Nothing was changed." |
 | 802.1X | PKI's "Enable IEEE 802.1X" (`oadm.pki.dot1x-enable`) with the chosen IEEE 802.1X certificate policy (checked like Certificate's) | "802.1X on." or the task's message |
@@ -164,9 +164,12 @@ default) for nodes that need more than one task.
 - The profile editor (`ProfileEditorWindow`, `ProfileEditorViewModel`: the shared node canvas `NodeChainCanvas`, the +
   below every node, also below Set password; the node list `NodePicker`; one form per kind in `NodeForms`, the Network
   form with Keep or From a pool). Configuration's file preview (`ConfigPreviewViewModel`, below Continue on error): the
-  kept file read once per file through `readConfigFile`, parsed off the UI thread with Device configuration's file model
-  (`ConfigFile`, `ConfigIdentity`, `ConfigParameters`; the sources are compiled into the client part, a project reference
-  would copy the other plugin's Server.dll), rows per ticked area in one virtualized `ListBox.readOnlyList`.
+  kept file read once per file through `readConfigFile`, parsed off the UI thread with `AdmConfigFile` and listed from
+  `AdmConfigApply.ForEveryDevice`, the payload the run sends (Device configuration's `Shared/` sources `AdmConfigFile`,
+  `AdmConfigApply`, `ConfigureModels`, `ParamRules`, `DeviceConfigIds` are compiled into the server part, which the client
+  part references; a project reference would copy the other plugin's Server.dll); rows per ticked area in one virtualized
+  `ListBox.readOnlyList`. A file that is no configuration file or that the payload check refuses is the file field's
+  error (`FileFieldViewModel.SetContentError`).
 
 A new node kind gets an entry in `NodeForms` (its fields and their rules) and `NodeLook` (icon and colour).
 
@@ -178,7 +181,7 @@ page), `getStatus` (on, who, when, the active profile, `turnOnRefusal`, the runn
 `deleteProfile` (not the active one while on), `activateProfile`, `turnOn`, `turnOff`, `runAgain` (device ids: started and
 skipped), `getRun` (the last run of a camera with each node's name and result, and whether Run again would start),
 `vapixCommands`, `storeSecret` (the id only comes back), `storeFile` (an upload id of the caller), `readConfigFile` (a
-kept `.json` of at most 2 MB as text, for the editor's file preview; a read, right "show"). Event `status` (a
+kept `.cfg` of at most 1 MB as text, for the editor's file preview; a read, right "show"). Event `status` (a
 `StatusReply`, to users with "show") after On, Off and changes of the profiles. Nothing grows with the device count.
 
 ## Rights
@@ -201,7 +204,9 @@ a VAPIX command keep its field names); `NodeArgs.SettingsHelp` lists them per ki
 factory-new one like the server), the DHCP view and the address probe, a fake clock; `ServiceTests` (what starts a task,
 never twice, sites, leases, the steps, Set password stopping, Continue on error, Run again, restart), `NetworkNodeTests`
 (gates for the address lock, reservations, the pool's checks), every node with its task's outcomes (`Harness.Outcomes`,
-`Decide` per run), scripted VAPIX for Autofocus, the vault with a marking fake protector
+`Decide` per run; the Configuration node with the `.cfg` ADM wrote from an AXIS P3265-V, a fixture of Device
+configuration's tests), every task id a node starts found in a shipped plugin's source
+(`Every_task_a_node_starts_is_a_task_of_a_shipped_plugin`), scripted VAPIX for Autofocus, the vault with a marking fake protector
 (`VaultTests`), the conversion of older profiles (`ProfileCheckTests`); the Perf test takes addresses and starts the tasks
 of 2,000 new cameras with 100,000 devices. The client part (`Client/`): the editor, Provisioning management, the toolbar
 button and Run again against canned answers and the server's own profile check; headless screenshots of the editor,

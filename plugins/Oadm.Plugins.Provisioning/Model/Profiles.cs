@@ -166,12 +166,15 @@ public sealed record NetworkSettingsSettings(
     IReadOnlyList<string>? DnsServers = null,
     string? SearchDomain = null);
 
-/// <summary>Settings of Configuration: the configuration file of Export configuration (<c>fileId</c>) and the areas to apply.</summary>
+/// <summary>
+/// Settings of Configuration: the configuration file (.cfg) of Create configuration file or ADM (<c>fileId</c>) and the
+/// areas Configure devices applies of it (the action rules with the own schedules they use).
+/// </summary>
 public sealed record ConfigurationSettings(
     Guid? FileId = null,
     bool Parameters = true,
-    bool ActionRules = false,
-    bool Schedules = false);
+    bool ActionRules = true,
+    bool StreamProfiles = true);
 
 /// <summary>The role of an account on the camera.</summary>
 public enum CameraRole

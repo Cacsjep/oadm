@@ -185,7 +185,7 @@ nothing of this applies.
   names are masked.
 - **Other areas** (event rules, schedules, MQTT events, time zone, power, password policy): step Skipped "Needs AXIS OS
   12.5 or later"; the task ends with warnings "Event rules and schedules were not applied: this needs AXIS OS 12.5 or
-  later." (`ImportTexts.NotAppliedNote`, the last warning, so it is the task's message and Provisioning's node result).
+  later." (`ImportTexts.NotAppliedNote`, the last warning, so it is the task's message).
 - **Verify configuration** reads the written values back through `param.cgi` (not passwords); after connection settings
   an unreadable device is a warning.
 - `ImportOlderOsHardwareWriteTests` (`Category=HardwareWrite`, `OADM_CONFIG_OLDER_WRITE=<address>`): the real task with
@@ -240,6 +240,7 @@ strings and other names with "pass", "secret" or "community" are masked like pas
 | Files | ADM `.cfg` format 3 (`AdmConfigFile`): read from Axis' hardening template (Generic) and ADM files, written byte for byte like ADM (UTF-8 BOM, CRLF, `<ActivationTimeout />`). The format is known from files only, ADM itself is never decompiled. Passwords are written like ADM. No files ship with OADM. |
 | Create configuration file | Its own entry for one device: the same tabs, overview, Save. With an action rule every schedule of the device goes into the file, like ADM. The dialog runs no task (an agent's run: [AI agents](#ai-agents)). |
 | Storage | Files only: the server keeps no configuration file. |
+| Provisioning (decision 2026-11-21) | Provisioning's Configuration node takes a `.cfg` and runs this task with `AdmConfigApply.ForEveryDevice` (`Shared/`): the payload this dialog builds for every setting of the file on several devices without the dangerous right (the same `IsOffered`, `Values`, `UsedBy` the dialog uses; no address, per-device name, identity or connection parameter, no empty password). Each camera checks the values against its own parameters. |
 
 ### Device API (reads verified on AXIS P3265-V and M3215-LVE, AXIS OS 12.11.77)
 
@@ -358,7 +359,9 @@ page (`Tools/DeviceConfigToolsPlugin`, id `oadm.device-config`, area `config`), 
 - `Shared/` (also used by the client part): `ConfigFile` (parse, areas, `ConfigIdentity`, `ConfigFileNames`),
   `ImportPayload`, `DeviceConfigIds` (ids, texts, limits, `ModelNames`, `FirmwareVersions`), `ConfigureModels` (ids,
   payload, query answer, rules, schedules, profiles, `ScheduleRefs`), `ParamRules` (checks, hints, `DangerousParameters`),
-  `AdmConfigFile`.
+  `AdmConfigFile`, `AdmConfigApply` (which parameters are offered, a file's values, the rules' own schedules, the payload
+  for every setting of a file: shared by the Configure devices dialog and Provisioning's Configuration node, whose server
+  part compiles these sources).
 - `plugins/Oadm.Plugins.DeviceConfig.Client`: `DeviceConfigDialogs` (`ExportConfigDialog`, `ImportConfigDialog`),
   `ExportConfigViewModel` / `ExportConfigWindow`, `ImportConfigViewModel` (+ `ZipPlan`) / `ImportConfigWindow`;
   `Configure/`: `ConfigureDialogs` (`ConfigureDevicesDialog`, `CreateConfigFileDialog`, `WindowConfigureUi`: the

@@ -84,7 +84,7 @@ internal static class ProvisioningTools
             async (plugin, _, input, _, ct) =>
                 new SecretAnswer((await plugin.StoreSecretAsync(new SecretRequest(input.Secret(NodeSecret.Name)), ct).ConfigureAwait(false)).Id))
         .Change<FileArgs, FilePlan, FileAnswer>(
-            new("file_store", "Keep a node file", "Keeps a file the caller uploaded (an AXIS OS file, a configuration file of Export configuration) for a node; the answer is its file_id for the node's settings."),
+            new("file_store", "Keep a node file", "Keeps a file the caller uploaded (an AXIS OS file, a configuration file .cfg of Create configuration file or ADM) for a node; the answer is its file_id for the node's settings."),
             ProvisioningMethods.StoreFile,
             async (_, caller, input, ct) =>
                 await caller.Uploads.FindAsync(input.Args.UploadId?.Trim() ?? string.Empty, ct).ConfigureAwait(false) is { } upload
@@ -186,7 +186,7 @@ internal sealed record NodeArgs(
         + "upgrade_online: target (ownTrack, latestLts, latestActive), only_if_older_than (e.g. 12.6.95). "
         + "upgrade_files: files [{file_id, name}] (one AXIS OS file per model; never a downgrade). "
         + "date_time: time_zone, ntp_servers (none: from DHCP), nts, oadm_ntp (OADM's NTP server). "
-        + "configuration: file_id, parameters, action_rules, schedules. "
+        + "configuration: file_id (a .cfg of Create configuration file or ADM), parameters, action_rules (with the schedules they use), stream_profiles. "
         + "users: accounts [{name, role (viewer, operator, administrator), ptz, secret_id}]. "
         + "certificate: mode (policy, est), policy_id (none: the first HTTPS certificate policy). dot1x: none. "
         + "sd_card: format, encrypt, secret_id (the passphrase), max_age_days. autofocus: none. "

@@ -72,7 +72,7 @@ public static class ProvisioningMethods
 
     /// <summary>
     /// <see cref="IdRequest"/> (a kept file's id) -> <see cref="ConfigFileReply"/>: the text of a configuration file
-    /// (<c>.json</c>, at most 2 MB) for the editor's file preview of a Configuration node.
+    /// (<c>.cfg</c>, at most 1 MB) for the editor's file preview of a Configuration node.
     /// </summary>
     public const string ReadConfigFile = "readConfigFile";
 

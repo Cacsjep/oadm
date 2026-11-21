@@ -3,8 +3,7 @@
 Status: **redesign agreed 2026-11-19; built** (stage 1 the server, stage 2 the client: the Devices toolbar button,
 Provisioning management, the Add devices page, Run again in the tasks pane; the build of 2026-11-18, a rail page with its
 own camera list and flow view for cameras of OADM's DHCP server, is replaced by this). Open (ask the maintainer): Users
-and SD card take a typed password only; SD card formats with the camera's own file system and sets only the maximum age;
-Configuration applies parameters, action rules and schedules (a configuration file has no stream profiles).
+and SD card take a typed password only; SD card formats with the camera's own file system and sets only the maximum age.
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
@@ -117,12 +116,15 @@ the editor); a profile with errors is saved as a draft.
 
 **The file preview** (Configuration, once a file is chosen): below Continue on error, a separator and a read-only list
 (its own space below the separator, group headings in the theme's `groupHeader` style) of what the file holds of the
-ticked areas: per area a heading with its count ("Parameters, 1,117"), then the parameters as "Name = value" by their
-`param.cgi` names, the action rules and the schedules by name; an empty area says so ("The file has no action rules."). The parameters are exactly what Import configuration applies
-(`ConfigIdentity.Clean`); the ones it never writes (address, names, connection settings, time zone parameters) are left
-out and counted in one line ("66 more stay as they are on each camera: address, names and connection settings."). The
-list is virtualized and scrolls in itself; the file is read once per file (`readConfigFile`, the kept `.json` of at most
-2 MB) with a ring in place while it loads.
+ticked areas, exactly the payload the run sends (`AdmConfigApply.ForEveryDevice`): per area a heading with its count
+("Parameters, 22"), then the parameters as "Name = value" (passwords and secret names as dots), the action rules by name,
+the own schedules they use ("Schedules, 1", only when there are some) and the stream profiles by name; an empty area says
+so ("The file has no action rules."). The parameters Configure devices never writes on every camera (address, per-device
+names, identity and connection settings, empty passwords) are left out and counted in one line ("5 more stay as they are
+on each camera: address, names and connection settings."). The list is virtualized and scrolls in itself; the file is
+read once per file (`readConfigFile`, the kept `.cfg` of at most 1 MB) with a ring in place while it loads. A file that
+is no configuration file ("This is not an AXIS Device Manager configuration file.") or whose ticked areas Configure
+devices refuses ("Nothing to apply.") is an error directly below the file field, and Save stays off.
 
 Every step ends **Success**, **Warning** or **Error** with a plain message ("AXIS OS 12.6.95 installed.", "No file for
 this model."). A node that does not apply (no SD card, no remote focus) is Success with "Not needed: ...". Each node has
@@ -155,13 +157,14 @@ this model."). A node that does not apply (no SD card, no remote focus) is Succe
    model: Warning. Never a downgrade.
 5. **Date and time**: NTP servers (NTS where the camera has it), the ones DHCP gives or OADM's NTP server, and the time
    zone (the shared `TimeZoneChoice`).
-6. **Configuration**: a configuration file of Device configuration (Export configuration), the only source (decision
-   2026-11-21: no template camera); the areas to apply. Device-specific values (address, host name, certificates,
-   passwords) are never copied; a file of another model works (decision 2026-11-20): the camera leaves out what it does
-   not have, a value it refuses is a Warning listing it. A camera below AXIS OS 12.5 takes only the parameters, through `param.cgi` (Import
-   configuration's way, decision 2026-11-21); action rules and schedules are then a Warning ("Event rules and schedules
-   were not applied: this needs AXIS OS 12.5 or later."). The editor's panel shows what a chosen file holds (see "The
-   file preview").
+6. **Configuration**: a configuration file (`.cfg`, at most 1 MB) of Create configuration file or ADM, the only source
+   (decision 2026-11-21: no template camera, no `.json` of Export configuration), applied with Configure devices
+   (`oadm.device-config.configure`) on any AXIS OS with `param.cgi`. The areas: Parameters, Action rules (with the own
+   schedules they use) and Stream profiles, all on for a new node. The payload is the one the Configure devices dialog
+   builds for every setting of the file on several devices without the dangerous right (`AdmConfigApply`, shared with the
+   dialog): never the address, per-device names, identity or connection parameters, or an empty password. A file of
+   another model works: each camera checks the values against its own parameters and skips the ones it does not have
+   (Warning with the task's list). The editor's panel shows what a chosen file holds (see "The file preview").
 7. **Users**: more accounts (name, role, password from the credential list or typed); several Users nodes allowed;
    OADM's account never touched.
 8. **Certificate**: a certificate by the chosen PKI HTTPS certificate policy (clock check first), **or** EST
