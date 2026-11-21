@@ -33,6 +33,7 @@ public sealed partial class ConfigPreviewViewModel : ObservableObject
     private readonly BoolFieldViewModel _streamProfiles;
     private readonly INodeFormServices _services;
     private Guid? _loadedId;
+    private Guid? _shownFileId;
     private AdmConfig? _config;
     private int _version;
 
@@ -44,6 +45,7 @@ public sealed partial class ConfigPreviewViewModel : ObservableObject
         _actionRules = actionRules ?? throw new ArgumentNullException(nameof(actionRules));
         _streamProfiles = streamProfiles ?? throw new ArgumentNullException(nameof(streamProfiles));
         _services = services ?? throw new ArgumentNullException(nameof(services));
+        _shownFileId = file.FileId; // the file of a saved node keeps its saved areas
     }
 
     /// <summary>The rows: per ticked area its heading, its note and its entries.</summary>
@@ -97,6 +99,16 @@ public sealed partial class ConfigPreviewViewModel : ObservableObject
             }
 
             _config = config;
+            if (fileId != _shownFileId)
+            {
+                // A newly chosen file: tick only the areas it has something of (a file of parameters only ticks Parameters).
+                _shownFileId = fileId;
+                var all = AdmConfigApply.ForEveryDevice(config, new AdmConfigAreas(true, true, true), _file.FileName).Payload;
+                _parameters.IsChecked = all.Parameters.Count > 0;
+                _actionRules.IsChecked = all.Rules.Count > 0;
+                _streamProfiles.IsChecked = all.StreamProfiles.Count > 0;
+            }
+
             Build();
         }
         catch (FormatException ex)

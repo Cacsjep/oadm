@@ -114,7 +114,8 @@ one line), moved up and down, removed (except Set password) and configured in th
 a short help (`FormField.Help`). The profile is checked before it can be active (one error per node, the same check in
 the editor); a profile with errors is saved as a draft.
 
-**The file preview** (Configuration, once a file is chosen): below Continue on error, a separator and a read-only list
+**Choosing a file** ticks only the areas it has something of (a file of parameters only ticks Parameters); a saved
+node keeps its saved areas. **The file preview** (Configuration, once a file is chosen): below Continue on error, a separator and a read-only list
 (its own space below the separator, group headings in the theme's `groupHeader` style) of what the file holds of the
 ticked areas, exactly the payload the run sends (`AdmConfigApply.ForEveryDevice`): per area a heading with its count
 ("Parameters, 22"), then the parameters as "Name = value" (passwords and secret names as dots), the action rules by name,

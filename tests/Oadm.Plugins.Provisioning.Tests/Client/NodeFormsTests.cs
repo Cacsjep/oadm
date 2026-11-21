@@ -237,8 +237,6 @@ public sealed class NodeFormsTests
         ui.Files.Add("C:/cfg/parking-p3265.cfg");
         await node.Field<FileFieldViewModel>("fileId").ChooseCommand.ExecuteAsync(null);
         var areas = node.Fields.OfType<CheckGroupFieldViewModel>().Single();
-        areas.Items[1].IsChecked = false; // a change while the read waits reads nothing more
-        areas.Items[2].IsChecked = false;
         Assert.True(preview.IsShown);
         Assert.True(preview.IsLoading);
         Assert.False(preview.HasRows);
@@ -246,6 +244,9 @@ public sealed class NodeFormsTests
         await preview.LoadTask;
         Assert.False(preview.IsLoading);
         Assert.Equal(1, ctx.CallsOf(ProvisioningMethods.ReadConfigFile));
+        Assert.All(areas.Items, i => Assert.True(i.IsChecked)); // the file has all three areas
+        areas.Items[1].IsChecked = false; // a change of the areas reads nothing more
+        areas.Items[2].IsChecked = false;
 
         // Parameters only: what Configure devices applies on every camera (the payload of the run), the left-out ones in one line.
         var texts = Texts(preview);
@@ -288,6 +289,23 @@ public sealed class NodeFormsTests
         Assert.DoesNotContain(texts, t => t.Contains("s3cret", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task Configuration_ticks_only_the_areas_a_newly_chosen_file_has()
+    {
+        var (_, ctx, ui, node) = await AddAsync(NodeKind.Configuration);
+        ctx.Answers[ProvisioningMethods.ReadConfigFile] = _ => JsonSerializer.Serialize(new ConfigFileReply("50hz.cfg", Cfg(new DeviceConfig.AdmConfig
+        {
+            Parameters = [new("ImageSource.I0.CaptureFrequency", "50Hz")],
+        })), Samples.Json);
+        ui.Files.Add("C:/cfg/50hz.cfg");
+        await node.Field<FileFieldViewModel>("fileId").ChooseCommand.ExecuteAsync(null);
+        await node.Preview!.LoadTask;
+        var items = node.Fields.OfType<CheckGroupFieldViewModel>().Single().Items;
+        Assert.Equal([true, false, false], items.Select(i => i.IsChecked));
+        Assert.Equal(["# Parameters, 1", "ImageSource.I0.CaptureFrequency = 50Hz"], Texts(node.Preview));
+        Assert.Null(node.FirstError);
+    }
+
     private static string Cfg(DeviceConfig.AdmConfig file) => System.Text.Encoding.UTF8.GetString(DeviceConfig.AdmConfigFile.Write(file));
 
     [Fact]
@@ -300,6 +318,11 @@ public sealed class NodeFormsTests
         ui.Files.Add("C:/cfg/empty.cfg");
         await file.ChooseCommand.ExecuteAsync(null);
         await node.Preview!.LoadTask;
+        var items = node.Fields.OfType<CheckGroupFieldViewModel>().Single().Items;
+        Assert.Equal([false, false, true], items.Select(i => i.IsChecked)); // only what the file has
+        Assert.Equal(["# Stream profiles, 1", "Low"], Texts(node.Preview));
+        items[0].IsChecked = true; // ticked by hand: the empty areas say so
+        items[1].IsChecked = true;
         Assert.Equal(["# Parameters, 0", "- " + ProvisioningTexts.NoParameters, "# Action rules, 0", "- " + ProvisioningTexts.NoActionRules, "# Stream profiles, 1", "Low"],
             Texts(node.Preview));
         Assert.Null(file.Error);
