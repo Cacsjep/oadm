@@ -166,6 +166,17 @@ public sealed class ImportOlderOsTests
     }
 
     [Fact]
+    public async Task Only_identity_and_connection_values_say_there_is_nothing_to_import()
+    {
+        var export = (JsonObject)JsonNode.Parse(Fixtures.Export)!;
+        export["data"]!["param.v2"] = new JsonObject { ["Network"] = new JsonObject { ["HostName"] = "lobby-cam", ["IPAddress"] = "10.0.0.99" } };
+        var s = Setup([ConfigSections.Param], export.ToJsonString());
+        var ex = await Assert.ThrowsAsync<ConfigDeviceException>(() => RunAsync(s));
+        Assert.Equal(ImportConfigTask.NoneOnDevice, ex.Message);
+        Assert.Empty(s.Camera.Updates);
+    }
+
+    [Fact]
     public async Task A_device_without_the_parameter_api_changes_nothing()
     {
         var s = Setup(NodeSections, camera: c => c.ApiList = [new DeviceApi("basic-device-info", "1.3")]);

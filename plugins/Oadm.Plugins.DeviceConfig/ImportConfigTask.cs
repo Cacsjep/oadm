@@ -71,6 +71,9 @@ public sealed class ImportConfigTask : ITaskPlugin
     /// <summary>Why an area other than the parameters is skipped below AXIS OS 12.5.</summary>
     public const string OlderOsReason = "Needs AXIS OS 12.5 or later";
 
+    /// <summary>Nothing of the chosen areas is left to import on this device; no write.</summary>
+    public const string NoneOnDevice = "None of the settings in the file exist on this device. Nothing was changed.";
+
     /// <summary>
     /// Importing the connection settings (HTTPS, ports, login method, 802.1X, DNS, the network link: every parameter of
     /// <see cref="DangerousParameters"/>) is a right of its own.
@@ -300,7 +303,7 @@ public sealed class ImportConfigTask : ITaskPlugin
                 available = await ConfigApi.DiscoverAsync(ctx.Vapix, ct).ConfigureAwait(false);
                 if (!sections.Any(key => ConfigSections.IsKnown(key) && file.Data[ConfigSections.SourceKey(key)] is JsonObject && available.Contains(ConfigSections.SourceKey(key))))
                 {
-                    throw new ConfigDeviceException("None of the settings in the file exist on this device. Nothing was changed.");
+                    throw new ConfigDeviceException(NoneOnDevice);
                 }
             }
 
@@ -425,12 +428,16 @@ public sealed class ImportConfigTask : ITaskPlugin
             throw new ConfigDeviceException(needs);
         }
 
-        var names = file.Data[ConfigSections.Param] is JsonObject param
-            ? sections.Where(IsParameterArea).SelectMany(key => ConfigParameters.Flatten(ConfigIdentity.Clean(key, param))).Select(p => p.Name).ToList()
-            : [];
-        if (names.Count == 0)
+        if (file.Data[ConfigSections.Param] is not JsonObject param || !sections.Any(IsParameterArea))
         {
             throw new ConfigDeviceException(needs);
+        }
+
+        // Only identity and connection values (connection settings not chosen): nothing to import, whatever the AXIS OS.
+        var names = sections.Where(IsParameterArea).SelectMany(key => ConfigParameters.Flatten(ConfigIdentity.Clean(key, param))).Select(p => p.Name).ToList();
+        if (names.Count == 0)
+        {
+            throw new ConfigDeviceException(NoneOnDevice);
         }
 
         var definitions = new Dictionary<string, ParamDefinition>(StringComparer.Ordinal);

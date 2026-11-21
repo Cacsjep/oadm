@@ -171,7 +171,9 @@ nothing of this applies.
   than 12.5: they take only the network and system settings." when other areas are chosen; the dialog shows the same
   note.
 - **Check compatibility**, before any write: a fresh API list with `param-cgi` and parameters among the chosen areas,
-  else "Needs AXIS OS 12.5 or later (this device has 11.9.65). Nothing was changed."; then the device's definitions of the
+  else "Needs AXIS OS 12.5 or later (this device has 11.9.65). Nothing was changed."; only identity and connection values
+  left (connection settings not chosen): "None of the settings in the file exist on this device. Nothing was changed.";
+  then the device's definitions of the
   groups in the file (`ParamDefinitionsReader`, only those top-level groups).
 - **Names** (`ConfigParameters.Flatten`): groups joined with ".", a collection item named by its `groupId` without
   "Collection" ("ImageCollection" item I0 -> `Image.I0.Appearance.Compression`), a list of plain values one parameter
