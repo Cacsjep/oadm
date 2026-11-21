@@ -57,12 +57,13 @@ query `listOverlays`). No device count: only "7 of 250 cameras are not supported
 
 A table of at most 8 text overlays, one line each with the column headers once above (no card per overlay, no heading
 that repeats the title bar): Text (one line high, keeps line breaks, a thin 4 px scroll bar from the theme under a long
-text; the icon-only button Insert a value adds a modifier at the end of the text: date, time, day of the week, date and time,
-camera name, IP address, MAC address, frame rate, bitrate, dynamic text 1 to 16), Position (Top left, Top, Top right,
-Bottom left, Bottom, Bottom right; Custom position only for an overlay read from a camera with its own place, which is
-kept when copied), Size (optional, the camera's default when empty), Text colour (Black, White, Red; a camera's own transparent
-text only on its row), Background, Outline (Black, White, Red, Transparent, Semi-transparent; new overlays white on black). Every error sits below its field; the list's own error
-("Add an overlay.") below the list. The window is 1180 px wide and takes the height of its content.
+text; the icon-only button Insert a value adds a modifier at the end of the text: date, time, day of the week, date and
+time, camera name, IP address, MAC address, frame rate, bitrate, dynamic text 1 to 16), Position (Top left, Top, Top
+right, Bottom left, Bottom, Bottom right; Custom position only for an overlay read from a camera with its own place,
+which is kept when copied), Size (optional, the camera's default when empty), Text colour (Black, White, Red; a camera's
+own transparent text only on its row), Background, Outline (Black, White, Red, Transparent, Semi-transparent; new
+overlays white on black). Every error sits below its field; the list's own error ("Add an overlay.") below the list. The
+window is 1180 px wide and takes the height of its content.
 
 ## AI agents
 
