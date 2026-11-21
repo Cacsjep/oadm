@@ -5,7 +5,8 @@
              xmlns:log="using:Oadm.Client.Logging"
              x:Class="Oadm.Client.Logging.LogsView"
              x:DataType="log:LogsViewModel">
-  <!-- Logs page: the switch Server | Client | Audit on top of each card; Server and Client page 200 entries at a time. -->
+  <!-- Logs page: the switch Server | Client | Audit on top of each card; each tab pages 200 entries at a time, has its date
+       range left of the search and exports what it shows (Export logs). -->
   <UserControl.Resources>
     <ControlTemplate x:Key="LogSwitch" TargetType="ContentControl">
       <Border Classes="segmented" IsVisible="{Binding ShowSwitch}" x:DataType="log:LogsViewModel">
@@ -26,18 +27,22 @@
     <!-- Server log (permission "See the server log") -->
     <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding IsServerTab}">
       <Grid RowDefinitions="Auto,Auto,*,Auto">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="16">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="16">
           <ContentControl Grid.Column="0" Template="{StaticResource LogSwitch}" />
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
             <TextBlock Classes="fieldLabel" Text="Level" />
             <ComboBox ItemsSource="{x:Static log:LogsViewModel.Levels}" SelectedItem="{Binding Server.SelectedLevel}" MinWidth="200" />
           </StackPanel>
           <ui:ToolbarButton Grid.Column="2" Text="Refresh" IconKey="refresh" Command="{Binding Server.RefreshCommand}" />
-          <ui:SearchBox Grid.Column="4" Text="{Binding Server.SearchText}" />
+          <ui:ExportButton Grid.Column="3" x:Name="ServerExportButton" CsvCommand="{Binding ServerExport.CsvCommand}" PdfCommand="{Binding ServerExport.PdfCommand}"
+                           IsVisible="{Binding CanExport}" IsEnabled="{Binding ServerExport.IsIdle, FallbackValue=False}" />
+          <ui:DateRangeButton Grid.Column="5" Range="{Binding Server.Range}" />
+          <ui:SearchBox Grid.Column="6" Text="{Binding Server.SearchText}" />
         </Grid>
 
         <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="2,14,0,8">
           <ui:ProgressRow Text="Reading the server log" IsVisible="{Binding Server.IsLoading}" />
+          <log:LogExportProgress DataContext="{Binding ServerExport}" />
           <log:LogPager Grid.Column="1" DataContext="{Binding Server}" />
         </Grid>
 
@@ -70,17 +75,21 @@
     <!-- Client log -->
     <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding IsClientTab}">
       <Grid RowDefinitions="Auto,Auto,*">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="16">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="16">
           <ContentControl Grid.Column="0" Template="{StaticResource LogSwitch}" />
           <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
             <TextBlock Classes="fieldLabel" Text="Level" />
             <ComboBox ItemsSource="{x:Static log:LogsViewModel.Levels}" SelectedItem="{Binding SelectedLevel}" MinWidth="200" />
           </StackPanel>
-          <ui:SearchBox Grid.Column="3" Text="{Binding SearchText}" />
+          <ui:ExportButton Grid.Column="2" x:Name="ClientExportButton" CsvCommand="{Binding ClientExport.CsvCommand}" PdfCommand="{Binding ClientExport.PdfCommand}"
+                           IsVisible="{Binding CanExport}" IsEnabled="{Binding ClientExport.IsIdle, FallbackValue=False}" />
+          <ui:DateRangeButton Grid.Column="4" Range="{Binding Range}" />
+          <ui:SearchBox Grid.Column="5" Text="{Binding SearchText}" />
         </Grid>
 
         <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="2,14,0,8">
-          <TextBlock Classes="secondary" Text="{Binding StatusLine}" VerticalAlignment="Center" />
+          <TextBlock Classes="secondary" Text="{Binding StatusLine}" VerticalAlignment="Center" IsVisible="{Binding !ClientExport.IsBusy, FallbackValue=True}" />
+          <log:LogExportProgress DataContext="{Binding ClientExport}" />
           <log:LogPager Grid.Column="1" />
         </Grid>
 
@@ -105,10 +114,13 @@
     <!-- Audit log of the server (Admin only) -->
     <Border Grid.Row="1" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}" IsVisible="{Binding IsAuditTab}">
       <Grid RowDefinitions="Auto,Auto,*">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="16">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" ColumnSpacing="16">
           <ContentControl Grid.Column="0" Template="{StaticResource LogSwitch}" />
           <ui:ToolbarButton Grid.Column="1" Text="Refresh" IconKey="refresh" Command="{Binding Audit.RefreshCommand}" />
-          <ui:SearchBox Grid.Column="3" Text="{Binding Audit.SearchText}" />
+          <ui:ExportButton Grid.Column="2" x:Name="AuditExportButton" CsvCommand="{Binding AuditExport.CsvCommand}" PdfCommand="{Binding AuditExport.PdfCommand}"
+                           IsVisible="{Binding CanExport}" IsEnabled="{Binding AuditExport.IsIdle, FallbackValue=False}" />
+          <ui:DateRangeButton Grid.Column="4" Range="{Binding Audit.Range}" />
+          <ui:SearchBox Grid.Column="5" Text="{Binding Audit.SearchText}" />
         </Grid>
 
         <StackPanel Grid.Row="1" Spacing="6" Margin="2,14,0,8">
@@ -116,7 +128,13 @@
           <ui:StatusChip Text="{Binding Audit.LastUpdate}" Detail="{Binding Audit.LastUpdateDetail}" IsOk="{Binding Audit.LastUpdateOk}"
                          IsError="{Binding Audit.LastUpdateFailed}" MaxLines="2"
                          IsVisible="{Binding Audit.LastUpdate, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-          <TextBlock Classes="secondary" Text="{Binding Audit.StatusLine}" />
+          <Grid ColumnDefinitions="*,Auto">
+            <ui:ProgressRow Text="Reading the audit log" IsVisible="{Binding Audit.IsLoading}" />
+            <TextBlock Classes="secondary" Text="{Binding Audit.StatusLine}" VerticalAlignment="Center"
+                       IsVisible="{Binding !Audit.IsLoading}" />
+            <log:LogExportProgress DataContext="{Binding AuditExport}" />
+            <log:LogPager Grid.Column="1" DataContext="{Binding Audit}" />
+          </Grid>
         </StackPanel>
 
         <!-- wrapRows: a long detail (the outcome of a task run with its failures) wraps to at most three lines -->

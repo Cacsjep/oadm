@@ -426,7 +426,7 @@ public sealed class SelfUpdateTests
         var api = Substitute.For<IOadmApi>();
         var github = new TaskCompletionSource<UpdateInfo>();
         api.GetUpdateAsync(Arg.Any<CancellationToken>()).Returns(github.Task);
-        api.ListAuditAsync(Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(new AuditList { TotalCount = 7 });
+        api.ListAuditAsync(Arg.Any<ListAuditRequest>(), Arg.Any<CancellationToken>()).Returns(new AuditList { TotalCount = 7, MatchCount = 7 });
         var audit = new Logging.AuditLogViewModel(api);
 
         var refresh = audit.RefreshAsync();
@@ -444,7 +444,7 @@ public sealed class SelfUpdateTests
         var info = Server();
         info.Last = Record("failed", UpdateTexts.InstallerBusy);
         api.GetUpdateAsync(Arg.Any<CancellationToken>()).Returns(info);
-        api.ListAuditAsync(Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(new AuditList());
+        api.ListAuditAsync(Arg.Any<ListAuditRequest>(), Arg.Any<CancellationToken>()).Returns(new AuditList());
         var audit = new Logging.AuditLogViewModel(api);
 
         await audit.RefreshAsync();

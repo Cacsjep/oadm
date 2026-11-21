@@ -147,11 +147,32 @@ lines (exceptions) belong to the entry before, read shared while the logger writ
 500 a page), 200 entries a page (`ServerLogViewModel`), level filter and search on the server, Refresh, grid Time, Level
 chip, Source (the class without namespace), Message (tooltip: source, message, exception), read again when the page
 opens. **Client**: this client's log of the session (`LogStore`, newest 10,000, live), level filter and search, 200 a page.
-Both page with the shared `Logging/LogPager` ("Entries 201 to 400", Newest, Newer, Older); a live client entry never moves an
-older page. **Audit** (administrators): the audit log ([security.md](security.md)). Every failed event rule action is also a server log Warning ("Event rule
+All three page with the shared `Logging/LogPager` ("Entries 201 to 400", Newest, Newer, Older); a live client entry never moves an
+older page. **Audit** (administrators): the audit log ([security.md](security.md)), 200 entries a page by the entries' ids
+(`before_id`: a new entry never moves an older page), "1,234 of 200,000 entries"; search and date range run on the server
+(`AuditService.List` with `not_before`, `not_after`, `search` and `match_count`), so entries older than any page are found.
+
+**Date range and export** (every tab): the shared `ui:DateRangeButton` left of the search (`DateRangeChoice`: Last hour,
+Today, Last 24 hours, Last 7 days, All, Custom with From and To, date and 24-hour time; To after From, the error directly
+below To; a preset is resolved when the tab reads, so Refresh moves "Last hour"; not kept: All at each start). Server and
+Audit send the range as instants (Server: `not_before` / `not_after`, ISO 8601 UTC; the reader stops at the first entry
+older than From and skips files by the date in their name, ±1 day); Client filters its memory. **Export** (`ui:ExportButton`,
+menu CSV / PDF; permission `logs.export` "Export logs" besides the right to see the tab's log, hidden without it): what the
+tab shows (range, search, level), at most the newest 5,000 entries (`LogExportLimits.MaxEntries`, grid order). The client
+counts first (Audit: `match_count`; Server: a read at offset 5,000, the log has no total); more than 5,000 asks in a
+`ui:MessageWindow` "The export holds the newest 5,000 of 12,345 entries. Narrow the dates or the search to get the rest."
+(Server: "of more than 5,000"), buttons "Export 5,000 entries" and Cancel; then the save dialog
+(`oadm-<server|client|audit>-yyyy-MM-dd.csv` or `.pdf`); while the file is made the button is off and the tab's progress
+row shows "Making the PDF file" with Cancel (`Logging/LogExportProgress`; Cancel ends the stream and removes the cut file).
+The server writes every file (`LogExportService`, [grpc.md](grpc.md)): Server and Audit from the same filter, Client from
+the rows the client sends (it alone has them; the client has no PDF library, so one writer, one permission check and one
+audit entry "Exported log" stay on the server). CSV: UTF-8 with BOM, the grid's columns with times in the user's time
+zone plus "Time (ISO 8601)" with the offset. PDF: A4 landscape, Roboto embedded, a header with the log, filter, range,
+server name, export time and user, the grid's columns, page numbers. `LogExportViewModel` per tab. Every failed event rule action is also a server log Warning ("Event rule
 X: action Y on 10.0.0.48 failed: <reason>", with the exception when it was unexpected), a skipped one and a rule held back by
 its limits Information (`ActionRunner.Write`, `RuleEngine.LogRule`). Fake mode: 650 sample entries
-(`FakeOadmApi.ServerLog.cs`). Tests: `tests/Oadm.Server.Tests/ServerLogTests`, `tests/Oadm.Client.Tests/LogsPageTests`,
+(`FakeOadmApi.ServerLog.cs`; the filters and exports in `FakeOadmApi.LogExport.cs`). Tests: `tests/Oadm.Server.Tests/ServerLogTests`,
+`tests/Oadm.Client.Tests/LogsPageTests`, `LogsExportTests`,
 `RuleEngineTests.ActionsRunInOrderAndAFailureDoesNotStopTheNext`.
 
 Device grid columns, default order (Address first: installers find a device by address and model; the column chooser

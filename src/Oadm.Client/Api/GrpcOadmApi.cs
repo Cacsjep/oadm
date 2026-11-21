@@ -144,6 +144,18 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<AuditList> ListAuditAsync(int limit, CancellationToken ct) =>
         await C.Audit.ListAsync(new ListAuditRequest { Limit = limit }, cancellationToken: ct);
 
+    public async Task<AuditList> ListAuditAsync(ListAuditRequest request, CancellationToken ct) =>
+        await C.Audit.ListAsync(request, cancellationToken: ct);
+
+    public Task<Oadm.Sdk.Plugins.PluginDownload> ExportServerLogAsync(ExportServerLogRequest request, CancellationToken ct) =>
+        OpenDownloadAsync(C.LogExport.ExportServerLog(request, cancellationToken: CancellationToken.None), ct);
+
+    public Task<Oadm.Sdk.Plugins.PluginDownload> ExportAuditAsync(ExportAuditRequest request, CancellationToken ct) =>
+        OpenDownloadAsync(C.LogExport.ExportAudit(request, cancellationToken: CancellationToken.None), ct);
+
+    public Task<Oadm.Sdk.Plugins.PluginDownload> ExportClientLogAsync(ExportClientLogRequest request, CancellationToken ct) =>
+        OpenDownloadAsync(C.LogExport.ExportClientLog(request, cancellationToken: CancellationToken.None), ct);
+
     public void Dispose() => _channel.Dispose();
 
     private (GrpcChannel Channel, Clients Clients) Open(string address)
@@ -591,6 +603,9 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<ServerLogPage> ListServerLogAsync(int offset, int limit, string minLevel, string search, CancellationToken ct) =>
         await C.ServerLog.ListAsync(new ListServerLogRequest { Offset = offset, Limit = limit, MinLevel = minLevel, Search = search }, cancellationToken: ct);
 
+    public async Task<ServerLogPage> ListServerLogAsync(ListServerLogRequest request, CancellationToken ct) =>
+        await C.ServerLog.ListAsync(request, cancellationToken: ct);
+
     public async Task<PluginPackageList> ListPluginPackagesAsync(CancellationToken ct) =>
         await C.Plugins.ListPackagesAsync(new Empty(), cancellationToken: ct);
 
@@ -909,6 +924,7 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public AuditService.AuditServiceClient Audit { get; } = new(channel);
 
         public ServerLogService.ServerLogServiceClient ServerLog { get; } = new(channel);
+        public LogExportService.LogExportServiceClient LogExport { get; } = new(channel);
         public DeviceService.DeviceServiceClient Devices { get; } = new(channel);
         public DiscoveryService.DiscoveryServiceClient Discovery { get; } = new(channel);
         public AddDevicesService.AddDevicesServiceClient AddDevices { get; } = new(channel);

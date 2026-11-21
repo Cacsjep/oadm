@@ -27,6 +27,15 @@ The **Logs** page shows them without opening a file:
 
 ![The server log on the Logs page](../../../assets/screens/client-logs-server.png)
 
+Each tab has a date range left of the search: **Last hour**, **Today**, **Last 24 hours**, **Last 7 days**, **All**, or
+**Custom** with a start and an end. OADM starts with **All**.
+
+![The date range of the Logs page](../../../assets/screens/logs-date-range.png)
+
+**Export** saves what the tab shows, with its dates, search and level, as a CSV or PDF file. A file holds at most the
+newest 5,000 entries; with more, OADM asks first, so narrow the dates or the search to get the rest. Exporting needs
+**Export logs** (Permissions page, roles) and the right to see that log. Every export is in the audit log.
+
 ## Common problems
 
 **The client cannot connect ("Cannot reach the server").**

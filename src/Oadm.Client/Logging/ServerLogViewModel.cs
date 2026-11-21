@@ -5,7 +5,9 @@ using CommunityToolkit.Mvvm.Input;
 
 using Oadm.Client.Api;
 using Oadm.Client.Infrastructure;
+using Oadm.Contracts.Logging;
 using Oadm.Contracts.V1;
+using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Client.Logging;
 
@@ -44,14 +46,25 @@ public sealed record ServerLogRow(DateTimeOffset Time, string Level, string Sour
 
 /// <summary>
 /// The Server tab of the Logs page: the server's log files, 200 entries a page, newest first
-/// (ServerLogService.List, permission "See the server log"). Level filter and search go to the server; Refresh and
-/// Newest read the first page again.
+/// (ServerLogService.List, permission "See the server log"). Level filter, search and date range go to the server; Refresh
+/// and Newest read the first page again.
 /// </summary>
-public sealed partial class ServerLogViewModel(IOadmApi api) : ObservableObject, ILogPages
+public sealed partial class ServerLogViewModel : ObservableObject, ILogPages
 {
     public const int PageSize = 200;
 
+    private readonly IOadmApi _api;
     private CancellationTokenSource? _load;
+
+    public ServerLogViewModel(IOadmApi api, TimeProvider? time = null)
+    {
+        _api = api ?? throw new ArgumentNullException(nameof(api));
+        Range = new DateRangeChoice(time);
+        Range.Changed += (_, _) => _ = LoadAsync(0);
+    }
+
+    /// <summary>The date range left of the search (All at each start).</summary>
+    public DateRangeChoice Range { get; }
 
     public RangeObservableCollection<ServerLogRow> Entries { get; } = [];
 
@@ -125,8 +138,10 @@ public sealed partial class ServerLogViewModel(IOadmApi api) : ObservableObject,
             }
 
             IsLoading = true;
-            var reply = await api.ListServerLogAsync(
-                Math.Max(0, page) * PageSize, PageSize, LevelName(SelectedLevel.MinimumRank), SearchText.Trim(), load.Token).ConfigureAwait(true);
+            var request = Filter();
+            request.Offset = Math.Max(0, page) * PageSize;
+            request.Limit = PageSize;
+            var reply = await _api.ListServerLogAsync(request, load.Token).ConfigureAwait(true);
             if (load.IsCancellationRequested)
             {
                 return;
@@ -158,10 +173,45 @@ public sealed partial class ServerLogViewModel(IOadmApi api) : ObservableObject,
         }
     }
 
+    /// <summary>The tab's filter: level, search and the date range as instants of now (offset and limit unset).</summary>
+    public ListServerLogRequest Filter()
+    {
+        var (from, to) = Range.Resolve();
+        return new ListServerLogRequest
+        {
+            MinLevel = LevelName(SelectedLevel.MinimumRank),
+            Search = SearchText.Trim(),
+            NotBefore = Iso(from),
+            NotAfter = Iso(to),
+        };
+    }
+
+    /// <summary>How many entries an export of the tab holds: the server log has no total, so it reads past 5,000.</summary>
+    public async Task<LogExportCount> CountForExportAsync(CancellationToken ct)
+    {
+        var request = Filter();
+        request.Offset = LogExportLimits.MaxEntries;
+        request.Limit = 1;
+        var past = await _api.ListServerLogAsync(request, ct).ConfigureAwait(true);
+        if (past.Entries.Count > 0)
+        {
+            return new LogExportCount(Any: true, OverLimit: true, Total: null);
+        }
+
+        // At most 5,000: the first entry says whether there is any.
+        request.Offset = 0;
+        var first = await _api.ListServerLogAsync(request, ct).ConfigureAwait(true);
+        return new LogExportCount(first.Entries.Count > 0, OverLimit: false, Total: null);
+    }
+
+    private static string Iso(DateTimeOffset? time) =>
+        time is { } t ? t.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture) : string.Empty;
+
     /// <summary>Forgets the entries (the role lost the permission).</summary>
     public void Clear()
     {
         _load?.Cancel();
+        Range.Reset();
         Entries.ReplaceAll([]);
         Page = 0;
         HasMore = false;

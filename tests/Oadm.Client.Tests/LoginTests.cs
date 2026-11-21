@@ -416,9 +416,13 @@ public sealed class LoginTests
     {
         var (session, logs, audit) = await AuditOfFiveThousandAsync();
 
+        // The search goes to the server; the tab shows its first page of 200 and the count.
         audit.SearchText = "anna";
-        Assert.Equal(500 + 4, audit.Entries.Count); // + the four sample entries of anna.berg
-        Assert.StartsWith("504 match", audit.StatusLine, StringComparison.Ordinal);
+        await audit.LoadAsync(0);
+        Assert.Equal(200, audit.Entries.Count);
+        Assert.Equal(500 + 4, audit.MatchCount); // + the four sample entries of anna.berg
+        Assert.Equal("504 of 5,016 entries", audit.StatusLine);
+        Assert.Equal("Entries 1 to 200 of 504", audit.PageText);
 
         session.SignIn(new UserInfo { UserName = "tech1", Role = UserRole.Operator }, "fake");
         Assert.False(logs.CanSeeAudit);
@@ -432,10 +436,11 @@ public sealed class LoginTests
     {
         var (_, _, audit) = await AuditOfFiveThousandAsync();
 
-        var watch = Stopwatch.StartNew();
         audit.SearchText = "anna";
+        var watch = Stopwatch.StartNew();
+        await audit.LoadAsync(0);
         watch.Stop();
-        Assert.Equal(504, audit.Entries.Count);
+        Assert.Equal(504, audit.MatchCount);
         Assert.True(watch.ElapsedMilliseconds < 1000, $"filter took {watch.ElapsedMilliseconds} ms");
     }
 
@@ -460,7 +465,7 @@ public sealed class LoginTests
 
         await logs.ShowAuditCommand.ExecuteAsync(null);
         Assert.True(logs.IsAuditTab);
-        Assert.Equal(5016, audit.Entries.Count); // + the fake's sample entries
+        Assert.Equal(AuditLogViewModel.PageSize, audit.Entries.Count); // a page of the 5,016 (+ the fake's sample entries)
         Assert.Equal("5,016 entries", audit.StatusLine);
         Assert.True(audit.Entries[0].Id > audit.Entries[1].Id);
         return (session, logs, audit);

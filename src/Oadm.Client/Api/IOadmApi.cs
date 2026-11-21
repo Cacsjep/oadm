@@ -71,9 +71,25 @@ public interface IOadmApi
     /// <summary>One page of the server's log, newest first; min_level "Information", "Warning", "Error" or empty.</summary>
     Task<ServerLogPage> ListServerLogAsync(int offset, int limit, string minLevel, string search, CancellationToken ct);
 
+    /// <summary>One page of the server's log with the whole filter (also the date range: not_before, not_after).</summary>
+    Task<ServerLogPage> ListServerLogAsync(ListServerLogRequest request, CancellationToken ct);
+
     // AuditService (Admin only)
     /// <summary>The newest <paramref name="limit"/> audit entries, newest first, and the total count.</summary>
     Task<AuditList> ListAuditAsync(int limit, CancellationToken ct);
+
+    /// <summary>One page of the audit log with the filter (range, search) and the cursor before_id; the total and the match count.</summary>
+    Task<AuditList> ListAuditAsync(ListAuditRequest request, CancellationToken ct);
+
+    // LogExportService ("Export logs"; docs/spec/main-window.md "Logs page"): the file of what a tab shows, the newest 5,000 entries
+    /// <summary>The server log of the filter as a CSV or PDF file (also "See the server log").</summary>
+    Task<Oadm.Sdk.Plugins.PluginDownload> ExportServerLogAsync(ExportServerLogRequest request, CancellationToken ct);
+
+    /// <summary>The audit log of the filter as a CSV or PDF file (Administrator only).</summary>
+    Task<Oadm.Sdk.Plugins.PluginDownload> ExportAuditAsync(ExportAuditRequest request, CancellationToken ct);
+
+    /// <summary>The rows of the Client tab as a CSV or PDF file; the server writes it.</summary>
+    Task<Oadm.Sdk.Plugins.PluginDownload> ExportClientLogAsync(ExportClientLogRequest request, CancellationToken ct);
 
     // DeviceService
     Task<IReadOnlyList<Device>> ListDevicesAsync(CancellationToken ct);

@@ -5,7 +5,15 @@ using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Oadm.Client.Api;
+using Oadm.Client.Dialogs;
 using Oadm.Client.Infrastructure;
+using Oadm.Contracts.Logging;
+using Oadm.Contracts.V1;
+using Oadm.Sdk.Client.Controls;
+
+using HostPermissionKeys = Oadm.Sdk.Plugins.HostPermissionKeys;
+using Timestamp = Google.Protobuf.WellKnownTypes.Timestamp;
 
 namespace Oadm.Client.Logging;
 
@@ -25,8 +33,9 @@ public enum LogsTab
 
 /// <summary>
 /// Logs page: the switch Server (the server's log files, permission "See the server log"), Client (this client's log of
-/// the session) and Audit (administrators). Server and Client show 200 entries a page, newest first, with the level filter
-/// and the search. The Server tab comes first when the role may see it.
+/// the session) and Audit (administrators). Each tab shows 200 entries a page, newest first, with its date range and search
+/// (Server and Client also the level filter), and exports what it shows as a CSV or PDF file with the permission "Export
+/// logs" (<see cref="LogExportViewModel"/>). The Server tab comes first when the role may see it.
 /// </summary>
 public sealed partial class LogsViewModel : ObservableObject, ILogPages
 {
@@ -34,17 +43,42 @@ public sealed partial class LogsViewModel : ObservableObject, ILogPages
 
     private readonly ObservableCollection<LogEntry> _source;
     private readonly Shell.UserSession? _session;
+    private readonly TimeProvider _time;
     private List<LogEntry> _matching = [];
     private bool _chosen;
+    private DateTime? _from;
+    private DateTime? _to;
 
-    public LogsViewModel(LogStore store, AuditLogViewModel? audit = null, Shell.UserSession? session = null, ServerLogViewModel? server = null)
+    public LogsViewModel(LogStore store, AuditLogViewModel? audit = null, Shell.UserSession? session = null, ServerLogViewModel? server = null,
+        IDialogService? dialogs = null, IOadmApi? api = null, TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(store);
         _source = store.Entries;
         Audit = audit;
         Server = server;
         _session = session;
+        time ??= TimeProvider.System;
+        _time = time;
+        Range = new DateRangeChoice(time);
+        Range.Changed += (_, _) => Rebuild(firstPage: true);
         SelectedLevel = Levels[0];
+        if (dialogs is not null && api is not null)
+        {
+            ClientExport = new LogExportViewModel(LogExportLimits.ClientLog, "Export client log", dialogs, time,
+                _ => Task.FromResult(LogExportCount.Of(_matching.Count)), (options, ct) => api.ExportClientLogAsync(ClientExportRequest(options), ct), () => RangeName(Range));
+            if (server is not null)
+            {
+                ServerExport = new LogExportViewModel(LogExportLimits.ServerLog, "Export server log", dialogs, time, server.CountForExportAsync,
+                    (options, ct) => api.ExportServerLogAsync(new ExportServerLogRequest { Filter = server.Filter(), Options = options }, ct), () => RangeName(server.Range));
+            }
+
+            if (audit is not null)
+            {
+                AuditExport = new LogExportViewModel(LogExportLimits.AuditLog, "Export audit log", dialogs, time, audit.CountForExportAsync,
+                    (options, ct) => api.ExportAuditAsync(new ExportAuditRequest { Filter = audit.Filter(), Options = options }, ct), () => RangeName(audit.Range));
+            }
+        }
+
         _source.CollectionChanged += OnSourceChanged;
         if (session is not null)
         {
@@ -76,6 +110,21 @@ public sealed partial class LogsViewModel : ObservableObject, ILogPages
 
     /// <summary>More than the client log: the switch shows.</summary>
     public bool ShowSwitch => CanSeeServer || CanSeeAudit;
+
+    /// <summary>The Export button shows: the role has "Export logs" (besides the right to see the tab's log).</summary>
+    public bool CanExport => ClientExport is not null && (_session?.Has(HostPermissionKeys.LogsExport) ?? false);
+
+    /// <summary>The export of the Server tab; null without the server log or the dialogs (tests).</summary>
+    public LogExportViewModel? ServerExport { get; }
+
+    /// <summary>The export of the Client tab: the server writes the file of the rows the tab shows.</summary>
+    public LogExportViewModel? ClientExport { get; }
+
+    /// <summary>The export of the Audit tab.</summary>
+    public LogExportViewModel? AuditExport { get; }
+
+    /// <summary>The date range of the Client tab.</summary>
+    public DateRangeChoice Range { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsServerTab), nameof(IsClientTab), nameof(IsAuditTab))]
@@ -139,6 +188,7 @@ public sealed partial class LogsViewModel : ObservableObject, ILogPages
         OnPropertyChanged(nameof(CanSeeAudit));
         OnPropertyChanged(nameof(CanSeeServer));
         OnPropertyChanged(nameof(ShowSwitch));
+        OnPropertyChanged(nameof(CanExport));
         if (!CanSeeAudit && IsAuditTab)
         {
             Tab = LogsTab.Client;
@@ -236,8 +286,41 @@ public sealed partial class LogsViewModel : ObservableObject, ILogPages
 
     internal static int Rank(string level) => Oadm.Contracts.Logging.LogFileReader.Rank(level);
 
+    /// <summary>"Last 24 hours" for the file's header; empty for All and Custom (the file shows the times).</summary>
+    private static string RangeName(DateRangeChoice range) =>
+        range.Preset is DateRangePreset.All or DateRangePreset.Custom ? string.Empty : range.Text;
+
+    /// <summary>The newest 5,000 rows the Client tab shows, for the server to write the file.</summary>
+    private ExportClientLogRequest ClientExportRequest(LogExportOptions options)
+    {
+        var (from, to) = Range.Resolve();
+        var request = new ExportClientLogRequest
+        {
+            Options = options,
+            MinLevel = (SelectedLevel?.MinimumRank ?? 0) switch
+            {
+                <= 1 => string.Empty,
+                2 => "Information",
+                3 => "Warning",
+                _ => "Error",
+            },
+            Search = SearchText.Trim(),
+            NotBefore = from is { } f ? Timestamp.FromDateTimeOffset(f) : null,
+            NotAfter = to is { } t ? Timestamp.FromDateTimeOffset(t) : null,
+        };
+        request.Entries.AddRange(_matching.Take(LogExportLimits.MaxEntries).Select(e => new ClientLogEntry
+        {
+            Time = Timestamp.FromDateTime(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(e.Time, DateTimeKind.Unspecified), _time.LocalTimeZone)),
+            Level = e.Level,
+            Message = e.Message.Length > LogExportLimits.MaxMessageLength ? e.Message[..LogExportLimits.MaxMessageLength] : e.Message,
+        }));
+        return request;
+    }
+
     private bool Matches(LogEntry entry) =>
         Rank(entry.Level) >= (SelectedLevel?.MinimumRank ?? 0)
+        && (_from is null || entry.Time >= _from)
+        && (_to is null || entry.Time <= _to)
         && (string.IsNullOrWhiteSpace(SearchText)
             || entry.Message.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase)
             || entry.Level.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase));
@@ -292,6 +375,10 @@ public sealed partial class LogsViewModel : ObservableObject, ILogPages
 
     private void Rebuild(bool firstPage = false)
     {
+        // The entries hold this computer's time (Serilog's local time stamp).
+        var (from, to) = Range.Resolve();
+        _from = from is { } f ? TimeZoneInfo.ConvertTime(f, _time.LocalTimeZone).DateTime : null;
+        _to = to is { } t ? TimeZoneInfo.ConvertTime(t, _time.LocalTimeZone).DateTime : null;
         _matching = [.. _source.Where(Matches)];
         if (firstPage)
         {
