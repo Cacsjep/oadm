@@ -268,7 +268,7 @@ strings and other names with "pass", "secret" or "community" are masked like pas
 
 A failing step fails only itself; the task fails at the end with the first failure (+N more); error texts of every step
 have password values masked. Task names "Configure 12 parameters", "Configure 1 action rule", "Configure 12 parameters,
-1 rule, 3 profiles" (at most 48 characters).
+1 rule, 3 profiles" (at most 120 characters, `TaskPluginNames.MaxTaskNameLength`).
 
 ### Queries
 
