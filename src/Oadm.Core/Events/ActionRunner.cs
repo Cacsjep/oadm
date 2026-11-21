@@ -1014,9 +1014,10 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
     public async Task<(bool Ok, string Message)> TestRecipientAsync(string typeId, Guid? id, JsonObject values, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(values);
-        if (_catalog.FindRecipientType(typeId) is not { Available: true, TestAction: { } action } type)
+        var found = _catalog.FindRecipientType(typeId);
+        if (found is not { Available: true, TestAction: { } action } type)
         {
-            throw new RecipientValidationException("Not available: this type of recipient is turned off");
+            throw new RecipientValidationException(RecipientChecks.TypeUnavailable(found));
         }
 
         var recipient = id is { } known ? await _recipients.GetAsync(known, ct).ConfigureAwait(false) : null;
@@ -1050,7 +1051,7 @@ public sealed partial class ActionRunner : IActionDispatcher, IAsyncDisposable
         if (type.Type.Sessions is not null)
         {
             // A persistent type only connects: Test never publishes or writes to a real machine.
-            return Sessions is null ? (false, "Not available: this type of recipient is turned off") : await Sessions.TestAsync(type.Type, values, ct).ConfigureAwait(false);
+            return Sessions is null ? (false, RecipientChecks.TypeTurnedOff) : await Sessions.TestAsync(type.Type, values, ct).ConfigureAwait(false);
         }
 
         var settings = RecipientChecks.WithDefaults(action.Plugin, values);

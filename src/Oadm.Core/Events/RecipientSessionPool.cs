@@ -282,9 +282,10 @@ public sealed partial class RecipientSessionPool : IAsyncDisposable
             }
 
             SetName(slot, recipient.Name);
-            if (_catalog.FindRecipientType(recipient.TypeId) is not { Available: true, Type: { Sessions: not null } type })
+            var found = _catalog.FindRecipientType(recipient.TypeId);
+            if (found is not { Available: true, Type: { Sessions: not null } type })
             {
-                throw new InvalidOperationException("This type of recipient is turned off");
+                throw new InvalidOperationException(RecipientChecks.TypeUnavailable(found));
             }
 
             (session, loaded) = await CreateAsync(type, _recipients.DecryptSettings(recipient), slot.Id, ct).ConfigureAwait(false);

@@ -12,6 +12,15 @@ public static class RecipientChecks
     /// <summary>A stored password never follows a changed target.</summary>
     public const string PasswordAgain = "Enter the password again. The target changed.";
 
+    /// <summary>A recipient of a type whose plugin is installed but turned off.</summary>
+    public const string TypeTurnedOff = "Not available: this type of recipient is turned off";
+
+    /// <summary>A recipient of a type no installed plugin declares (docs/spec/plugin-removal.md).</summary>
+    public const string TypeNotInstalled = "Not available: this type of recipient is no longer installed";
+
+    /// <summary><see cref="TypeNotInstalled"/> when no plugin declares the type, else <see cref="TypeTurnedOff"/>.</summary>
+    public static string TypeUnavailable(CatalogRecipientType? type) => type is null ? TypeNotInstalled : TypeTurnedOff;
+
     /// <summary>
     /// Errors per field: the host's checks of the type's fields, then the test action's own
     /// <see cref="IActionPlugin.Validate"/> with its default values, of which only the type's fields count.
