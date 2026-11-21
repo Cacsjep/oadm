@@ -47,7 +47,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
     private readonly ILogger<ClientPluginLoader> _logger;
 
     public ClientPluginLoader(AppOptions options, ILogger<ClientPluginLoader> logger)
-        : this(DefaultRoots(options), logger)
+        : this(DefaultRoots(options), logger, Path.Combine(options?.DataFolder ?? AppOptions.DefaultDataFolder, "plugins"))
     {
     }
 
@@ -105,15 +105,77 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
         return null;
     }
 
-    public ClientPluginLoader(IEnumerable<string> pluginRoots, ILogger<ClientPluginLoader> logger)
+    /// <param name="pluginRoots">The roots in order.</param>
+    /// <param name="logger">The log.</param>
+    /// <param name="installedRoot">The data folder's plugins: never cleaned, also with a manifest.</param>
+    public ClientPluginLoader(IEnumerable<string> pluginRoots, ILogger<ClientPluginLoader> logger, string? installedRoot = null)
     {
         ArgumentNullException.ThrowIfNull(pluginRoots);
         _logger = logger;
-        foreach (string root in pluginRoots.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase))
+        string? installed = installedRoot is null ? null : Path.TrimEndingDirectorySeparator(Path.GetFullPath(installedRoot));
+        foreach (string root in pluginRoots.Select(r => Path.TrimEndingDirectorySeparator(Path.GetFullPath(r))).Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            Merge(Scan(root, addOn: false, _loadedPackages));
+            // A root with the shipped manifest (docs/spec/plugin-removal.md): folders it does not list are skipped and, outside
+            // the macOS app bundle (its signature), deleted.
+            bool bundled = !string.Equals(root, installed, StringComparison.OrdinalIgnoreCase)
+                && Directory.Exists(root) && Contracts.Plugins.BundledPlugins.ReadManifest(root) is not null;
+            var skip = new List<string>();
+            if (bundled)
+            {
+                foreach (var folder in Contracts.Plugins.BundledPlugins.Clean(root, allowDelete: !Contracts.Plugins.BundledPlugins.IsInsideAppBundle(root)))
+                {
+                    LogNotShipped(_logger, folder.Id);
+                    if (folder.Folder is { } left)
+                    {
+                        skip.Add(Path.GetFullPath(left) + Path.DirectorySeparatorChar);
+                    }
+                }
+            }
+
+            var parts = Scan(root, addOn: false, _loadedPackages, skip);
+            Failures += parts.Failures;
+            if (bundled)
+            {
+                _bundledIds ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                _bundledIds.UnionWith(IdsOf(parts));
+            }
+
+            Merge(parts);
         }
     }
+
+    private HashSet<string>? _bundledIds;
+
+    /// <summary>
+    /// The package and part ids loaded from the roots with a shipped manifest; null without one (a development run). The
+    /// client keeps them as its previous shipped set (<see cref="RemovedClientPlugins"/>).
+    /// </summary>
+    public IReadOnlySet<string>? BundledIds => _bundledIds;
+
+    /// <summary>The dlls of the roots that could not be loaded at the start.</summary>
+    public int Failures { get; private set; }
+
+    /// <summary>Every package and part id loaded so far, plus the merged packages.</summary>
+    public IReadOnlySet<string> KnownIds
+    {
+        get
+        {
+            var known = new HashSet<string>(_loadedPackages, StringComparer.OrdinalIgnoreCase);
+            known.UnionWith(_dialogs.Select(d => d.PluginId));
+            known.UnionWith(_pages.Select(p => p.PluginId));
+            known.UnionWith(_toolbar.Select(t => t.Id));
+            known.UnionWith(_taskActions.Select(a => a.Id));
+            known.UnionWith(MergedPackages);
+            return known;
+        }
+    }
+
+    private static IEnumerable<string> IdsOf(ScannedParts parts) =>
+        parts.Packages
+            .Concat(parts.Dialogs.Select(d => d.PluginId))
+            .Concat(parts.Pages.Select(p => p.PluginId))
+            .Concat(parts.Toolbar.Select(t => t.Id))
+            .Concat(parts.TaskActions.Select(a => a.Id));
 
     public IReadOnlyList<ITaskPluginDialog> Dialogs => _dialogs;
     public IReadOnlyList<ICorePluginPage> Pages => _pages;
@@ -212,7 +274,7 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
     /// earlier root) are skipped. <paramref name="addOn"/>: the folder is an add-on's client part (dependencies without
     /// deps.json in <see cref="Contracts.AddOnLayout.ClientFolder"/>).
     /// </summary>
-    private ScannedParts Scan(string root, bool addOn, HashSet<string> loadedPackages)
+    private ScannedParts Scan(string root, bool addOn, HashSet<string> loadedPackages, IReadOnlyList<string>? skip = null)
     {
         var parts = new ScannedParts();
         if (!Directory.Exists(root))
@@ -222,6 +284,11 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
 
         foreach (string dll in Directory.EnumerateFiles(root, "*.Client.dll", SearchOption.AllDirectories))
         {
+            if (skip is { Count: > 0 } && skip.Any(f => Path.GetFullPath(dll).StartsWith(f, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue; // not part of this version
+            }
+
             try
             {
                 string? packageId = ReadPackageId(Path.GetDirectoryName(Path.GetFullPath(dll)));
@@ -346,6 +413,9 @@ public sealed partial class ClientPluginLoader : IClientPluginRegistry, AddOns.I
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Client plugin {PackageId} in {Path} skipped: an earlier folder (--plugin-dir) has it")]
     private static partial void LogSkipped(ILogger logger, string packageId, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Plugin {PackageId} skipped: not part of this OADM version")]
+    private static partial void LogNotShipped(ILogger logger, string packageId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Loaded client plugin {Kind} for {PluginId} from {Path}")]
     private static partial void LogLoaded(ILogger logger, string kind, string pluginId, string path);

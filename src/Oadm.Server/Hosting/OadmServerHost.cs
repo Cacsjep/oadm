@@ -809,6 +809,8 @@ public static partial class OadmServerHost
             }
         }
 
+        // Bundled folders this version does not ship (docs/spec/plugin-removal.md): skipped, and deleted where the server may write.
+        var bundledRoots = BundledPluginsAtStart.PrepareRoots(loader, roots, PluginPaths.Installed(paths.DataDirectory), logger);
         loader.LoadFromRoots(roots);
         // Add-ons after the bundled and installed plugins (an id in both: the bundled one wins). Removed ones are deleted now;
         // an older one keeps running, one that cannot waits for Install again. An add-on folder others could change until
@@ -832,6 +834,22 @@ public static partial class OadmServerHost
             : null;
         await sp.GetRequiredService<Core.Devices.ProtectedTagRegistry>().LoadAsync(installedCores, ct).ConfigureAwait(false);
 
+        // 2a1. Plugins a release no longer ships: all state of the ids the previous start had from the bundled root and this
+        // one no longer knows goes once (nothing while any plugin failed to load), before the roles and the restore report.
+        var removedPlugins = await new RemovedPlugins(
+                sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<OadmDbContext>>(),
+                sp.GetRequiredService<ServerSettingsStore>(),
+                sp.GetRequiredService<Core.Auth.RoleStore>(),
+                sp.GetRequiredService<Core.Auth.AuditLog>(),
+                paths.PluginDataDirectory,
+                PluginActivation.SettingKey,
+                logger)
+            .CleanAsync(
+                BundledPluginsAtStart.BundledIds(registry, bundledRoots),
+                BundledPluginsAtStart.KnownIds(registry, PluginPaths.Installed(paths.DataDirectory), addOns.Root),
+                registry.Errors.Count > 0,
+                ct).ConfigureAwait(false);
+
         // 2b. Roles: every permission the loaded plugins declare (on or off); a role gets the default of a new one once.
         var hadUsers = await sp.GetRequiredService<Core.Auth.UserStore>().HasUsersAsync(ct).ConfigureAwait(false);
         var catalog = Core.Auth.PermissionCatalog.Build(registry);
@@ -840,7 +858,7 @@ public static partial class OadmServerHost
 
         // 2c. A restore this start applied: its report (Settings page) and audit entry; every login session ends.
         sp.GetRequiredService<Backup.BackupManager>().RemovePartialFiles();
-        await sp.GetRequiredService<Backup.BackupManager>().RecordRestoreAsync(ct).ConfigureAwait(false);
+        await sp.GetRequiredService<Backup.BackupManager>().RecordRestoreAsync(removedPlugins, ct).ConfigureAwait(false);
 
         // 2c1. Self update: the record of the last update is completed by this server, old or new (and audited once).
         await sp.GetRequiredService<Updates.ServerUpdateCoordinator>().CompleteOnStartAsync(ct).ConfigureAwait(false);

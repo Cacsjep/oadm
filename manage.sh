@@ -324,6 +324,20 @@ publish_plugins() {
     if is_addon "$p"; then continue; fi
     "$DOTNET" publish "$p" -c Release -p:OadmSkipPluginDeploy=true "-p:Version=$(app_version)" -o "$PLUGIN_STAGE/$(plugin_id "$p")"
   done < <(plugin_projects)
+  write_bundled_manifest
+}
+
+# The shipped manifest (docs/spec/plugin-removal.md): plugins/bundled.json lists the plugin.json ids of the staged folders;
+# both apps skip and delete a bundled folder it does not list. Never written by hand.
+write_bundled_manifest() {
+  local f id list=""
+  for f in "$PLUGIN_STAGE"/*/plugin.json; do
+    [ -f "$f" ] || continue
+    id="$(sed -n 's/^[[:space:]]*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$f" | head -n 1)"
+    [ -n "$id" ] || { echo "error: no id in $f" >&2; exit 1; }
+    list="$list${list:+, }\"$id\""
+  done
+  printf '{ "plugins": [%s] }\n' "$list" > "$PLUGIN_STAGE/bundled.json"
 }
 
 copy_plugins() {

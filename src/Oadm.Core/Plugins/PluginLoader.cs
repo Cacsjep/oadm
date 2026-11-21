@@ -60,6 +60,12 @@ public sealed partial class PluginLoader
     /// </summary>
     public Func<string, string?>? FolderCheck { get; set; }
 
+    /// <summary>
+    /// Folders of the roots that are never loaded and are no load error: bundled folders this version does not ship
+    /// (docs/spec/plugin-removal.md), given as full paths. Checked by <see cref="LoadFromRoots"/>.
+    /// </summary>
+    public Func<string, bool>? SkipFolder { get; set; }
+
     public IReadOnlyList<LoadedPluginPackage> Packages
     {
         get
@@ -106,7 +112,7 @@ public sealed partial class PluginLoader
             Array.Sort(folders, StringComparer.OrdinalIgnoreCase);
             foreach (var folder in folders)
             {
-                if (File.Exists(Path.Combine(folder, ManifestFileName)))
+                if (File.Exists(Path.Combine(folder, ManifestFileName)) && SkipFolder?.Invoke(Path.GetFullPath(folder)) != true)
                 {
                     LoadPackage(folder);
                 }

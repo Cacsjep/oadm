@@ -4,7 +4,7 @@ namespace Oadm.Client.Plugins;
 
 /// <summary>
 /// <c>Oadm.Client --self-check</c>: without a window, checks what this published client needs to run: the video decoder, the drawing
-/// libraries and every assembly of every plugin next to the exe. Prints each problem and returns 1 (release.yml, smoke tests).
+/// libraries, every assembly of every plugin next to the exe and the shipped manifest. Prints each problem and returns 1 (release.yml, smoke tests).
 /// </summary>
 internal static class ClientSelfCheck
 {
@@ -78,6 +78,11 @@ internal static class ClientSelfCheck
         {
             problems.Add("No plugins next to the exe.");
         }
+        else
+        {
+            // The shipped manifest (docs/spec/plugin-removal.md) lists exactly the bundled folders.
+            problems.AddRange(BundledPlugins.ManifestProblems(BundledRoot(appFolder ?? AppContext.BaseDirectory)));
+        }
 
         output.WriteLine($"Plugins checked: {checkedParts}");
         foreach (var problem in problems)
@@ -86,6 +91,15 @@ internal static class ClientSelfCheck
         }
 
         return problems.Count == 0 ? 0 : 1;
+    }
+
+    /// <summary>The bundled plugins: next to the exe, in an app bundle <c>Contents/Resources/plugins</c>.</summary>
+    internal static string BundledRoot(string appFolder)
+    {
+        var next = Path.Combine(appFolder, "plugins");
+        return !Directory.Exists(next) && ClientPluginLoader.AppBundleResources(appFolder) is { } resources
+            ? Path.Combine(resources, "plugins")
+            : next;
     }
 
     private static bool IsServerPart(System.Reflection.AssemblyName reference) =>

@@ -233,6 +233,76 @@ public sealed partial class RoleStore(IDbContextFactory<OadmDbContext> dbFactory
     }
 
     /// <summary>
+    /// The plugins <paramref name="pluginIds"/> are no longer part of OADM (docs/spec/plugin-removal.md): every role, built in
+    /// or custom, forgets their permission keys (<c>&lt;id&gt;:&lt;key&gt;</c>, <c>task:&lt;id&gt;</c>, <c>task:&lt;id&gt;:&lt;key&gt;</c>,
+    /// granted and known), and a start page of one of them goes back to Devices. Returns the ids something was deleted for.
+    /// </summary>
+    public async Task<IReadOnlySet<string>> ForgetPluginsAsync(IReadOnlyCollection<string> pluginIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(pluginIds);
+        var touched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (pluginIds.Count == 0)
+        {
+            return touched;
+        }
+
+        string? Owner(string key) => pluginIds.FirstOrDefault(id =>
+            key.StartsWith(id + ":", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(key, "task:" + id, StringComparison.OrdinalIgnoreCase)
+            || key.StartsWith("task:" + id + ":", StringComparison.OrdinalIgnoreCase));
+
+        await _write.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            var roles = await db.Roles.ToListAsync(ct).ConfigureAwait(false);
+            var changed = new List<Guid>();
+            foreach (var role in roles)
+            {
+                var known = ReadKeys(role.KnownJson);
+                var granted = ReadKeys(role.PermissionsJson);
+                var gone = known.Concat(granted).Select(k => (Key: k, Owner: Owner(k))).Where(k => k.Owner is not null).ToList();
+                var startOwner = pluginIds.FirstOrDefault(id => string.Equals(role.StartPage, "plugin:" + id, StringComparison.OrdinalIgnoreCase));
+                if (gone.Count == 0 && startOwner is null)
+                {
+                    continue;
+                }
+
+                foreach (var (key, owner) in gone)
+                {
+                    known.Remove(key);
+                    granted.Remove(key);
+                    touched.Add(owner!);
+                }
+
+                if (startOwner is not null)
+                {
+                    role.StartPage = string.Empty;
+                    touched.Add(startOwner);
+                }
+
+                role.KnownJson = WriteKeys(known);
+                role.PermissionsJson = WriteKeys(granted);
+                role.ChangedUtc = time.GetUtcNow().UtcDateTime;
+                changed.Add(role.Id);
+            }
+
+            if (changed.Count > 0)
+            {
+                await db.SaveChangesAsync(ct).ConfigureAwait(false);
+                _snapshot = Snapshot.From(roles);
+                Oadm.Core.Auth.CallerContext.Raise(Changed, this, changed);
+            }
+
+            return touched;
+        }
+        finally
+        {
+            _write.Release();
+        }
+    }
+
+    /// <summary>
     /// Creates and changes roles in one transaction (the matrix's Save). The Administrator role keeps its name and
     /// permissions; only its start page can change. Returns what changed per role (empty when nothing did).
     /// </summary>

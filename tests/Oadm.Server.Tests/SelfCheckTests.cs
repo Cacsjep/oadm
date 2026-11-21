@@ -27,6 +27,7 @@ public sealed class SelfCheckTests
         }
 
         File.Copy(TestRepository.Path("plugins", "Oadm.Plugins.Notifications", "plugin.json"), Path.Combine(plugin, "plugin.json"));
+        File.WriteAllText(Path.Combine(app, "plugins", BundledPlugins.FileName), """{ "plugins": ["oadm.notifications"] }""");
         return app;
     }
 

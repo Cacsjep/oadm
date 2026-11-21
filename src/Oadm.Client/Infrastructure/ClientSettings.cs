@@ -40,6 +40,12 @@ public sealed class ClientSettings
     /// <summary>Texts plugins keep on this computer ("plugin id/key" -> value), e.g. a page's last device choice.</summary>
     public Dictionary<string, string> PluginSettings { get; set; } = [];
 
+    /// <summary>
+    /// The package and part ids the previous start loaded from the bundled plugins (docs/spec/plugin-removal.md); null until a
+    /// start with the shipped manifest.
+    /// </summary>
+    public List<string>? BundledPlugins { get; set; }
+
     /// <summary>Device grid group mode: a group per tag.</summary>
     public bool GroupDevicesByTag { get; set; }
 

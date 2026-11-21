@@ -339,6 +339,21 @@ function Publish-Plugins {
         Invoke-Dotnet @('publish', $p.FullName, '-c', 'Release', '-p:OadmSkipPluginDeploy=true', "-p:Version=$(Get-Version)",
             '-o', (Join-Path $PluginStage (Get-PluginId $p)))
     }
+    Write-BundledManifest
+}
+
+# The shipped manifest (docs/spec/plugin-removal.md): plugins/bundled.json lists the plugin.json ids of the staged folders;
+# both apps skip and delete a bundled folder it does not list. Never written by hand.
+function Write-BundledManifest {
+    $ids = @(Get-ChildItem -LiteralPath $PluginStage -Directory | Sort-Object Name | ForEach-Object {
+            $manifest = Join-Path $_.FullName 'plugin.json'
+            if (Test-Path -LiteralPath $manifest) {
+                $id = (Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json).id
+                if (-not $id) { Exit-Environment "no id in $manifest" }
+                '"' + $id + '"'
+            }
+        })
+    [IO.File]::WriteAllText((Join-Path $PluginStage 'bundled.json'), '{ "plugins": [' + ($ids -join ', ') + "] }`n", (New-Object Text.UTF8Encoding $false))
 }
 
 function Copy-Plugins([string]$Out) {
@@ -347,6 +362,7 @@ function Copy-Plugins([string]$Out) {
     foreach ($d in @(Get-ChildItem -LiteralPath $PluginStage | Where-Object { $_.PSIsContainer })) {
         Copy-Item -LiteralPath $d.FullName -Destination $target -Recurse -Force
     }
+    Copy-Item -LiteralPath (Join-Path $PluginStage 'bundled.json') -Destination $target -Force
 }
 
 # ---------------------------------------------------------------- verbs

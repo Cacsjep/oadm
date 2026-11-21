@@ -1,5 +1,6 @@
 #!/bin/sh
-# OADM client package preinstall: the EST server is a part of PKI since OADM 4.5, so its plugin folder of
-# 4.1 goes (an installer upgrade keeps files the new package no longer has). The client would skip it anyway.
-rm -rf /Applications/OADM.app/Contents/Resources/plugins/oadm.est
+# OADM client package preinstall: an installer upgrade keeps files the new package no longer has, so the bundled
+# plugins go first and the package brings exactly the plugins of its version (docs/spec/plugin-removal.md). The
+# client never deletes inside the app bundle (it would break the signature).
+rm -rf /Applications/OADM.app/Contents/Resources/plugins
 exit 0

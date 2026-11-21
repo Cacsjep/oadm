@@ -1,7 +1,7 @@
 #!/bin/sh
 # OADM server package preinstall: stop a running server before its files are replaced (upgrade).
 launchctl bootout system/com.oadm.server >/dev/null 2>&1 || true
-# The EST server is a part of PKI since OADM 4.5: its plugin folder of 4.1 goes (an installer upgrade keeps
-# files the new package no longer has). The server would skip it anyway ("Merged into PKI").
-rm -rf "/Library/Application Support/OADM/server/plugins/oadm.est"
+# An installer upgrade keeps files the new package no longer has: the bundled plugins go first and the package brings
+# exactly the plugins of its version (docs/spec/plugin-removal.md). Installed plugins of the data folder stay.
+rm -rf "/Library/Application Support/OADM/server/plugins"
 exit 0

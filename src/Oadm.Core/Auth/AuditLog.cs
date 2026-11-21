@@ -58,6 +58,7 @@ public static class AuditActions
     public const string PluginTurnedOff = "Turned plugin off";
     public const string PluginLicenseEntered = "Entered plugin license";
     public const string PluginLicenseRemoved = "Removed plugin license";
+    public const string PluginDataDeleted = "Deleted the data of a plugin no longer in OADM";
     public const string AddOnInstalled = "Installed optional plugin";
     public const string AddOnRemoved = "Removed optional plugin";
     public const string AddOnRestart = "Restarted the server for optional plugin";

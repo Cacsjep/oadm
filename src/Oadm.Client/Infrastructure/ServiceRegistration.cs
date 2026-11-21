@@ -109,7 +109,13 @@ public static class ServiceRegistration
         services.AddSingleton<ServerConnection>();
         services.AddSingleton<TaskPluginCatalog>();
         services.AddSingleton<PluginPackageStore>();
-        services.AddSingleton<IClientPluginRegistry>(sp => new ClientPluginLoader(options, sp.GetRequiredService<ILogger<ClientPluginLoader>>()));
+        services.AddSingleton<IClientPluginRegistry>(sp =>
+        {
+            var loader = new ClientPluginLoader(options, sp.GetRequiredService<ILogger<ClientPluginLoader>>());
+            // The settings of plugins this version no longer ships go once (docs/spec/plugin-removal.md).
+            RemovedClientPlugins.Clean(sp.GetRequiredService<IClientSettingsStore>(), loader.BundledIds, loader.KnownIds, loader.Failures > 0);
+            return loader;
+        });
         // Add-ons (docs/spec/add-ons.md rule 6): their client parts from the server, cached per server and version in the
         // data folder's plugin-cache (never the server's addons/: both may share the data folder); the files of removed
         // add-ons and of versions no longer used go here, at the start, before any add-on loads.

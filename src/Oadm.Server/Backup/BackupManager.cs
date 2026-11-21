@@ -445,8 +445,14 @@ public sealed partial class BackupManager(
     /// Startup, after the database and the plugins are ready: records the restore the start applied (report, audit) and
     /// ends every login session (everyone logs in with the restored users).
     /// </summary>
-    public async Task RecordRestoreAsync(CancellationToken ct)
+    public Task RecordRestoreAsync(CancellationToken ct) => RecordRestoreAsync([], ct);
+
+    /// <inheritdoc cref="RecordRestoreAsync(CancellationToken)"/>
+    /// <param name="removedPlugins">The plugins whose state this start deleted (no longer part of OADM, docs/spec/plugin-removal.md).</param>
+    /// <param name="ct">Cancels the report.</param>
+    public async Task RecordRestoreAsync(IReadOnlyCollection<string> removedPlugins, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(removedPlugins);
         if (archive.ReadOutcome() is not { } outcome)
         {
             return;
@@ -454,7 +460,7 @@ public sealed partial class BackupManager(
 
         try
         {
-            await RecordAsync(outcome, ct).ConfigureAwait(false);
+            await RecordAsync(outcome, removedPlugins, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -465,7 +471,7 @@ public sealed partial class BackupManager(
         archive.ForgetOutcome();
     }
 
-    private async Task RecordAsync(RestoreOutcome outcome, CancellationToken ct)
+    private async Task RecordAsync(RestoreOutcome outcome, IReadOnlyCollection<string> removedPlugins, CancellationToken ct)
     {
         var restore = outcome.Restore;
         var lines = new List<string>();
@@ -479,10 +485,18 @@ public sealed partial class BackupManager(
             var counts = await BackupArchive.CountAsync(paths.DatabasePath, ct).ConfigureAwait(false);
             lines.AddRange(Lines(counts, restore.Manifest.PluginData.Count, restored: true));
             var installed = plugins.Packages.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
+            var removed = removedPlugins.ToHashSet(StringComparer.OrdinalIgnoreCase);
             foreach (var missing in restore.Manifest.Plugins.Where(p => !installed.Contains(p.Id)))
             {
-                lines.Add($"Plugin {missing.Id}: not installed on this server; its settings were kept.");
+                lines.Add(removed.Contains(missing.Id)
+                    ? Core.Plugins.RemovedPlugins.DeletedText(missing.Id)
+                    : $"Plugin {missing.Id}: not installed on this server; its settings were kept.");
             }
+
+            // Ids the backup's version shipped that the backup's plugin list does not name (an inner plugin id).
+            lines.AddRange(removed.Where(id => !restore.Manifest.Plugins.Any(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase)))
+                .Order(StringComparer.Ordinal)
+                .Select(Core.Plugins.RemovedPlugins.DeletedText));
         }
 
         var report = new RestoreReportSetting

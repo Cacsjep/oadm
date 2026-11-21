@@ -8,7 +8,8 @@ namespace Oadm.Server.Hosting;
 /// <summary>
 /// <c>Oadm.Server --self-check [--add-on &lt;folder&gt;]</c>: without a database file, a port or a service, checks what this published server
 /// needs to run. The database library; every plugin next to the exe (and each unpacked add-on) loaded by the real loader, so its
-/// classes are created; every assembly it references; and the plugin's own <see cref="Oadm.Sdk.Plugins.ICorePlugin.SelfCheck"/>. Prints each
+/// classes are created; every assembly it references; the plugin's own <see cref="Oadm.Sdk.Plugins.ICorePlugin.SelfCheck"/>; and that the
+/// shipped manifest (<see cref="BundledPlugins"/>) lists exactly the plugin folders. Prints each
 /// problem and returns 1 (release.yml, smoke tests).
 /// </summary>
 public static class SelfCheck
@@ -82,6 +83,10 @@ public static class SelfCheck
         if (folders.Count == 0)
         {
             problems.Add("No plugins next to the exe.");
+        }
+        else
+        {
+            problems.AddRange(BundledPlugins.ManifestProblems(root)); // the shipped manifest (docs/spec/plugin-removal.md)
         }
 
         output.WriteLine($"Plugins checked: {folders.Count}");
