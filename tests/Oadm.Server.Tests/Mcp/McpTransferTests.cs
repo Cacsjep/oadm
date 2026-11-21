@@ -230,6 +230,65 @@ public sealed class McpTransferTests
     }
 
     [Fact]
+    public async Task TheLogsAreExportedLikeOnTheLogsPageAndTheirToolsTakeAnEndTime()
+    {
+        await using var server = await StartAsync();
+        var logs = server.Host.Get<OadmPaths>().LogsDirectory;
+        Directory.CreateDirectory(logs);
+        await File.WriteAllTextAsync(Path.Combine(logs, "oadm-server-20261017.log"), """
+            2026-10-17 08:00:00.000 +00:00 [INF] Oadm.Server.Tests: export early
+            2026-10-17 09:00:00.000 +00:00 [ERR] Oadm.Server.Tests: export late
+
+            """);
+        var key = await server.CreateKeyAsync();
+
+        // until: lines and entries up to that time.
+        var early = await server.ToolAsync(key, "oadm_logs_search", new JsonObject { ["text"] = "export", ["until"] = "2026-10-17T08:30:00Z" });
+        Assert.Equal(["export early"], early["lines"]!.AsArray().Select(l => l!["message"]!.GetValue<string>()));
+        var range = await server.ToolAsync(key, "oadm_logs_search", new JsonObject { ["text"] = "export", ["since"] = "2026-10-17T08:30:00Z", ["until"] = "2026-10-17T10:00:00Z" });
+        Assert.Equal(["export late"], range["lines"]!.AsArray().Select(l => l!["message"]!.GetValue<string>()));
+        Assert.Empty((await server.ToolAsync(key, "oadm_logs_audit", new JsonObject { ["until"] = "2000-01-01T00:00:00Z" }))["entries"]!.AsArray());
+        Assert.NotEmpty((await server.ToolAsync(key, "oadm_logs_audit", new JsonObject { ["until"] = "2999-01-01T00:00:00Z" }))["entries"]!.AsArray());
+
+        var export = await server.ToolAsync(key, "oadm_logs_export", new JsonObject { ["text"] = "export", ["level"] = "Error" });
+        Assert.Equal((1, false), (export["entries"]!.GetValue<int>(), export["more"]!.GetValue<bool>()));
+        var file = export["file"]!;
+        Assert.Equal("text/csv", file["content_type"]!.GetValue<string>());
+        var link = await server.ToolAsync(key, ToolFiles.LinkTool, new JsonObject { ["file_ref"] = file["file_ref"]!.GetValue<string>() });
+        using (var fetched = await SendAsync(server, HttpMethod.Get, key, link["url"]!.GetValue<string>()))
+        {
+            var csv = Encoding.UTF8.GetString(await fetched.Content.ReadAsByteArrayAsync());
+            Assert.StartsWith("\uFEFFTime,Time (ISO 8601),Level,Source,Message,Exception\r\n2026-10-17 09:00:00,", csv, StringComparison.Ordinal); // UTC for agents
+            Assert.Contains("export late", csv, StringComparison.Ordinal);
+        }
+
+        var audit = await server.ToolAsync(key, "oadm_logs_audit_export", new JsonObject { ["format"] = "pdf" });
+        Assert.True(audit["entries"]!.GetValue<int>() > 0);
+        Assert.Equal("application/pdf", audit["file"]!["content_type"]!.GetValue<string>());
+        var pdfLink = await server.ToolAsync(key, ToolFiles.LinkTool, new JsonObject { ["file_ref"] = audit["file"]!["file_ref"]!.GetValue<string>() });
+        using (var fetched = await SendAsync(server, HttpMethod.Get, key, pdfLink["url"]!.GetValue<string>()))
+        {
+            Assert.Equal("%PDF", Encoding.ASCII.GetString((await fetched.Content.ReadAsByteArrayAsync())[..4]));
+        }
+
+        // One "Exported log" per file, by the key.
+        var exported = (await server.Host.Audit.ListAsync(new Proto.ListAuditRequest { Search = AuditActions.LogExported })).Entries;
+        Assert.Equal(2, exported.Count);
+        Assert.All(exported, e => Assert.Equal(AccessKeyStore.AgentNameOf("agent"), e.UserName));
+
+        // Without Export logs the tools are not offered.
+        var saved = await new Proto.RoleService.RoleServiceClient(server.Host.Invoker).SaveRolesAsync(new Proto.SaveRolesRequest
+        {
+            Roles = { new Proto.RoleChange { Name = "Log reader", Permissions = { HostPermissions.LogsServer } } },
+        });
+        var reader = await server.CreateKeyAsync(name: "log-reader", roleId: saved.Roles.Single(r => r.Name == "Log reader").Id);
+        var names = await server.ToolNamesAsync(reader);
+        Assert.Contains("oadm_logs_search", names);
+        Assert.DoesNotContain("oadm_logs_export", names);
+        Assert.DoesNotContain("oadm_logs_audit_export", names);
+    }
+
+    [Fact]
     public async Task AFileIsMadeWithTheRightsOfTheKeyWhenItsLinkIsFetchedNotWhenItWasOffered()
     {
         await using var server = await StartAsync();

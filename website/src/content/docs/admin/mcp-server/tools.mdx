@@ -173,8 +173,10 @@ and runs after the user agreed.
 
 | Tool | Kind | What it does |
 | --- | --- | --- |
-| `oadm_logs_audit` | Read | Who did what in OADM, the newest first: since a time, with a text in the user, action, target or detail. Administrators only. |
-| `oadm_logs_search` | Read | Lines of the OADM server log, the newest first: since a time, at a level or above, with a text. Use it to find why something failed. |
+| `oadm_logs_audit` | Read | Who did what in OADM, the newest first: between two times, with a text in the user, address, action, target or detail. Administrators only. |
+| `oadm_logs_audit_export` | Read | Entries of the audit log as a CSV or PDF file, like Export on the Logs page: the newest 5,000 of the filter. Administrators only. Answers the count and a file reference. |
+| `oadm_logs_export` | Read | Lines of the server log as a CSV or PDF file, like Export on the Logs page: the newest 5,000 of the filter. Answers the count and a file reference; fetch it with oadm_files_download_link. |
+| `oadm_logs_search` | Read | Lines of the OADM server log, the newest first: between two times, at a level or above, with a text. Use it to find why something failed. |
 
 ## PKI
 

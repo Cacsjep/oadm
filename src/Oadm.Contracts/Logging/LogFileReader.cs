@@ -33,12 +33,49 @@ public static partial class LogFileReader
     /// <paramref name="minRank"/> that contain <paramref name="search"/> (any case, in source, message or exception), newest
     /// first, from the files of <paramref name="folder"/> matching <paramref name="pattern"/>. A missing folder is an empty page.
     /// <paramref name="notAfter"/>: only entries at or before that time (the page after a line of that time: newer lines
-    /// never move it).
+    /// never move it). <paramref name="notBefore"/>: only entries at or after that time; the read stops at the first older
+    /// entry. Files whose name dates them more than a day outside the range are not read at all.
     /// </summary>
-    public static LogFilePage Read(string folder, string pattern, int offset, int limit, int minRank, string? search, CancellationToken ct, DateTimeOffset? notAfter = null)
+    public static LogFilePage Read(string folder, string pattern, int offset, int limit, int minRank, string? search, CancellationToken ct, DateTimeOffset? notAfter = null, DateTimeOffset? notBefore = null) =>
+        ReadCore(folder, pattern, offset, Math.Clamp(limit, 1, MaxPageSize), minRank, search, notAfter, notBefore, ct);
+
+    /// <summary>
+    /// The newest <paramref name="limit"/> entries of the filter for an export (at most <see cref="LogExportLimits.MaxEntries"/>),
+    /// like <see cref="Read"/>; <see cref="LogFilePage.HasMore"/>: more entries match.
+    /// </summary>
+    public static LogFilePage ReadForExport(string folder, string pattern, int limit, int minRank, string? search, CancellationToken ct, DateTimeOffset? notAfter = null, DateTimeOffset? notBefore = null) =>
+        ReadCore(folder, pattern, 0, Math.Clamp(limit, 1, LogExportLimits.MaxEntries), minRank, search, notAfter, notBefore, ct);
+
+    /// <summary>
+    /// The day in a log file's name: <c>oadm-server-20261017.log</c>, <c>oadm-server-20261017_001.log</c>,
+    /// <c>client-20261017_001.log</c>; null when the name has none.
+    /// </summary>
+    public static DateOnly? DayOf(string fileName)
+    {
+        var name = Path.GetFileNameWithoutExtension(fileName);
+        var dash = name.LastIndexOf('-');
+        if (dash < 0 || name.Length < dash + 9)
+        {
+            return null;
+        }
+
+        return DateOnly.TryParseExact(name.AsSpan(dash + 1, 8), "yyyyMMdd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day)
+            && (name.Length == dash + 9 || name[dash + 9] == '_')
+            ? day
+            : null;
+    }
+
+    /// <summary>
+    /// False when the file of <paramref name="day"/> (the logger's local day, up to 14 hours off UTC) cannot hold an entry of
+    /// the range: one day of margin on each side.
+    /// </summary>
+    internal static bool MayHold(DateOnly day, DateTimeOffset? notAfter, DateTimeOffset? notBefore) =>
+        !(notBefore is { } from && day < DateOnly.FromDateTime(from.UtcDateTime).AddDays(-1))
+        && !(notAfter is { } to && day > DateOnly.FromDateTime(to.UtcDateTime).AddDays(1));
+
+    private static LogFilePage ReadCore(string folder, string pattern, int offset, int limit, int minRank, string? search, DateTimeOffset? notAfter, DateTimeOffset? notBefore, CancellationToken ct)
     {
         offset = Math.Max(0, offset);
-        limit = Math.Clamp(limit, 1, MaxPageSize);
         if (!Directory.Exists(folder))
         {
             return new LogFilePage([], false);
@@ -46,15 +83,25 @@ public static partial class LogFileReader
 
         // Newest file first: a day sorts after the day before, "_001" after the day's first file.
         var files = Directory.GetFiles(folder, pattern).OrderByDescending(Path.GetFileName, StringComparer.Ordinal).ToList();
-        var page = new List<LogFileEntry>(limit);
+        var page = new List<LogFileEntry>(Math.Min(limit, MaxPageSize));
         var skipped = 0;
         foreach (var file in files)
         {
             ct.ThrowIfCancellationRequested();
+            if (DayOf(file) is { } day && !MayHold(day, notAfter, notBefore))
+            {
+                continue;
+            }
+
             var entries = ReadFile(file);
             for (var i = entries.Count - 1; i >= 0; i--)
             {
                 var entry = entries[i];
+                if (entry.Time < notBefore)
+                {
+                    return new LogFilePage(page, false); // newest first: the rest is older
+                }
+
                 if (entry.Rank < minRank || !Matches(entry, search) || entry.Time > notAfter)
                 {
                     continue;

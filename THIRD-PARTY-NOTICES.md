@@ -35,20 +35,20 @@ license and notice files the packages ship.
 - Package `FFmpeg.AutoGen` 9.0.1.1, https://github.com/Ruslan-B/FFmpeg.AutoGen, MIT License,
   Copyright (c) 2025 Ruslan Balanukhin (Rationale One).
 
-## PDFsharp and MigraDoc (Snapshot report plugin, server only)
+## PDFsharp and MigraDoc (server and Snapshot report plugin)
 
 - Package `PDFsharp-MigraDoc` 6.2.4 (PDFsharp, MigraDoc and their helper assemblies, the
   cross-platform "Core" build), https://github.com/empira/PDFsharp, MIT License,
   Copyright (c) 2005-2025 empira Software GmbH, Troisdorf (Cologne Area), Germany.
-- Shipped in `plugins/oadm.snapshot-report/` next to `Oadm.Plugins.SnapshotReport.Server.dll`; it
-  builds the maintenance report PDF.
+- Shipped with the server (the PDF of a log export on the Logs page) and in `plugins/oadm.snapshot-report/`
+  next to `Oadm.Plugins.SnapshotReport.Server.dll` (the maintenance report PDF).
 
-## Roboto font (Snapshot report plugin, embedded)
+## Roboto font (server and Snapshot report plugin, embedded)
 
 - `Roboto-Regular.ttf` and `Roboto-Bold.ttf` (Google Roboto 2.x, as shipped in the
-  MaterialDesignThemes package) are embedded in `Oadm.Plugins.SnapshotReport.Server.dll` so the PDF
-  report renders identically on every OS. Apache License 2.0, Copyright 2011 Google Inc.,
-  https://github.com/googlefonts/roboto. The PDF embeds subsets of these fonts.
+  MaterialDesignThemes package) are embedded in the server (`Oadm.Server.dll`) and in
+  `Oadm.Plugins.SnapshotReport.Server.dll` so the PDFs render identically on every OS. Apache License
+  2.0, Copyright 2011 Google Inc., https://github.com/googlefonts/roboto. The PDF embeds subsets of these fonts.
 
 ## Inter font (client user interface)
 

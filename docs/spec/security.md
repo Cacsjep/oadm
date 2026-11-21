@@ -133,7 +133,8 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   (`HostPermissionKeys` in the SDK: `devices.addRemove`, `devices.refresh`, `devices.login`, `devices.webInterface`,
   `devices.liveView`, `devices.opticsControl` ("Optics Control": zoom, focus and the RTSP port), `devices.export`, `tags.assign`, `tags.manage`, `tasks.cancel`, `tasks.delete`, `tasks.deleteAll`,
   `compliance.view` ("See compliance", Operator and Viewer yes), `compliance.manage` ("Change compliance checks", Operator no),
-  `events.view`, `events.manage`, `events.clearLog`, `logs.server`, `sites.view` ("See sites", Operator and
+  `events.view`, `events.manage`, `events.clearLog`, `logs.server`, `logs.export` ("Export logs": a tab of the Logs page
+  as a CSV or PDF file, besides the right to see that log; Operator yes, Viewer no), `sites.view` ("See sites", Operator and
   Viewer yes)), "<plugin id>:<key>" for core plugins (every page gets "show"
   automatically) and "task:<id>" / "task:<id>:<key>" for task plugins. `PermissionCatalog.Build` collects them from every
   loaded plugin (on or off) at start (a task hidden from the menus, `ShowInMenus` false, is left out of the role editor,
@@ -203,8 +204,10 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   on / off, event rules, VAPIX Commander send / rollout, Web View ("Opened web interface", the device), zoom and focus ("Changed zoom or
   focus", "Zoom 1.50"), RTSP port ("Changed RTSP port in OADM"), server updates ("Started server update" with the
   version it came from, then "Updated server" or "Server update failed" with from, to and the reason, written once by the
-  server that completes the record). The Logs page has an **Audit** tab (Admin only, newest 10,000,
-  virtualized, search; `wrapRows`: a long detail and user name wrap, a detail longer than 200 characters has itself as
+  server that completes the record), log exports ("Exported log", target "Server log", "Audit log" or "Client log",
+  detail "PDF, 5,000 entries, Last 24 hours: 2026-11-20 10:00 to 2026-11-21 10:00 UTC, search "gate""). The Logs page
+  has an **Audit** tab (Admin only, 200 entries a page by id, virtualized; the date range and the search run on the server, so entries older than
+  the newest 10,000 are found too; `wrapRows`: a long detail and user name wrap, a detail longer than 200 characters has itself as
   tooltip; a changed detail shows on Refresh).
 - **Task outcome** (decision 2026-11-19): every audited task run says whether it worked. One entry "Started task" per run
   (target the plugin's name, detail "3 devices" while it runs), never one per device or step; when the last task of the

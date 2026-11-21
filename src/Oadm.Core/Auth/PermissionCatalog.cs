@@ -49,6 +49,7 @@ public static class HostPermissions
     public const string EventsManage = HostPermissionKeys.EventsManage;
     public const string EventsClearLog = HostPermissionKeys.EventsClearLog;
     public const string LogsServer = HostPermissionKeys.LogsServer;
+    public const string LogsExport = HostPermissionKeys.LogsExport;
     public const string SitesView = HostPermissionKeys.SitesView;
     public const string AssistantUse = HostPermissionKeys.AssistantUse;
 
@@ -74,6 +75,7 @@ public static class HostPermissions
         Host(EventsManage, "Change event rules", "Create, change, turn on or off and delete event rules. Rules act on devices on their own.", EventRulesGroup, 2, false, false, fullControl: true),
         Host(EventsClearLog, "Delete the event log", "Delete every entry of the event log.", EventRulesGroup, 2, false, false),
         Host(LogsServer, "See the server log", "Read the server's log on the Logs page. It shows device addresses and user names.", LogsGroup, 3, false, false),
+        Host(LogsExport, "Export logs", "Save what a tab of the Logs page shows as a CSV or PDF file.", LogsGroup, 3, true, false),
         Host(AssistantUse, "Use the assistant", "Chat with the assistant. It has the user's rights and asks before every change.", AssistantGroup, 4, false, false),
     ];
 

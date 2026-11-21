@@ -1,11 +1,15 @@
 syntax = "proto3";
 package oadm.v1;
 option csharp_namespace = "Oadm.Contracts.V1";
+import "Protos/auth.proto";
+import "Protos/plugins.proto";
+import "google/protobuf/timestamp.proto";
 
 // The server's own log (the log files in <datafolder>/logs) for the Logs page. Needs the permission "logs.server".
 service ServerLogService {
   // One page of entries, newest first: offset and limit (at most 500) over the entries at or above min_level
-  // ("Information", "Warning", "Error"; empty = all) that contain search (any case, in source, message or exception).
+  // ("Information", "Warning", "Error"; empty = all) that contain search (any case, in source, message or exception),
+  // between not_before and not_after.
   rpc List (ListServerLogRequest) returns (ServerLogPage);
 }
 
@@ -15,6 +19,7 @@ message ListServerLogRequest {
   string min_level = 3;
   string search = 4;
   string not_after = 5;  // ISO 8601: only entries at or before this time (the page after a line with this time); empty = from the newest
+  string not_before = 6; // ISO 8601: only entries at or after this time (the date range From); empty = to the oldest
 }
 
 // time: ISO 8601 with the server's offset; level: "Information", "Warning" ...; source: the class that logged it.
@@ -29,4 +34,61 @@ message ServerLogEntry {
 message ServerLogPage {
   repeated ServerLogEntry entries = 1;
   bool has_more = 2;   // older entries match too
+}
+
+// The exports of the Logs page (docs/spec/main-window.md "Logs page"): what a tab shows (its date range, search and level
+// filter) as a CSV or PDF file, at most the newest 5,000 entries (LogExportLimits.MaxEntries). Each needs the permission
+// "logs.export" besides the right to see that log, and writes one audit entry "Exported log". The first message holds the
+// file name (oadm-<log>-yyyy-MM-dd.csv or .pdf) and its length; the others hold the file.
+service LogExportService {
+  // The server log ("logs.export", and "logs.server" with all devices like ServerLogService.List).
+  rpc ExportServerLog (ExportServerLogRequest) returns (stream DownloadChunk);
+  // The audit log (Administrator only, like AuditService.List).
+  rpc ExportAudit (ExportAuditRequest) returns (stream DownloadChunk);
+  // The client log: the client sends the rows of its tab (only it has them), the server writes the file.
+  // INVALID_ARGUMENT for more than 5,000 rows.
+  rpc ExportClientLog (ExportClientLogRequest) returns (stream DownloadChunk);
+}
+
+enum LogExportFormat {
+  LOG_EXPORT_FORMAT_CSV = 0;
+  LOG_EXPORT_FORMAT_PDF = 1;
+}
+
+// How the file shows times: in the exporting user's time zone (time_zone, a Windows or IANA id; when the server does not
+// know it, the fixed utc_offset_minutes). range_name: the range as the tab names it ("Last 24 hours"); empty = its times.
+message LogExportOptions {
+  LogExportFormat format = 1;
+  string time_zone = 2;
+  int32 utc_offset_minutes = 3;
+  string range_name = 4;
+}
+
+// The filter of the Server tab (offset and limit are ignored).
+message ExportServerLogRequest {
+  ListServerLogRequest filter = 1;
+  LogExportOptions options = 2;
+}
+
+// The filter of the Audit tab (limit, offset and before_id are ignored).
+message ExportAuditRequest {
+  ListAuditRequest filter = 1;
+  LogExportOptions options = 2;
+}
+
+// One row of the client log; message: at most 4,000 characters (longer ones are cut).
+message ClientLogEntry {
+  google.protobuf.Timestamp time = 1;
+  string level = 2;
+  string message = 3;
+}
+
+// The rows of the Client tab, newest first, and its filter for the file's header.
+message ExportClientLogRequest {
+  repeated ClientLogEntry entries = 1;
+  LogExportOptions options = 2;
+  string min_level = 3;
+  string search = 4;
+  google.protobuf.Timestamp not_before = 5;
+  google.protobuf.Timestamp not_after = 6;
 }

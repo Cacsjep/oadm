@@ -68,6 +68,8 @@ public static class HostPermissionKeys
     public const string EventsClearLog = "events.clearLog";
     /// <summary>Read the server's log on the Logs page.</summary>
     public const string LogsServer = "logs.server";
+    /// <summary>Save what a tab of the Logs page shows as a CSV or PDF file (besides the right to see that log).</summary>
+    public const string LogsExport = "logs.export";
     /// <summary>Chat with the assistant (docs/spec/assistant.md).</summary>
     public const string AssistantUse = "assistant.use";
 }

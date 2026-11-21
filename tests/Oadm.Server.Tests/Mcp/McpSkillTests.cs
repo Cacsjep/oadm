@@ -28,7 +28,7 @@ public sealed partial class McpSkillTests
         "oadm_settings_get", "oadm_tasks_list", "oadm_tasks_get", "oadm_tasks_catalog", "oadm_task_preview", "oadm_task_run",
         "oadm_tasks_cancel_preview", "oadm_tasks_cancel_run", "oadm_files_upload_link", "oadm_files_list",
         "oadm_files_delete_preview", "oadm_files_delete_run", "oadm_logs_search", "oadm_logs_audit",
-        "oadm_files_download_link", "oadm_devices_export", "oadm_compliance_export",
+        "oadm_files_download_link", "oadm_devices_export", "oadm_compliance_export", "oadm_logs_export", "oadm_logs_audit_export",
         "oadm_tags_list", "oadm_tags_assign_preview", "oadm_tags_assign_run", "oadm_sites_list", "oadm_compliance_summary",
         "oadm_compliance_checks", "oadm_rules_list", "oadm_rules_get", "oadm_rules_save_preview", "oadm_rules_save_run",
         "oadm_rules_delete_preview", "oadm_rules_delete_run", "oadm_events_log", "oadm_pki_certificates",

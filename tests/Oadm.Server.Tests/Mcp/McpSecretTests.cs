@@ -76,6 +76,8 @@ public sealed class McpSecretTests
             ["oadm_files_download_link"] = new() { ["file_ref"] = "ended" },
             ["oadm_devices_export"] = new() { ["filter"] = new JsonObject() },
             ["oadm_compliance_export"] = new() { ["filter"] = new JsonObject() },
+            ["oadm_logs_export"] = new() { ["format"] = "csv" },
+            ["oadm_logs_audit_export"] = new() { ["format"] = "pdf" },
         };
         var areaKey = await server.CreateKeyAsync(name: "canary-areas"); // a key allows 20 calls a second: the areas' tools use their own
         var areaCalls = McpAreaToolTests.SecretScanCalls();

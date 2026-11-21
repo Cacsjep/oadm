@@ -32,6 +32,11 @@
     <!-- Windows service (MSI) and systemd unit (.deb); both are no-ops on a console. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.13" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.13" />
+    <!-- The PDF of a log export (Logs page): PDFsharp + MigraDoc 6 (MIT, cross-platform Core build), the version of the
+         Snapshot report plugin (6.3+ needs a license file to write a PDF). -->
+    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
+    <!-- Transitive System.Security.Cryptography.Pkcs pinned to the patched version (CVE-2026-84008, CVE-2026-70162). -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
   </ItemGroup>
 
   <ItemGroup>
@@ -39,6 +44,10 @@
     <EmbeddedResource Include="Vulnerabilities\axis-vulnerabilities.json" LogicalName="Oadm.Server.Vulnerabilities.axis-vulnerabilities.json" />
     <!-- The skill for AI agents (docs/spec/mcp.md "Skill"): served over MCP and downloaded from the Settings card. -->
     <EmbeddedResource Include="Mcp\Skill\*.md" LogicalName="Oadm.Server.Mcp.Skill.%(Filename)%(Extension)" />
+    <!-- Roboto (Apache-2.0) for the PDF of a log export, so it renders the same on Windows, Linux and macOS without system
+         fonts: the files of the Snapshot report plugin, linked (one copy in the repository). -->
+    <EmbeddedResource Include="..\..\plugins\Oadm.Plugins.SnapshotReport\Fonts\*.ttf" Link="Logging\Export\Fonts\%(Filename)%(Extension)"
+                      LogicalName="Oadm.Server.Logging.Export.Fonts.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <!-- The search index of the user docs for oadm_docs_search (docs/spec/assistant.md), made from website/ at build time. -->

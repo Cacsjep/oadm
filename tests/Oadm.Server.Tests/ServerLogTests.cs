@@ -65,6 +65,74 @@ public sealed class ServerLogTests
     }
 
     [Fact]
+    public void AFromTimeStopsTheReadAndFilesOutsideTheDatesAreNotRead()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "oadm-log-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            File.WriteAllText(Path.Combine(folder, "oadm-server-20261016.log"), Day1);
+            File.WriteAllText(Path.Combine(folder, "oadm-server-20261017.log"), Day2);
+            // Named for days far outside the range: never read (their lines would match otherwise).
+            File.WriteAllText(Path.Combine(folder, "oadm-server-20261001.log"), Day2);
+            File.WriteAllText(Path.Combine(folder, "oadm-server-20261101_001.log"), Day1);
+            // No day in the name: always read.
+            File.WriteAllText(Path.Combine(folder, "oadm-server-old.log"), "2026-10-17 07:00:00.000 +02:00 [INF] Oadm.X.Y: undated file\n");
+
+            var from = new DateTimeOffset(2026, 10, 16, 23, 59, 59, TimeSpan.FromHours(2));
+            var to = new DateTimeOffset(2026, 10, 17, 8, 0, 1, TimeSpan.FromHours(2));
+            var range = LogFileReader.Read(folder, "oadm-server-*.log", 0, 10, 0, null, CancellationToken.None, notAfter: to, notBefore: from);
+            Assert.False(range.HasMore);
+            Assert.Equal(
+                ["undated file", "Event rule Gate: action Send HTTP request failed unexpectedly", "Task Restart device done", "Event rule Gate: action Send email failed: smtp.example.com:587 cannot be reached"],
+                range.Entries.Select(e => e.Message));
+
+
+            Assert.Equal(new DateOnly(2026, 10, 17), LogFileReader.DayOf("oadm-server-20261017.log"));
+            Assert.Equal(new DateOnly(2026, 11, 1), LogFileReader.DayOf(Path.Combine(folder, "oadm-server-20261101_001.log")));
+            Assert.Equal(new DateOnly(2026, 10, 17), LogFileReader.DayOf("client-20261017_002.log"));
+            Assert.Null(LogFileReader.DayOf("oadm-server-old.log"));
+            Assert.Null(LogFileReader.DayOf("oadm-server-2026101.log"));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AnExportReadsUpTo5000EntriesAndSaysWhenMoreMatch()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "oadm-log-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var start = new DateTimeOffset(2026, 10, 17, 0, 0, 0, TimeSpan.Zero);
+            var text = new System.Text.StringBuilder();
+            for (var i = 0; i < 6_000; i++)
+            {
+                text.Append(start.AddSeconds(i).ToString("yyyy-MM-dd HH:mm:ss.fff zzz", System.Globalization.CultureInfo.InvariantCulture)).Append(" [INF] Oadm.X.Y: line ").Append(i).Append('\n');
+            }
+
+            File.WriteAllText(Path.Combine(folder, "oadm-server-20261017.log"), text.ToString());
+            var all = LogFileReader.ReadForExport(folder, "oadm-server-*.log", LogExportLimits.MaxEntries, 0, null, CancellationToken.None);
+            Assert.True(all.HasMore);
+            Assert.Equal(LogExportLimits.MaxEntries, all.Entries.Count);
+            Assert.Equal("line 5999", all.Entries[0].Message); // the newest
+            Assert.Equal(LogExportLimits.MaxEntries, LogFileReader.ReadForExport(folder, "oadm-server-*.log", 99_999, 0, null, CancellationToken.None).Entries.Count);
+            Assert.Equal(LogFileReader.MaxPageSize, LogFileReader.Read(folder, "oadm-server-*.log", 0, 99_999, 0, null, CancellationToken.None).Entries.Count);
+
+            var tail = LogFileReader.ReadForExport(folder, "oadm-server-*.log", LogExportLimits.MaxEntries, 0, null, CancellationToken.None, notBefore: start.AddSeconds(5_500));
+            Assert.False(tail.HasMore);
+            Assert.Equal(500, tail.Entries.Count);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task TheServerLogNeedsItsPermissionAndShowsWhatTheServerWrote()
     {
         await using var host = await TestServerHost.StartAsync();
@@ -72,6 +140,7 @@ public sealed class ServerLogTests
         Directory.CreateDirectory(logs);
         // A name of its own that sorts first: today's file belongs to the test server's own logger.
         await File.WriteAllTextAsync(Path.Combine(logs, "oadm-server-29991231.log"), Day2);
+        await File.WriteAllTextAsync(Path.Combine(logs, "oadm-server-20261017.log"), Day2); // the file a range of that day reads
 
         var page = await new Proto.ServerLogService.ServerLogServiceClient(host.Invoker).ListAsync(new Proto.ListServerLogRequest { Limit = 2, MinLevel = "Information" });
         Assert.True(page.HasMore);

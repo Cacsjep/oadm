@@ -145,6 +145,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<Vulnerabilities.VulnerabilityGrpcService>();
         app.MapGrpcService<MyAxis.MyAxisGrpcService>();
         app.MapGrpcService<Logging.ServerLogGrpcService>();
+        app.MapGrpcService<Logging.Export.LogExportGrpcService>();
         app.MapGrpcService<Sites.SiteGrpcService>();
         app.MapGrpcService<Updates.UpdateGrpcService>();
         app.MapGrpcService<AccessKeyGrpcService>();
@@ -211,7 +212,7 @@ public static partial class OadmServerHost
                     Tools.ServerInfoTool.Create(() => roles.Catalog),
                     .. Tools.DeviceTools.Create(cursors, facts),
                     .. Tools.TaskTools.Create(cursors, sp.GetRequiredService<Tools.ToolHandles>()),
-                    .. Tools.LogTools.Create(cursors),
+                    .. Tools.LogTools.Create(cursors, sp.GetRequiredService<Tools.ToolHandles>()),
                     .. Tools.TaskRunTools.Create(sp.GetRequiredService<Tools.ToolHandles>()),
                     .. Tools.TagTools.Create(cursors, sp.GetRequiredService<Tools.ToolHandles>()),
                     .. Tools.SiteTools.Create(cursors),

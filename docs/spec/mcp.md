@@ -260,7 +260,7 @@ not affected, affected devices by their worst level and the 10 CVEs that affect 
 counted CVEs (id, level, CVSS, fixed in) and its possible ones apart, pages with the total and a cursor; the same matcher
 and inputs as the client's column); `oadm_vulnerability(cve)` what one CVE is from OADM's list (description, level, CVSS, published, the
 https advisory, at most 50 models it names, the caller's devices counted and possible), nothing goes online), event rules (the catalog of events and actions `oadm_rules_catalog`, list, get, create, change,
-delete, the event log), logs (server log search with `since`, `level`, `text`, at most 200 lines; audit log), files
+delete, the event log), logs (server log search with `since`, `until`, `level`, `text`, at most 200 lines; audit log with `since`, `until`, `text`, filtered by the server; the exports `oadm_logs_export` and `oadm_logs_audit_export`), files
 (`oadm_files_upload_link`, list, delete), settings (`oadm_settings_get`, and their changes, see "Server settings and services
 as built"), PKI policies (`oadm_pki_policies`, a tool of the PKI plugin), the user docs (`oadm_docs_search(query)`: at most 5 pages of oadm.app with title, address and the best
 passage, from the index the server is built with, `Assistant/DocsIndex`; no gRPC method, so every caller has it).
@@ -484,6 +484,11 @@ built"; a backup only to an administrator, encrypted with its password, "Adminis
   server knows, the permission Export the device list), `oadm_compliance_export(filter)` (the Compliance page's export:
   device columns, then one column per check that is on), both written at download time from `DeviceService.Search` and
   `ComplianceService` (`Tools/ExportTools`, the shared `Oadm.Contracts.Text.CsvWriter`); a task's `result_file`;
+  `oadm_logs_export(format, since, until, level, text)` and `oadm_logs_audit_export(format, since, until, text)` (Export of
+  the Logs page: the server log or the audit log as CSV or PDF, the newest 5,000 of the filter, times in UTC; they answer
+  `entries` and `more` and a file made at download time through `LogExportService` in process, which checks "Export logs"
+  with the log's own right and audits "Exported log" itself; two tools, one per log, so each is listed by its own
+  rights);
   `oadm_recordings_export` (Edge Recording Export, the download `export`), `oadm_snapshot_report_report_preview`/`_run`
   and `oadm_snapshot_report_report_file(job_id)` (the report PDF of the caller's job, download `downloadReport`),
   `oadm_pki_certificate_file(id, format)` and `oadm_pki_ca_file(previous_id, format)` (PEM or DER of the certificate only,

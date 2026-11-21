@@ -206,6 +206,11 @@ public static class AccessPolicy
         ["/oadm.v1.EventService/WatchRecipientStatus"] = AccessRule.Needs(HostPermissions.EventsView).ForAllDevices(),
         ["/oadm.v1.EventService/ListRecipientCertificates"] = AccessRule.Needs(HostPermissions.EventsManage).ForAllDevices(),
         ["/oadm.v1.ServerLogService/List"] = AccessRule.Needs(HostPermissions.LogsServer).ForAllDevices(), // its text names devices
+        // Exports of the Logs page: "Export logs" besides the right to see the log (the server log's "See the server log" is
+        // checked in the call: one permission per rule).
+        ["/oadm.v1.LogExportService/ExportServerLog"] = AccessRule.Needs(HostPermissions.LogsExport).ForAllDevices(),
+        ["/oadm.v1.LogExportService/ExportAudit"] = AccessRule.Admin,
+        ["/oadm.v1.LogExportService/ExportClientLog"] = AccessRule.Needs(HostPermissions.LogsExport),
 
         // Plugins: pages per plugin (in the call); turning packages on or off is Administrator only.
         ["/oadm.v1.PluginService/ListCorePlugins"] = AccessRule.SignedIn,

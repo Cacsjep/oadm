@@ -9,6 +9,18 @@ namespace Oadm.Core.Auth;
 /// <summary>An audit entry as listed to administrators.</summary>
 public sealed record AuditRecord(long Id, DateTime TimeUtc, string UserName, string ClientAddress, string Action, string Target, string Detail);
 
+/// <summary>The filter of the Audit tab: the range (either end open) and a text (any case) in user, client, action, target or detail.</summary>
+public sealed record AuditFilter(DateTime? NotBeforeUtc = null, DateTime? NotAfterUtc = null, string? Search = null)
+{
+    public static AuditFilter None { get; } = new();
+
+    /// <summary>No range and no text: every entry matches.</summary>
+    public bool IsEmpty => NotBeforeUtc is null && NotAfterUtc is null && string.IsNullOrWhiteSpace(Search);
+}
+
+/// <summary>One page of <see cref="AuditLog.QueryAsync"/>: the entries, every entry of the log, the entries of the filter.</summary>
+public sealed record AuditPage(IReadOnlyList<AuditRecord> Entries, int TotalCount, int MatchCount);
+
 /// <summary>Plain-language action names of the audit log (Logs page, Audit tab).</summary>
 public static class AuditActions
 {
@@ -101,6 +113,7 @@ public static class AuditActions
     public const string AssistantChanged = "Changed assistant";
     public const string FileUploaded = "Uploaded file";
     public const string FileDownloaded = "Downloaded file";
+    public const string LogExported = "Exported log";
 
     /// <summary>A secret of a preview was set through the secret channel (docs/spec/mcp.md "Secrets"); the entry never holds the value.</summary>
     public const string SecretSet = "Set secret";
@@ -255,6 +268,87 @@ public sealed partial class AuditLog(IDbContextFactory<OadmDbContext> dbFactory,
             .ToListAsync(ct).ConfigureAwait(false);
         return (rows, total);
     }
+
+    /// <summary>
+    /// One page of the entries of <paramref name="filter"/>, newest first (the Audit tab and its export, docs/spec/main-window.md
+    /// "Logs page"): <paramref name="beforeId"/> above 0 = only entries older than that entry (the next page, never moved by
+    /// a new entry). <paramref name="limit"/> 0 = <see cref="DefaultListLimit"/>; a negative limit counts only. The total
+    /// counts every entry, the matches the entries of the filter (also those before <paramref name="beforeId"/>).
+    /// </summary>
+    public async Task<AuditPage> QueryAsync(AuditFilter filter, int limit, long beforeId, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(filter);
+        await using var db = await dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+        var total = await db.AuditEntries.CountAsync(ct).ConfigureAwait(false);
+        var query = Filtered(db.AuditEntries.AsNoTracking(), filter);
+        var matches = filter.IsEmpty ? total : await query.CountAsync(ct).ConfigureAwait(false);
+        if (limit < 0)
+        {
+            return new AuditPage([], total, matches);
+        }
+
+        limit = limit == 0 ? DefaultListLimit : Math.Min(limit, MaxListLimit);
+        if (beforeId > 0)
+        {
+            query = query.Where(e => e.Id < beforeId);
+        }
+
+        var rows = await query
+            .OrderByDescending(e => e.Id)
+            .Take(limit)
+            .Select(e => new AuditRecord(e.Id, e.TimeUtc, e.UserName, e.ClientAddress, e.Action, e.Target, e.Detail))
+            .ToListAsync(ct).ConfigureAwait(false);
+        return new AuditPage(rows, total, matches);
+    }
+
+    /// <summary>The entries of a filter: the range on the TimeUtc index, the text with LIKE (any case) in five columns.</summary>
+    private static IQueryable<AuditEntryEntity> Filtered(IQueryable<AuditEntryEntity> query, AuditFilter filter)
+    {
+        if (filter.NotBeforeUtc is { } from)
+        {
+            var utc = AsUtc(from);
+            query = query.Where(e => e.TimeUtc >= utc);
+        }
+
+        if (filter.NotAfterUtc is { } to)
+        {
+            var utc = AsUtc(to);
+            query = query.Where(e => e.TimeUtc <= utc);
+        }
+
+        var text = filter.Search?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            return query;
+        }
+
+        // SQLite's LIKE ignores the case of A-Z only: for other letters ("Ö") the lower and upper forms are tried too.
+        var p0 = LikePattern(text);
+        if (System.Text.Ascii.IsValid(text))
+        {
+            return query.Where(e =>
+                EF.Functions.Like(e.UserName, p0, LikeEscape) || EF.Functions.Like(e.ClientAddress, p0, LikeEscape) || EF.Functions.Like(e.Action, p0, LikeEscape)
+                || EF.Functions.Like(e.Target, p0, LikeEscape) || EF.Functions.Like(e.Detail, p0, LikeEscape));
+        }
+
+        var p1 = LikePattern(text.ToLowerInvariant());
+        var p2 = LikePattern(text.ToUpperInvariant());
+        return query.Where(e =>
+            EF.Functions.Like(e.UserName, p0, LikeEscape) || EF.Functions.Like(e.ClientAddress, p0, LikeEscape) || EF.Functions.Like(e.Action, p0, LikeEscape)
+            || EF.Functions.Like(e.Target, p0, LikeEscape) || EF.Functions.Like(e.Detail, p0, LikeEscape)
+            || EF.Functions.Like(e.UserName, p1, LikeEscape) || EF.Functions.Like(e.ClientAddress, p1, LikeEscape) || EF.Functions.Like(e.Action, p1, LikeEscape)
+            || EF.Functions.Like(e.Target, p1, LikeEscape) || EF.Functions.Like(e.Detail, p1, LikeEscape)
+            || EF.Functions.Like(e.UserName, p2, LikeEscape) || EF.Functions.Like(e.ClientAddress, p2, LikeEscape) || EF.Functions.Like(e.Action, p2, LikeEscape)
+            || EF.Functions.Like(e.Target, p2, LikeEscape) || EF.Functions.Like(e.Detail, p2, LikeEscape));
+    }
+
+    private const string LikeEscape = "\\";
+
+    private static DateTime AsUtc(DateTime time) => time.Kind == DateTimeKind.Local ? time.ToUniversalTime() : DateTime.SpecifyKind(time, DateTimeKind.Utc);
+
+    /// <summary>"%50\%%": the text anywhere, its %, _ and \ taken literally.</summary>
+    internal static string LikePattern(string text) =>
+        "%" + text.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal) + "%";
 
     /// <summary>Deletes entries older than <see cref="RetentionDays"/> and beyond the newest <see cref="MaxEntries"/>. Returns the number deleted.</summary>
     public async Task<int> ApplyRetentionAsync(CancellationToken ct)

@@ -331,18 +331,36 @@ public sealed class AuditGrpcService(AuditLog audit) : Proto.AuditService.AuditS
 {
     public override async Task<Proto.AuditList> List(Proto.ListAuditRequest request, ServerCallContext context)
     {
-        var (entries, total) = await audit.ListAsync(request.Limit, request.Offset, context.CancellationToken, request.BeforeId).ConfigureAwait(false);
-        var reply = new Proto.AuditList { TotalCount = total };
-        reply.Entries.AddRange(entries.Select(e => new Proto.AuditEntry
+        Proto.AuditList reply;
+        if (request.Offset > 0)
         {
-            Id = e.Id,
-            Time = Timestamp.FromDateTime(DateTime.SpecifyKind(e.TimeUtc, DateTimeKind.Utc)),
-            UserName = e.UserName,
-            ClientAddress = e.ClientAddress,
-            Action = e.Action,
-            Target = e.Target,
-            Detail = e.Detail,
-        }));
+            // Older clients page by offset (no filter).
+            var (entries, total) = await audit.ListAsync(request.Limit, request.Offset, context.CancellationToken, request.BeforeId).ConfigureAwait(false);
+            reply = new Proto.AuditList { TotalCount = total, MatchCount = total };
+            reply.Entries.AddRange(entries.Select(ToProto));
+            return reply;
+        }
+
+        var page = await audit.QueryAsync(FilterOf(request), request.Limit, request.BeforeId, context.CancellationToken).ConfigureAwait(false);
+        reply = new Proto.AuditList { TotalCount = page.TotalCount, MatchCount = page.MatchCount };
+        reply.Entries.AddRange(page.Entries.Select(ToProto));
         return reply;
     }
+
+    /// <summary>The range and text of a request (the Audit tab, its export, the MCP tools).</summary>
+    internal static AuditFilter FilterOf(Proto.ListAuditRequest request) => new(
+        request.NotBefore?.ToDateTime(),
+        request.NotAfter?.ToDateTime(),
+        string.IsNullOrWhiteSpace(request.Search) ? null : request.Search.Trim());
+
+    internal static Proto.AuditEntry ToProto(AuditRecord e) => new()
+    {
+        Id = e.Id,
+        Time = Timestamp.FromDateTime(DateTime.SpecifyKind(e.TimeUtc, DateTimeKind.Utc)),
+        UserName = e.UserName,
+        ClientAddress = e.ClientAddress,
+        Action = e.Action,
+        Target = e.Target,
+        Detail = e.Detail,
+    };
 }

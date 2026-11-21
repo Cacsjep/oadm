@@ -94,7 +94,7 @@ public sealed class AuthTests
             Proto.AuthService.Descriptor, Proto.UserService.Descriptor, Proto.AuditService.Descriptor, Proto.SettingsService.Descriptor,
             Proto.TaskService.Descriptor, Proto.DeviceService.Descriptor, Proto.PluginService.Descriptor, Proto.DiscoveryService.Descriptor,
             Proto.AddDevicesService.Descriptor, Proto.FileService.Descriptor, Proto.LiveViewService.Descriptor, Proto.TagService.Descriptor,
-            Proto.EventService.Descriptor, Proto.RoleService.Descriptor, Proto.DeviceWebService.Descriptor, Proto.BackupService.Descriptor, Proto.WaitingDeviceService.Descriptor, Proto.ServerLogService.Descriptor,
+            Proto.EventService.Descriptor, Proto.RoleService.Descriptor, Proto.DeviceWebService.Descriptor, Proto.BackupService.Descriptor, Proto.WaitingDeviceService.Descriptor, Proto.ServerLogService.Descriptor, Proto.LogExportService.Descriptor,
             Proto.ComplianceService.Descriptor, Proto.SiteService.Descriptor, Proto.LicenseService.Descriptor, Proto.SupportService.Descriptor,
             Proto.DeviceGroupService.Descriptor, Proto.VulnerabilityService.Descriptor, Proto.MyAxisService.Descriptor, Proto.UpdateService.Descriptor,
             Proto.McpService.Descriptor, Proto.AccessKeyService.Descriptor, Proto.AssistantService.Descriptor,
@@ -138,13 +138,17 @@ public sealed class AuthTests
         Assert.Equal(AccessRule.Needs(HostPermissions.TagsAssign), AccessPolicy.For("/oadm.v1.TagService/SetDeviceTags"));
         Assert.Equal(AccessRule.InCall, AccessPolicy.For("/oadm.v1.TaskService/Run"));
         Assert.Equal(AccessRule.Needs(AccessPolicy.WebViewOpen), AccessPolicy.For("/oadm.v1.DeviceWebService/Open"));
+        // Log exports: Export logs besides the log's own right (the server log's is checked in the call).
+        Assert.Equal(AccessRule.Needs(HostPermissions.LogsExport).ForAllDevices(), AccessPolicy.For("/oadm.v1.LogExportService/ExportServerLog"));
+        Assert.Equal(AccessRule.Admin, AccessPolicy.For("/oadm.v1.LogExportService/ExportAudit"));
+        Assert.Equal(AccessRule.Needs(HostPermissions.LogsExport), AccessPolicy.For("/oadm.v1.LogExportService/ExportClientLog"));
 
         // Device groups: Administrator only; the methods only users with all devices may call carry the marker.
         Assert.All(Proto.DeviceGroupService.Descriptor.Methods, m => Assert.Equal(AccessRule.Admin, AccessPolicy.For($"/oadm.v1.DeviceGroupService/{m.Name}")));
         // Event rules: every EventService method (rules, the event log, the catalog, Test) only for users with all devices.
         Assert.All(Proto.EventService.Descriptor.Methods, m => Assert.True(AccessPolicy.For($"/oadm.v1.EventService/{m.Name}").AllDevices, m.Name));
         Assert.Equal(
-            ["/oadm.v1.AssistantService/SetSettings", "/oadm.v1.AssistantService/Test", "/oadm.v1.ComplianceService/SetEnabled", "/oadm.v1.DeviceService/SetStoredCredentials", "/oadm.v1.McpService/Set", "/oadm.v1.ServerLogService/List", "/oadm.v1.SettingsService/AddCredential",
+            ["/oadm.v1.AssistantService/SetSettings", "/oadm.v1.AssistantService/Test", "/oadm.v1.ComplianceService/SetEnabled", "/oadm.v1.DeviceService/SetStoredCredentials", "/oadm.v1.LogExportService/ExportServerLog", "/oadm.v1.McpService/Set", "/oadm.v1.ServerLogService/List", "/oadm.v1.SettingsService/AddCredential",
                 "/oadm.v1.SettingsService/ListCredentials", "/oadm.v1.SettingsService/RemoveCredential", "/oadm.v1.SettingsService/RevealCredential", "/oadm.v1.SettingsService/Set",
                 "/oadm.v1.TagService/Delete", "/oadm.v1.TagService/Update", "/oadm.v1.TaskService/DeleteAll"],
             methods.Where(m => AccessPolicy.For(m).AllDevices && !m.StartsWith("/oadm.v1.EventService/", StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToArray());

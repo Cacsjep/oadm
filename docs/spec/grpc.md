@@ -33,8 +33,12 @@ used again.
   (unset = keep; audited "devices Building B"); a password or disabling ends the user's sessions, a role applies to the
   next call, new devices end the user's streams like a new role), `Delete`. FAILED_PRECONDITION for the own account or
   the last enabled administrator.
-- **`AuditService`** (`auth.proto`, Admin): `List(limit, offset, before_id = 3)` newest first + `total_count` (limit 0 =
-  10,000; `before_id`: only entries older than that entry, the page after it, which new entries never move).
+- **`AuditService`** (`auth.proto`, Admin): `List(limit, offset, before_id = 3, not_before = 4, not_after = 5, search = 6)`
+  newest first + `total_count` (every entry) and `match_count` (the entries of the filter) (limit 0 = 10,000; `before_id`:
+  only entries older than that entry, the page after it, which new entries never move). The range (both ends inclusive)
+  and the text (any case, in user, client address, action, target and detail; SQLite LIKE with `%`, `_` and `\` escaped,
+  the lower and upper form tried for letters outside A-Z) are applied on the server (`AuditLog.QueryAsync`, the `TimeUtc`
+  index); an `offset` above 0 (older clients) ignores the filter.
 - **`RoleService`** (`roles.proto`, Admin except `Mine`): `GetMatrix` (every `PermissionInfo` {key, name, description,
   group, icon_key, operator_default, viewer_default, full_device_control, available} in matrix order and every `RoleInfo`
   {id, name, description, kind, permissions, user_count, version, start_page}), `SaveRoles(roles)` (create = empty id;
@@ -324,7 +328,18 @@ used again.
     (its target, never a password) or the errors of `SaveRecipient`; nothing is saved or audited (the tools' preview). `ListLog` takes `before_id` (the page before that entry) and `skip_total`.
 - **`ServerLogService`** (`logs.proto`, permission `logs.server`, users with all devices): `List` (the server's log
   files, a page newest first; `not_after = 5`: only lines at or before that ISO 8601 time, the page after a line, which new
-  lines never move; INVALID_ARGUMENT for another text), see `docs/spec/main-window.md` "Logs page".
+  lines never move; `not_before = 6`: only lines at or after that time, the read stops at the first older line; files
+  whose name dates them more than a day outside the range are not read; INVALID_ARGUMENT for another text), see
+  `docs/spec/main-window.md` "Logs page".
+- **`LogExportService`** (`logs.proto`): the Export of the Logs page as a file stream (`DownloadChunk`: name
+  `oadm-<log>-yyyy-MM-dd.csv` or `.pdf` and length first, uncompressed), at most the newest 5,000 entries
+  (`LogExportLimits.MaxEntries`), times in the user's time zone (`LogExportOptions.time_zone`, else `utc_offset_minutes`),
+  one audit entry "Exported log" each. `ExportServerLog(filter, options)` (`logs.export` and all devices in `AccessPolicy`,
+  `logs.server` checked in the call), `ExportAudit(filter, options)` (Admin), `ExportClientLog(entries, options, filter
+  fields)` (`logs.export`; the client sends its rows, INVALID_ARGUMENT above 5,000, messages cut at 4,000 characters).
+  CSV: UTF-8 with BOM, the grid's columns plus "Time (ISO 8601)" (and "Exception" for the server log). PDF: PDFsharp +
+  MigraDoc, A4 landscape, Roboto embedded (`LogPdfFonts`, never a system font), a head with the filter, the server name,
+  who exported it when, "Page X of Y".
 - **`DeviceWebService`** (`deviceweb.proto`, the Web View relay, `plugins/Oadm.Plugins.WebView/README.md`):
   `Open(device_id)` (Operator; refuses Certificate changed, Credentials required, Password not set with the shared
   text; audit "Opened web interface"), `Exchange` (one bidirectional call per HTTP request or WebSocket of the embedded
