@@ -194,6 +194,30 @@ public sealed class RolesMatrixTests
         Assert.Contains(vm.Columns, c => c.Name == "Contractor");
     }
 
+    /// <summary>
+    /// docs/spec/plugin-removal.md "To verify": a copy (or Start from) of a role whose start page is a plugin no longer in OADM
+    /// takes only the permissions; its start page is the dialog's choice, Devices by default, so the save never sends the
+    /// gone page.
+    /// </summary>
+    [Fact]
+    public async Task A_copy_of_a_role_whose_start_page_is_gone_starts_on_Devices()
+    {
+        var (vm, _, _) = Create();
+        await LoadOpenAsync(vm);
+        Column(vm, "Operator").StartPage = "plugin:oadm.gone";
+
+        vm.CopyRoleCommand.Execute(Column(vm, "Operator"));
+        Assert.Equal("", vm.EditStartPage?.Key);
+        vm.ApplyEditorCommand.Execute(null);
+        Assert.Equal("", Column(vm, "Copy of Operator").StartPage);
+
+        vm.NewRoleCommand.Execute(null);
+        vm.EditName = "Guard";
+        vm.StartFrom = Column(vm, "Operator");
+        vm.ApplyEditorCommand.Execute(null);
+        Assert.Equal("", Column(vm, "Guard").StartPage);
+    }
+
     [Fact]
     public async Task Role_menus_are_the_shared_row_menu_with_Delete_red_and_last()
     {
