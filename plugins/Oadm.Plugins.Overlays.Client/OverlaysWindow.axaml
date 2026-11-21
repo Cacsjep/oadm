@@ -113,7 +113,7 @@
                        IsVisible="{Binding OverlaysError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             <Button Classes="secondary" HorizontalAlignment="Left" Command="{Binding AddOverlayCommand}"
                     ToolTip.Tip="{Binding AddOverlayTip}" ToolTip.ShowOnDisabled="True">
-              <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="Add overlay" />
+              <ui:IconLabel Icon="{DynamicResource Icon.add}" Text="{Binding AddRowText}" />
             </Button>
           </StackPanel>
         </ScrollViewer>

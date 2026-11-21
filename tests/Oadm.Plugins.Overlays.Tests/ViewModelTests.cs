@@ -148,6 +148,7 @@ public sealed class ViewModelTests
         Assert.Equal((title, button), (vm.Title, vm.ApplyText));
         Assert.Equal(mode == OverlaysMode.Replace, vm.IsReplace); // its warning
         Assert.Equal(mode == OverlaysMode.RemoveMatching, vm.IsRemove); // the text only, the red button
+        Assert.Equal(mode == OverlaysMode.RemoveMatching ? "Add text" : "Add overlay", vm.AddRowText); // Remove matching lists texts to find
         Assert.Equal(mode != OverlaysMode.RemoveMatching, vm.Rows[0].ShowStyle);
         Assert.Equal(mode == OverlaysMode.RemoveMatching, vm.CanApply); // a hidden size never blocks Remove matching
         Assert.Throws<ArgumentOutOfRangeException>(() => Dialog(mode: OverlaysMode.RemoveAll));

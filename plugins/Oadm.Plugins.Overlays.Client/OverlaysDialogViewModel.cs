@@ -151,6 +151,9 @@ public sealed partial class OverlaysDialogViewModel : ValidatingViewModel
     /// <summary>The Size header's tooltip ("16 to 200; empty: the camera's default").</summary>
     public string SizeTip => _limits.SizeTip;
 
+    /// <summary>The button below the list: Remove matching lists texts to find, the other dialogs overlays to write.</summary>
+    public string AddRowText => IsRemove ? "Add text" : "Add overlay";
+
     /// <summary>Why Add overlay is disabled (its tooltip); null while it can add.</summary>
     public string? AddOverlayTip => CanAddOverlay() ? null : OverlayRules.TooMany;
 
