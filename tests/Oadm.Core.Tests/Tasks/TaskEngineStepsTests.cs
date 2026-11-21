@@ -299,8 +299,9 @@ public sealed class TaskEngineStepsTests : IAsyncLifetime
     [Theory]
     [InlineData("Upgrade firmware to 12.11.77...", "Upgrade firmware to 12.11.77")]
     [InlineData("   ", "Test t.name")]
-    [InlineData("Remove users alpha, bravo, charlie, delta, echo, foxtrot", "Remove users alpha, bravo, charlie, delta, echo…")]
-    public async Task TaskNamesAreNormalizedAndShortenedToFortyEightCharacters(string raw, string expected)
+    [InlineData("Remove users alpha, bravo, charlie, delta, echo, foxtrot", "Remove users alpha, bravo, charlie, delta, echo, foxtrot")]
+    [InlineData("Remove users alpha, bravo, charlie, delta, echo, foxtrot, golf, hotel, india, juliett, kilo, lima, mike, november, oscar, papa", "Remove users alpha, bravo, charlie, delta, echo, foxtrot, golf, hotel, india, juliett, kilo, lima, mike, november, osca…")]
+    public async Task TaskNamesAreNormalizedAndShortenedTo120Characters(string raw, string expected)
     {
         var device = _devices.Add();
         Assert.True(_registry.RegisterTaskPlugin(

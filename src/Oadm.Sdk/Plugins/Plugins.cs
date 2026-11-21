@@ -798,7 +798,7 @@ public static class TaskPluginNames
     public const int MaxDisplayNameLength = 32;
 
     /// <summary>Longest task name (<see cref="ITaskPlugin.GetTaskName"/>) shown in the tasks pane.</summary>
-    public const int MaxTaskNameLength = 48;
+    public const int MaxTaskNameLength = 120;
 
     /// <summary>The ellipsis used when a name is shortened.</summary>
     public const string Ellipsis = "…";

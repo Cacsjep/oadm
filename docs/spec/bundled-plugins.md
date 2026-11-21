@@ -11,7 +11,7 @@ Optional plugins (add-ons: not in the installers, installed on the Plugins page)
 `docs/spec/vision-center.md`).
 
 Common to all task plugins: every device request and every wait is a named step; every successful task ends with the
-engine's step **Completed**; names follow `docs/spec/tasks.md` (no secrets, at most 48 characters). A new static
+engine's step **Completed**; names follow `docs/spec/tasks.md` (no secrets, at most 120 characters). A new static
 address (IPv4, IPv6) is probed before the first write (`IAddressProbe`: ping, 2 tries x 1 s, plus TCP 80 / 443; the
 device's own addresses are not probed); an answer fails "<address> is already in use (answers ping). Nothing was
 changed.".

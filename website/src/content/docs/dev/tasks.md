@@ -84,7 +84,7 @@ public string? NotSupportedReason(IDeviceInfo device) =>
 ### Task names
 
 The tasks pane shows what each task does, not the menu name: "Add user joe", "Set static IP 10.0.0.60", "Upgrade
-AXIS OS to 12.11.77". At most 48 characters (`TaskPluginNames.MaxTaskNameLength`; the server shortens a longer name
+AXIS OS to 12.11.77". At most 120 characters (`TaskPluginNames.MaxTaskNameLength`; the server shortens a longer name
 with "…" and logs a warning), no secrets (names are stored and shown to every user). `GetTaskName` is called once per
 run, so all devices of a run share the name: put everything the name needs (the application's name, upgrade or
 downgrade) into the payload. An empty name or an exception falls back to `DisplayName`.

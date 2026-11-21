@@ -38,7 +38,7 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 - **Task names: the task list says exactly what a task does** ("Add user joe", "Set static IP
   10.0.0.60", "Upgrade AXIS OS to 12.11.77 (factory default)"), never the plugin's menu name: the engine
   names each task with `ITaskPlugin.GetTaskName(payloadJson)` once per Run (trimmed, trailing "..."
-  stripped, at most `TaskPluginNames.MaxTaskNameLength` = 48 characters, longer names shortened with
+  stripped, at most `TaskPluginNames.MaxTaskNameLength` = 120 characters, longer names shortened with
   "…" and a warning logged; empty or throwing = `DisplayName`). Names never contain secrets.
 - Task engine parallelism: at most `Tasks.MaxParallelPerPlugin` running tasks (= devices) per plugin, a
   **server setting** (default 16, 1..256, Settings page "Parallel tasks per plugin"). A plugin's

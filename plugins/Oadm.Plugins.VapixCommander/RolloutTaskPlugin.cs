@@ -80,7 +80,7 @@ public sealed class RolloutTaskPlugin : ITaskPlugin
             return first;
         }
 
-        // Keep the "+N more" visible within the 48 characters of a task name.
+        // Keep the "+N more" visible within the 120 characters of a task name.
         var more = string.Create(CultureInfo.InvariantCulture, $" +{commandNames.Count - 1} more");
         var room = TaskPluginNames.MaxTaskNameLength - more.Length;
         if (first.Length > room)

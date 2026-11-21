@@ -77,7 +77,7 @@ public sealed class RolloutEngineTests : IAsyncLifetime
     [Theory]
     [InlineData(new[] { "Read brand parameters" }, "Read brand parameters")]
     [InlineData(new[] { "Read brand parameters", "Set day/night shift level" }, "Read brand parameters +1 more")]
-    [InlineData(new[] { "Set the very long overlay text parameter of the first view area", "B", "C" }, "Set the very long overlay text paramete… +2 more")]
+    [InlineData(new[] { "Set the very long overlay text parameter of the first view area and the second view area of the camera in the lobby", "B", "C" }, "Set the very long overlay text parameter of the first view area and the second view area of the camera in the l… +2 more")]
     public void Task_name_is_the_command_or_the_first_command_plus_count(string[] commands, string expected)
     {
         var name = RolloutTaskPlugin.TaskName(commands);
