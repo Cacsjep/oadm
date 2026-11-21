@@ -732,9 +732,9 @@ overlays** (`oadm.overlays.remove-matching`; one dialog each; Read from a camera
 it) and, last after a separator (`IsDestructive`), **Remove all overlays** (`oadm.overlays.remove-all`, a confirmation
 only). Spec: `docs/spec/overlays.md`.
 
-- Rules that must hold: text overlays of view area 1 only (image overlays, widgets, privacy masks and other view areas
-  never touched); API discovery `dynamicoverlay` 1.x checked fresh before the first request to the API; text length, size
-  range and free slots of the view area checked before the first write ("Nothing was changed"); overlays listed right
+- Rules that must hold: text overlays of the first view area of every sensor only (image overlays, widgets, privacy
+  masks and other view areas never touched); API discovery `dynamicoverlay` 1.x checked fresh before the first request to the API; text length, size
+  range and free slots of every sensor's view area checked before the first write ("Nothing was changed"); overlays listed right
   before the writes and found by content, never by a stored identity; additions before removals while the free slots take
   them; never the deprecated `reference` or `scrollSpeed`; an overlay the camera already shows is not added again.
 

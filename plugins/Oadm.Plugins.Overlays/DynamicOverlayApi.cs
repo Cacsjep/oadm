@@ -50,7 +50,8 @@ public sealed class OverlayDeviceException : Exception
 
 /// <summary>
 /// The Dynamic overlay API (<c>/axis-cgi/dynamicoverlay/dynamicoverlay.cgi</c>, JSON, API discovery id <c>dynamicoverlay</c>
-/// 1.x; recorded on AXIS OS 10.12 and 12.11): getOverlayCapabilities, list, addText and remove for view area 1. The
+/// 1.x; recorded on AXIS OS 10.12 and 12.11): getOverlayCapabilities, list, addText and remove for the first view area of
+/// each sensor. The
 /// deprecated <c>reference</c> and <c>scrollSpeed</c> are never sent. Errors come back as HTTP 200 with an "error" object.
 /// </summary>
 public static class DynamicOverlayApi
@@ -59,7 +60,7 @@ public static class DynamicOverlayApi
     public const string MinVersion = "1.0";
     public const string Path = "/axis-cgi/dynamicoverlay/dynamicoverlay.cgi";
 
-    /// <summary>The view area every overlay goes to (camera=1).</summary>
+    /// <summary>The first view area (camera=1): the only one of a camera with one sensor, the one Read from a camera reads.</summary>
     public const int ViewArea = 1;
 
     /// <summary>The longest text when the camera does not say (the API's limit).</summary>
@@ -75,24 +76,49 @@ public static class DynamicOverlayApi
     public static async Task<DeviceOverlays> ListAsync(IVapixClient vapix, CancellationToken ct) =>
         ParseList(await CallAsync(vapix, "list", new JsonObject(), ct).ConfigureAwait(false));
 
-    /// <summary>Adds one text overlay to view area 1; returns its identity.</summary>
-    public static async Task<int> AddTextAsync(IVapixClient vapix, TextOverlay overlay, CancellationToken ct)
+    /// <summary>Adds one text overlay to <paramref name="viewArea"/>; returns its identity.</summary>
+    public static async Task<int> AddTextAsync(IVapixClient vapix, TextOverlay overlay, int viewArea, CancellationToken ct)
     {
-        var data = await CallAsync(vapix, "addText", AddTextParams(overlay), ct).ConfigureAwait(false);
+        var data = await CallAsync(vapix, "addText", AddTextParams(overlay, viewArea), ct).ConfigureAwait(false);
         return Int(data?["identity"]) ?? 0;
+    }
+
+    /// <summary>
+    /// The view areas the overlays go to: the first view area of each sensor (a camera with four sensors: four, a camera
+    /// with one sensor and eight view areas: one). View area 1 alone when the camera does not list its video sources.
+    /// </summary>
+    public static async Task<IReadOnlyList<int>> SensorViewAreasAsync(IVapixClient vapix, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(vapix);
+        try
+        {
+            return SensorViewAreas(await vapix.GetVideoSourcesAsync(ct).ConfigureAwait(false));
+        }
+        catch (NotSupportedException)
+        {
+            return [ViewArea];
+        }
+    }
+
+    /// <summary>The first view area of each sensor in sensor order; view area 1 alone for an empty list.</summary>
+    public static IReadOnlyList<int> SensorViewAreas(IEnumerable<VideoSource> sources)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        var areas = sources.GroupBy(s => s.Sensor).OrderBy(g => g.Key).Select(g => g.Min(s => s.Camera)).Where(c => c > 0).Distinct().ToList();
+        return areas.Count == 0 ? [ViewArea] : areas;
     }
 
     /// <summary>Removes one overlay by the identity of the list just read (remove takes only the identity).</summary>
     public static Task RemoveAsync(IVapixClient vapix, int identity, CancellationToken ct) =>
         CallAsync(vapix, "remove", new JsonObject { ["identity"] = identity }, ct);
 
-    /// <summary>The params of addText: camera 1, the text with real line breaks, position, colours and the size when set.</summary>
-    public static JsonObject AddTextParams(TextOverlay overlay)
+    /// <summary>The params of addText: the view area, the text with real line breaks, position, colours and the size when set.</summary>
+    public static JsonObject AddTextParams(TextOverlay overlay, int viewArea = ViewArea)
     {
         ArgumentNullException.ThrowIfNull(overlay);
         var parameters = new JsonObject
         {
-            ["camera"] = ViewArea,
+            ["camera"] = viewArea,
             ["text"] = OverlayText.Normalize(overlay.Text),
             ["position"] = overlay.Position == OverlayPosition.Custom && overlay.CustomPosition is { Count: 2 } place
                 ? new JsonArray(place[0], place[1])
@@ -180,7 +206,7 @@ public static class DynamicOverlayApi
     public static string ErrorMessage(int code, string? message) => code switch
     {
         300 => "The camera has no free overlay slot.",
-        301 => "The camera has no view area 1.",
+        301 => "The camera has no such view area.",
         302 => "The overlay is no longer on the camera.",
         303 => "The camera does not accept this position.",
         304 => "The camera does not accept this text.",

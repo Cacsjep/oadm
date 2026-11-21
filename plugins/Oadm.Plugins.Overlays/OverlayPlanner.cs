@@ -2,20 +2,22 @@ using System.Globalization;
 
 namespace Oadm.Plugins.Overlays;
 
-/// <summary>What one camera needs: the overlays to remove (from the list just read), to add, and those already there.</summary>
-/// <param name="Remove">Text overlays of view area 1 to remove, by the identity of the list just read.</param>
+/// <summary>What one view area needs: the overlays to remove (from the list just read), to add, and those already there.</summary>
+/// <param name="Remove">Text overlays of the view area to remove, by the identity of the list just read.</param>
 /// <param name="Add">Overlays to add.</param>
 /// <param name="AlreadyThere">Overlays of the list the camera already shows exactly like this.</param>
 /// <param name="NotFound">Remove matching: texts of the list the camera does not show.</param>
 /// <param name="AddFirst">
 /// Replace: the free slots take the additions before the removals, so a refused add leaves the old overlays in place.
 /// </param>
+/// <param name="ViewArea">The view area (camera=N) the plan is for.</param>
 public sealed record OverlayPlan(
     IReadOnlyList<DeviceOverlay> Remove,
     IReadOnlyList<TextOverlay> Add,
     IReadOnlyList<TextOverlay> AlreadyThere,
     IReadOnlyList<string> NotFound,
-    bool AddFirst = false)
+    bool AddFirst = false,
+    int ViewArea = DynamicOverlayApi.ViewArea)
 {
     public bool ChangesNothing => Remove.Count == 0 && Add.Count == 0;
 }
@@ -26,16 +28,26 @@ public sealed record OverlayPlan(
 /// </summary>
 public static class OverlayPlanner
 {
-    /// <summary>The plan, or an <see cref="OverlayDeviceException"/> ending in "Nothing was changed." when the camera cannot take it.</summary>
-    public static OverlayPlan Build(OverlaysPayload payload, DeviceOverlays current, OverlayCapabilities limits)
+    /// <summary>
+    /// One plan per view area (the first of each sensor), all built before the first write: an
+    /// <see cref="OverlayDeviceException"/> ending in "Nothing was changed." when one of them cannot take the list.
+    /// </summary>
+    public static IReadOnlyList<OverlayPlan> BuildAll(OverlaysPayload payload, DeviceOverlays current, OverlayCapabilities limits, IReadOnlyList<int> viewAreas)
+    {
+        ArgumentNullException.ThrowIfNull(viewAreas);
+        return [.. viewAreas.Select(v => Build(payload, current, limits, v, viewAreas.Count > 1))];
+    }
+
+    /// <summary>The plan of one view area, or an <see cref="OverlayDeviceException"/> ending in "Nothing was changed." when it cannot take it.</summary>
+    public static OverlayPlan Build(OverlaysPayload payload, DeviceOverlays current, OverlayCapabilities limits, int viewArea = DynamicOverlayApi.ViewArea, bool nameViewArea = false)
     {
         ArgumentNullException.ThrowIfNull(payload);
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(limits);
-        var existing = current.TextsOf(DynamicOverlayApi.ViewArea);
+        var existing = current.TextsOf(viewArea);
         if (payload.Mode == OverlaysMode.RemoveAll)
         {
-            return new OverlayPlan(existing, [], [], []);
+            return new OverlayPlan(existing, [], [], [], ViewArea: viewArea);
         }
 
         if (payload.Mode == OverlaysMode.RemoveMatching)
@@ -44,7 +56,7 @@ public static class OverlayPlanner
             var remove = existing.Where(e => texts.Contains(OverlayText.Normalize(e.Overlay.Text))).ToList();
             var shown = remove.Select(r => OverlayText.Normalize(r.Overlay.Text)).ToHashSet(StringComparer.Ordinal);
             var missing = payload.Overlays.Select(o => OverlayText.Normalize(o.Text)).Distinct(StringComparer.Ordinal).Where(t => !shown.Contains(t)).ToList();
-            return new OverlayPlan(remove, [], [], missing);
+            return new OverlayPlan(remove, [], [], missing, ViewArea: viewArea);
         }
 
         CheckLimits(payload.Overlays, limits);
@@ -66,10 +78,10 @@ public static class OverlayPlanner
         }
 
         var removals = payload.Mode == OverlaysMode.Replace ? unused : [];
-        var images = current.ImagesOf(DynamicOverlayApi.ViewArea);
-        CheckSlots(add.Count, existing.Count - removals.Count, images, limits);
+        var images = current.ImagesOf(viewArea);
+        CheckSlots(add.Count, existing.Count - removals.Count, images, limits, nameViewArea ? viewArea : null);
         var addFirst = removals.Count > 0 && add.Count > 0 && Room(existing.Count, images, limits) is { } room && add.Count <= room;
-        return new OverlayPlan(removals, add, there, [], addFirst);
+        return new OverlayPlan(removals, add, there, [], addFirst, viewArea);
     }
 
     /// <summary>The camera already shows <paramref name="wanted"/>: same text, place, colours, and size (when one is asked for).</summary>
@@ -116,18 +128,20 @@ public static class OverlayPlanner
         }
     }
 
-    /// <summary>Text overlays view area 1 still takes next to these; null when the camera does not say.</summary>
+    /// <summary>Text overlays a view area still takes next to these; null when the camera does not say.</summary>
     private static int? Room(int texts, int images, OverlayCapabilities limits) =>
         limits.Slots is { } total
             ? Math.Max(0, total - (texts * limits.SlotsPerText) - (images * limits.SlotsPerImage)) / limits.SlotsPerText
             : null;
 
     /// <summary>
-    /// The free slots of view area 1: numAvailableSlots is the view area's total (it stays the same after an add, AXIS OS 10.12
-    /// and 12.11), less the slots of the text and image overlays that stay.
+    /// The free slots of a view area: numAvailableSlots is the view area's total (it stays the same after an add, AXIS OS 10.12
+    /// and 12.11), less the slots of the text and image overlays that stay. The message names the view area of a camera
+    /// with several sensors.
     /// </summary>
-    private static void CheckSlots(int adds, int textsStaying, int images, OverlayCapabilities limits)
+    private static void CheckSlots(int adds, int textsStaying, int images, OverlayCapabilities limits, int? viewArea)
     {
+        var where = viewArea is { } v ? string.Create(CultureInfo.InvariantCulture, $" in view area {v}") : string.Empty;
         if (adds == 0 || Room(textsStaying, images, limits) is not { } room)
         {
             return;
@@ -136,9 +150,9 @@ public static class OverlayPlanner
         if (adds > room)
         {
             throw new OverlayDeviceException(room == 0
-                ? "The camera has no free overlay slot in view area 1. Nothing was changed."
+                ? $"The camera has no free overlay slot{where}. Nothing was changed."
                 : string.Create(CultureInfo.InvariantCulture,
-                    $"The camera has room for {room} more {(room == 1 ? "overlay" : "overlays")} in view area 1, not {adds}. Nothing was changed."));
+                    $"The camera has room for {room} more {(room == 1 ? "overlay" : "overlays")}{where}, not {adds}. Nothing was changed."));
         }
     }
 }

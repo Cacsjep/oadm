@@ -57,7 +57,7 @@ public sealed class PlannerTests
         var seven = Enumerable.Range(0, 6).Select(i => (1, Overlay("x" + i))).Append((2, Overlay("other area"))).ToArray();
         var full = new DeviceOverlays(Shown(seven).Texts, new Dictionary<int, int> { [1] = 1 });
         var error = Assert.Throws<OverlayDeviceException>(() => OverlayPlanner.Build(new OverlaysPayload { Overlays = [Overlay("a"), Overlay("b")] }, full, Eight));
-        Assert.Equal("The camera has room for 1 more overlay in view area 1, not 2. Nothing was changed.", error.Message);
+        Assert.Equal("The camera has room for 1 more overlay, not 2. Nothing was changed.", error.Message);
 
         Assert.Single(OverlayPlanner.Build(new OverlaysPayload { Overlays = [Overlay("a")] }, full, Eight).Add);
         var replace = OverlayPlanner.Build(new OverlaysPayload { Mode = OverlaysMode.Replace, Overlays = [.. Enumerable.Range(0, 7).Select(i => Overlay("n" + i))] }, full, Eight);

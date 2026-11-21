@@ -12,13 +12,13 @@ public enum OverlaysMode
     /// <summary>The overlays go next to the camera's own; one the camera already shows is skipped.</summary>
     Add = 0,
 
-    /// <summary>The camera ends up with exactly this list of text overlays in view area 1; image overlays stay.</summary>
+    /// <summary>Every sensor ends up with exactly this list of text overlays in its first view area; image overlays stay.</summary>
     Replace = 1,
 
-    /// <summary>Removes the text overlays of view area 1 whose text equals one of the list.</summary>
+    /// <summary>Removes the text overlays of every sensor's first view area whose text equals one of the list.</summary>
     RemoveMatching = 2,
 
-    /// <summary>Removes every text overlay of view area 1; image overlays stay. Takes no overlays.</summary>
+    /// <summary>Removes every text overlay of every sensor's first view area; image overlays stay. Takes no overlays.</summary>
     RemoveAll = 3,
 }
 
@@ -83,7 +83,7 @@ public sealed record OverlaysPayload
 }
 
 /// <summary>The payload of Add, Replace and Remove matching overlays: the overlays. The task says what happens with them.</summary>
-[Description("The text overlays of view area 1, at most 8. Add puts them next to the camera's, Replace leaves exactly these text overlays, Remove matching removes the ones with these texts.")]
+[Description("The text overlays of every sensor (its first view area), at most 8. Add puts them next to the camera's, Replace leaves exactly these text overlays, Remove matching removes the ones with these texts.")]
 public sealed record OverlayListPayload
 {
     [property: Description("The text overlays, 1 to 8.")]
@@ -91,8 +91,8 @@ public sealed record OverlayListPayload
     public IReadOnlyList<TextOverlay> Overlays { get; init; } = [];
 }
 
-/// <summary>The payload of Remove all overlays: none (every text overlay of view area 1 goes).</summary>
-[Description("Removes every text overlay of view area 1; image overlays stay. No settings.")]
+/// <summary>The payload of Remove all overlays: none (every text overlay of every sensor's first view area goes).</summary>
+[Description("Removes every text overlay of every sensor (its first view area); image overlays stay. No settings.")]
 public sealed record RemoveAllPayload;
 
 /// <summary>A camera's overlay limits (getOverlayCapabilities).</summary>

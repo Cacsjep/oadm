@@ -33,12 +33,12 @@ text. It has one entry per action: **Add overlays**, **Replace overlays**, **Rem
 **Read from a camera**, top right in the dialog, fills the list with the text overlays of one camera, so you can copy
 them to many. An overlay placed freely on that camera keeps its place (**Custom position**).
 
-All overlays go to view area 1. Image overlays and the other view areas stay as they are.
+On a camera with several sensors, every sensor gets the overlays. Image overlays and other view areas stay as they are.
 
 ## What OADM checks first
 
 - The camera supports text overlays.
-- The text fits the camera's length, the size is in the camera's range and the view area has a free slot.
+- The text fits the camera's length, the size is in the camera's range and every sensor has a free slot.
 
 A refused camera fails with "Nothing was changed". An overlay the camera already shows is not added twice.
 

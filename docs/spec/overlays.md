@@ -17,14 +17,19 @@ Package `plugins/Oadm.Plugins.Overlays` (+ `.Client`), id `oadm.overlays`, free,
 
 1. **Text only.** Only text overlays are listed, added and removed. Image overlays, widgets, the streaming indicator,
    scene annotations and privacy masks are never touched; a Replace leaves image overlays where they are.
-2. **View area 1.** Every overlay goes to view area 1 (`camera=1`) and only its text overlays are planned and removed;
-   other view areas stay as they are. The dialog has no view area field.
+2. **Every sensor, its first view area** (decision 2026-11-21, no choice in the dialog). Every overlay goes to the
+   first view area of each sensor (`GetVideoSourcesAsync`: per `Sensor` the lowest `Camera`; view area 1 when the
+   camera does not list its sources), and only their text overlays are planned and removed. A camera with one sensor
+   and 8 view areas gets view area 1 only; the AXIS P4708-PLVE gets view areas 1 and 2, never its Group View
+   (`Source=1,0`, read as sensor 0). Other view areas stay as they are. The dialog has no view area field; Read from a
+   camera reads view area 1.
 3. **Compatibility first.** API discovery id `dynamicoverlay`, major version 1: `CanRun` on the cached list, the task
    on a fresh one before the first request to the API ("The camera does not support text overlays. Nothing was
    changed.").
 4. **Everything checked before the first write**: the payload's rules (`OverlayRules`: at most 8 overlays, a text of at
    most 512 characters without tabs or control characters, a size from 1 to 999, a custom place of two numbers from -1
-   to 1), then per camera its text length, size range and free slots of view area 1 from `getOverlayCapabilities`.
+   to 1), then per camera its text length, size range and the free slots of every sensor's view area from
+   `getOverlayCapabilities`; one full view area stops the task before any write.
 5. **No stored identities.** Overlays are listed right before the writes and found by their content; an identity is
    used only in the same task, right after the list that returned it.
 6. **One request per step**, additions before removals while the free slots take them (a refused add leaves the old
@@ -40,11 +45,11 @@ Package `plugins/Oadm.Plugins.Overlays` (+ `.Client`), id `oadm.overlays`, free,
 ## What happens on each camera
 
 - **Add overlays**: the list goes next to the camera's overlays.
-- **Replace overlays**: the camera ends up with exactly this list of text overlays in view area 1; at least one overlay
+- **Replace overlays**: every sensor ends up with exactly this list of text overlays; at least one overlay
   ("Add an overlay."). The dialog shows a short warning above the table.
 - **Remove matching overlays**: removes the text overlays whose text equals one in the list; only the text counts, the
   dialog shows only the Text column, **Add text** adds a row and its main button is red.
-- **Remove all overlays**: removes every text overlay of view area 1; image overlays stay. No form: only a confirmation
+- **Remove all overlays**: removes every text overlay of every sensor; image overlays stay. No form: only a confirmation
   (`ui:MessageWindow`, red Remove): "Remove all text overlays of 243 cameras? Image overlays stay." with the line of
   unsupported cameras below when there are some. Task name "Remove all text overlays".
 
@@ -80,6 +85,9 @@ Recorded on AXIS OS 12.11.147 (P3265-V, M3215-LVE) and 10.12.363 (M3206-LVE), 20
 - **The slot limit is per view area.** `numAvailableSlots` is the total of one view area and does not drop after an add.
   On the M3215-LVE (8 view areas) view area 1 took 8 text overlays, the ninth was refused with 300, and view area 2
   still took one. The free slots are counted from the list.
+- **Multi-sensor** (AXIS P4708-PLVE, AXIS OS 13.0.114, 2026-11-21): `Image.I0` "Camera 1" `Source=0`, `Image.I1`
+  "Camera 2" `Source=1`, `Image.I2` "Group View" `Source=1,0`; `dynamicoverlay` 1.8, 8 slots. `addText` with `camera` 1
+  and 2 showed each text on its own sensor; the Group View showed neither.
 - In the JSON body a real line break makes a new line; "%0A" is read as the modifier `%A` (seen on a snapshot).
 - `remove` takes only the identity; `list` needs a `params` object.
 - **Open: whether overlays survive a restart.** The VAPIX documentation says only that "Overlay IDs may change after a

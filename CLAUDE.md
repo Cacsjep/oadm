@@ -233,7 +233,7 @@ must never break.
   the chosen devices and the applications of the selected ones; every change is a task of `oadm.acap` with its checks
   and permissions; reads only on demand, kept in server memory.
 - **[Text overlays](docs/spec/overlays.md)** (package `oadm.overlays`, free, on by default; context menu group Overlays:
-  Add, Replace, Remove matching and, last, Remove all overlays): the text overlays of view area 1 on many cameras, Read
+  Add, Replace, Remove matching and, last, Remove all overlays): the text overlays of every sensor (its first view area) on many cameras, Read
   from a camera copies one camera's; text only (image overlays, widgets, privacy masks, other view areas never touched);
   `dynamicoverlay` 1.x checked fresh, text length, size range and free slots (per view area) before the first write;
   listed right before the writes and found by content, never a stored identity; never the deprecated `reference` or

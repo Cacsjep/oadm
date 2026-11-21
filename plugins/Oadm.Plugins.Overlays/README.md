@@ -37,8 +37,9 @@ Dynamic overlay API, `POST /axis-cgi/dynamicoverlay/dynamicoverlay.cgi`, JSON, O
   `numAvailableSlots` 8 (4), `slotsPerTextOverlay` 1, `slotsPerImageOverlay` 1. **`numAvailableSlots` is the total of one
   view area**: it stays 8 after an add. The misspelled `numberAvailbleSlots` of the documentation's example is read too.
 - `list` returns every view area: `textOverlays[]` (`identity`, `camera`, `text`, `position` a name or `[x, y]`, the
-  three colours, `fontSize`, ...), `imageOverlays[]`, `imageFiles[]`. Only view area 1 is planned and written.
-- `addText` (`camera` 1, `text`, `position`, `textColor`, `textBGColor`, `textOLColor`, `fontSize` only when set) answers
+  three colours, `fontSize`, ...), `imageOverlays[]`, `imageFiles[]`. Only the first view area of each sensor is planned
+  and written (`GetVideoSourcesAsync`, per sensor the lowest `camera`; view area 1 when the host cannot list them).
+- `addText` (`camera`, `text`, `position`, `textColor`, `textBGColor`, `textOLColor`, `fontSize` only when set) answers
   `{camera, identity}`. The deprecated `reference` and `scrollSpeed` are never sent, nor `rotation`.
 - `remove` takes **only** `identity`: with `camera` as well it answers 103 "Unknown parameter supplied".
 - **Line breaks**: in the JSON body a real line break makes a new line on the video. "%0A" (the documentation's form for
@@ -67,14 +68,16 @@ warning). Nothing to change: the writes are left out and Verify is skipped "Noth
   colours, and the size when one was asked for); identities can change after a restart.
 - **Add overlays**: an overlay the camera already shows exactly like this is skipped ("2 already on the camera"), so a
   second run changes nothing.
-- **Replace overlays**: the text overlays of view area 1 the list does not have are removed, the missing ones added; at
+- **Replace overlays**: on every sensor, the text overlays the list does not have are removed, the missing ones added; at
   least one overlay. Image overlays and other view areas stay.
-- **Remove matching overlays**: removes the text overlays of view area 1 whose text equals one of the list (only the text
+- **Remove matching overlays**: removes the text overlays of every sensor whose text equals one of the list (only the text
   counts); a text no overlay has is named in the check step, no warning.
-- **Remove all overlays**: removes every text overlay of view area 1. Image overlays and other view areas stay.
+- **Remove all overlays**: removes every text overlay of every sensor. Image overlays and other view areas stay.
 - **Checks before the first write**: text length against `maxTextLength`, size against `minFontSize`..`maxFontSize`,
-  free slots of view area 1 = `numAvailableSlots` - text overlays staying x `slotsPerTextOverlay` - image overlays x
-  `slotsPerImageOverlay`; "The camera has room for 1 more overlay in view area 1, not 2. Nothing was changed."
+  free slots of each sensor's view area = `numAvailableSlots` - text overlays staying x `slotsPerTextOverlay` - image overlays x
+  `slotsPerImageOverlay`; "The camera has room for 1 more overlay, not 2. Nothing was changed." (with "in view area 2"
+  on a camera with several sensors). Every sensor is checked before the first write; write steps name the view area
+  only on such a camera ("Add the overlay "%F %X" in view area 2").
 - A refused write after an earlier one says what was done: "... Already done: 1 removed, 0 added."
 - Task names, with the whole text on one line (line breaks as spaces), shortened only past 120 characters: "Add text
   overlay "Lobby floor 1"", "Add 2 text overlays", "Set text overlay ...", "Set 3 text overlays", "Remove text overlay

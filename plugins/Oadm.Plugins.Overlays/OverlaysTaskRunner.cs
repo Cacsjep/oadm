@@ -7,10 +7,11 @@ using Oadm.Sdk.Vapix;
 namespace Oadm.Plugins.Overlays;
 
 /// <summary>
-/// One camera: Check the overlay support, Read the overlay limits, Read the overlays, Check the overlays (every limit before the
-/// first write), one step per addition and per removal (additions first when the free slots allow it, else removals first),
-/// Verify the overlays. The overlays are listed right before the
-/// writes and matched by content: identities are never kept.
+/// One camera: Check the overlay support, Read the overlay limits, Read the overlays (and the camera's sensors), Check the
+/// overlays (every limit of every sensor's view area before the first write), one step per addition and per removal
+/// (additions first when the free slots allow it, else removals first), Verify the overlays. Every sensor gets the same
+/// list in its first view area. The overlays are listed right before the writes and matched by content: identities are
+/// never kept.
 /// </summary>
 internal static class OverlaysTaskRunner
 {
@@ -42,21 +43,22 @@ internal static class OverlaysTaskRunner
             return read;
         }).ConfigureAwait(false);
 
-        var current = await ctx.StepAsync(StepReadOverlays, async step =>
+        var (current, viewAreas) = await ctx.StepAsync(StepReadOverlays, async step =>
         {
+            var areas = await DynamicOverlayApi.SensorViewAreasAsync(ctx.Vapix, ct).ConfigureAwait(false);
             var read = await DynamicOverlayApi.ListAsync(ctx.Vapix, ct).ConfigureAwait(false);
-            step.Complete(Count(read.TextsOf(DynamicOverlayApi.ViewArea).Count, "text overlay") + " in view area 1");
-            return read;
+            step.Complete(DescribeTexts(read, areas));
+            return (read, areas);
         }).ConfigureAwait(false);
 
-        var plan = await ctx.StepAsync(StepCheck, step =>
+        var plans = await ctx.StepAsync(StepCheck, step =>
         {
-            var built = OverlayPlanner.Build(payload, current, limits);
+            var built = OverlayPlanner.BuildAll(payload, current, limits, viewAreas);
             step.Complete(DescribePlan(built));
             return Task.FromResult(built);
         }).ConfigureAwait(false);
 
-        if (plan.ChangesNothing)
+        if (plans.All(p => p.ChangesNothing))
         {
             ctx.SkipStep(StepVerify, "Nothing was changed.");
             return;
@@ -64,53 +66,59 @@ internal static class OverlaysTaskRunner
 
         var names = new HashSet<string>(StringComparer.Ordinal);
         int removed = 0, added = 0;
-        async Task RemoveAllAsync()
+        foreach (var plan in plans)
         {
-            foreach (var overlay in plan.Remove)
+            // Step names name the view area only on a camera with several sensors.
+            var where = viewAreas.Count > 1 ? string.Create(CultureInfo.InvariantCulture, $" in view area {plan.ViewArea}") : string.Empty;
+            async Task RemoveAllAsync()
             {
-                using (ctx.BeginStep(Unique(names, $"Remove the overlay \"{OverlayNames.Brief(overlay.Overlay.Text)}\"")))
+                foreach (var overlay in plan.Remove)
                 {
-                    await WriteAsync(() => DynamicOverlayApi.RemoveAsync(ctx.Vapix, overlay.Identity, ct), removed, added).ConfigureAwait(false);
-                }
+                    using (ctx.BeginStep(Unique(names, $"Remove the overlay \"{OverlayNames.Brief(overlay.Overlay.Text)}\"{where}")))
+                    {
+                        await WriteAsync(() => DynamicOverlayApi.RemoveAsync(ctx.Vapix, overlay.Identity, ct), removed, added).ConfigureAwait(false);
+                    }
 
-                removed++;
+                    removed++;
+                }
+            }
+
+            async Task AddAllAsync()
+            {
+                foreach (var overlay in plan.Add)
+                {
+                    using (var step = ctx.BeginStep(Unique(names, $"Add the overlay \"{OverlayNames.Brief(overlay.Text)}\"{where}")))
+                    {
+                        await WriteAsync(() => DynamicOverlayApi.AddTextAsync(ctx.Vapix, overlay, plan.ViewArea, ct), removed, added).ConfigureAwait(false);
+                        step.Complete(OverlayNames.Of(overlay.Position));
+                    }
+
+                    added++;
+                }
+            }
+
+            // A refused add after the removals would leave the view area without text overlays: add first while the slots allow it.
+            if (plan.AddFirst)
+            {
+                await AddAllAsync().ConfigureAwait(false);
+                await RemoveAllAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                await RemoveAllAsync().ConfigureAwait(false);
+                await AddAllAsync().ConfigureAwait(false);
             }
         }
 
-        async Task AddAllAsync()
-        {
-            foreach (var overlay in plan.Add)
-            {
-                using (var step = ctx.BeginStep(Unique(names, $"Add the overlay \"{OverlayNames.Brief(overlay.Text)}\"")))
-                {
-                    await WriteAsync(() => DynamicOverlayApi.AddTextAsync(ctx.Vapix, overlay, ct), removed, added).ConfigureAwait(false);
-                    step.Complete(OverlayNames.Of(overlay.Position));
-                }
-
-                added++;
-            }
-        }
-
-        // A refused add after the removals would leave the camera without text overlays: add first while the slots allow it.
-        if (plan.AddFirst)
-        {
-            await AddAllAsync().ConfigureAwait(false);
-            await RemoveAllAsync().ConfigureAwait(false);
-        }
-        else
-        {
-            await RemoveAllAsync().ConfigureAwait(false);
-            await AddAllAsync().ConfigureAwait(false);
-        }
-
-        ctx.Log(TaskLogLevel.Info, string.Create(CultureInfo.InvariantCulture, $"Removed {removed}, added {added} text overlays in view area 1."));
+        ctx.Log(TaskLogLevel.Info, string.Create(CultureInfo.InvariantCulture,
+            $"Removed {removed}, added {added} text overlays in view area {string.Join(", ", viewAreas)}."));
         await ctx.StepAsync(StepVerify, async step =>
         {
             var after = await DynamicOverlayApi.ListAsync(ctx.Vapix, ct).ConfigureAwait(false);
-            var problem = Verify(payload, plan, after);
+            var problem = plans.Select(p => Verify(payload, p, after, viewAreas.Count > 1)).FirstOrDefault(p => p is not null);
             if (problem is null)
             {
-                step.Complete(Count(after.TextsOf(DynamicOverlayApi.ViewArea).Count, "text overlay") + " in view area 1");
+                step.Complete(DescribeTexts(after, viewAreas));
             }
             else
             {
@@ -119,20 +127,25 @@ internal static class OverlaysTaskRunner
         }).ConfigureAwait(false);
     }
 
-    /// <summary>The camera's list after the writes: null when it shows what was planned, else what differs.</summary>
-    internal static string? Verify(OverlaysPayload payload, OverlayPlan plan, DeviceOverlays after)
+    /// <summary>"2 text overlays in view area 1", one part per view area on a camera with several sensors.</summary>
+    internal static string DescribeTexts(DeviceOverlays overlays, IReadOnlyList<int> viewAreas) =>
+        string.Join(", ", viewAreas.Select(v => Count(overlays.TextsOf(v).Count, "text overlay") + string.Create(CultureInfo.InvariantCulture, $" in view area {v}")));
+
+    /// <summary>The plan's view area after the writes: null when it shows what was planned, else what differs.</summary>
+    internal static string? Verify(OverlaysPayload payload, OverlayPlan plan, DeviceOverlays after, bool nameViewArea = false)
     {
-        var shown = after.TextsOf(DynamicOverlayApi.ViewArea).Select(t => t.Overlay).ToList();
+        var where = nameViewArea ? string.Create(CultureInfo.InvariantCulture, $" in view area {plan.ViewArea}") : string.Empty;
+        var shown = after.TextsOf(plan.ViewArea).Select(t => t.Overlay).ToList();
         if (payload.Mode == OverlaysMode.RemoveAll)
         {
-            return shown.Count == 0 ? null : $"The camera still shows \"{OverlayNames.Brief(shown[0].Text)}\".";
+            return shown.Count == 0 ? null : $"The camera still shows \"{OverlayNames.Brief(shown[0].Text)}\"{where}.";
         }
 
         if (payload.Mode == OverlaysMode.RemoveMatching)
         {
             var gone = plan.Remove.Select(r => OverlayText.Normalize(r.Overlay.Text)).ToHashSet(StringComparer.Ordinal);
             var still = shown.FirstOrDefault(s => gone.Contains(OverlayText.Normalize(s.Text)));
-            return still is null ? null : $"The camera still shows \"{OverlayNames.Brief(still.Text)}\".";
+            return still is null ? null : $"The camera still shows \"{OverlayNames.Brief(still.Text)}\"{where}.";
         }
 
         var unused = shown.ToList();
@@ -141,14 +154,14 @@ internal static class OverlaysTaskRunner
             var match = unused.FirstOrDefault(s => OverlayPlanner.Same(s, wanted));
             if (match is null)
             {
-                return $"The camera does not show \"{OverlayNames.Brief(wanted.Text)}\" as set.";
+                return $"The camera does not show \"{OverlayNames.Brief(wanted.Text)}\" as set{where}.";
             }
 
             unused.Remove(match);
         }
 
         return payload.Mode == OverlaysMode.Replace && unused.Count > 0
-            ? $"The camera still shows \"{OverlayNames.Brief(unused[0].Text)}\"."
+            ? $"The camera still shows \"{OverlayNames.Brief(unused[0].Text)}\"{where}."
             : null;
     }
 
@@ -195,27 +208,34 @@ internal static class OverlaysTaskRunner
         return string.Join(", ", parts);
     }
 
-    internal static string DescribePlan(OverlayPlan plan)
+    internal static string DescribePlan(OverlayPlan plan) => DescribePlan([plan]);
+
+    /// <summary>The plans of every view area summed up: "2 to remove, 4 to add".</summary>
+    internal static string DescribePlan(IReadOnlyList<OverlayPlan> plans)
     {
         var parts = new List<string>();
-        if (plan.Remove.Count > 0)
+        var remove = plans.Sum(p => p.Remove.Count);
+        var add = plans.Sum(p => p.Add.Count);
+        var there = plans.Sum(p => p.AlreadyThere.Count);
+        var notFound = plans.Select(p => p.NotFound.Count).DefaultIfEmpty(0).Max();
+        if (remove > 0)
         {
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{plan.Remove.Count} to remove"));
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{remove} to remove"));
         }
 
-        if (plan.Add.Count > 0)
+        if (add > 0)
         {
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{plan.Add.Count} to add"));
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{add} to add"));
         }
 
-        if (plan.AlreadyThere.Count > 0)
+        if (there > 0)
         {
-            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{plan.AlreadyThere.Count} already on the camera"));
+            parts.Add(string.Create(CultureInfo.InvariantCulture, $"{there} already on the camera"));
         }
 
-        if (plan.NotFound.Count > 0)
+        if (notFound > 0)
         {
-            parts.Add(plan.NotFound.Count == 1 ? "1 text is not on the camera" : string.Create(CultureInfo.InvariantCulture, $"{plan.NotFound.Count} texts are not on the camera"));
+            parts.Add(notFound == 1 ? "1 text is not on the camera" : string.Create(CultureInfo.InvariantCulture, $"{notFound} texts are not on the camera"));
         }
 
         return parts.Count == 0 ? "Nothing to change" : string.Join(", ", parts);

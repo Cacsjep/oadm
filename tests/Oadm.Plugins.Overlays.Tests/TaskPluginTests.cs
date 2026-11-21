@@ -101,6 +101,55 @@ public sealed class TaskPluginTests
     }
 
     [Fact]
+    public async Task Every_sensor_gets_the_overlays_in_its_first_view_area_and_the_group_view_is_left_alone()
+    {
+        var camera = new OverlayCamera { VideoSources = OverlayCamera.P4708Sources() };
+        camera.Put(2, "Old");
+        camera.Put(3, "Group");
+        var ctx = await RunAsync(camera, OverlaysMode.Add, Payload(Overlay("%F %X")));
+
+        Assert.Equal(
+            [
+                "Check the overlay support: Done", "Read the overlay limits: Done", "Read the overlays: Done", "Check the overlays: Done",
+                "Add the overlay \"%F %X\" in view area 1: Done", "Add the overlay \"%F %X\" in view area 2: Done", "Verify the overlays: Done", "Completed: Done",
+            ],
+            StepRun.Lines(ctx.Steps));
+        Assert.Equal([1, 2], camera.Added.Select(a => a["camera"]!.GetValue<int>()));
+        Assert.Equal("1 text overlay in view area 1, 2 text overlays in view area 2", StepRun.Detail(ctx.Steps, OverlaysTaskRunner.StepVerify));
+
+        var replace = await RunAsync(camera, OverlaysMode.Replace, Payload(Overlay("%F %X")));
+        Assert.Equal("1 to remove, 2 already on the camera", StepRun.Detail(replace.Steps, OverlaysTaskRunner.StepCheck));
+
+        await RunAsync(camera, OverlaysMode.RemoveAll, "{}");
+        Assert.Equal(["Group"], camera.Texts.Select(t => t["text"]!.GetValue<string>())); // the group view is not a sensor
+    }
+
+    [Fact]
+    public async Task A_full_view_area_of_any_sensor_fails_before_the_first_write()
+    {
+        var camera = new OverlayCamera { VideoSources = OverlayCamera.P4708Sources() };
+        for (var i = 0; i < 8; i++)
+        {
+            camera.Put(2, "x" + i);
+        }
+
+        var ctx = new FakeTaskContext(camera);
+        var error = await Assert.ThrowsAsync<OverlayDeviceException>(() =>
+            StepRun.RunAsync(ctx.Steps, () => For(OverlaysMode.Add).ExecuteAsync(ctx, Fixtures.Camera(), Payload(Overlay("a")), CancellationToken.None)));
+        Assert.Equal("The camera has no free overlay slot in view area 2. Nothing was changed.", error.Message);
+        Assert.Equal(0, camera.WriteCount); // view area 1 had room, but nothing is written before every sensor was checked
+    }
+
+    [Fact]
+    public void The_first_view_area_of_each_sensor_is_used()
+    {
+        Assert.Equal([1, 2], DynamicOverlayApi.SensorViewAreas(OverlayCamera.P4708Sources()));
+        Assert.Equal([1], DynamicOverlayApi.SensorViewAreas([new VideoSource(1, "View Area 1", 0, []), new VideoSource(2, "View Area 2", 0, [])]));
+        Assert.Equal([1], DynamicOverlayApi.SensorViewAreas([]));
+        Assert.Equal([1, 2, 3, 4], DynamicOverlayApi.SensorViewAreas([.. Enumerable.Range(0, 4).Select(i => new VideoSource(i + 1, "Camera " + (i + 1), i, []))]));
+    }
+
+    [Fact]
     public async Task Overlays_are_found_by_content_in_the_list_read_right_before_the_writes()
     {
         var camera = new OverlayCamera();
@@ -166,7 +215,7 @@ public sealed class TaskPluginTests
         var ctx = new FakeTaskContext(camera);
         var error = await Assert.ThrowsAsync<OverlayDeviceException>(() =>
             StepRun.RunAsync(ctx.Steps, () => For(OverlaysMode.Add).ExecuteAsync(ctx, Fixtures.Camera(), Payload(Overlay("a"), Overlay("b")), CancellationToken.None)));
-        Assert.Equal("The camera has room for 1 more overlay in view area 1, not 2. Nothing was changed.", error.Message);
+        Assert.Equal("The camera has room for 1 more overlay, not 2. Nothing was changed.", error.Message);
         Assert.Equal(0, camera.WriteCount);
         Assert.Equal("Check the overlays: Failed", StepRun.Lines(ctx.Steps).Single(l => l.StartsWith("Check the overlays", StringComparison.Ordinal)));
     }

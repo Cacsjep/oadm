@@ -34,7 +34,7 @@ internal static class Fixtures
 /// recorded AXIS OS 12.11 (lowest free identity, error 300 when the view area is full, 302 for an unknown identity, 103 for
 /// a remove with more than the identity) and records every method it got.
 /// </summary>
-internal sealed class OverlayCamera : FakeCamera
+internal sealed class OverlayCamera : FakeCamera, IVapixClient
 {
     private readonly List<JsonObject> _texts = [];
     private readonly List<JsonObject> _images = [];
@@ -44,6 +44,21 @@ internal sealed class OverlayCamera : FakeCamera
         Apis = Fixtures.P3265ApiList();
         Capabilities = (JsonObject)Fixtures.Data("getOverlayCapabilities-p3265v-12.11.json")!;
     }
+
+    /// <summary>
+    /// The video sources the camera lists (GetVideoSourcesAsync); null: a host that cannot list them (NotSupportedException).
+    /// </summary>
+    public IReadOnlyList<VideoSource>? VideoSources { get; set; }
+
+    /// <summary>
+    /// The sources of the AXIS P4708-PLVE (AXIS OS 13.0.114, 2026-11-21): Camera 1 (sensor 0), Camera 2 (sensor 1) and the
+    /// Group View of both (Source "1,0", which the host's parser reads as sensor 0).
+    /// </summary>
+    public static IReadOnlyList<VideoSource> P4708Sources() =>
+        [new VideoSource(1, "Camera 1", 0, []), new VideoSource(2, "Camera 2", 1, []), new VideoSource(3, "Group View", 0, [])];
+
+    public Task<IReadOnlyList<VideoSource>> GetVideoSourcesAsync(CancellationToken ct) =>
+        VideoSources is { } sources ? Task.FromResult(sources) : throw new NotSupportedException("This client cannot list video sources.");
 
     /// <summary>The getOverlayCapabilities data (recorded P3265-V by default: 8 slots per view area).</summary>
     public JsonObject Capabilities { get; set; }

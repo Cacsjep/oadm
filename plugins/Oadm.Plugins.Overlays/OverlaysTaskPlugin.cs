@@ -11,7 +11,7 @@ namespace Oadm.Plugins.Overlays;
 /// <summary>
 /// The context menu group Overlays: one task per action (<see cref="AddOverlaysTask"/>, <see cref="ReplaceOverlaysTask"/>,
 /// <see cref="RemoveMatchingOverlaysTask"/>, <see cref="RemoveAllOverlaysTask"/>), each fixing its <see cref="OverlaysMode"/>.
-/// Text overlays of view area 1 only: image overlays, widgets and privacy masks are never touched. One task per camera
+/// Text overlays of the first view area of every sensor only: image overlays, widgets and privacy masks are never touched. One task per camera
 /// (<see cref="OverlaysTaskRunner"/>).
 /// </summary>
 public abstract class OverlaysTaskPlugin : ITaskPlugin, ITaskPluginQuery
@@ -26,10 +26,10 @@ public abstract class OverlaysTaskPlugin : ITaskPlugin, ITaskPluginQuery
     public const string NotSupportedNothingChanged = "The camera does not support text overlays. Nothing was changed.";
 
     /// <summary>The note of Replace overlays.</summary>
-    public const string ReplaceNote = "Every other text overlay of view area 1 is removed. Image overlays stay.";
+    public const string ReplaceNote = "Every other text overlay is removed. Image overlays stay.";
 
     /// <summary>The note of Remove all overlays.</summary>
-    public const string RemoveAllNote = "Every text overlay of view area 1 is removed. Image overlays stay.";
+    public const string RemoveAllNote = "Every text overlay is removed. Image overlays stay.";
 
     /// <summary>The note of Add overlays.</summary>
     public const string AddNote = "An overlay a camera already shows is skipped.";
@@ -201,7 +201,7 @@ public sealed class AddOverlaysTask() : OverlaysTaskPlugin(OverlaysMode.Add)
     public override string? IconKey => "add";
 }
 
-/// <summary>"Replace overlays": the camera ends up with exactly these text overlays in view area 1.</summary>
+/// <summary>"Replace overlays": every sensor ends up with exactly these text overlays in its first view area.</summary>
 public sealed class ReplaceOverlaysTask() : OverlaysTaskPlugin(OverlaysMode.Replace)
 {
     public const string PluginId = PackageId + ".replace";
@@ -225,7 +225,7 @@ public sealed class RemoveMatchingOverlaysTask() : OverlaysTaskPlugin(OverlaysMo
     public override string? IconKey => "eraser";
 }
 
-/// <summary>"Remove all overlays": removes every text overlay of view area 1 after a confirmation; last in the menu.</summary>
+/// <summary>"Remove all overlays": removes every text overlay of every sensor after a confirmation; last in the menu.</summary>
 public sealed class RemoveAllOverlaysTask() : OverlaysTaskPlugin(OverlaysMode.RemoveAll)
 {
     public const string PluginId = PackageId + ".remove-all";
