@@ -1,9 +1,18 @@
 # Text overlays (`oadm.overlays`)
 
-Task plugin with a dialog (`.Client`), on by default (an administrator can turn it off): **Text overlays** in the device
-context menu, group Video, icon `text`, no toolbar button. One dialog with a list of text overlays and what happens on
-each camera; one task per camera. Text only: image overlays, widgets, privacy masks and scene annotations are never
-touched. The spec is [docs/spec/overlays.md](../../docs/spec/overlays.md).
+Package of four task plugins with their dialogs (`.Client`), on by default (an administrator can turn it off), in the
+device context menu group **Overlays** (`TaskGroups.Overlays`, icon `text`), no toolbar button:
+
+| Entry | Task id | Dialog |
+|---|---|---|
+| Add overlays | `oadm.overlays.add` | `AddOverlaysDialog` |
+| Replace overlays | `oadm.overlays.replace` | `ReplaceOverlaysDialog` |
+| Remove matching overlays | `oadm.overlays.remove-matching` | `RemoveMatchingOverlaysDialog` |
+| Remove all overlays (last, after a separator: `IsDestructive`) | `oadm.overlays.remove-all` | `RemoveAllOverlaysDialog`: a confirmation only |
+
+All four derive from `OverlaysTaskPlugin`, which fixes the `OverlaysMode`; one task per camera. Text only: image
+overlays, widgets, privacy masks and scene annotations are never touched. The spec is
+[docs/spec/overlays.md](../../docs/spec/overlays.md).
 
 | Part | Project | Assembly |
 |---|---|---|
@@ -55,50 +64,53 @@ warning). Nothing to change: the writes are left out and Verify is skipped "Noth
 
 - **No stored identities.** The overlays are listed right before the writes and matched by content (text, position,
   colours, and the size when one was asked for); identities can change after a restart.
-- **Add**: an overlay the camera already shows exactly like this is skipped ("2 already on the camera"), so a second run
-  changes nothing.
-- **Replace text overlays**: the text overlays of view area 1 the list does not have are removed, the missing ones added.
-  Image overlays and other view areas stay. An empty list removes every text overlay of view area 1 (kept for payloads
-  that send one; the dialog needs at least one overlay and offers Remove all instead).
-- **Remove all**: removes every text overlay of view area 1 (`mode` `removeAll`, no overlays). Image overlays and other
-  view areas stay.
-- **Remove matching**: removes the text overlays of view area 1 whose text equals one of the list (only the text counts);
-  a text no overlay has is named in the check step, no warning.
+- **Add overlays**: an overlay the camera already shows exactly like this is skipped ("2 already on the camera"), so a
+  second run changes nothing.
+- **Replace overlays**: the text overlays of view area 1 the list does not have are removed, the missing ones added; at
+  least one overlay. Image overlays and other view areas stay.
+- **Remove matching overlays**: removes the text overlays of view area 1 whose text equals one of the list (only the text
+  counts); a text no overlay has is named in the check step, no warning.
+- **Remove all overlays**: removes every text overlay of view area 1. Image overlays and other view areas stay.
 - **Checks before the first write**: text length against `maxTextLength`, size against `minFontSize`..`maxFontSize`,
   free slots of view area 1 = `numAvailableSlots` - text overlays staying x `slotsPerTextOverlay` - image overlays x
   `slotsPerImageOverlay`; "The camera has room for 1 more overlay in view area 1, not 2. Nothing was changed."
 - A refused write after an earlier one says what was done: "... Already done: 1 removed, 0 added."
-- Task names: "Add text overlay "Lobby"", "Add 2 text overlays", "Set text overlay ...", "Set 3 text overlays", "Remove all
-  text overlays" (Remove all, or Replace with an empty list), "Remove text overlay ...", "Remove 2 text overlays".
-- Payload (`OverlaysPayload`, JSON camelCase): `mode` (`add`, `replace`, `removeMatching`, `removeAll`), `overlays[]` (`text`,
-  `position`, `customPosition` [x, y] for `custom`, `textColor`, `backgroundColor`, `outlineColor`, `fontSize`), at most
-  8. `ValidatePayload` holds the dialog's rules at their fields; the agents' input is its schema (no secrets).
-- Permissions: the default `task:oadm.overlays` only.
+- Task names, with the whole text on one line (line breaks as spaces), shortened only past 120 characters: "Add text
+  overlay "Lobby floor 1"", "Add 2 text overlays", "Set text overlay ...", "Set 3 text overlays", "Remove text overlay
+  ...", "Remove 2 text overlays", "Remove all text overlays".
+- Payloads (JSON camelCase): Add, Replace and Remove matching take `OverlayListPayload` (`overlays[]`: `text`, `position`,
+  `customPosition` [x, y] for `custom`, `textColor`, `backgroundColor`, `outlineColor`, `fontSize`; 1 to 8), Remove all
+  takes `RemoveAllPayload` (`{}`). The task adds its mode (`OverlaysTaskPlugin.Read` gives the `OverlaysPayload` the
+  planner and runner use). `ValidatePayload` holds the dialog's rules at their fields; the agents' input is each task's
+  schema (no secrets).
+- Permissions: the default `task:<task id>` of each task.
 
 ## Dialog
 
-`OverlaysWindow` over `OverlaysDialogViewModel`, 1080 px wide, as high as its content (8 rows scroll). The title bar
-names the dialog; the first card has no heading: the selection left ("250 devices: 243 compatible, 7 not supported"),
-**Read from a camera** right (the one-device picker over the user's devices, unsupported ones greyed with the reason;
-reads the camera's text overlays of view area 1 through the query `listOverlays` and replaces the list, at most 8).
+`OverlaysWindow` over `OverlaysDialogViewModel`, opened by Add, Replace and Remove matching overlays with the mode fixed;
+1180 px wide, as high as its content (8 rows scroll). The title is the entry's name, the main button names the action.
+**Read from a camera** is a flat command button in the title bar left of the X (`DialogTitleBar.Actions`): the
+one-device picker over the user's devices (unsupported ones greyed with the reason), then the query `listOverlays`
+replaces the list with the camera's text overlays of view area 1, at most 8. Above the table, only when needed: "7 of
+250 cameras are not supported." (`OverlayTexts.Unsupported`), Replace's warning chip, the read result.
 
 The overlays are a table: the column headers once (`TextBlock.fieldLabel`; the Size header's tooltip gives the range of
 the camera read), one line per overlay, each input a label-less `ui:FormField` (`wide inline`), so its error shows
 directly below it and only that row grows:
 
-- **Text**: one line high. `AcceptsReturn` stays on with the height of one line: a text read from a camera keeps its line
-  breaks and Enter adds one; the box scrolls to the caret's line. The icon-only button next to it (tooltip "Insert a
-  value") opens one menu: Date (%F), Time (%X), Day of the week, Date and time, Camera name, IP address, MAC address,
-  Frame rate, Bitrate, Dynamic text > 1 to 16. The code goes in at the caret, after a space when it would stick to a word.
+- **Text** (330 px column): one line high. `AcceptsReturn` stays on with the height of one line: a text read from a
+  camera keeps its line breaks and Enter adds one; the box scrolls to the caret's line, a long text shows the theme's
+  thin 4 px scroll bar below the text. The icon-only button next to it (tooltip "Insert a value") opens one menu: Date
+  (%F), Time (%X), Day of the week, Date and time, Camera name, IP address, MAC address, Frame rate, Bitrate, Dynamic
+  text > 1 to 16. The code goes in at the caret, after a space when it would stick to a word.
 - **Position** (the six places, **Custom position** only for an overlay read with one), **Size** (placeholder Default),
   **Text colour**, **Background**, **Outline** (Black, White, Red, Transparent, Semi-transparent; new overlays white on
-  black). The columns are wide enough for "Semi-transparent" and "Custom position".
+  black). The columns are wide enough for "Semi-transparent" and "Custom position". Remove matching shows the Text
+  column only (and checks only the text); its footer button is red.
 - The red remove icon at the row's end; **Add overlay** below the rows, disabled at 8 with "At most 8 overlays." as tooltip.
 
-Card **On each camera**: Add, Replace text overlays (with a warning chip; needs at least one overlay), Remove matching
-(only the Text column shows; the footer button turns red), Remove all (the table, Read from a camera and Add overlay are
-hidden, the count stays; the red footer button works without an overlay). Footer: Cancel and **Add overlays** / **Replace overlays** / **Remove overlays**. The dialog
-shows the count of unsupported devices only; their reason is the greyed menu entry's tooltip, like other tasks.
+Remove all overlays has no form: `MessageWindow.ConfirmAsync` "Remove all text overlays of 243 cameras? Image overlays
+stay." (and the unsupported line), red Remove; it returns `{}`.
 
 On open the dialog reads the limits of the first compatible selected camera (one query, whatever the selection) for the
 text length and the size range; without them the payload's widest range applies and each camera checks its own.

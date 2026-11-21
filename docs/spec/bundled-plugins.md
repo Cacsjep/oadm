@@ -722,10 +722,10 @@ zone from the 313 IANA zones of AXIS OS, daylight saving, time mode: server time
 
 ## Text overlays
 
-`plugins/Oadm.Plugins.Overlays` (+ `.Client`), id `oadm.overlays`, on by default, context menu (Video, icon `text`)
-**Text overlays**: add text overlays to view area 1 of the selected cameras, replace their text overlays with the dialog's
-list, remove the ones with its texts or remove them all; Read from a camera copies one camera's text overlays into the dialog. Spec:
-`docs/spec/overlays.md`.
+`plugins/Oadm.Plugins.Overlays` (+ `.Client`), package `oadm.overlays`, on by default, context menu group **Overlays**
+(icon `text`): **Add overlays**, **Replace overlays**, **Remove matching overlays** (one dialog each; Read from a camera
+copies one camera's text overlays into it) and, last after a separator, **Remove all overlays** (a confirmation only).
+Spec: `docs/spec/overlays.md`.
 
 - Rules that must hold: text overlays of view area 1 only (image overlays, widgets, privacy masks and other view areas
   never touched); API discovery `dynamicoverlay` 1.x checked fresh before the first request to the API; text length, size

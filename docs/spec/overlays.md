@@ -4,12 +4,14 @@ Status: **built 2026-11-20**.
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
-The text overlays of many cameras from one dialog, like the Overlay page of a camera's web interface: add the same date,
-time or camera name to every selected camera, copy one camera's text overlays to many, or remove them.
+The text overlays of many cameras, like the Overlay page of a camera's web interface: add the same date, time or camera
+name to every selected camera, copy one camera's text overlays to many, or remove them.
 
-Task plugin `plugins/Oadm.Plugins.Overlays` (+ `.Client`), id `oadm.overlays`, context menu group **Video**, **Text
-overlays**, free, on by default (switchable, `docs/spec/plugins.md` "Plugins on and off"). Details, steps and the recorded
-API in the plugin's README.
+Package `plugins/Oadm.Plugins.Overlays` (+ `.Client`), id `oadm.overlays`, free, on by default (switchable,
+`docs/spec/plugins.md` "Plugins on and off"): four task plugins in the context menu group **Overlays** (decision
+2026-11-21, one entry per action): **Add overlays** (`oadm.overlays.add`), **Replace overlays** (`oadm.overlays.replace`),
+**Remove matching overlays** (`oadm.overlays.remove-matching`) and, last after a separator (`ITaskPlugin.IsDestructive`),
+**Remove all overlays** (`oadm.overlays.remove-all`). Details, steps and the recorded API in the plugin's README.
 
 ## Rules that never break
 
@@ -31,38 +33,43 @@ API in the plugin's README.
 8. **The same twice changes nothing**: an overlay the camera already shows exactly like this is not added again.
 9. **Scale**: the dialog reads one camera when it opens and one on Read from a camera, never one per selected device;
    it counts the compatible devices in one pass (100,000 devices, `ScaleTests`).
+10. **Task names say what is set, with the whole text** ("Set text overlay "Lobby floor 1 %F %X"", line breaks as
+    spaces), shortened only past `TaskPluginNames.MaxTaskNameLength` (120).
 
 ## What happens on each camera
 
-- **Add**: the list goes next to the camera's overlays.
-- **Replace text overlays**: the camera ends up with exactly this list of text overlays in view area 1. The dialog shows a
-  warning under the choice and needs at least one overlay ("Add an overlay."). An empty Replace still removes every text
-  overlay when a payload sends one (older payloads, agents); the dialog never sends it.
-- **Remove matching**: removes the text overlays whose text equals one in the list; only the text counts, the dialog
-  hides the other fields.
-- **Remove all** (decision 2026-11-20): removes every text overlay of view area 1; image overlays stay. The dialog hides
-  the table, Read from a camera and Add overlay, the main button is the red Remove overlays and needs no overlay. The
-  payload is `{"mode":"removeAll"}` with no overlays ("Remove all takes no overlays."); task name "Remove all text
-  overlays".
+- **Add overlays**: the list goes next to the camera's overlays.
+- **Replace overlays**: the camera ends up with exactly this list of text overlays in view area 1; at least one overlay
+  ("Add an overlay."). The dialog shows a short warning above the table.
+- **Remove matching overlays**: removes the text overlays whose text equals one in the list; only the text counts, the
+  dialog shows only the Text column and its main button is red.
+- **Remove all overlays**: removes every text overlay of view area 1; image overlays stay. No form: only a confirmation
+  (`ui:MessageWindow`, red Remove): "Remove all text overlays of 243 cameras? Image overlays stay." with the line of
+  unsupported cameras below when there are some. Task name "Remove all text overlays".
 
 ## Dialog
 
-A table of at most 8 text overlays, one line each with the column headers once above (decision 2026-11-20: no card per
-overlay, no heading that repeats the title bar): Text (one line high, keeps line breaks; the icon-only button Insert a
-value puts a modifier in at the caret: date, time, day of the week, date and time, camera name, IP address, MAC address,
-frame rate, bitrate, dynamic text 1 to 16),
-Position (Top left, Top, Top right, Bottom left, Bottom, Bottom right; Custom position only for an overlay read from a
-camera with its own place, which is kept when copied), Size (optional, the camera's default when empty), Text colour,
-Background, Outline (Black, White, Red, Transparent, Semi-transparent; new overlays white on black). **Read from a
-camera** fills the list from one camera the user may see (the read-only query `listOverlays`). The selection's summary
-"N devices: M compatible, K not supported" is the card's description. Every error sits below its field; the list's own
-error ("Add an overlay.") below the list. The window takes the height of its content.
+One dialog for Add, Replace and Remove matching overlays, titled like the menu entry, its main button naming the action
+(Add overlays, Replace overlays, Remove overlays). **Read from a camera** sits in the title bar left of the X
+(`DialogTitleBar.Actions`, a flat command button) and fills the list from one camera the user may see (the read-only
+query `listOverlays`). No device count: only "7 of 250 cameras are not supported." when some selected cameras are not
+(nothing when all are). View area 1 is not named in the dialog.
+
+A table of at most 8 text overlays, one line each with the column headers once above (no card per overlay, no heading
+that repeats the title bar): Text (one line high, keeps line breaks, a thin 4 px scroll bar from the theme under a long
+text; the icon-only button Insert a value puts a modifier in at the caret: date, time, day of the week, date and time,
+camera name, IP address, MAC address, frame rate, bitrate, dynamic text 1 to 16), Position (Top left, Top, Top right,
+Bottom left, Bottom, Bottom right; Custom position only for an overlay read from a camera with its own place, which is
+kept when copied), Size (optional, the camera's default when empty), Text colour, Background, Outline (Black, White, Red,
+Transparent, Semi-transparent; new overlays white on black). Every error sits below its field; the list's own error
+("Add an overlay.") below the list. The window is 1180 px wide and takes the height of its content.
 
 ## AI agents
 
-The payload is the task input (`PayloadType`, no secrets); `ValidatePayload` holds the dialog's rules at their fields;
-the plan skips devices that cannot run it and warns what Replace removes. The read is `oadm_task_query` with
-`listOverlays`.
+Each task is offered on its own: Add, Replace and Remove matching take `{"overlays": [...]}` (`OverlayListPayload`), Remove
+all takes no settings (`RemoveAllPayload`); no secrets. `ValidatePayload` holds the dialog's rules at their fields; the
+plan skips devices that cannot run it and says what the task removes. The read is `oadm_task_query` with `listOverlays`
+on any of the four tasks.
 
 ## Facts from the cameras
 

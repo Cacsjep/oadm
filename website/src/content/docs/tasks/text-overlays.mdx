@@ -7,31 +7,31 @@ import { Steps, Aside } from '@astrojs/starlight/components';
 import { Image } from 'astro:assets';
 import shot from '../../../assets/screens/plugin-overlays.png';
 
-**Text overlays** puts the same text overlays on many cameras: date and time, the camera name, your own text. It is in
-the context menu under **Video**.
+**Overlays** in the context menu puts the same text overlays on many cameras: date and time, the camera name, your own
+text. It has one entry per action: **Add overlays**, **Replace overlays**, **Remove matching overlays** and, last,
+**Remove all overlays**.
 
-<Image src={shot} alt="The Text overlays dialog with date and time bottom left and the camera name top right" class="screen" />
+<Image src={shot} alt="The Add overlays dialog with date and time bottom left and the camera name top right" class="screen" />
 
 ## Run it
 
 <Steps>
 
-1. Select the cameras, right-click and choose **Video** > **Text overlays**.
-2. Type the **Text** of each overlay. The button next to it puts a value in at the cursor: date, time, day of the
-   week, date and time, camera name, IP address, MAC address, frame rate, bitrate or dynamic text 1 to 16.
+1. Select the cameras, right-click and choose **Overlays** and the action:
+   - **Add overlays**: the overlays go next to those the camera has.
+   - **Replace overlays**: the camera keeps exactly this list.
+   - **Remove matching overlays**: removes the overlays with the same text.
+   - **Remove all overlays**: removes every text overlay after you confirm. No list is needed.
+2. Type the **Text** of each overlay. The button next to it puts a value in at the cursor: date, time, day of the week,
+   date and time, camera name, IP address, MAC address, frame rate, bitrate or dynamic text 1 to 16.
 3. Choose **Position**, **Size**, **Text colour**, **Background** and **Outline**. An empty **Size** keeps the camera's
    default. **Add overlay** adds another one, up to 8.
-4. Choose what happens **On each camera**:
-   - **Add**: the overlays go next to those the camera has.
-   - **Replace text overlays**: the camera keeps exactly this list.
-   - **Remove matching**: removes the overlays with the same text.
-   - **Remove all**: removes every text overlay. No list is needed.
-5. Click **Add overlays**, **Replace overlays** or **Remove overlays**.
+4. Click **Add overlays**, **Replace overlays** or **Remove overlays**.
 
 </Steps>
 
-**Read from a camera** fills the list with the text overlays of one camera, so you can copy them to many. An overlay
-placed freely on that camera keeps its place (**Custom position**).
+**Read from a camera**, top right in the dialog, fills the list with the text overlays of one camera, so you can copy
+them to many. An overlay placed freely on that camera keeps its place (**Custom position**).
 
 All overlays go to view area 1. Image overlays and the other view areas stay as they are.
 
