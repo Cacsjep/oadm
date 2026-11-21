@@ -106,6 +106,26 @@ public sealed class PluginTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_kept_configuration_file_is_read_back_for_the_preview_and_nothing_else()
+    {
+        var text = """{"status":"success","data":{"time.v2":{}},"metadata":{"prodNbr":"P3265-V"}}""";
+        var upload = ((FakeUploadedFiles)_admin.Uploads).Add("lobby.json", System.Text.Encoding.UTF8.GetBytes(text));
+        var file = await CallAsync<StoredFile>(ProvisioningMethods.StoreFile, new FileRequest(upload.Id));
+
+        var read = await CallAsync<ConfigFileReply>(ProvisioningMethods.ReadConfigFile, new IdRequest(file.Id));
+        Assert.Equal(("lobby.json", text), (read.Name, read.Content));
+        Assert.True(ProvisioningMethods.IsRead(ProvisioningMethods.ReadConfigFile));
+        Assert.Equal(PermissionKeys.Show, _plugin.RequiredPermission(ProvisioningMethods.ReadConfigFile));
+        Assert.False(_plugin.IsAudited(ProvisioningMethods.ReadConfigFile));
+
+        // An AXIS OS file is never sent back; a file that is gone says so.
+        var os = await CallAsync<StoredFile>(ProvisioningMethods.StoreFile, new FileRequest(((FakeUploadedFiles)_admin.Uploads).Add("P3265-LVE_12_6_95.bin", [1, 2, 3]).Id));
+        await Assert.ThrowsAsync<ArgumentException>(() => CallAsync<ConfigFileReply>(ProvisioningMethods.ReadConfigFile, new IdRequest(os.Id)));
+        var gone = await Assert.ThrowsAsync<KeyNotFoundException>(() => CallAsync<ConfigFileReply>(ProvisioningMethods.ReadConfigFile, new IdRequest(Guid.NewGuid())));
+        Assert.Equal(NodeVault.FileGone, gone.Message);
+    }
+
+    [Fact]
     public async Task Saving_an_edited_profile_keeps_what_a_waiting_task_or_a_failed_run_still_needs()
     {
         var secret = await CallAsync<SecretReply>(ProvisioningMethods.StoreSecret, new SecretRequest("Op-Pass-77"));
@@ -229,7 +249,8 @@ public sealed class PluginTests : IAsyncLifetime
             .AllDevicesOnly(ProvisioningMethods.RunAgain, "{\"deviceIds\":[\"" + inside.Id + "\"]}")
             .AllDevicesOnly(ProvisioningMethods.GetRun, "{\"deviceId\":\"" + inside.Id + "\"}")
             .AllDevicesOnly(ProvisioningMethods.StoreSecret, """{"value":"x"}""")
-            .AllDevicesOnly(ProvisioningMethods.StoreFile, """{"uploadId":"0123456789abcdef0123456789abcdef"}""");
+            .AllDevicesOnly(ProvisioningMethods.StoreFile, """{"uploadId":"0123456789abcdef0123456789abcdef"}""")
+            .AllDevicesOnly(ProvisioningMethods.ReadConfigFile, """{"id":"00000000-0000-0000-0000-000000000001"}""");
         await canary.RunAsync();
 
         // Whether it is on: the Add devices page of any user, also with a device group.

@@ -36,7 +36,12 @@ public sealed partial class NodeEditorViewModel : ObservableObject
         {
             field.Changed += (_, _) => OnFieldChanged();
         }
+
+        Preview = Kind == NodeKind.Configuration ? NodeForms.ConfigPreview(Fields, services) : null;
     }
+
+    /// <summary>Configuration: what the chosen file holds of the ticked areas (below the settings); null for other kinds.</summary>
+    public ConfigPreviewViewModel? Preview { get; }
 
     public string Id { get; }
 
@@ -153,6 +158,7 @@ public sealed partial class NodeEditorViewModel : ObservableObject
             _refreshing = false;
         }
 
+        Preview?.Refresh();
         OnPropertyChanged(nameof(CanvasError));
         OnPropertyChanged(nameof(Summary));
         Changed?.Invoke(this, EventArgs.Empty);
@@ -340,6 +346,20 @@ public static class NodeForms
             },
             new CheckGroupFieldViewModel(ProvisioningTexts.Apply, areas, () => areas.Any(a => a.IsChecked) ? null : ProvisioningTexts.ChooseAreas) { Help = ProvisioningTexts.ApplyHelp },
         ];
+    }
+
+    /// <summary>The file preview of a Configuration node over its fields.</summary>
+    public static ConfigPreviewViewModel ConfigPreview(IReadOnlyList<NodeFieldViewModel> fields, INodeFormServices services)
+    {
+        ArgumentNullException.ThrowIfNull(fields);
+        var areas = fields.OfType<CheckGroupFieldViewModel>().Single().Items;
+        return new ConfigPreviewViewModel(
+            fields.OfType<ChoiceFieldViewModel>().Single(f => f.Key == "source"),
+            fields.OfType<FileFieldViewModel>().Single(f => f.Key == "fileId"),
+            areas.Single(a => a.Key == "parameters"),
+            areas.Single(a => a.Key == "actionRules"),
+            areas.Single(a => a.Key == "schedules"),
+            services);
     }
 
     private static IReadOnlyList<NodeFieldViewModel> Certificate(JsonObject s, INodeFormServices services)

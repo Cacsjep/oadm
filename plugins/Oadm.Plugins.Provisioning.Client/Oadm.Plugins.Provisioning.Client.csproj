@@ -32,6 +32,16 @@
     <InternalsVisibleTo Include="Oadm.Plugins.Provisioning.Tests" />
   </ItemGroup>
 
+  <!-- The configuration file model of Device configuration for the file preview of a Configuration node (what Import
+       configuration applies, the same left-out values); compiled into this assembly (a project reference would copy the
+       other plugin's Server.dll into this folder). -->
+  <ItemGroup>
+    <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\ConfigFile.cs" Link="DeviceConfig\ConfigFile.cs" />
+    <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\ParamRules.cs" Link="DeviceConfig\ParamRules.cs" />
+    <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\DeviceConfigIds.cs" Link="DeviceConfig\DeviceConfigIds.cs" />
+    <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\ConfigureModels.cs" Link="DeviceConfig\ConfigureModels.cs" />
+  </ItemGroup>
+
   <!-- The time zone select of the Date and time plugin (the catalogue comes with the server part). -->
   <ItemGroup>
     <Compile Include="..\Shared\TimeZones.Client\TimeZoneChoice.cs" Link="Common\TimeZoneChoice.cs" />

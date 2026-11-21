@@ -103,6 +103,19 @@ public static class ProvisioningTexts
     public const string Schedules = "Schedules";
     public const string ChooseAreas = "Choose what to apply.";
 
+    // The file preview of Configuration
+    public const string ReadingFile = "Reading the file";
+    public const string NoParameters = "The file has no parameters.";
+    public const string NoActionRules = "The file has no action rules.";
+    public const string NoSchedules = "The file has no schedules.";
+
+    /// <summary>"Parameters, 1,151".</summary>
+    public static string AreaHeading(string area, int count) => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{area}, {count:N0}");
+
+    /// <summary>The parameters Import configuration never writes: "32 more stay as they are on each camera: address, names and connection settings."</summary>
+    public static string LeftOutParameters(int count) =>
+        string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{count:N0} more stay as they are on each camera: address, names and connection settings.");
+
     // Users
     public const string Accounts = "Accounts";
     public const string AddAccount = "Add account";

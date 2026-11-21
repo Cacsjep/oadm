@@ -90,6 +90,44 @@ public sealed class PageScreenshotTests
     }
 
     [Fact]
+    public async Task The_configuration_node_shows_what_its_file_holds_below_its_settings()
+    {
+        var suffix = Headless.Appearance;
+        await Headless.Session.Dispatch(async () =>
+        {
+            var ctx = Samples.Context();
+            var editor = new ProfileEditorViewModel(ctx, Samples.FullProfileId);
+            var window = new ProfileEditorWindow();
+            Oadm.Client.App.ApplyCrispText(window);
+            window.Attach(editor);
+            window.Show();
+            await editor.LoadAsync();
+            await editor.CheckTask;
+            var node = editor.Nodes.Single(n => n.Kind == NodeKind.Configuration);
+            var areas = node.Fields.OfType<CheckGroupFieldViewModel>().Single();
+            areas.Items[1].IsChecked = false; // Parameters only
+            editor.SelectedNode = node;
+            await node.Preview!.LoadTask;
+            Headless.Pump();
+
+            var list = window.FindControl<ListBox>("PreviewList")!;
+            Assert.True(window.FindControl<StackPanel>("FilePreview")!.IsEffectivelyVisible);
+            Assert.True(list.IsEffectivelyVisible);
+            Assert.True(list.Bounds.Height <= list.MaxHeight);
+            Assert.True(list.GetRealizedContainers().Count() < node.Preview.Rows.Count, "the list creates rows only for what it shows");
+            Headless.Capture(window, $"provisioning-config-preview-{suffix}.png");
+
+            areas.Items[1].IsChecked = true; // Parameters and action rules
+            list.ScrollIntoView(node.Preview.Rows.Count - 1);
+            Headless.Pump();
+            Assert.Contains(list.GetRealizedContainers().Select(c => c.DataContext), r => r is PreviewHeading { Text: "Action rules, 2" });
+            Headless.Capture(window, $"provisioning-config-preview-rules-{suffix}.png");
+            window.Close();
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task The_profile_editor_renders_a_new_profile_the_node_list_and_the_field_help()
     {
         var suffix = Headless.Appearance;

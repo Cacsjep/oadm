@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Threading.Channels;
 
 using Avalonia;
@@ -148,6 +149,9 @@ internal sealed class FakePageContext : ICorePluginClientContext
     /// <summary>Holds every call until it completes (a loading test).</summary>
     public Task? Gate { get; set; }
 
+    /// <summary>Holds the calls of one method until its task completes.</summary>
+    public Dictionary<string, Task> MethodGates { get; } = new(StringComparer.Ordinal);
+
     public bool Has(string permission) => !Denied.Contains(permission);
 
     public Task<bool> ConfirmAsync(string title, string message, string confirmText)
@@ -173,6 +177,11 @@ internal sealed class FakePageContext : ICorePluginClientContext
         if (Gate is { } gate)
         {
             await gate;
+        }
+
+        if (MethodGates.TryGetValue(method, out var held))
+        {
+            await held;
         }
 
         return Answers.TryGetValue(method, out var answer) ? answer(payloadJson) : throw new InvalidOperationException("No answer for " + method);
@@ -307,6 +316,19 @@ internal static class Samples
     public static ProfilesReply Profiles(bool valid = true) =>
         new([new ProfileSummary(ProfileId, "Lobby cameras", 5, true, valid), new ProfileSummary(Guid.Parse("7a7a7a7a-4444-4c2d-9e8f-0a1b2c3d4e5f"), "Parking", 3, false, true)], ProfileId);
 
+    /// <summary>The configuration file of the previews: the recorded export of an AXIS P3265-V (AXIS OS 12.11.77) with two action rules.</summary>
+    public static string ConfigExport
+    {
+        get
+        {
+            var export = (JsonObject)JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "export-all.json")))!;
+            export["data"]!["action-rules.v2"]!["rules"] = new JsonArray(
+                new JsonObject { ["id"] = 1, ["name"] = "Motion: record to SD card", ["enabled"] = true },
+                new JsonObject { ["id"] = 2, ["name"] = "Tampering: notify", ["enabled"] = true });
+            return export.ToJsonString();
+        }
+    }
+
     /// <summary>A context that answers like the server.</summary>
     public static FakePageContext Context(StatusReply? status = null, ProfilesReply? profiles = null)
     {
@@ -319,6 +341,7 @@ internal static class Samples
         ctx.Answers[ProvisioningMethods.Policies] = _ => Serialize(Policies);
         ctx.Answers[ProvisioningMethods.VapixCommands] = _ => Serialize(Commands);
         ctx.Answers[ProvisioningMethods.StoreSecret] = _ => Serialize(new SecretReply(Guid.NewGuid()));
+        ctx.Answers[ProvisioningMethods.ReadConfigFile] = _ => Serialize(new ConfigFileReply("parking-p3265.json", ConfigExport));
         ctx.Answers[ProvisioningMethods.StoreFile] = payload =>
         {
             var upload = ctx.Uploads.Single(u => u.Id == JsonSerializer.Deserialize<FileRequest>(payload!, Json)!.UploadId);

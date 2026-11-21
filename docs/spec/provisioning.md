@@ -115,6 +115,15 @@ one line), moved up and down, removed (except Set password) and configured in th
 a short help (`FormField.Help`). The profile is checked before it can be active (one error per node, the same check in
 the editor); a profile with errors is saved as a draft.
 
+**The file preview** (Configuration with Settings from: A configuration file): below Continue on error, a separator and a
+read-only list of what the file holds of the ticked areas: per area a heading with its count ("Parameters, 1,117"), then
+the parameters as "Name = value" by their `param.cgi` names, the action rules and the schedules by name; an empty area
+says so ("The file has no action rules."). The parameters are exactly what Import configuration applies
+(`ConfigIdentity.Clean`); the ones it never writes (address, names, connection settings, time zone parameters) are left
+out and counted in one line ("66 more stay as they are on each camera: address, names and connection settings."). The
+list is virtualized and scrolls in itself; the file is read once per file (`readConfigFile`, the kept `.json` of at most
+2 MB) with a ring in place while it loads.
+
 Every step ends **Success**, **Warning** or **Error** with a plain message ("AXIS OS 12.6.95 installed.", "No file for
 this model."). A node that does not apply (no SD card, no remote focus) is Success with "Not needed: ...". Each node has
 **Continue on error** (on by default; off for Set password). Warning always continues.
@@ -149,7 +158,10 @@ this model."). A node that does not apply (no SD card, no remote focus) is Succe
 6. **Configuration**: a configuration file of Device configuration **or** a template camera read at run time; the areas
    to apply. Device-specific values (address, host name, certificates, passwords) are never copied; a file or template
    camera of another model works (decision 2026-11-20): the camera leaves out what it does not have, a value it refuses
-   is a Warning listing it.
+   is a Warning listing it. A camera below AXIS OS 12.5 takes only the parameters, through `param.cgi` (Import
+   configuration's way, decision 2026-11-21); action rules and schedules are then a Warning ("Event rules and schedules
+   were not applied: this needs AXIS OS 12.5 or later."). The editor's panel shows what a chosen file holds (see "The
+   file preview").
 7. **Users**: more accounts (name, role, password from the credential list or typed); several Users nodes allowed;
    OADM's account never touched.
 8. **Certificate**: a certificate by the chosen PKI HTTPS certificate policy (clock check first), **or** EST

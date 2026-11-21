@@ -214,6 +214,24 @@ public sealed class NodeVault(IPluginSettings settings, ISecretProtector? protec
         return upload.Id;
     }
 
+    /// <summary>The text (UTF-8) of a kept file of at most <paramref name="maxBytes"/>. Throws <see cref="KeyNotFoundException"/> when it is gone.</summary>
+    public async Task<string> ReadTextAsync(Guid fileId, long maxBytes, CancellationToken ct)
+    {
+        if (!_files.ContainsKey(fileId) || PathOf(fileId) is not { } path || !File.Exists(path))
+        {
+            throw new KeyNotFoundException(FileGone);
+        }
+
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81_920, useAsync: true);
+        if (stream.Length > maxBytes)
+        {
+            throw new ArgumentException("The file is too large.");
+        }
+
+        using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
+        return await reader.ReadToEndAsync(ct).ConfigureAwait(false);
+    }
+
     /// <summary>A file made while a node runs (a template camera's configuration) as an upload for its task; never kept.</summary>
     public async Task<string> UploadAsync(string name, byte[] content, CancellationToken ct)
     {

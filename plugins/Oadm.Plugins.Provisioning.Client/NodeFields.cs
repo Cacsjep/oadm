@@ -551,6 +551,9 @@ public interface INodeFormServices
 
     /// <summary>"AXIS P3265-LVE, 10.0.0.48" of a managed camera by serial number, or null.</summary>
     string? CameraText(string serial);
+
+    /// <summary>The text of a configuration file kept for a node (<c>readConfigFile</c>), for the file preview.</summary>
+    Task<string> ReadConfigFileAsync(Guid fileId, CancellationToken ct) => throw new NotSupportedException("This editor cannot read kept files.");
 }
 
 /// <summary>One file kept for a node (Configuration): Choose file uploads it and keeps its id (<c>fileId</c>).</summary>

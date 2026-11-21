@@ -407,6 +407,11 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
         return stored;
     }
 
+    async Task<string> INodeFormServices.ReadConfigFileAsync(Guid fileId, CancellationToken ct) =>
+        PluginJson.Parse<ConfigFileReply>(
+            await _ctx.InvokeAsync(ProvisioningMethods.ReadConfigFile, PluginJson.Serialize(new IdRequest(fileId), ProvisioningJson.Options), ct).ConfigureAwait(true),
+            ProvisioningJson.Options).Content;
+
     async Task<string?> INodeFormServices.ChooseCameraAsync(string? serial)
     {
         var devices = _ctx.Devices.Where(d => d.HasVideo).ToList();
@@ -438,6 +443,7 @@ public sealed partial class ProfileEditorViewModel : ValidatingViewModel, INodeF
     partial void OnSelectedNodeChanged(NodeEditorViewModel? value)
     {
         OnPropertyChanged(nameof(FixedTip));
+        value?.Preview?.Refresh(); // the file preview reads its file once the node shows
         if (!_syncing)
         {
             _syncing = true;

@@ -163,7 +163,10 @@ default) for nodes that need more than one task.
   `oadm.provisioning.run` task; `runAgain` with its camera, a message when nothing started.
 - The profile editor (`ProfileEditorWindow`, `ProfileEditorViewModel`: the shared node canvas `NodeChainCanvas`, the +
   below every node, also below Set password; the node list `NodePicker`; one form per kind in `NodeForms`, the Network
-  form with Keep or From a pool).
+  form with Keep or From a pool). Configuration's file preview (`ConfigPreviewViewModel`, below Continue on error): the
+  kept file read once per file through `readConfigFile`, parsed off the UI thread with Device configuration's file model
+  (`ConfigFile`, `ConfigIdentity`, `ConfigParameters`; the sources are compiled into the client part, a project reference
+  would copy the other plugin's Server.dll), rows per ticked area in one virtualized `ListBox.readOnlyList`.
 
 A new node kind gets an entry in `NodeForms` (its fields and their rules) and `NodeLook` (icon and colour).
 
@@ -174,7 +177,8 @@ page), `getStatus` (on, who, when, the active profile, `turnOnRefusal`, the runn
 `listProfiles`, `getProfile`, `checkProfile`, `nodeKinds`, `credentials` (ids and user names only), `saveProfile`,
 `deleteProfile` (not the active one while on), `activateProfile`, `turnOn`, `turnOff`, `runAgain` (device ids: started and
 skipped), `getRun` (the last run of a camera with each node's name and result, and whether Run again would start),
-`vapixCommands`, `storeSecret` (the id only comes back), `storeFile` (an upload id of the caller). Event `status` (a
+`vapixCommands`, `storeSecret` (the id only comes back), `storeFile` (an upload id of the caller), `readConfigFile` (a
+kept `.json` of at most 2 MB as text, for the editor's file preview; a read, right "show"). Event `status` (a
 `StatusReply`, to users with "show") after On, Off and changes of the profiles. Nothing grows with the device count.
 
 ## Rights

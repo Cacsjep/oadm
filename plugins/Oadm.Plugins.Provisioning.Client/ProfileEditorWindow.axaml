@@ -304,6 +304,34 @@
               <CheckBox Content="{x:Static vm:ProvisioningTexts.ContinueOnError}" IsChecked="{Binding ContinueOnError}" IsEnabled="{Binding CanChangeContinueOnError}"
                         ToolTip.Tip="{x:Static vm:ProvisioningTexts.ContinueOnErrorTip}" />
               <TextBlock Classes="secondary" Text="{x:Static vm:ProvisioningTexts.AlwaysStopsHint}" TextWrapping="Wrap" IsVisible="{Binding AlwaysStops}" />
+
+              <!-- Configuration: what the chosen file holds of the ticked areas, read only; the list scrolls in itself (virtualized). -->
+              <StackPanel x:Name="FilePreview" Classes="form" DataContext="{Binding Preview}" x:DataType="vm:ConfigPreviewViewModel"
+                          IsVisible="{Binding IsShown, FallbackValue=False}">
+                <Separator />
+                <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsLoading}">
+                  <ui:ProgressRing Width="16" Height="16" VerticalAlignment="Center" />
+                  <TextBlock Classes="secondary" Text="{x:Static vm:ProvisioningTexts.ReadingFile}" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Classes="secondary" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding HasError}" />
+                <ListBox x:Name="PreviewList" Classes="readOnlyList" ItemsSource="{Binding Rows}" MaxHeight="300" IsVisible="{Binding HasRows}"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                  <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+                  </ListBox.ItemsPanel>
+                  <ListBox.DataTemplates>
+                    <DataTemplate x:DataType="vm:PreviewHeading">
+                      <TextBlock Classes="sectionTitle subsection" Text="{Binding Text}" />
+                    </DataTemplate>
+                    <DataTemplate x:DataType="vm:PreviewNote">
+                      <TextBlock Classes="secondary" Text="{Binding Text}" TextWrapping="Wrap" />
+                    </DataTemplate>
+                    <DataTemplate x:DataType="vm:PreviewEntry">
+                      <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Text}" />
+                    </DataTemplate>
+                  </ListBox.DataTemplates>
+                </ListBox>
+              </StackPanel>
             </StackPanel>
           </Panel>
         </ScrollViewer>

@@ -70,6 +70,12 @@ public static class ProvisioningMethods
     /// <summary><see cref="FileRequest"/> -> <see cref="Engine.StoredFile"/>: a file the caller uploaded, kept for a node.</summary>
     public const string StoreFile = "storeFile";
 
+    /// <summary>
+    /// <see cref="IdRequest"/> (a kept file's id) -> <see cref="ConfigFileReply"/>: the text of a configuration file
+    /// (<c>.json</c>, at most 2 MB) for the editor's file preview of a Configuration node.
+    /// </summary>
+    public const string ReadConfigFile = "readConfigFile";
+
     /// <summary>() -> the VAPIX Commander commands a VAPIX commands node can run (<see cref="ProfileCommand"/>): no dangerous ones, none with a password or a file.</summary>
     public const string VapixCommands = "vapixCommands";
 
@@ -78,7 +84,8 @@ public static class ProvisioningMethods
 
     /// <summary>The methods that only read.</summary>
     public static bool IsRead(string method) =>
-        method is State or GetStatus or ListProfiles or GetProfile or CheckProfile or NodeKinds or Credentials or Policies or VapixCommands or GetRun;
+        method is State or GetStatus or ListProfiles or GetProfile or CheckProfile or NodeKinds or Credentials or Policies or VapixCommands or GetRun
+            or ReadConfigFile;
 }
 
 /// <summary>A command of the VAPIX Commander library for a VAPIX commands node: its id, name, category and fields.</summary>
@@ -102,6 +109,9 @@ public sealed record SecretRequest(string? Value)
 
 /// <summary>The id a node names its secret by (<c>secretId</c>).</summary>
 public sealed record SecretReply(Guid Id);
+
+/// <summary>A kept configuration file: its name and its text.</summary>
+public sealed record ConfigFileReply(string Name, string Content);
 
 /// <summary>A file of the caller's uploads to keep for a node.</summary>
 public sealed record FileRequest(string UploadId);

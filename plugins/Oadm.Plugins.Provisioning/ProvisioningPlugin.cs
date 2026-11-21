@@ -228,6 +228,7 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
             ProvisioningMethods.GetRun => PluginJson.Serialize(await RunAsync(PluginJson.Parse<DeviceIdRequest>(payloadJson, json).DeviceId, ct).ConfigureAwait(false), json),
             ProvisioningMethods.StoreSecret => PluginJson.Serialize(await StoreSecretAsync(PluginJson.Parse<SecretRequest>(payloadJson, json), ct).ConfigureAwait(false), json),
             ProvisioningMethods.StoreFile => PluginJson.Serialize(await StoreFileAsync(caller, PluginJson.Parse<FileRequest>(payloadJson, json).UploadId, ct).ConfigureAwait(false), json),
+            ProvisioningMethods.ReadConfigFile => PluginJson.Serialize(await ReadConfigFileAsync(PluginJson.Parse<IdRequest>(payloadJson, json).Id, ct).ConfigureAwait(false), json),
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
         };
     }
@@ -519,6 +520,26 @@ public sealed class ProvisioningPlugin : ICorePlugin, IAsyncDisposable
             ?? throw new KeyNotFoundException("The uploaded file is no longer on the server. Upload it again.");
         await using var stream = await caller.Uploads.OpenReadAsync(upload.Id, ct).ConfigureAwait(false);
         return await RunningVault.AddFileAsync(upload.Name, stream, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Largest configuration file the editor's preview reads (Device configuration reads files up to 2 MB).</summary>
+    public const long MaxConfigFileBytes = 2L * 1024 * 1024;
+
+    /// <summary>A kept configuration file (<c>.json</c>, at most 2 MB) for the editor's file preview; read only.</summary>
+    internal async Task<ConfigFileReply> ReadConfigFileAsync(Guid fileId, CancellationToken ct)
+    {
+        var vault = RunningVault;
+        if (vault.Files.GetValueOrDefault(fileId) is not { } file)
+        {
+            throw new KeyNotFoundException(NodeVault.FileGone);
+        }
+
+        if (!file.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || file.Size > MaxConfigFileBytes)
+        {
+            throw new ArgumentException("Choose a configuration file of Export configuration (.json, at most 2 MB).");
+        }
+
+        return new ConfigFileReply(file.Name, await vault.ReadTextAsync(fileId, MaxConfigFileBytes, ct).ConfigureAwait(false));
     }
 
     /// <summary>
