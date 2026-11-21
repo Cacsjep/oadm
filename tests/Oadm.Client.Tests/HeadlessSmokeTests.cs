@@ -195,11 +195,11 @@ public sealed class HeadlessSmokeTests
             StackPanel trailingPanel = window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "TrailingToolbarPanel");
             // The System report button comes from its plugin (artifacts/plugins/oadm.system-report after a full build).
             string[] toolbarTexts = toolbarPanel.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarButton>().Select(b => b.Text ?? "").ToArray();
-            // The Provisioning button comes from its plugin too (artifacts/plugins/oadm.provisioning), right of Export.
+            // The Provisioning button comes from its plugin too (artifacts/plugins/oadm.provisioning), right of Export, before the selection's Remove and Refresh.
             string[] fromPlugins = [.. new[] { "Provisioning" }.Where(toolbarTexts.Contains)];
             string[] expectedToolbar = toolbarTexts.Contains("System report")
-                ? ["Add", "Remove", "Refresh", "Export", .. fromPlugins, "Restart", "System report"]
-                : ["Add", "Remove", "Refresh", "Export", .. fromPlugins, "Restart"];
+                ? ["Add", "Export", .. fromPlugins, "Remove", "Refresh", "Restart", "System report"]
+                : ["Add", "Export", .. fromPlugins, "Remove", "Refresh", "Restart"];
             Assert.Equal(expectedToolbar, toolbarTexts);
             // The release notes link sits on the right, icon only, next to Columns.
             Assert.Equal(["AXIS OS - Release Notes"], trailingPanel.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.ToolbarButton>().Select(b => b.Text ?? "").ToArray());

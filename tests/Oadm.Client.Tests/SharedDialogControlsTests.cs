@@ -40,7 +40,7 @@ public sealed class SharedDialogControlsTests
             // Dialog header: the title as a heading and an X that closes the window (no system title bar, does not move).
             // The title and its optional grey side line sit in one row; without a Subtitle the line is hidden.
             var titleGrid = Assert.IsType<Grid>(title.Child);
-            TextBlock[] titleTexts = [.. titleGrid.Children.OfType<StackPanel>().Single().Children.OfType<TextBlock>()];
+            TextBlock[] titleTexts = [.. titleGrid.Children.OfType<StackPanel>().First(p => Grid.GetColumn(p) == 0).Children.OfType<TextBlock>()];
             Assert.Contains("cardTitle", titleTexts[0].Classes);
             Assert.Contains("pageSubtitle", titleTexts[1].Classes);
             Assert.False(titleTexts[1].IsVisible);
