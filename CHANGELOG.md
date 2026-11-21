@@ -9,21 +9,23 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ### Added
 
-- Text overlays: add, replace or remove text overlays such as date, time and camera name on many cameras, or copy them from one camera.
+- Text overlays: the new Overlays menu adds, replaces or removes text overlays such as date, time and camera name on many cameras, or copies them from one camera.
+- Provisioning: turn it on in the Devices toolbar and every factory-new camera OADM finds gets its password, AXIS OS, settings and address by a profile you build as a flow.
 - Logs: a date range on every tab, an audit search that finds every entry, and Export to a CSV or PDF file of up to 5,000 entries.
 - DHCP server: set the lease time, from 1 hour to 30 days.
-- Provisioning: turn it on in the Devices toolbar and every factory-new camera OADM finds gets its password, AXIS OS, settings and address by a profile you build as a flow.
-- Plugin SDK 0.15.0: the first set up of factory-new cameras, the DHCP server's leases, a plugin's own files for its tasks, the node canvas and commands on a task in the tasks pane.
 - Set password of factory-default devices: administrators can pick a saved password of root from the credential list, with an eye to show it.
 - Audit log: every task run shows how it ended, with the devices that failed.
 - Linux: RPM packages for Fedora and RHEL, also of the site node; self update installs them.
 - Windows: the installers put OADM and the site node app on the desktop.
+- Plugin SDK 0.15.0: the first set up of factory-new cameras, the DHCP server's leases, a plugin's own files for its tasks, the node canvas, commands on a task in the tasks pane, tasks that sit last in their menu, and a date range, date and time input and Export button.
 
 ### Changed
 
-- Import configuration and provisioning: a configuration file also works on other models; each camera takes the settings it has.
-- Import configuration and provisioning: cameras with AXIS OS older than 12.5 take the parameters of a configuration file.
-- Provisioning: the Certificate and 802.1X nodes use the PKI policy you choose.
+- Import configuration: a configuration file also works on other models; each camera takes the settings it has.
+- Import configuration: cameras with AXIS OS older than 12.5 take the parameters of a configuration file.
+- Devices: the toolbar shows Add, Export and Provisioning first, then Remove and Refresh for the selection.
+- Tasks: names hold up to 120 characters, so file names and texts are no longer cut.
+- Updates: a plugin the new version no longer ships is removed with its settings and data.
 - Settings: one column of settings with a search and one Save, in the look of the Windows settings.
 - Linux: the app menu and the dock show the OADM icon sharp in every size.
 
