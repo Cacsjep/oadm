@@ -183,11 +183,13 @@ each app.
   (`oadm-site-node-<version>-1.<arch>.rpm`, `oadm-site-node-app-<version>-1.<arch>.rpm`); amd64 and arm64; notices
   `tools/Oadm.Notices --product site-node` (hand-written part `packaging/notices/site-node.md`, no LGPL part); no macOS
   package, no portable ZIP. The node only connects out: no firewall rule on either system.
-- **Plugin folders a version no longer ships** (`oadm.est`, a part of PKI, `docs/spec/pki.md` "One plugin") are removed
-  on upgrade: the MSI removes the old version first (MajorUpgrade `afterInstallValidate`), dpkg removes the old package's
-  files and the server and client postinst remove what is left in that folder, the .pkg's server and client preinstall
-  remove it (an installer upgrade keeps files the new package lacks). Server and client skip such a folder anyway
-  ("Merged into PKI").
+- **Plugin folders a version no longer ships** (`docs/spec/plugin-removal.md`): the publish step writes the shipped
+  manifest `plugins/bundled.json` and `--self-check` fails when it does not list exactly the folders next to it. On
+  upgrade the MSI and the .rpm remove the files the new package lacks (MajorUpgrade `afterInstallValidate`), dpkg removes
+  the old package's files and the postinst keeps its `oadm.est` line, the .pkg's server and client preinstall remove the
+  whole bundled plugins folder (an installer upgrade keeps files the new package lacks). Server and client skip and
+  delete a bundled folder the manifest does not list at the start (only skip inside the app bundle), which covers the
+  rest and the portable ZIPs; `oadm.est` is skipped anyway ("Merged into PKI").
 - **Service:** the server runs as root / LocalSystem (NTP and DHCP plugins need UDP 123 and 67). As a service the host
   integrates with the SCM and systemd (`Oadm.Server.Hosting.ServiceHosting`: `AddWindowsService`, `AddSystemd`, content
   root = app folder; no-ops on a console). `ServiceHosting.IsRunningAsService()` (Windows service, systemd, or macOS with
@@ -224,7 +226,7 @@ when the jobs it needs passed:
   `check-server-hash.sh` that the published server holds the hash of every ZIP (missing or different fails the build; it reads
   the exe without running it), and checks that no add-on folder is next to the published exes, in the portable ZIPs, the
   MSI (Directory table), the .deb packages or the .pkg. The step "Self check of the published apps" runs `--self-check` on the published server and
-  client, then on each add-on ZIP: the server with the unpacked ZIP, the client with only the part a client gets.
+  client (also the shipped manifest), then on each add-on ZIP: the server with the unpacked ZIP, the client with only the part a client gets.
 - `docs` (15 min, next to the tests): `npm run build:offline` in `website/` once, uploaded as the artifact `docs-offline`.
 - `smoke-windows` (needs installers, 30 min): the MSI installed, checked and removed both ways by
   `packaging/windows/smoke.ps1`, which prints the time on every line and a heartbeat with free memory and the busiest

@@ -160,7 +160,9 @@ Core `Oadm.Core.Backup` (`BackupFile`, `BackupArchive`), server `Oadm.Server.Bac
   step 0b of `OadmServerHost.StartAsync`, before anything opens the database or the key: the server's database, key and
   plugin data move to `restore/previous-<time>` (newest three kept), the staged files take their place, the TLS key in
   `server-tls.json` (Linux, macOS) is encrypted again with the restored key; any failure puts the old files back. Step 2c
-  records the report (`Backup.LastRestore`: "Devices: 4,812 restored", plugins of the backup that are not installed), ends
+  records the report (`Backup.LastRestore`: "Devices: 4,812 restored", plugins of the backup that are not installed; a
+  plugin this version no longer ships: "Plugin <id> is no longer part of OADM: its settings and data were deleted.", its
+  state deleted at that start, `docs/spec/plugin-removal.md`), ends
   every login session and audits "Restored backup" for the administrator who asked.
 - **Automatic backups** (setting `Backup.Schedule`: on, time "HH:mm" server time, keep 1..365 (7), the password encrypted
   with the master key, purpose `oadm:backup-schedule`): daily, checked every 30 s, a missed day made up at the next check,

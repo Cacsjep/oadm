@@ -578,7 +578,9 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
   (`Plugin:oadm.est:serverOn`, unless one is stored) and removes it from `Plugins.Enabled` (idempotent). The 802.1X
   server (`oadm.radius`) never shipped as a package of its own, so it is not in the list.
 - **Removed plugins**: a bundled plugin a release no longer ships is removed with its folder and state
-  (`docs/spec/plugin-removal.md`, spec, not built).
+  (`docs/spec/plugin-removal.md`): the shipped manifest `plugins/bundled.json`, folders it does not list skipped and
+  deleted at the start, the state of ids the previous start shipped and this one does not know deleted once (setting
+  `Plugins.Bundled`).
 
 ### Plugins on and off
 

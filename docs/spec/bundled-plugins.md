@@ -10,6 +10,9 @@ Optional plugins (add-ons: not in the installers, installed on the Plugins page)
 `docs/spec/add-ons.md`, each one has its own spec (Text recognition, id `oadm.ocr`: `docs/spec/ocr.md`; Vision Center, id `oadm.vision`:
 `docs/spec/vision-center.md`).
 
+Removing a bundled plugin from the repository removes it from every server and client on update, with its settings and
+data (`docs/spec/plugin-removal.md`): delete its entry here, never a retired list; a rename is a new id.
+
 Common to all task plugins: every device request and every wait is a named step; every successful task ends with the
 engine's step **Completed**; names follow `docs/spec/tasks.md` (no secrets, at most 120 characters). A new static
 address (IPv4, IPv6) is probed before the first write (`IAddressProbe`: ping, 2 tries x 1 s, plus TCP 80 / 443; the
