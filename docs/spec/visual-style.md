@@ -46,7 +46,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   `ClosePluginWindowsRequested`; tests `PluginWindowTests`). Entries top: Devices, **Compliance** (built in, right below Devices, no group; while the role may see
   compliance), **Sites** (built in, below Compliance; while the role may see sites), then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (the built-in
-  Event rules first, then VAPIX Commander, Device triggers, Action Rule Editor), Security (PKI, Hardening scan), Monitoring
+  Event rules first, then Schedules, VAPIX Commander, Device triggers, Action Rule Editor), Security (PKI, Hardening scan), Monitoring
   (Live View, Dashboards, Metadata Monitor, I/O Monitor, Image Health Dashboard, Load test), Vision (Text recognition, Vision Center;
   `CorePluginGroups.RailOrder`), Reporting (Snapshot report; System report
   has no page), Maintenance (Edge Recording Export, Edge storage), Integrations, Utilities (Web View), Extensions (default,

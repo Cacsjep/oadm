@@ -78,4 +78,4 @@ Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change t
 - **Page tasks**: a task hidden from the menus (`ShowInMenus` false) without permissions of its own starts only through
   `call.Tasks` of a page method or job of its own package, on that method's permission; `TaskService.Run` refuses it for
   every caller ("This task starts only from its page.", [security.md](security.md)).
-- No scheduling, retry or recurrence.
+- No retry. Runs at a set time and recurrence only through Schedules ([schedules.md](schedules.md)).

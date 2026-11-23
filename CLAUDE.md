@@ -73,6 +73,8 @@ plugins/               folders, build and tests of a bundled plugin: plugins/REA
   Oadm.Plugins.Provisioning(.Client)/ Provisioning (docs/spec/provisioning.md): profiles of nodes, one task per factory-new
                                 camera OADM finds while on; nodes in Nodes/ ("Adding a node" in its README)
   Oadm.Plugins.Overlays(.Client)/ Text overlays (docs/spec/overlays.md): the text overlays of many cameras, one task each
+  Oadm.Plugins.Schedules(.Client)/ Schedules (docs/spec/schedules.md): devices, time and actions; the action nodes are
+                                Provisioning's sources compiled in
   Oadm.Plugins.VpnFleet(.Client)/ community plugin VPN Fleet (docs/spec/vpn-fleet.md); GitHubHttp.cs is its only HTTP
                                 outside the host: the apps' releases on github.com
   Shared/                       source linked into several plugins (CachedApiCheck, ContextCall, DeviceSweep, SweepRows,
@@ -279,6 +281,11 @@ must never break.
   ([recipient sessions](docs/spec/recipient-sessions.md)); a rule keeps a link, the host merges the recipient's fields
   into the action's settings before a run; no placeholders in a target, old rules are never converted ("Choose a
   recipient."), delete refused while a rule uses one, passwords encrypted and never sent back; output only.
+- **[Schedules](docs/spec/schedules.md)** (spec, not built; package `oadm.schedules`, free, on by default, rail page
+  Schedules in Automation): devices, a time and actions (Upgrade AXIS OS online or from a file, configuration, Restart,
+  certificate, 802.1X, VAPIX commands); one task per device per run; runs as its owner with the owner's current rights and
+  devices, fail closed; never two runs of one schedule; Roll out in stages (1, 2 %, 5 %, 10 %, 20 %, the rest) stops at
+  the first failure, offline devices never stop it; one event per run for the rules.
 - **[Sites](docs/spec/sites.md)**: devices in networks the server cannot reach, through an OADM Site Node that only
   connects out (TCP 5081), bound with a pairing code (J-PAKE); routing, Site offline, the node and its app, plugins at
   sites.
@@ -482,7 +489,7 @@ HARD RULE for every UI text and every doc. We write for installers who know Axis
 
 # Not built yet
 
-SSDP and WS-Discovery, scheduled and repeated tasks (retry, recurrence), warranty and replacement data
+SSDP and WS-Discovery, retry of tasks, warranty and replacement data
 from Axis online services, localization, installer signing (checksums instead), OS keyring for the master key,
 least-privilege service accounts.
 

@@ -393,6 +393,21 @@ toolbar button, Provisioning management, the Add devices page's "Provisioning" a
   `_secret_store` (the person enters a node's password) and `_file_store` (an uploaded file) answer the ids a node's
   settings name.
 
+## Schedules (core plugin)
+
+`plugins/Oadm.Plugins.Schedules` (+ `.Client`), id `oadm.schedules`, rail page Schedules (group Automation), icon
+`calendar`, **free, on by default**. Spec, not built: [schedules.md](schedules.md). A schedule has devices, a time and
+actions (the nodes of Provisioning plus Restart); each run gives every device one task "Run <schedule>" with one named
+step per action.
+
+- Rules that must hold: runs as its owner with the owner's current rights and view (`IUserCalls`, SDK 0.16.0), nothing
+  runs when one is missing; never two runs of one schedule; Roll out in stages stops at the first failure, devices that
+  are not Ok are counted, never tried, never stopping it; parallel tasks follow the server setting; the actions start the
+  tasks of their areas with their checks; never Network, Users, SD card; files and secrets in the vault like
+  Provisioning's; one event "Schedule run ended" per run.
+- Rights: "show" and "manage"; saving also needs the right of every action.
+- MCP: `oadm_schedules`, `_schedule`, `_schedule_runs`, `_schedule_actions`, changes with preview and run.
+
 ## VPN Fleet (core plugin)
 
 `plugins/Oadm.Plugins.VpnFleet` (+ `.Client`), id `oadm.vpn-fleet`, rail page **VPN Fleet** (group Security, icon
