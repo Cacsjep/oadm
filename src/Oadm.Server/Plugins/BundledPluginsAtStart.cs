@@ -50,6 +50,30 @@ public static partial class BundledPluginsAtStart
     }
 
     /// <summary>
+    /// The rule of <see cref="PluginLoader.IsBundled"/>: a package folder directly in one of <paramref name="bundledRoots"/>
+    /// (only folders the shipped manifest lists load from there) or in <paramref name="developmentRoot"/> (the repository's
+    /// artifacts/plugins of a development run, never a service), and never an optional plugin (<see cref="AddOns.AddOnCatalog"/>).
+    /// Add-ons and the data folder's plugins are never bundled.
+    /// </summary>
+    public static Func<string, string, bool> BundledRule(IReadOnlyList<string> bundledRoots, string? developmentRoot)
+    {
+        ArgumentNullException.ThrowIfNull(bundledRoots);
+        var parents = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        parents.UnionWith(bundledRoots.Select(r => Path.TrimEndingDirectorySeparator(Path.GetFullPath(r))));
+        if (!string.IsNullOrWhiteSpace(developmentRoot))
+        {
+            parents.Add(Path.TrimEndingDirectorySeparator(Path.GetFullPath(developmentRoot)));
+        }
+
+        var addOns = AddOns.AddOnCatalog.Entries.Select(e => e.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return (folder, packageId) =>
+            !string.IsNullOrWhiteSpace(folder)
+            && !addOns.Contains(packageId)
+            && Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder))) is { } parent
+            && parents.Contains(parent);
+    }
+
+    /// <summary>
     /// The package ids loaded from <paramref name="bundledRoots"/> plus every task, core and action plugin id they registered;
     /// null without a bundled root (a development run: nothing is cleaned or stored).
     /// </summary>

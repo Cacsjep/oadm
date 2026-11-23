@@ -369,6 +369,12 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     public IPluginUploads? Uploads => FakeUploads;
 
     /// <summary>
+    /// The current calls of stored users (<see cref="ICorePluginContext.UserCalls"/>, SDK 0.16.0); null by default, like the host
+    /// gives a plugin that is not bundled. Tests set a <see cref="FakeUserCalls"/>.
+    /// </summary>
+    public IUserCalls? UserCalls { get; set; }
+
+    /// <summary>
     /// The event rules the plugin publishes to; null (the default) like a host without event rules. Set a
     /// <see cref="FakeEventPublisher"/> (<c>new FakeCoreContext { EventPublisher = new FakeEventPublisher() }</c>).
     /// </summary>

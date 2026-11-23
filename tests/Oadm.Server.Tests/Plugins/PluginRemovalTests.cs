@@ -178,6 +178,42 @@ public sealed class PluginRemovalTests : IDisposable
     }
 
     [Fact]
+    public void OnlyAPackageOfTheShippedRootIsBundledNeverOneOfTheDataFolderOrAnAddOn()
+    {
+        var bundled = Directory.CreateDirectory(Path.Combine(_temp, "app", "plugins")).FullName;
+        CopySample(Path.Combine(bundled, "oadm.sample"));
+        Manifest(bundled, "oadm.sample");
+        var installed = Directory.CreateDirectory(Path.Combine(_temp, "data", "plugins")).FullName;
+        var development = Directory.CreateDirectory(Path.Combine(_temp, "repo", "artifacts", "plugins")).FullName;
+
+        var registry = new PluginRegistry();
+        var loader = new PluginLoader(registry);
+        try
+        {
+            var roots = BundledPluginsAtStart.PrepareRoots(loader, [bundled, installed], installed, NullLogger.Instance);
+            loader.IsBundled = BundledPluginsAtStart.BundledRule(roots, development);
+            loader.LoadFromRoots([bundled, installed]);
+
+            Assert.True(Assert.Single(registry.CorePlugins).Origin.Bundled);
+            var rule = BundledPluginsAtStart.BundledRule(roots, development);
+            Assert.True(rule(Path.Combine(bundled, "oadm.sample"), "oadm.sample"));
+            Assert.True(rule(Path.Combine(development, "oadm.schedules"), "oadm.schedules")); // a development run
+            Assert.False(rule(Path.Combine(installed, "oadm.sample"), "oadm.sample")); // hand-installed
+            Assert.False(rule(Path.Combine(_temp, "data", "addons", "oadm.ocr"), "oadm.ocr")); // an optional plugin
+            Assert.False(rule(Path.Combine(development, "oadm.ocr"), Oadm.Server.AddOns.AddOnCatalog.TextRecognitionId)); // never an add-on
+            Assert.False(rule(Path.Combine(bundled, "oadm.sample", "nested"), "oadm.sample")); // only folders right in the root
+            Assert.False(BundledPluginsAtStart.BundledRule([], null)(Path.Combine(bundled, "oadm.sample"), "oadm.sample"));
+        }
+        finally
+        {
+            foreach (var package in loader.Packages)
+            {
+                package.LoadContext.Unload();
+            }
+        }
+    }
+
+    [Fact]
     public void TheManifestMustListExactlyTheFoldersNextToIt()
     {
         var root = Directory.CreateDirectory(Path.Combine(_temp, "plugins")).FullName;

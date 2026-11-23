@@ -124,6 +124,12 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     /// <summary>The uploads a user's call reads as its <see cref="ICallContext.Uploads"/> (only the caller's session); null: none.</summary>
     public Oadm.Core.Uploads.UploadStore? UploadStore { get; init; }
 
+    /// <summary>
+    /// The stored users for <see cref="ICorePluginContext.UserCalls"/> of bundled packages (<see cref="PluginOrigin.Bundled"/>);
+    /// null: no plugin gets user calls.
+    /// </summary>
+    public IUserCallers? UserCallers { get; init; }
+
     /// <summary>Live events of the core plugins for their pages (<see cref="ICorePluginContext.Events"/>).</summary>
     public PluginEventHub Events { get; }
 
@@ -214,6 +220,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     // Devices of the caller's own group only in a group user's call (no call member: the plugin uses the context).
                     StreamProbes = guard.StreamProbes(SiteSupportGuard.Guard(_streamProbes, _devices, siteSupport), _deviceScopes),
                     Uploads = UploadStore is { } uploads ? new Oadm.Core.Uploads.PluginUploads(uploads) : null,
+                    UserCalls = UserCallsOf(registered, entry),
                 };
                 try
                 {
@@ -467,6 +474,26 @@ public sealed partial class CorePluginHost : IAsyncDisposable
             Uploads = UploadStore is { } store ? store.For(Oadm.Core.Uploads.UploadOwner.Of(caller.Caller)) : Oadm.Core.Uploads.NoUploadedFiles.Instance,
         };
         return (call, new PluginCallMark(registered.Id, method, caller.HasAllDevices, systemAllowed) { ScopeKey = caller.View.ScopeKey });
+    }
+
+    /// <summary>
+    /// The user calls of a bundled package (docs/spec/schedules.md "Host: running as the owner"): the same call a page method
+    /// of the plugin gets, built from the user as stored now, without a session. Null for every other package.
+    /// </summary>
+    private HostUserCalls? UserCallsOf(RegisteredCorePlugin registered, Entry entry)
+    {
+        if (!registered.Origin.Bundled || UserCallers is not { } callers)
+        {
+            return null;
+        }
+
+        ICallContext CallOf(PluginCaller caller, bool hasSession)
+        {
+            PluginCallRules.RequireCallable(caller, registered.Origin); // a group user only with a package built for the call context
+            return new HostCallContext(caller, entry.CallVapix ?? _vapix, _tasks, entry.CallEventStreams, _viewWatcher, _taskOwners, _registry, registered.Origin.PackageId, hasSession);
+        }
+
+        return new HostUserCalls(callers, CallOf, registered.Id, _loggerFactory.CreateLogger("Oadm.Plugins." + registered.Id));
     }
 
     /// <summary>The plugin's answer, or <paramref name="fallback"/> when it throws (fail closed).</summary>
@@ -735,6 +762,8 @@ internal sealed class CorePluginContext(
     public IDeviceStreamProbes? StreamProbes { get; init; }
 
     public IPluginUploads? Uploads { get; init; }
+
+    public IUserCalls? UserCalls { get; init; }
 
     /// <summary>Created on first use, so plugins that never ask leave no empty folder behind.</summary>
     public string? DataDirectory => _dataDirectory.Value;

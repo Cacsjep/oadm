@@ -74,17 +74,20 @@ internal sealed class HostCallContext : ICallContext
     /// <param name="viewWatcher">Ends a group user's event streams when their device leaves the view; without it a group user gets no event streams (fail closed).</param>
     /// <param name="registry">The task plugins for the role check of a run through another runner than the engine (null: no check there; the engine checks itself).</param>
     /// <param name="packageId">The package of the core plugin whose method gets the call: its own page tasks start on the method's permission (<see cref="Oadm.Core.Tasks.TaskRunPermissions.StartsOwnPageTask"/>); null: every run needs its keys.</param>
-    public HostCallContext(PluginCaller caller, IVapixClientFactory vapix, ITaskRunner tasks, IDeviceEventStreams? eventStreams, DeviceViewWatcher? viewWatcher, CallTaskOwners taskOwners, PluginRegistry? registry = null, string? packageId = null)
+    /// <param name="hasSession">False for the call of a stored user without a login session (<see cref="IUserCalls"/>): <see cref="SessionId"/> is empty, also for the tasks it starts.</param>
+    public HostCallContext(PluginCaller caller, IVapixClientFactory vapix, ITaskRunner tasks, IDeviceEventStreams? eventStreams, DeviceViewWatcher? viewWatcher, CallTaskOwners taskOwners, PluginRegistry? registry = null, string? packageId = null, bool hasSession = true)
     {
         Caller = caller;
+        _hasSession = hasSession;
         var view = caller.View;
         Devices = new ViewDevices(view);
         Vapix = caller.HasAllDevices ? vapix : new ViewVapix(view, vapix);
 
         // The engine's runner of the view: the tasks belong to the caller (owner shown, queue check of the caller's view,
         // ITaskExecutionContext.Caller), also when a job starts them after the call ended.
+        var taskCaller = Oadm.Core.Tasks.TaskCaller.Of(caller.Caller);
         Tasks = tasks is Oadm.Core.Tasks.TaskEngine engine
-            ? engine.ForPage(view, Oadm.Core.Tasks.TaskCaller.Of(caller.Caller), packageId)
+            ? engine.ForPage(view, hasSession ? taskCaller : taskCaller with { SessionId = string.Empty }, packageId)
             : new ViewTasks(this, tasks, taskOwners, registry, packageId);
         EventStreams = eventStreams is null ? null
             : caller.HasAllDevices ? eventStreams
@@ -99,7 +102,9 @@ internal sealed class HostCallContext : ICallContext
 
     public string UserName => Caller.Caller.UserName;
 
-    public string SessionId => Caller.Caller.SessionId;
+    private readonly bool _hasSession;
+
+    public string SessionId => _hasSession ? Caller.Caller.SessionId : string.Empty;
 
     public string DeviceScopeKey => Caller.View.ScopeKey;
 

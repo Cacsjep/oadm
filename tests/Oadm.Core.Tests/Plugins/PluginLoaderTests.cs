@@ -77,6 +77,27 @@ public sealed class PluginLoaderTests : IDisposable
     }
 
     [Fact]
+    public void APackageIsBundledOnlyWhenTheServersRuleSaysSo()
+    {
+        Assert.NotNull(_loader.LoadPackage(SampleDirectory));
+        Assert.False(Assert.Single(_registry.CorePlugins).Origin.Bundled); // no rule: never bundled
+
+        var registry = new PluginRegistry();
+        var asked = new List<(string Folder, string Id)>();
+        var loader = new PluginLoader(registry) { IsBundled = (folder, id) => { asked.Add((folder, id)); return true; } };
+        var package = loader.LoadPackage(SampleDirectory);
+        try
+        {
+            Assert.True(Assert.Single(registry.CorePlugins).Origin.Bundled);
+            Assert.Equal((Path.GetFullPath(SampleDirectory), "oadm.sample"), Assert.Single(asked));
+        }
+        finally
+        {
+            package?.LoadContext.Unload();
+        }
+    }
+
+    [Fact]
     public async Task ContributedTaskRunsThroughTheEngineAndReachesItsOwner()
     {
         _loader.LoadPackage(SampleDirectory);
@@ -187,7 +208,8 @@ public sealed class PluginLoaderTests : IDisposable
     [InlineData("0.13.0", true)]
     [InlineData("0.14.0", true)]
     [InlineData("0.15.0", true)]
-    [InlineData("0.16.0", false)]
+    [InlineData("0.16.0", true)]
+    [InlineData("0.17.0", false)]
     [InlineData("1.0.0", false)]
     [InlineData("", false)]
     [InlineData("garbage", false)]

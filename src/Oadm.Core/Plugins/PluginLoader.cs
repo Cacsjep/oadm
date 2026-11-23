@@ -66,6 +66,12 @@ public sealed partial class PluginLoader
     /// </summary>
     public Func<string, bool>? SkipFolder { get; set; }
 
+    /// <summary>
+    /// Whether a package folder (full path) with this package id ships with this OADM version (<see cref="PluginOrigin.Bundled"/>).
+    /// The server sets it before loading; null: no package is bundled (fail closed).
+    /// </summary>
+    public Func<string, string, bool>? IsBundled { get; set; }
+
     public IReadOnlyList<LoadedPluginPackage> Packages
     {
         get
@@ -181,6 +187,7 @@ public sealed partial class PluginLoader
                 DeclaredSiteSupport = manifest.SiteSupport,
                 SitePorts = [.. (manifest.SitePorts ?? []).Where(p => p is { Port: > 0 and <= 65535 })],
                 Pro = manifest.Pro,
+                Bundled = IsBundled?.Invoke(directory, manifest.Id) == true,
             };
             var registered = assemblies.Sum(a => RegisterTypes(a, origin));
             if (registered == 0)

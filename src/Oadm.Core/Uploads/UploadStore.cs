@@ -266,6 +266,18 @@ public sealed partial class UploadStore : IUploadedFiles
     /// <summary>The uploads of one owner as <see cref="IUploadedFiles"/>: a task a user started reads only that user's uploads.</summary>
     public IUploadedFiles For(UploadOwner owner) => new OwnedUploads(this, owner);
 
+    /// <summary>
+    /// Only the uploads of no user (the plugins' own files, <see cref="PluginUploads"/>): what a task started through a stored
+    /// user's call without a session reads. A user's upload answers like an unknown id.
+    /// </summary>
+    public IUploadedFiles SystemFiles => field ??= new UnownedUploads(this);
+
+    private async Task<UploadedFile?> FindUnownedAsync(string fileId, CancellationToken ct)
+    {
+        var meta = await ReadMetadataAsync(fileId, ct).ConfigureAwait(false);
+        return meta is null || meta.UserId is not null || !File.Exists(ContentPath(fileId)) ? null : meta.ToUploadedFile();
+    }
+
     private FileStream OpenContent(string fileId) =>
         new(ContentPath(fileId), FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 81_920, useAsync: true);
 
@@ -542,6 +554,16 @@ public sealed partial class UploadStore : IUploadedFiles
             && SessionId is { Length: > 0 } session && string.Equals(session, owner.SessionId, StringComparison.Ordinal);
 
         public UploadedFile ToUploadedFile() => new(Id, Name, Size, Sha256);
+    }
+
+    private sealed class UnownedUploads(UploadStore store) : IUploadedFiles
+    {
+        public Task<UploadedFile?> FindAsync(string fileId, CancellationToken ct) => store.FindUnownedAsync(fileId, ct);
+
+        public async Task<Stream> OpenReadAsync(string fileId, CancellationToken ct) =>
+            await store.FindUnownedAsync(fileId, ct).ConfigureAwait(false) is null
+                ? throw new FileNotFoundException($"Uploaded file {fileId} does not exist (it may have expired).", fileId)
+                : store.OpenContent(fileId);
     }
 
     private sealed class OwnedUploads(UploadStore store, UploadOwner owner) : IUploadedFiles

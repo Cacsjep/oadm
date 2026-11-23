@@ -543,6 +543,12 @@ public static partial class OadmServerHost
             streamProbes: sp.GetRequiredService<Sdk.Devices.IDeviceStreamProbes>())
         {
             UploadStore = sp.GetRequiredService<Core.Uploads.UploadStore>(), // a tool's file argument: the caller's own uploads
+            // Bundled plugins only: a stored user's current call without a session (Schedules run as their owner).
+            UserCallers = new StoredUserCallers(
+                sp.GetRequiredService<Core.Auth.UserStore>(),
+                sp.GetRequiredService<Core.Auth.RoleStore>(),
+                sp.GetRequiredService<Core.DeviceGroups.DeviceViewFactory>(),
+                sp.GetRequiredService<Core.Auth.AccessEpochs>()),
         });
         services.AddSingleton<PluginServiceRegistry>();
         services.AddSingleton<HostDeviceScopes>();
@@ -795,6 +801,11 @@ public static partial class OadmServerHost
             loader.FolderCheck = folder => refused.GetValueOrDefault(Path.GetFullPath(folder));
         }
 
+        // Packages that ship with this version (docs/spec/plugin-removal.md) get what only bundled plugins get (UserCalls);
+        // in a development run (never a service) the repository's artifacts/plugins counts as shipped.
+        var developmentRoot = options.PluginRoots is null && !sp.GetRequiredService<ServerRunMode>().IsService ? PluginPaths.Development() : null;
+        loader.IsBundled = BundledPluginsAtStart.BundledRule([], developmentRoot);
+
         // A plugin straight from its build output (Oadm:PluginDir, plugin development): loaded first, so it wins over an
         // installed copy of the same package. Never as a service: a service loads only admin-only folders.
         foreach (var directory in PluginDirectories(app.Configuration))
@@ -811,6 +822,7 @@ public static partial class OadmServerHost
 
         // Bundled folders this version does not ship (docs/spec/plugin-removal.md): skipped, and deleted where the server may write.
         var bundledRoots = BundledPluginsAtStart.PrepareRoots(loader, roots, PluginPaths.Installed(paths.DataDirectory), logger);
+        loader.IsBundled = BundledPluginsAtStart.BundledRule(bundledRoots, developmentRoot);
         loader.LoadFromRoots(roots);
         // Add-ons after the bundled and installed plugins (an id in both: the bundled one wins). Removed ones are deleted now;
         // an older one keeps running, one that cannot waits for Install again. An add-on folder others could change until

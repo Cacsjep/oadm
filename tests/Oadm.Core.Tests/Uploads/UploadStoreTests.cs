@@ -60,6 +60,32 @@ public sealed class UploadStoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ATaskOfAStoredUsersCallReadsOnlyThePluginsOwnFilesNeverAUsersUpload()
+    {
+        var plugins = new PluginUploads(_store);
+        var own = await plugins.AddAsync("config.json", new MemoryStream([1, 2, 3]), 3, CancellationToken.None);
+        var anna = new UploadOwner(Guid.NewGuid(), "session-a");
+        await using var writer = await _store.BeginAsync("annas.bin", 2, anna, CancellationToken.None);
+        await writer.WriteAsync(new byte[] { 4, 5 }, CancellationToken.None);
+        var annas = await writer.CompleteAsync(CancellationToken.None);
+        var engine = new Core.Tasks.TaskEngine(new Core.Tasks.InMemoryTaskStore(), new Core.Plugins.PluginRegistry(), new Tasks.FakeDeviceRepository(), new Tasks.FakeVapixClientFactory(), uploadedFiles: _store);
+        await using var running = engine;
+        var noSession = new Core.Tasks.TaskCaller(anna.UserId, "anna", "anna", string.Empty, Core.Auth.PermissionSet.All);
+
+        var files = engine.FilesOf(noSession);
+
+        Assert.Equal(own, await files.FindAsync(own.Id, CancellationToken.None));
+        await using (var read = await files.OpenReadAsync(own.Id, CancellationToken.None))
+        {
+            Assert.Equal(3, read.Length);
+        }
+
+        Assert.Null(await files.FindAsync(annas.Id, CancellationToken.None));
+        await Assert.ThrowsAsync<FileNotFoundException>(() => files.OpenReadAsync(annas.Id, CancellationToken.None));
+        Assert.Null(await files.FindAsync("not-an-id", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task NamesAreReducedToTheFileName()
     {
         var file = await UploadAsync("../../etc/C:\\temp\\AXIS_app.eap", [1, 2, 3]);

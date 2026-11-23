@@ -28,6 +28,9 @@ does not exist and its state is deleted. There is no hand-maintained list of rem
 - A root without a manifest (development `artifacts/plugins`, `--plugin-dir`, the data folder) loads as today. Stale
   development folders go with `manage clean`. A root with a manifest is a bundled root; the data folder's `plugins` is
   never one, even with a manifest in it.
+- A package loaded from a folder right in a bundled root (or, in a development run, the repository's `artifacts/plugins`)
+  is `PluginOrigin.Bundled` (`BundledPluginsAtStart.BundledRule`, `PluginLoader.IsBundled`); an optional plugin
+  (`AddOnCatalog`) never is. Only bundled packages get `ICorePluginContext.UserCalls` (`docs/spec/plugins.md`).
 
 ## Folders
 

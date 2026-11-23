@@ -77,6 +77,12 @@ public sealed class UserStore(IDbContextFactory<OadmDbContext> dbFactory, Passwo
             throw new AuthException(AuthError.InvalidArgument, $"The user name must be 1-{MaxUserNameLength} characters without control characters.");
         }
 
+        // "MCP <name>" is how an access key acts (audit, task owner): a user of that name could be taken for it (Schedules' owner).
+        if (name.StartsWith(AccessKeyStore.AgentPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new AuthException(AuthError.InvalidArgument, "A user name cannot start with MCP and a space: those are the names of access keys.");
+        }
+
         return name;
     }
 

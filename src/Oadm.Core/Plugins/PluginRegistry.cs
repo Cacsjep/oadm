@@ -51,6 +51,14 @@ public sealed record PluginOrigin(string PackageId, string Version, string? Dire
     /// </summary>
     public bool SupportsCallContext => PluginLoader.IsAtLeast(MinSdkVersion, SdkInfo.CallContextVersion);
 
+    /// <summary>
+    /// The package ships with this OADM version: loaded from a bundled root (<see cref="PluginLoader.IsBundled"/>, the
+    /// roots with the shipped manifest of docs/spec/plugin-removal.md; in a development run the repository's
+    /// artifacts/plugins), never an add-on or a plugin of the data folder. Only such packages get
+    /// <see cref="ICorePluginContext.UserCalls"/>. False by default (fail closed), also for <see cref="FromAssembly"/>.
+    /// </summary>
+    public bool Bundled { get; init; }
+
     /// <summary>A plugin compiled into the host (tests, built-in parts): it works wherever the host does.</summary>
     public static PluginOrigin FromAssembly(Assembly assembly)
     {

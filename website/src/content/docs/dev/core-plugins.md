@@ -302,6 +302,27 @@ var ids = await caller.Tasks.RunAsync(RolloutTask.PluginId, deviceIds, payloadJs
 - **A file for the tasks.** `ICorePluginClientContext.UploadAsync(localPath, progress, ct)` (SDK 0.7.0) uploads a local
   file like a task dialog does. Put the returned id into the payload; the task reads it with `ctx.Files`.
 
+### Later, as the user
+
+A plugin that ships with OADM can run work later as the user who set it up (Schedules). `ctx.UserCalls` (SDK 0.16.0)
+gives that user's call as it is now: the role's rights, the user's devices, tasks started as that user. It is null for
+every other plugin and on older OADM.
+
+```csharp
+var call = ctx.UserCalls is { } users ? await users.ForUserAsync(owner, ct) : null;
+if (call is null || !call.Has(permission))
+{
+    return Failed("The owner no longer has this right."); // nothing runs
+}
+
+var ids = await call.Tasks.RunAsync(taskId, deviceIds, payloadJson, call.UserName, ct);
+```
+
+- **Null** when the account no longer exists or is disabled. Ask again before every run; never keep the call.
+- **No session.** `SessionId` is empty and the call has no uploads. The tasks read the plugin's own files
+  (`ctx.Uploads`), never a user's upload.
+- **Tests.** Set `FakeCoreContext.UserCalls` to a `FakeUserCalls` and give each user name a `FakeCallContext`.
+
 ## Downloads
 
 A core plugin that also implements `ICorePluginDownloads` sends files to its page without storing them on the server:

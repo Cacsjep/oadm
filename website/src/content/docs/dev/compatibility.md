@@ -8,18 +8,18 @@ that SDK is compatible with. This page says what OADM checks, what it promises t
 
 ## The SDK version
 
-The SDK has its own version, `SdkInfo.Version` in `src/Oadm.Sdk/Plugins/Plugins.cs` (today `0.15.0`), separate from the
+The SDK has its own version, `SdkInfo.Version` in `src/Oadm.Sdk/Plugins/Plugins.cs` (today `0.16.0`), separate from the
 OADM version. Your `plugin.json` names the SDK it needs (the project SDK writes the version you build with):
 
 ```json
-"minSdkVersion": "0.15.0"
+"minSdkVersion": "0.16.0"
 ```
 
 When the server starts, it compares the two. A plugin that needs a newer SDK than the server has is not loaded; the
 server log says why:
 
 ```text
-Plugin problem in plugins/acme.hello: Plugin acme.hello requires SDK 0.16.0, host has 0.15.0.
+Plugin problem in plugins/acme.hello: Plugin acme.hello requires SDK 0.17.0, host has 0.16.0.
 ```
 
 `minSdkVersion` also decides who may use the plugin. Users limited to a device group get only plugins with 0.4.0 or
@@ -78,6 +78,7 @@ in a context of its own, so two plugins can use different versions of the same l
 
 | SDK | OADM | What changed |
 |---|---|---|
+| 0.16.0 | 5.4 | The current call of a stored user for work that runs later without them: `ICorePluginContext.UserCalls` (`IUserCalls.ForUserAsync`), only for plugins that ship with OADM. Testing: `FakeUserCalls`, `FakeCoreContext.UserCalls`. |
 | 0.15.0 | 5.3 | The node canvases: `NodeChainCanvas` (`NodeChain` with the + of `CanAdd` and `AddRequested`, `NodeChainAddEventArgs`, `NodeChainNode`), the node list `NodePicker` (`NodePickerModel`, `NodePickerEntry`, `NodePickerGroup`, `NodePickerItem`, `NodeIcon`), `FormField.Help` (a "?" with a short help inside the field), `NodeCanvasPainter` (`NodeCardBorder`), `NodeCanvasGeometry` (`CanvasView`), `CanvasTheme`. The first set up of a factory-new device through the add page's checks: `IDeviceAutoAdd.LookAsync` (`DeviceLook`, `DeviceLookResult` with `Starting`: always asked of the device, a starting one asked again for 2 minutes), `WatchFactoryNew` (`FactoryNewDevice`: devices stored or turned Password not set; `HadPassword`: it had a password before, reset to factory default), `SetFirstPasswordAsync` (`DeviceFirstPasswordOutcome`), `AddWithLoginAsync` (one credential list entry and tags), `ListCredentialsAsync` and `AddCredentialAsync` (`DeviceCredentialName` with `Added`, never a password), `DeviceFirstSetupTexts`. Client: `ICorePluginClientContext.RevealCredentialAsync` (a stored password of the credential list for an administrator's eye, the Credentials page's call and audit), `PasswordRevealButton` (the eye next to a stored password), `OnOffSwitch` (the one on / off switch, "On" / "Off" left of it), `CredentialTexts` (`Masked`, `ShowFailed`, `Added`). The context of a core plugin for a toolbar entry: `IToolbarContext.CorePluginContext`. Commands on the selected task of the tasks pane: `ITaskAction` (`TaskActionTask`). A task that removes something as a whole sits last in its menu group: `ITaskPlugin.IsDestructive`; the group `TaskGroups.Overlays`. Client: `DialogTitleBar.Actions` (command buttons left of the X). `DeviceTexts.Provisioning` and `ProvisioningTip`. The DHCP server read only for other plugins: `IDhcpServerLeases` (`DhcpServerSummary`, `DhcpAck`, `DhcpAcks`), offered by the DHCP server plugin. PKI's issuing policies read only for other plugins: `IIssuingPolicies` (`IssuingPolicyInfo`, `IssuingPolicyUse`), offered by PKI. A core plugin's own files as uploads for the tasks it starts: `ICorePluginContext.Uploads` (`IPluginUploads`). An audit entry with the outcome for a run a plugin starts: `ITaskRunner.RunAsync` with `TaskAudit` (`UserName`, `EachTask`; older hosts run without an entry). Task names up to 120 characters (`TaskPluginNames.MaxTaskNameLength`, was 48). Client: the date range of a log or list `DateRangeButton` (`DateRangeChoice`, `DateRangePreset`, `DateRangeOption`, `DateRangePanel`), `DateTimeInput` (a date and a 24-hour time), `ExportButton` (Export with CSV and PDF); `HostPermissionKeys.LogsExport`. Testing: `FakeCoreContext.AutoAdd`, `FakeCoreContext.FakeUploads`, `FakeTaskRun.Audit`. |
 | 0.14.0 | 5.2 | The device access check right before a write: `ICallContext.RequireCurrentDeviceAccessAsync` (session, permission and device checked again; hosts without it refuse). `IVapixClient.UsesConfiguredCertificatePin` (the connection uses a configured certificate pin). Client: `DialogTitleBar.Subtitle`, `ProgressRow.Detail`, `SideSubtitle.Align`. |
 | 0.13.0 | 5.1 | The certificates of the servers the host runs, picked by a PKI server policy: `IServerCertificates`, `HostServerCertificate`, `HostServers.Mcp` (PKI offers it, only the host reads it). Tasks for AI agents: `ITaskPlugin.PayloadType`, `PayloadJsonOptions`, `ValidatePayload` (also checked by every run), `PlanAsync`, `PagePermissions` (a page task agents may start); `PayloadError`, `TaskPlan` (with `Files`, `Errors` and `Details`), `TaskPlanDevice`, `SecretAttribute` (`Label`), the secrets a person enters for a run (`ITaskPlugin.SecretsOf`, `TaskSecret`, `TaskSecrets`). Tools of a core plugin for AI agents and other programs: `ICorePlugin.Tools`, `ToolArea`, `PluginTool`, `PluginToolPage`, `PluginToolErrors`; a tool on the devices of a filter (`PluginTool.DeviceFilter`, `PluginToolDevices`) and one that follows the permissions of a task of its package (`PluginTool.TaskPlugin`). The page's own actions as tools, with the page's checks and rights: `PluginPageTools`, `PluginToolInput`, `PluginToolInputException`, `PluginToolPlan`; the secrets of a change (`PluginTool.Secrets`, `PluginToolSecret`, `PluginToolSecrets`, `PluginToolPlan.SecretsNeeded`, `PluginToolInput.Secret`, `IsRun`), a file the answer hands out (`PluginTool.ReturnsFile`, `PluginToolFile`), the caller's own uploads (`ICallContext.Uploads`) and one tool's own area (`PluginTool.Area`). |
@@ -94,8 +95,8 @@ in a context of its own, so two plugins can use different versions of the same l
 | 0.2.0 | 4.0 | Devices at a site: `DeviceStatus.SiteOffline`, `IDeviceInfo.SiteId` / `SiteName`, `IDeviceNetwork` (`ITaskExecutionContext.Network`, `ITaskQueryContext.Network`), `ICorePluginContext.Network` and `Sites` (relays), `siteSupport` / `sitePorts` in `plugin.json` (the project SDK writes `full` by default), `ITaskPlugin.SiteSupport`, `IComplianceCheckType.SiteSupport`, `IRelay.ReleaseAsync`, `{site}` placeholder, `DeviceMessages.Refusal(IDeviceInfo)` / `TaskSupportReasons.ForStatus(IDeviceInfo)` (they say "Site offline: <site>") and `TaskSupportReasons.ForSiteSupport`, `HostPages.Sites`, `HostPermissionKeys.SitesView`. Client: `ICorePluginClientContext.OpenDeviceRequested`, `CheckChoice` / `ICheckChoice` / `CheckChoiceList` (`ComboBox Classes="multiSelect"`), `PageTab.Count` and fixed tabs (no `CloseCommand`), `DeviceTexts.OpenNotAllowed`. Testing: `FakeDevice.SiteId` / `SiteName`, `FakeDeviceNetwork`, `FakeSites`, `FakePluginNetwork`, `InMemoryUdpRelay` / `InMemoryTcpRelay`. The project SDK adds the banned-API analyzer (warning RS0030 for own sockets). See [Sites](../sites/) |
 | 0.1.0 | 3.x | The first SDK on NuGet |
 
-A plugin needs at least the OADM release of its SDK in the table: built with the 5.3 packages (SDK 0.15.0), it needs
-OADM 5.3 or later. A plugin built with SDK 0.1.0 still loads, but its `plugin.json` has no `siteSupport`: OADM keeps
+A plugin needs at least the OADM release of its SDK in the table: built with the 5.4 packages (SDK 0.16.0), it needs
+OADM 5.4 or later. A plugin built with SDK 0.1.0 still loads, but its `plugin.json` has no `siteSupport`: OADM keeps
 it away from devices at a site until you rebuild it with a newer project SDK (or add `"siteSupport": "full"` to your
 own `plugin.json`).
 

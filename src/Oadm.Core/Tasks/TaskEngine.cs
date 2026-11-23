@@ -189,10 +189,14 @@ public sealed partial class TaskEngine : ITaskRunner, IAsyncDisposable
 
     /// <summary>
     /// The uploads a task reads (<see cref="ITaskExecutionContext.Files"/>): a task a user started reads only the uploads of
-    /// that user's session (another id answers like an unknown one); a task the system started reads any upload.
+    /// that user's session (another id answers like an unknown one); a task started through a stored user's call without a
+    /// session (<see cref="Sdk.Plugins.IUserCalls"/>) only the plugins' own files (<see cref="Sdk.Plugins.ICorePluginContext.Uploads"/>),
+    /// never a user's; a task the system started reads any upload.
     /// </summary>
     public IUploadedFiles FilesOf(TaskCaller? caller) =>
-        caller is not null && _files is UploadStore store ? store.For(new UploadOwner(caller.UserId, caller.SessionId)) : _files;
+        caller is null || _files is not UploadStore store ? _files
+            : caller.SessionId.Length == 0 ? store.SystemFiles
+            : store.For(new UploadOwner(caller.UserId, caller.SessionId));
 
     /// <summary>
     /// Reads a task owner's current view when the task leaves the queue (set by the server). Without it, a call of a user

@@ -109,7 +109,19 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   does not tell: a relay at a site, an older host) lists the addresses bound now, empty while not listening;
   `FakePluginNetwork.LastUdpAddresses` / `LastTcpAddresses` and `RefuseAddress` (leave an address out, as the host does)
   in tests), `Sites` (relays at sites, `docs/spec/sites.md`), `License`, `Pro`, `Services`, `ProtectedTags`, `System`,
-  `Jobs`, `DeviceScopes` (all below).
+  `Jobs`, `DeviceScopes` (all below), `UserCalls` (SDK 0.16.0, `IUserCalls`, below).
+- **User calls** (SDK 0.16.0, `ICorePluginContext.UserCalls`, `IUserCalls.ForUserAsync(userName, ct)`): the current
+  `ICallContext` of a stored user who is not signed in, for work the user set up to run later (Schedules,
+  `docs/spec/schedules.md` "Host: running as the owner"). Only bundled packages get it (`PluginOrigin.Bundled`: loaded
+  from a root with the shipped manifest, `docs/spec/plugin-removal.md`; in a development run also the repository's
+  artifacts/plugins; never an optional plugin or a folder of the data folder); every other package and older hosts get
+  null. Each call reads the account, its role's permissions and its device access fresh (`StoredUserCallers`): null when
+  the account does not exist or is disabled (also when it cannot be read: fail closed). The call is the one a page method
+  of the plugin gets (`HostCallContext`), without a session: `SessionId` empty, no session event, no uploads of a session.
+  `call.Tasks` starts tasks as the user (owner the user name, the queue's view check, the user's MyAxis sign-in); such a
+  task reads only the plugins' own files (`ICorePluginContext.Uploads`, `UploadStore.SystemFiles`), never a user's upload.
+  `RequireCurrentDeviceAccessAsync` reads the user again (exists, enabled, the permission, the device in the view).
+  Every call is logged at Debug (plugin, user name). Test fake: `FakeUserCalls` (`FakeCoreContext.UserCalls`).
 - **Device groups** (`docs/spec/device-scope.md`, `src/Oadm.Sdk/Plugins/CallContext.cs`): `ICallContext` (UserName,
   SessionId, DeviceScopeKey "all" or the group id, `Has`, `HasAllDevices`, `Devices`, `Vapix`, `Tasks`, `EventStreams`
   scoped to the user's view: outside ids answer null or throw `Oadm.Sdk.Devices.DevicesNotAvailableException` = NOT_FOUND
@@ -500,21 +512,21 @@ for server reports.
 - Host services: `FakeEventPublisher` (the events a source fires or switches), `FakeDeviceScopes` (device groups),
   `FakeSites`, `FakeSite`, `FakeDeviceNetwork` and `FakePluginNetwork` with the in-memory relays (sites and sockets),
   `FakePluginJobs`, `FakePluginServices`, `FakeProtectedTags`, `FakeStreamProbes` (the server's measuring video streams),
-  `FakeAxisDownloads` (files from axis.com); `FakeHostRules` (internal) holds the server's rules for a user's call.
+  `FakeAxisDownloads` (files from axis.com), `FakeUserCalls` (the current calls of stored users, SDK 0.16.0); `FakeHostRules` (internal) holds the server's rules for a user's call.
 - Device groups: `PluginCanary` calls every method of a core plugin with a device outside the caller's group and fails
   on a leak; `TaskPluginCanaryHost` puts task plugins and actions under it.
 
 ## SDK versions
 
-`SdkInfo.Version` (0.15.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
+`SdkInfo.Version` (0.16.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
 Both are constants: a plugin that reads them gets the value of the SDK it was built against, not the host's. The table of
 what each version added is `website/src/content/docs/dev/compatibility.md`.
 
-- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.15.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.15.0
+- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.16.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.16.0
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
   packages keep their own hand-written `plugin.json`: 0.4.0, or the version of the newest member a package uses at run time
-  (0.15.0: DHCP server (`IDhcpServerLeases`), PKI (`IIssuingPolicies`), Provisioning (`IDeviceAutoAdd` first set up, `TaskAudit`) and the node canvas of Vision Center and Text recognition; 0.13.0, the members for MCP: Applications (ACAP), Upgrade AXIS OS, Network, DHCP server, NTP server, Hardening
+  (0.16.0: Schedules (`IUserCalls`); 0.15.0: DHCP server (`IDhcpServerLeases`), PKI (`IIssuingPolicies`), Provisioning (`IDeviceAutoAdd` first set up, `TaskAudit`) and the node canvas of Vision Center and Text recognition; 0.13.0, the members for MCP: Applications (ACAP), Upgrade AXIS OS, Network, DHCP server, NTP server, Hardening
   scan (payload schemas or plugin tools), PKI with the EST and 802.1X servers (also `IServerCertificates`), Date and time
   (`ValidatePayload`), Users (`Secret`), Action Rule Editor, Device configuration and Edge storage (task inputs for agents,
   `PagePermissions`); 0.12.0: `PluginJson` or `ByteSize` in Application
