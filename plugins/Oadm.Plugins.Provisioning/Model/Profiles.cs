@@ -56,6 +56,9 @@ public enum NodeKind
 
     /// <summary>Network: the address (keep it, or the next free one of a pool), DNS servers and search domain.</summary>
     Network = 15,
+
+    /// <summary>Restart: restarts the device and waits until it answers again (Schedules only, never offered in a profile).</summary>
+    Restart = 16,
 }
 
 /// <summary>One node of a profile: its kind, its settings (the kind's own record as JSON) and whether the flow goes on after an error.</summary>

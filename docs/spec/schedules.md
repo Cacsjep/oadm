@@ -9,7 +9,7 @@ has devices, a time and a list of actions; each run gives every device one task 
 Provisioning.
 
 Package `plugins/Oadm.Plugins.Schedules` (+ `.Client`), id `oadm.schedules`, free, on by default (switchable), core plugin
-with a rail page **Schedules** in the group Automation (after Event rules), icon `calendar`, `siteSupport` full (the
+with a rail page **Schedules** in the group Automation (after Event rules), icon `calendarClock`, `siteSupport` full (the
 actions' own tasks decide per device). Details in the plugin's README.
 
 ## Rules that never break
@@ -31,8 +31,8 @@ actions' own tasks decide per device). Details in the plugin's README.
 ## A schedule
 
 - **Name** (required, unique, at most 100 characters), **Turned on**, **Roll out in stages**.
-- **Devices**: All devices, tags, a device group or chosen devices (the shared device choice), worked out at the start of
-  every run within the owner's view. A device removed from OADM is simply no longer in it.
+- **Devices**: All devices, or chosen devices and tags (the shared `DevicePickerWindow`), worked out at the start of every
+  run within the owner's view. A device removed from OADM is simply no longer in it.
 - **When**: Once (date and time), Daily (time), Weekly (days and time), Monthly (day 1 to 28 and time). Optional
   **window end** ("Start no new devices after 05:00"): no device task starts after it; tasks still queued then are
   cancelled and counted as Not started.
@@ -91,8 +91,8 @@ step is Not needed (success). Not in the first version and never: hardening scan
 ## The page
 
 - Toolbar: **New schedule**, Edit, **Run now**, Turn on / Turn off, Delete (red, last, confirmation); search right.
-- Grid (virtualized, `RangeObservableCollection`): Name, Devices ("All devices", "Tag Site A", "Group Lobby", "12
-  devices"), When ("Mondays 23:00"), Then (the actions, comma separated), Next run, Last run (status chip and counts:
+- Grid (virtualized, `RangeObservableCollection`): Name, Devices ("All devices", "Tag Site A and 12 devices",
+  `DeviceSelectorTexts.Brief`), When ("Mondays 23:00"), Then (the actions, comma separated), Next run, Last run (status chip and counts:
   "212 done, 3 failed"), Owner. A schedule that will not run (owner lost a right, no MyAxis sign-in for an online
   upgrade) shows the reason as a warning chip in Last run until it is fixed. Empty: "Create a schedule to run tasks at a
   set time."
@@ -127,10 +127,10 @@ field check on Result, only when it is not Done.
 
 ## Host: running as the owner
 
-SDK 0.16.0 `ICorePluginContext.UserCalls` (`IUserCalls?`, default null): `ForUserAsync(userName, ct)` answers the user's
+SDK 0.16.0 `ICorePluginContext.UserCalls` (`IUserCalls?`, default null; only bundled plugins get it): `ForUserAsync(userName, ct)` answers the user's
 current `ICallContext` (role permissions, device view, task runner as that user, so the user's MyAxis sign-in and queue
 checks apply) or null when the account does not exist or is disabled. Never a session (`SessionId` empty, no events of a
-session). Only plugins whose manifest declares it get it (`"actsAsOwner": true`); the host logs every call at Debug.
+session). The host logs every call at Debug.
 
 ## Rights and audit
 

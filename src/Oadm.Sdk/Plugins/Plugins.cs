@@ -641,6 +641,26 @@ public interface ICorePluginContext
     /// 0.4.0). Null on older hosts: a plugin that acts on devices by tag then treats no tag as safe (fail closed).
     /// </summary>
     IProtectedTags? ProtectedTags => null;
+
+    /// <summary>
+    /// The current call of a stored user, for work a user set up to run later without them (Schedules,
+    /// <see cref="IUserCalls"/>, SDK 0.16.0). Only bundled plugins get it; null for every other plugin and on older hosts.
+    /// </summary>
+    IUserCalls? UserCalls => null;
+}
+
+/// <summary>
+/// The current call of a user who is not signed in (SDK 0.16.0): work a user set up earlier runs with that user's rights and
+/// devices as they are now. Only bundled plugins get it (<see cref="ICorePluginContext.UserCalls"/>).
+/// </summary>
+public interface IUserCalls
+{
+    /// <summary>
+    /// The user's call as of now: the role's permissions, the devices of the user's current view, tasks started as that user
+    /// (their MyAxis sign-in, the queue's view check). Null when the account does not exist or is disabled. Never a login
+    /// session: <see cref="ICallContext.SessionId"/> is empty and no session event reaches it.
+    /// </summary>
+    Task<ICallContext?> ForUserAsync(string userName, CancellationToken ct);
 }
 
 /// <summary>Server-side encryption for secrets a plugin persists. Values never leave the server.</summary>

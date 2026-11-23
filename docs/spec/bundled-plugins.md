@@ -396,7 +396,7 @@ toolbar button, Provisioning management, the Add devices page's "Provisioning" a
 ## Schedules (core plugin)
 
 `plugins/Oadm.Plugins.Schedules` (+ `.Client`), id `oadm.schedules`, rail page Schedules (group Automation), icon
-`calendar`, **free, on by default**. Spec, not built: [schedules.md](schedules.md). A schedule has devices, a time and
+`calendarClock`, **free, on by default**. Spec, not built: [schedules.md](schedules.md). A schedule has devices, a time and
 actions (the nodes of Provisioning plus Restart); each run gives every device one task "Run <schedule>" with one named
 step per action.
 
