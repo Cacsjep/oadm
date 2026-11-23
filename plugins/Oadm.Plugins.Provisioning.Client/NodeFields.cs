@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.Input;
 using Oadm.Plugins.DateAndTime.Model;
 using Oadm.Plugins.Network.Model;
 using Oadm.Plugins.Provisioning.Engine;
+using Oadm.Plugins.Provisioning.Model;
 using Oadm.Plugins.Provisioning.Nodes;
 using Oadm.Sdk.Certificates;
 using Oadm.Sdk.Client;
@@ -548,6 +549,9 @@ public interface INodeFormServices
 
     /// <summary>The text of a configuration file kept for a node (<c>readConfigFile</c>), for the file preview.</summary>
     Task<string> ReadConfigFileAsync(Guid fileId, CancellationToken ct) => throw new NotSupportedException("This editor cannot read kept files.");
+
+    /// <summary>What a node does where its fields do not say it (<see cref="NodeForms.Note"/>; Schedules says whose MyAxis sign-in).</summary>
+    string? Note(NodeKind kind) => NodeForms.Note(kind);
 }
 
 /// <summary>One file kept for a node (Configuration): Choose file uploads it and keeps its id (<c>fileId</c>).</summary>

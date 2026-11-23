@@ -22,6 +22,7 @@ public static class NodeLook
         NodeKind.SdCard => "hardDrive",
         NodeKind.Autofocus => "focus",
         NodeKind.VapixCommands => "command",
+        NodeKind.Restart => "restart",
         _ => "plugin",
     };
 
@@ -36,6 +37,7 @@ public static class NodeLook
         NodeKind.Users => "Oadm.Tag.BlueBrush",
         NodeKind.Certificate or NodeKind.Dot1x => "Oadm.Tag.VioletBrush",
         NodeKind.VapixCommands => "Oadm.Tag.RedBrush",
+        NodeKind.Restart => "Oadm.Tag.AmberBrush",
         _ => "Oadm.Tag.NeutralBrush",
     };
 
@@ -44,7 +46,7 @@ public static class NodeLook
     [
         NodeKind.SetPassword, NodeKind.UpgradeOnline, NodeKind.UpgradeFiles, NodeKind.Network, NodeKind.DateTime,
         NodeKind.Configuration, NodeKind.Users, NodeKind.Certificate, NodeKind.Dot1x, NodeKind.SdCard, NodeKind.Autofocus,
-        NodeKind.VapixCommands,
+        NodeKind.VapixCommands, NodeKind.Restart,
     ];
 
     /// <summary>The place of the kind in <see cref="Order"/>; a kind not listed comes last.</summary>
@@ -76,6 +78,7 @@ public static class NodeLook
         NodeKind.SdCard => "Formats or encrypts the SD card",
         NodeKind.Autofocus => "Finds the focus",
         NodeKind.VapixCommands => "Commands of the VAPIX Commander library",
+        NodeKind.Restart => "Restarts the device",
         _ => string.Empty,
     };
 
@@ -86,7 +89,7 @@ public static class NodeLook
         NodeKind.UpgradeOnline or NodeKind.UpgradeFiles => "AXIS OS",
         NodeKind.Network or NodeKind.DateTime or NodeKind.Configuration or NodeKind.Users => "Settings",
         NodeKind.Certificate or NodeKind.Dot1x => "Security",
-        NodeKind.SdCard or NodeKind.Autofocus or NodeKind.VapixCommands => "Camera",
+        NodeKind.SdCard or NodeKind.Autofocus or NodeKind.VapixCommands or NodeKind.Restart => "Camera",
         _ => "Last steps",
     };
 }

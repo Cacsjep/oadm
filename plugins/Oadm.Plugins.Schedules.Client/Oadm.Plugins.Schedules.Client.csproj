@@ -32,6 +32,33 @@
     <InternalsVisibleTo Include="Oadm.Plugins.Schedules.Tests" />
   </ItemGroup>
 
+  <!-- Step Then of the wizard is Provisioning's node editor (docs/spec/schedules.md "Actions"): the node view models, their
+       fields and look, the file preview and the settings panel, linked from Provisioning's client part and compiled into
+       this assembly (the node sources they use come with the server part); the backend through INodeFormServices. -->
+  <ItemGroup>
+    <Compile Include="..\Oadm.Plugins.Provisioning.Client\NodeEditorViewModel.cs" Link="Provisioning\NodeEditorViewModel.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning.Client\NodeFields.cs" Link="Provisioning\NodeFields.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning.Client\NodeListFields.cs" Link="Provisioning\NodeListFields.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning.Client\NodeLook.cs" Link="Provisioning\NodeLook.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning.Client\ConfigPreview.cs" Link="Provisioning\ConfigPreview.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning.Client\ProvisioningTexts.cs" Link="Provisioning\ProvisioningTexts.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning.Client\NodeSettingsView.axaml.cs" Link="Provisioning\NodeSettingsView.axaml.cs" />
+    <AvaloniaXaml Include="..\Oadm.Plugins.Provisioning.Client\NodeSettingsView.axaml" Link="Provisioning\NodeSettingsView.axaml" />
+    <Compile Include="..\Shared\TimeZones.Client\TimeZoneChoice.cs" Link="Common\TimeZoneChoice.cs" />
+  </ItemGroup>
+
+  <!-- What the node editor reads beyond the server part's sources: the editor's contract records, the limits of the node
+       kinds a schedule never offers (the fields are shared by every kind) and the time zones of the Date and time field. -->
+  <ItemGroup>
+    <Compile Include="..\Oadm.Plugins.Provisioning\NodeEditorContract.cs" Link="Provisioning\NodeEditorContract.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Nodes\DateTimeNode.cs" Link="Provisioning\Nodes\DateTimeNode.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Nodes\SdCardNode.cs" Link="Provisioning\Nodes\SdCardNode.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Nodes\UsersNode.cs" Link="Provisioning\Nodes\UsersNode.cs" />
+    <Compile Include="..\Oadm.Plugins.DateTime\Model\TimeZoneCatalog.cs" Link="TimeZones\TimeZoneCatalog.cs" />
+    <Compile Include="..\Oadm.Plugins.DateTime\Model\ZoneYear.cs" Link="TimeZones\ZoneYear.cs" />
+    <EmbeddedResource Include="..\Oadm.Plugins.DateTime\Model\TimeZones.txt" Link="TimeZones\TimeZones.txt" LogicalName="Oadm.Plugins.DateAndTime.TimeZones.txt" />
+  </ItemGroup>
+
   <!-- Development deployment next to the server part in artifacts/plugins/oadm.schedules/. -->
   <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
     <ItemGroup>

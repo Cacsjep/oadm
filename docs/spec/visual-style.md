@@ -216,12 +216,14 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   vertical links, cards with a colour stripe, icon, name and a line, ports, the + below an output, the error directly
   below a red-bordered card) and its view (`CanvasView`: fit, wheel zoom around the pointer); `CanvasTheme` gives drawn
   code the theme. `NodeChainCanvas` over a `NodeChain` (`NodeChainNode`): a straight chain top to bottom with a status
-  icon and a message below each card, pan, zoom and a click that selects (Provisioning's profile editor and a camera's
-  flow; `NodeChain.CanAdd` and `NodeChainNode.CanAddAfter` show the + below the last and the selected card, a click
-  raises `AddRequested`). Vision Center's `PipelineCanvas` draws with the painter and adds its eye, control inputs and
-  counts. `NodePicker` over a `NodePickerModel` (`NodePickerItem`, `NodePickerGroup`): the node list a + opens on every
-  node canvas, a popup with a search and the kinds in groups, each with its coloured icon (`NodeIcon`), name and one line;
-  Enter adds the first, Esc closes (Vision Center's pipelines, Provisioning's profile editor).
+  icon and a message below each card, pan, zoom and a click that selects (Provisioning's profile editor, the Schedules
+  wizard's step Then and a camera's flow; `NodeChain.CanAdd` and `NodeChainNode.CanAddAfter` show the + below the last
+  and the selected card, a click raises `AddRequested`). Vision Center's `PipelineCanvas` draws with the painter and adds
+  its eye, control inputs and counts. `NodePicker` over a `NodePickerModel` (`NodePickerItem`, `NodePickerGroup`): the
+  node list a + opens on every node canvas, a popup with a search and the kinds in groups, each with its coloured icon
+  (`NodeIcon`), name and one line; Enter adds the first, Esc closes (Vision Center's pipelines, Provisioning's profile
+  editor, the Schedules wizard). Provisioning's `NodeSettingsView` is the settings panel of a node, linked into
+  Schedules.
 - `PageHeader`: a plugin page's content for the host page header (`Subtitle`, `Trailing`; `IsHidden` leaves the header
   row out, Live View).
 - For dialogs: `DialogTitleBar` (`Actions`: flat command buttons of the whole dialog left of the X, icon and text, e.g.
@@ -356,6 +358,8 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 - `WizardSteps` + `WizardStepItem`: the step row of every wizard. Numbered dot and name, thin line between, current
   accent, done with a check, a step opens when every step before it is complete; theme `Button.wizardStep`,
   `Border.wizardDot`, `TextBlock.wizardLabel`, `Border.wizardLine`.
+- `OverviewList` (`OverviewLine`): the overview step of every wizard, one line per fact with its label in a narrow
+  column (the Event rule editor, the Schedules wizard).
 - `GroupedChoice` with `ComboBox.grouped`: every grouped select field. Grey group headers that cannot be chosen, the
   choices indented below them, like the event list of a device.
 - `ICheckChoice` / `CheckChoice` / `CheckChoiceList` with `ComboBox.multiSelect`: every select field with check boxes. The

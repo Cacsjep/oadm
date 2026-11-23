@@ -1,6 +1,6 @@
 # Schedules
 
-Status: **spec agreed 2026-11-23, not built.**
+Status: **built 2026-11-23** (spec agreed 2026-11-23).
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
@@ -17,7 +17,10 @@ actions' own tasks decide per device). Details in the plugin's README.
 1. **Runs as its owner.** The owner is the user who last saved the schedule. Every run asks the host for the owner's
    current call (`IUserCalls`, below): the account must still exist and be enabled, have the plugin's "manage" and the
    right of every action, and the devices are only those of the owner's current view. Anything missing: nothing runs, the
-   run ends Failed with the reason ("The owner no longer has the right Upgrade AXIS OS."). Fail closed.
+   run ends Failed with the reason ("The owner no longer has the right Upgrade AXIS OS."). Fail closed. The rights and the
+   view are checked at the start of every run through the owner's call; the device tasks then run on the plugin's own task
+   runner, only Upgrade AXIS OS online through the owner's runner (their MyAxis sign-in). Why: the action VAPIX commands
+   starts VAPIX Commander's task, a page task of another package, which a user's runner refuses for every user.
 2. **Device safety of every action.** Each action starts the existing task of its area with its own checks (API check
    before the first write, input validated first). Never Network, Users, SD card or any address change; dangerous
    VAPIX commands and commands with a password or file are refused in a schedule (as in Provisioning).
@@ -66,24 +69,33 @@ step is Not needed (success). Not in the first version and never: hardening scan
 - **One task per device**, `oadm.schedules.run`, name "Run <schedule>", hidden from the menus, one named step per action
   (the step names above). Success, Warning (Done with warnings), Not needed (success with its reason) and Error as in
   Provisioning. The task fails when a step failed.
-- **How many at once**: the server setting Parallel tasks per plugin (no setting per schedule). The plugin starts device
-  tasks itself as places free up, so the window end and a stop take effect at once.
-- **Devices that are not Ok** when their turn comes (offline, Password wrong, Site offline, ...) get no task and are
-  counted by status ("12 offline").
+- **How many at once**: the task engine's limit, the server setting Parallel tasks per plugin (no setting per schedule). The
+  plugin starts all devices of a stage in one start (the whole run without stages); the others wait as queued. The window
+  end and a stop cancel the tasks still queued (Not started) and start no further stage; running tasks run to their end.
+- **Devices that are not Ok** when their stage starts (the run starts without stages) (offline, Password wrong, Site
+  offline, ...) get no task and are counted by status ("12 offline").
 - **Roll out in stages** (off by default): stage sizes of the run's devices, rounded up: 1, 2 %, 5 %, 10 %, 20 %, then
   the rest; a stage not bigger than the one before is merged into the next (20 devices: 1, 2, 4, 13). A stage starts
   when every task of the stage before has ended. One failed device stops the run: devices not started are Not started,
   the run is **Stopped** ("Stopped at stage 3: 1 failed"). Done with warnings and Not needed count as success. The
-  first stage takes a device that is Ok. The next run starts from the beginning again.
+  first stage goes on until a device that is Ok started (one that went offline is skipped); no device of it ran well:
+  "Stopped at stage 1: no device could be tested.", stage 2 never starts. The next run starts from the beginning again.
+- **Delete and stop during a run**: deleting the schedule closes its run (queued tasks cancelled, no further stage,
+  running tasks run to their end, the event Stopped); turning the plugin off or stopping the server ends the run Stopped
+  at once, its running tasks run to their end and a later run gives their devices no second task while they run.
+- **Times of a run** are stored in the server's local time (the offset of Next run and Missed). A look for due starts
+  re-reads each schedule (still on, not saved meanwhile, the start not handled yet); a start that cannot begin is a
+  Failed row with the reason, the other schedules still run.
 - **Results of a run**: Done, Done with warnings, Failed (without stages: at least one device failed), Stopped, Missed
-  (the server was off and the window had closed), Skipped (the previous run still ran). Counts: done, warnings, failed,
-  not reachable (by status), not started.
+  (the server was off and the window had closed), Skipped (the previous run still ran). No failure but devices not
+  reachable or not started: Done with warnings. Counts: done, warnings, failed, not reachable (by status), not started.
 - **Missed times**: at server start a due run of the last 24 hours starts while its window is open (or it has none);
   else one Missed row. Never more than one catch-up per schedule.
 - **Run now** (page and MCP): starts a run at once as the owner; the user who pressed it needs "manage"; audited with
   their name.
 - **Estimate**: devices of the choice now / parallel limit x the time per device (sum of the actions; from this
-  schedule's last ended run when it had one, else the table's starting values), plus one per stage for its wait. Shown
+  schedule's last ended run when it had one, else the table's starting values), plus one per stage for its wait. The
+  parallel limit of the estimate is 16, the setting's default (the SDK does not tell a plugin the setting). Shown
   in the wizard's Overview and on step When. Longer than the time between two runs: a warning directly below When ("A
   run takes about 24 h, longer than the 5 h between runs. A start during a run is skipped."); Save stays possible
   (decision 2026-11-23).
@@ -94,7 +106,9 @@ step is Not needed (success). Not in the first version and never: hardening scan
 - Grid (virtualized, `RangeObservableCollection`): Name, Devices ("All devices", "Tag Site A and 12 devices",
   `DeviceSelectorTexts.Brief`), When ("Mondays 23:00"), Then (the actions, comma separated), Next run, Last run (status chip and counts:
   "212 done, 3 failed"), Owner. A schedule that will not run (owner lost a right, no MyAxis sign-in for an online
-  upgrade) shows the reason as a warning chip in Last run until it is fixed. Empty: "Create a schedule to run tasks at a
+  upgrade) shows the reason as a warning chip in Last run until it is fixed. The MyAxis warning shows only after a run
+  failed with "Sign in to MyAxis." (a plugin cannot ask a user's sign-in outside a task); a later run that upgrades a
+  device clears it. Empty: "Create a schedule to run tasks at a
   set time."
 - Below, the **runs** of the selected schedule (newest first, the last 50 kept per schedule): Started, Ended, Result
   chip with counts, and for a run with failures its failed devices (device, step, message; at most 1,000 per run,
@@ -137,16 +151,20 @@ session). The host logs every call at Debug.
 - Permissions "show" (Operator on, Viewer off) and "manage" (Operator and Viewer off). Save needs "manage" and the
   right of each action the schedule has, checked against the saving user; Run now needs "manage".
 - Users with a device group: their schedules reach only their devices; they see only their own group's schedules
-  (owned by a user with the same view), administrators see all.
-- Audited: create, change, turn on / off, delete, Run now (the user), and every run "Started task" with user "Schedule
-  <name> (<owner>)", target "Run <name>", at its end the counts (`TaskAudit`).
+  (owned by a user whose current view is theirs: the owner's call, cached 30 s, decides; a run stores it), administrators
+  see all.
+- An MCP access key never owns a schedule: save, turn on and Run now refuse it ("An access key cannot own a schedule.
+  Create it in the client or with the Assistant."); no user name may start with "MCP " (the names access keys act under).
+- Audited: create, change, turn on / off, delete, Run now (the user), and "Started task" with user "Schedule <name>
+  (<owner>)", target "Run <name>", at its end the counts (`TaskAudit`): one entry per stage (one per run without stages).
 
 ## MCP
 
-`oadm_schedules` (list, paged), `oadm_schedule` (one, with the estimate and the next runs), `oadm_schedule_runs`
-(paged, a run's failed devices with `more`), `oadm_schedule_actions` (the actions and their settings), changes with
-preview and run: `_save`, `_delete`, `_turn_on`, `_turn_off`, `_run_now`; `_file_store` (an uploaded file for an action)
-as in Provisioning.
+Area `schedules` (the host names a plugin's tools `oadm_<area>_<name>`): `oadm_schedules_list` (paged, search by name),
+`oadm_schedules_get` (one, with the estimate and the next five runs), `oadm_schedules_runs` (paged; with `run_id` that
+run's failed devices, at most 50, with `more`), `oadm_schedules_actions` (the actions with their default settings, PKI's
+policies, VAPIX Commander commands by `command_search`), changes with preview and run: `_save`, `_delete`, `_turn_on`,
+`_turn_off`, `_run_now`; `_file_store` (an uploaded file for an action) as in Provisioning.
 
 ## Scale
 

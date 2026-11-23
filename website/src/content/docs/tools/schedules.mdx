@@ -1,0 +1,94 @@
+---
+title: Schedules
+description: Run tasks on devices at a set time, such as upgrading AXIS OS every Monday night.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+A schedule runs tasks on devices at a set time: "every Monday at 23:00, upgrade AXIS OS and restart the cameras tagged
+Site A". Each run gives every device one task with one step per action. The tasks show in the tasks pane like every
+other task.
+
+<Aside>
+Schedules are on by default. Creating, changing, running and deleting schedules needs the permission **Change and run
+schedules** on the [Permissions page](../../admin/users/#permissions-page) (administrators have it), and the right of
+each action, for example **Upgrade AXIS OS**.
+</Aside>
+
+## Create a schedule
+
+<Steps>
+
+1. Open **Schedules** in the navigation rail and choose **New schedule**.
+2. **Schedule**: give it a name. Leave **Turned on** ticked to let it run at its times. Tick **Roll out in stages** to
+   start with one device (see below).
+3. **Devices**: choose **Choose devices**, then **All devices**, or any mix of tags and single devices, and **OK**. The
+   list below shows the devices the choice gives now. A tag also covers devices you tag later; with **All devices** new
+   devices join by themselves.
+4. **When**: **Once**, **Daily**, **Weekly** or **Monthly**, the day and the **Time**. **Window end** is optional: no
+   device starts after this time, devices still waiting are counted as not started.
+5. **Then**: choose **Add action** and pick an action. Choose an action to change its settings on the right. Add more
+   with **Add action** or the **+** below an action; **Move up**, **Move down** and **Remove** change the list.
+6. **Overview**: check the next run and how long a run takes, then choose **Save**.
+
+</Steps>
+
+Next opens the next step once the step is complete; its tooltip says what is missing. Errors show below their field.
+
+Times are the server's time. The schedule runs as you: the user who saved it last. If you lose a right or your account
+is turned off, nothing runs and the run says why.
+
+## Actions
+
+| Action | What each device gets |
+|---|---|
+| Upgrade AXIS OS online | The newest AXIS OS from axis.com, with your MyAxis sign-in. A device on the newest version is not changed. |
+| Upgrade AXIS OS from files | Your AXIS OS file for its model. |
+| Configuration | The settings of a configuration file (`.cfg`) of Create configuration file or ADM. |
+| Restart | A restart; the step waits until the device answers again. |
+| Certificate | The HTTPS certificate of a PKI policy, or EST enrollment. |
+| 802.1X | Network access with PKI's 802.1X policy. |
+| VAPIX commands | Commands of the VAPIX Commander library. |
+
+Each action has **Continue on error** (on by default). With it off, an error ends that device's task; the other devices
+go on. Network settings, users, SD cards and date and time are never part of a schedule.
+
+<Aside type="caution">
+**Upgrade AXIS OS online** needs your MyAxis sign-in. While it is missing or expired, the schedule shows **Sign in to
+MyAxis.** in **Last run** and the step fails on every device.
+</Aside>
+
+## Roll out in stages
+
+With **Roll out in stages**, a run starts on 1 device, then 2 %, 5 %, 10 %, 20 % of the devices and then the rest. A
+stage starts when every task of the stage before has ended. One failed device stops the run: the run shows
+**Stopped** and the devices not started yet stay as they are. Offline devices never stop a run. The next run starts
+from the first stage again.
+
+## The page
+
+| Column | What it shows |
+|---|---|
+| Devices | **All devices**, or the tags and devices you chose |
+| When | For example **Mondays 23:00 until 05:00** |
+| Then | The actions in order |
+| Next run | When it runs next, or **Turned off** |
+| Last run | The result and the counts, for example **212 done, 3 failed, 12 offline**, or why it will not run |
+| Owner | The user it runs as |
+
+Choose a schedule to see its last 50 runs below, newest first. Choose a failed run to see its failed devices with the
+step and the message.
+
+- **Run now** starts a run at once.
+- **Turn off** stops the schedule from running at its times; **Turn on** starts it again.
+- **Delete** removes the schedule. A run that goes on runs to its end.
+
+A run is **Skipped** when the run before still goes on, and **Missed** when the server was off at the time. After a
+restart, the server catches up on a run of the last 24 hours while its window is open.
+
+Devices that are offline or not reachable when their turn comes get no task and are counted by their status.
+
+## Rules
+
+Every run ends with the event **Schedule run ended** for [event rules](../event-rules/), also for missed and skipped
+runs. Check **Result** is not **Done** to send an email only when something went wrong.

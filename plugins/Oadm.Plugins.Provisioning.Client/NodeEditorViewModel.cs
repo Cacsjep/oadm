@@ -18,12 +18,14 @@ namespace Oadm.Plugins.Provisioning.Client;
 public sealed partial class NodeEditorViewModel : ObservableObject
 {
     private readonly JsonObject _settings;
+    private readonly INodeFormServices _services;
     private bool _refreshing;
 
     public NodeEditorViewModel(FlowNode node, NodeKindInfo? kind, INodeFormServices services)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(services);
+        _services = services;
         Id = node.Id;
         Kind = node.Kind;
         Name = kind?.Name ?? node.Kind.ToString();
@@ -66,7 +68,7 @@ public sealed partial class NodeEditorViewModel : ObservableObject
     public bool HasFields => Fields.Count > 0;
 
     /// <summary>What the node does where its fields do not say it (Wait for approval, 802.1X, Autofocus, the MyAxis sign-in).</summary>
-    public string? Note => NodeForms.Note(Kind);
+    public string? Note => _services.Note(Kind);
 
     /// <summary>The profile check's error for this node (on the canvas, below the card).</summary>
     [ObservableProperty]

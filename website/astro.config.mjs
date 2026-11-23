@@ -174,6 +174,7 @@ export default defineConfig({
 						{ label: 'NTP server', slug: 'tools/ntp-server' },
 						{ label: 'PKI', slug: 'tools/pki' },
 						{ label: 'Provisioning', slug: 'tools/provisioning' },
+						{ label: 'Schedules', slug: 'tools/schedules' },
 						{ label: 'Snapshot report', slug: 'tools/snapshot-report' },
 						{ label: 'System report', slug: 'tools/system-report' },
 						{ label: 'VPN Fleet', slug: 'tools/vpn-fleet', badge: { text: 'Community', variant: 'note' } },

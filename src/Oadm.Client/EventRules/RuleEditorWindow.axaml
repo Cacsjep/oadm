@@ -267,19 +267,7 @@
         <Border Classes="card" IsVisible="{Binding IsOverviewStep}">
           <StackPanel Spacing="12">
             <ui:CardHeader Title="Overview" Description="{Binding StateHint}" />
-            <ItemsControl ItemsSource="{Binding Overview}">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate><StackPanel Spacing="10" /></ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:OverviewLine">
-                  <Grid ColumnDefinitions="80,*" ColumnSpacing="12">
-                    <TextBlock Grid.Column="0" Classes="fieldLabel" Text="{Binding Label}" />
-                    <TextBlock Grid.Column="1" Text="{Binding Text}" TextWrapping="Wrap" />
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <ui:OverviewList ItemsSource="{Binding Overview}" />
             <TextBlock Classes="error" Text="{Binding ServerError}" IsVisible="{Binding HasServerError}" TextWrapping="Wrap" />
           </StackPanel>
         </Border>

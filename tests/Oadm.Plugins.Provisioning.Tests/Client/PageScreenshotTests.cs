@@ -110,8 +110,9 @@ public sealed class PageScreenshotTests
             await node.Preview!.LoadTask;
             Headless.Pump();
 
-            var list = window.FindControl<ListBox>("PreviewList")!;
-            Assert.True(window.FindControl<StackPanel>("FilePreview")!.IsEffectivelyVisible);
+            // The node settings are the shared NodeSettingsView (its own name scope).
+            var list = window.GetVisualDescendants().OfType<ListBox>().Single(l => l.Name == "PreviewList");
+            Assert.True(window.GetVisualDescendants().OfType<StackPanel>().Single(p => p.Name == "FilePreview").IsEffectivelyVisible);
             Assert.True(list.IsEffectivelyVisible);
             Assert.True(list.Bounds.Height <= list.MaxHeight);
             Assert.True(list.GetRealizedContainers().Count() < node.Preview.Rows.Count, "the list creates rows only for what it shows");

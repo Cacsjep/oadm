@@ -1,0 +1,225 @@
+using Microsoft.Extensions.Time.Testing;
+
+using Oadm.Plugins.Schedules.Client;
+using Oadm.Sdk.Client.Controls;
+using Oadm.Sdk.Plugins;
+using Oadm.Sdk.Testing;
+
+namespace Oadm.Plugins.Schedules.Tests.Client;
+
+/// <summary>The Schedules page against the sample server: the grid's texts, the toolbar, the runs, delete, live changes; no Avalonia.</summary>
+public sealed class SchedulesPageTests
+{
+    private static readonly string Manage = PermissionKeys.Of(SchedulesInfo.PluginId, PermissionKeys.Manage);
+
+    private static async Task<(SchedulesViewModel Page, FakePageContext Ctx)> OpenAsync(FakePageContext? ctx = null)
+    {
+        ctx ??= Samples.Context();
+        var page = new SchedulesViewModel(ctx, new FakeTimeProvider(Samples.Now));
+        page.Activate();
+        await page.ReloadTask;
+        return (page, ctx);
+    }
+
+    [Fact]
+    public async Task The_grid_shows_each_schedule_in_short_texts()
+    {
+        var (page, _) = await OpenAsync();
+
+        Assert.False(page.IsLoading);
+        Assert.False(page.ShowEmpty);
+        Assert.Equal(["Upgrade Site A", "Restart lobby cameras", "Certificates"], page.Schedules.Select(r => r.Name));
+        var weekly = page.Schedules[0];
+        Assert.Equal("Tag Site A and 1 device", weekly.DevicesText);
+        Assert.Equal("Mondays 23:00 until 05:00", weekly.WhenText);
+        Assert.Equal("Upgrade AXIS OS online, Restart", weekly.ThenText);
+        Assert.Equal("Mon 30 Nov, 23:00", weekly.NextRunText);
+        Assert.Equal("212 done, 3 failed, 12 offline", weekly.LastRunText);
+        Assert.True(weekly.LastRunError);
+        Assert.Equal("anna", weekly.Owner);
+
+        var nightly = page.Schedules[1];
+        Assert.Equal(SchedulesTexts.AllDevices, nightly.DevicesText);
+        Assert.Equal("Daily 03:30", nightly.WhenText);
+        Assert.True(nightly.LastRunOk);
+
+        // Turned off, and a schedule that will not run as it should: the reason as a warning in Last run.
+        var monthly = page.Schedules[2];
+        Assert.Equal("Tags Parking, Lobby and 40 devices", monthly.DevicesText);
+        Assert.Equal("Day 1 of each month 02:00", monthly.WhenText);
+        Assert.Equal(SchedulesTexts.TurnedOff, monthly.NextRunText);
+        Assert.Equal("Sign in to MyAxis.", monthly.LastRunText);
+        Assert.True(monthly.LastRunWarning);
+        Assert.True(page.ShowChooseSchedule);
+    }
+
+    [Fact]
+    public async Task The_toolbar_waits_for_a_selection_and_the_manage_right()
+    {
+        var (page, ctx) = await OpenAsync();
+
+        Assert.True(page.MayManage);
+        Assert.True(page.NewScheduleCommand.CanExecute(null));
+        Assert.False(page.EditCommand.CanExecute(null));
+        Assert.False(page.RunNowCommand.CanExecute(null));
+        Assert.False(page.ToggleCommand.CanExecute(null));
+        Assert.False(page.DeleteCommand.CanExecute(null));
+
+        page.SelectedSchedule = page.Schedules[0];
+        Assert.True(page.EditCommand.CanExecute(null));
+        Assert.True(page.RunNowCommand.CanExecute(null));
+        Assert.True(page.DeleteCommand.CanExecute(null));
+        Assert.Equal(SchedulesTexts.TurnOff, page.ToggleText);
+        page.SelectedSchedule = page.Schedules[2];
+        Assert.Equal(SchedulesTexts.TurnOn, page.ToggleText);
+
+        ctx.Denied.Add(Manage);
+        var (viewer, _) = await OpenAsync(ctx);
+        viewer.SelectedSchedule = viewer.Schedules[0];
+        Assert.False(viewer.MayManage);
+        Assert.False(viewer.NewScheduleCommand.CanExecute(null));
+        Assert.False(viewer.EditCommand.CanExecute(null));
+        Assert.False(viewer.RunNowCommand.CanExecute(null));
+        Assert.False(viewer.DeleteCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Delete_asks_first_with_a_red_delete_button()
+    {
+        var (page, ctx) = await OpenAsync();
+        page.SelectedSchedule = page.Schedules[1];
+
+        ctx.ConfirmAnswer = false;
+        await page.DeleteCommand.ExecuteAsync(null);
+        Assert.Equal(0, ctx.CallsOf(SchedulesMethods.Delete));
+
+        ctx.ConfirmAnswer = true;
+        await page.DeleteCommand.ExecuteAsync(null);
+        var (title, message, confirm) = ctx.Confirmations[^1];
+        Assert.Equal(SchedulesTexts.DeleteTitle, title);
+        Assert.Contains("Restart lobby cameras", message, StringComparison.Ordinal);
+        Assert.Equal("Delete", confirm);
+        Assert.True(MessageWindow.IsDestructive(confirm)); // the host's confirmation makes it red
+        Assert.Equal(1, ctx.CallsOf(SchedulesMethods.Delete));
+        Assert.DoesNotContain(page.Schedules, r => r.Name == "Restart lobby cameras");
+        Assert.Null(page.SelectedSchedule);
+    }
+
+    [Fact]
+    public async Task A_selected_schedule_shows_its_runs_newest_first_and_a_failed_run_its_failed_devices()
+    {
+        var (page, ctx) = await OpenAsync();
+
+        page.SelectedSchedule = page.Schedules[0];
+        await page.RunsTask;
+        Assert.Equal(4, page.Runs.Count);
+        Assert.True(page.Runs.Zip(page.Runs.Skip(1)).All(p => p.First.StartedSortKey >= p.Second.StartedSortKey));
+        Assert.Equal("Failed", page.Runs[0].ResultText);
+        Assert.Equal("212 done, 3 failed, 12 offline", page.Runs[0].Detail);
+        Assert.Equal("Stopped at stage 2: 1 failed. 1 done, 1 failed, 12 offline", page.Runs[1].ResultText); // why it stopped
+        Assert.Equal(string.Empty, page.Runs[1].Detail);
+        Assert.Equal("Done with warnings", page.Runs[2].ResultText);
+        Assert.Equal("Missed", page.Runs[3].ResultText);
+        Assert.Equal(string.Empty, page.Runs[3].Detail); // Missed says it all
+        Assert.False(page.ShowFailures);
+        Assert.Equal(2, page.RunsSpan);
+
+        page.SelectedRun = page.Runs[0];
+        await page.FailuresTask;
+        Assert.True(page.ShowFailures);
+        Assert.Equal(1, page.RunsSpan);
+        Assert.Equal(3, page.Failures.Count);
+        Assert.Equal("Upgrade AXIS OS from axis.com", page.Failures[0].Step);
+
+        page.SelectedRun = page.Runs[2]; // done with warnings: no failed devices
+        await page.FailuresTask;
+        Assert.False(page.ShowFailures);
+        Assert.Equal(1, ctx.CallsOf(SchedulesMethods.RunFailures));
+
+        page.SelectedSchedule = page.Schedules[1];
+        await page.RunsTask;
+        Assert.True(page.ShowNoRuns);
+    }
+
+    [Fact]
+    public async Task Run_now_and_turn_off_change_the_selected_schedule()
+    {
+        var (page, ctx) = await OpenAsync();
+        page.SelectedSchedule = page.Schedules[0];
+
+        await page.RunNowCommand.ExecuteAsync(null);
+        Assert.Equal(1, ctx.CallsOf(SchedulesMethods.RunNow));
+        await page.ReloadTask;
+
+        await page.ToggleCommand.ExecuteAsync(null);
+        Assert.Contains("\"on\":false", ctx.Calls.Last(c => c.Method == SchedulesMethods.TurnOn).Payload, StringComparison.Ordinal);
+        Assert.False(page.Schedules[0].On);
+        Assert.Equal(SchedulesTexts.TurnOn, page.ToggleText);
+        Assert.Null(page.ErrorText);
+    }
+
+    [Fact]
+    public async Task The_changed_event_reads_the_list_and_the_runs_again()
+    {
+        var (page, ctx) = await OpenAsync();
+        page.SelectedSchedule = page.Schedules[0];
+        await page.RunsTask;
+        var lists = ctx.CallsOf(SchedulesMethods.List);
+        var runs = ctx.CallsOf(SchedulesMethods.Runs);
+
+        ctx.Push(SchedulesMethods.ChangedTopic, new ChangedEvent(Samples.WeeklyId));
+
+        await Eventually.TrueAsync(() => ctx.CallsOf(SchedulesMethods.List) > lists && ctx.CallsOf(SchedulesMethods.Runs) > runs, "the page read the list and the runs again");
+        page.Deactivate();
+    }
+
+    [Fact]
+    public async Task An_empty_list_says_what_to_do_first()
+    {
+        var ctx = Samples.Context();
+        ctx.Answers[SchedulesMethods.List] = _ => Samples.Serialize(new SchedulesReply([]));
+        var (page, _) = await OpenAsync(ctx);
+
+        Assert.True(page.ShowEmpty);
+        Assert.False(page.ShowChooseSchedule);
+        Assert.Equal("Create a schedule to run tasks at a set time.", SchedulesTexts.Empty);
+    }
+
+    [Fact]
+    public async Task The_first_read_shows_the_loading_overlay_until_the_list_is_there()
+    {
+        var ctx = Samples.Context();
+        var gate = new TaskCompletionSource();
+        ctx.MethodGates[SchedulesMethods.List] = gate.Task;
+        var page = new SchedulesViewModel(ctx, new FakeTimeProvider(Samples.Now));
+        page.Activate();
+
+        Assert.True(page.IsLoading);
+        Assert.False(page.ShowEmpty);
+        gate.SetResult();
+        await page.ReloadTask;
+        Assert.False(page.IsLoading);
+        page.Deactivate();
+    }
+
+    [Fact]
+    public async Task Search_filters_by_name_action_devices_or_owner()
+    {
+        var (page, _) = await OpenAsync();
+
+        page.SearchText = "restart";
+        Assert.Equal(["Upgrade Site A", "Restart lobby cameras"], page.Schedules.Select(r => r.Name));
+        page.SearchText = "ben";
+        Assert.Equal(["Restart lobby cameras"], page.Schedules.Select(r => r.Name));
+        page.SearchText = string.Empty;
+        Assert.Equal(3, page.Schedules.Count);
+    }
+
+    [Theory]
+    [InlineData(1, "about 1 min")]
+    [InlineData(20, "about 20 min")]
+    [InlineData(200, "about 3 h 20 min")]
+    [InlineData(181, "about 3 h")]
+    [InlineData(1440, "about 24 h")]
+    public void The_estimate_reads_about(int minutes, string text) => Assert.Equal(text, ScheduleFormat.Duration(TimeSpan.FromMinutes(minutes)));
+}

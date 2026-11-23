@@ -1,0 +1,157 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.Schedules.Client"
+        xmlns:nodes="using:Oadm.Plugins.Provisioning.Client"
+        x:Class="Oadm.Plugins.Schedules.Client.ScheduleEditorWindow"
+        x:DataType="vm:ScheduleEditorViewModel"
+        Title="{Binding Title}"
+        Width="1160" Height="780"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- A wizard like the Event rule editor (docs/spec/schedules.md "The editor: a wizard"): title bar, the step switch, one
+       step at a time, footer with Back / Next, Save on the overview. Step Then is Provisioning's node list: the shared node
+       canvas and node list, the selected action's settings beside it (the same panel as the profile editor). -->
+  <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <ui:WizardSteps Grid.Row="1" ItemsSource="{Binding Steps}" Margin="12,0,16,12" />
+
+    <Panel Grid.Row="2">
+      <ScrollViewer HorizontalScrollBarVisibility="Disabled" IsVisible="{Binding !IsThenStep}">
+        <StackPanel Spacing="{DynamicResource Oadm.Gap}" Margin="16,0,16,8">
+
+          <!-- 1 Schedule -->
+          <Border x:Name="ScheduleCard" Classes="card" IsVisible="{Binding IsScheduleStep}">
+            <StackPanel Classes="form">
+              <ui:FormField Label="{x:Static vm:SchedulesTexts.Name}">
+                <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="100" />
+              </ui:FormField>
+              <ui:FormField Label="{x:Static vm:SchedulesTexts.Enabled}">
+                <CheckBox Content="{x:Static vm:SchedulesTexts.TurnedOn}" IsChecked="{Binding On}" />
+              </ui:FormField>
+              <ui:FormField Label="{x:Static vm:SchedulesTexts.Stages}">
+                <CheckBox Content="{x:Static vm:SchedulesTexts.RollOutInStages}" IsChecked="{Binding Stages}" ToolTip.Tip="{x:Static vm:SchedulesTexts.StagesTip}" />
+              </ui:FormField>
+            </StackPanel>
+          </Border>
+
+          <!-- 3 When -->
+          <Border x:Name="WhenCard" Classes="card" IsVisible="{Binding IsWhenStep}">
+            <StackPanel Classes="form">
+              <ui:FormField Label="{x:Static vm:SchedulesTexts.When}">
+                <StackPanel>
+                  <ComboBox x:Name="RepeatBox" ItemsSource="{x:Static vm:ScheduleEditorViewModel.RepeatChoices}" SelectedItem="{Binding Repeat}" HorizontalAlignment="Stretch" />
+                  <!-- The estimate warning, only when it applies (Save stays possible) -->
+                  <TextBlock x:Name="WhenWarning" Classes="small warning" Margin="{StaticResource Oadm.FieldMessageMargin}" TextWrapping="Wrap"
+                             Text="{Binding WhenWarning}" IsVisible="{Binding HasWhenWarning}" />
+                </StackPanel>
+              </ui:FormField>
+              <ui:FormField Label="{x:Static vm:SchedulesTexts.Date}" IsVisible="{Binding IsOnce}">
+                <DatePicker SelectedDate="{Binding Date}" />
+              </ui:FormField>
+              <ui:FormField Classes="wide" Label="{x:Static vm:SchedulesTexts.Days}" Error="{Binding DaysError}" IsVisible="{Binding IsWeekly}">
+                <ui:DayChips ItemsSource="{Binding Days}" />
+              </ui:FormField>
+              <ui:FormField Label="{x:Static vm:SchedulesTexts.DayOfMonth}" InputWidth="120" IsVisible="{Binding IsMonthly}">
+                <ComboBox ItemsSource="{x:Static vm:ScheduleEditorViewModel.DaysOfMonth}" SelectedItem="{Binding DayOfMonth}" HorizontalAlignment="Stretch" />
+              </ui:FormField>
+              <ui:FormField Label="{x:Static vm:SchedulesTexts.Time}" InputWidth="120">
+                <TextBox x:Name="TimeBox" Text="{Binding Time}" PlaceholderText="{x:Static vm:SchedulesTexts.TimePlaceholder}" MaxLength="5" />
+              </ui:FormField>
+              <ui:FormField Label="{x:Static vm:SchedulesTexts.WindowEnd}" InputWidth="120" Hint="{x:Static vm:SchedulesTexts.Optional}"
+                            Info="{x:Static vm:SchedulesTexts.WindowEndInfo}">
+                <TextBox x:Name="WindowEndBox" Text="{Binding WindowEnd}" PlaceholderText="{x:Static vm:SchedulesTexts.WindowPlaceholder}" MaxLength="5" />
+              </ui:FormField>
+            </StackPanel>
+          </Border>
+
+          <!-- 5 Overview: only what the steps before do not show, then Save -->
+          <Border x:Name="OverviewCard" Classes="card" IsVisible="{Binding IsOverviewStep}">
+            <ui:OverviewList ItemsSource="{Binding Overview}" />
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+
+      <!-- 2 Devices: the shared device choice and the devices it gives -->
+      <Border x:Name="DevicesCard" Classes="card" Margin="16,0,16,8" IsVisible="{Binding IsDevicesStep}">
+        <Grid RowDefinitions="Auto,*" RowSpacing="12">
+          <ui:FormField Classes="wide inline" Error="{Binding ChoiceError}">
+            <Button x:Name="DevicesButton" Classes="secondary" HorizontalAlignment="Left" Command="{Binding ChooseDevicesCommand}">
+              <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding DevicesButtonText}" />
+            </Button>
+          </ui:FormField>
+          <DataGrid x:Name="DeviceGrid" Grid.Row="1" ItemsSource="{Binding ChosenDevices}" IsReadOnly="True" SelectionMode="Extended" IsVisible="{Binding HasChosenDevices}"
+                    CanUserSortColumns="True" CanUserReorderColumns="False">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="{x:Static vm:SchedulesTexts.Address}" Width="160" Binding="{Binding Address}" x:DataType="vm:ScheduleDeviceRow" />
+              <DataGridTextColumn Header="{x:Static vm:SchedulesTexts.HostName}" Width="*" Binding="{Binding HostName}" x:DataType="vm:ScheduleDeviceRow" />
+              <DataGridTextColumn Header="{x:Static vm:SchedulesTexts.Model}" Width="*" Binding="{Binding Model}" x:DataType="vm:ScheduleDeviceRow" />
+            </DataGrid.Columns>
+          </DataGrid>
+        </Grid>
+      </Border>
+
+      <!-- 4 Then: the actions on the node canvas, the selected action's settings right of it -->
+      <Grid x:Name="ThenStep" Margin="16,0,16,8" ColumnDefinitions="*,380" ColumnSpacing="16" IsVisible="{Binding IsThenStep}">
+        <Border Grid.Column="0" Classes="card">
+          <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <ui:ToolbarOverflowPanel Spacing="4">
+                <ui:ToolbarButton x:Name="AddActionButton" IconKey="add" Text="{x:Static vm:SchedulesTexts.AddAction}" Command="{Binding AddActionCommand}" />
+                <ui:ToolbarButton IconKey="arrowUp" Text="{x:Static vm:SchedulesTexts.MoveUp}" Command="{Binding MoveUpCommand}" />
+                <ui:ToolbarButton IconKey="arrowDown" Text="{x:Static vm:SchedulesTexts.MoveDown}" Command="{Binding MoveDownCommand}" />
+                <ui:ToolbarSeparator />
+                <ui:ToolbarButton IconKey="maximize" Text="{x:Static vm:SchedulesTexts.FitView}" Command="{Binding FitViewCommand}" />
+              </ui:ToolbarOverflowPanel>
+              <ui:ToolbarButton Grid.Column="1" Classes="danger" IconKey="remove" Text="{x:Static vm:SchedulesTexts.Remove}"
+                                Command="{Binding RemoveNodeCommand}" ToolTip.Tip="{x:Static vm:SchedulesTexts.RemoveTip}" />
+            </Grid>
+            <Border Grid.Row="1" Classes="liveViewSurface" ClipToBounds="True">
+              <Panel>
+                <ui:NodeChainCanvas x:Name="Canvas" Chain="{Binding Chain}" />
+                <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:SchedulesTexts.AddFirstAction}"
+                           IsVisible="{Binding ShowsAddFirst}" />
+                <!-- The node list of Add action and of a node's + (the shared node list) -->
+                <Canvas>
+                  <ui:NodePicker x:Name="NodePicker" DataContext="{Binding Picker}" Width="{x:Static vm:ScheduleEditorViewModel.PickerWidth}" FocusAfter="{Binding #Canvas}"
+                                Placeholder="{x:Static vm:SchedulesTexts.SearchActions}" />
+                </Canvas>
+              </Panel>
+            </Border>
+            <TextBlock Grid.Row="2" Classes="fieldMessage error" Text="{Binding ActionsError}" IsVisible="{Binding HasActionsError}" TextWrapping="Wrap" />
+          </Grid>
+        </Border>
+
+        <!-- The selected action's settings and Continue on error -->
+        <Border Grid.Column="1" Classes="card">
+          <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+            <Panel>
+              <TextBlock Classes="secondary" Text="{x:Static vm:SchedulesTexts.ChooseAction}" TextWrapping="Wrap" IsVisible="{Binding ShowsChooseAction}" />
+              <StackPanel x:Name="NodeForm" Classes="form" DataContext="{Binding SelectedNode}" x:DataType="nodes:NodeEditorViewModel"
+                          IsVisible="{Binding $parent[Window].((vm:ScheduleEditorViewModel)DataContext).HasSelection, FallbackValue=False}">
+                <TextBlock Classes="cardTitle" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                <nodes:NodeSettingsView />
+              </StackPanel>
+            </Panel>
+          </ScrollViewer>
+        </Border>
+      </Grid>
+
+      <ui:LoadingOverlay Text="{x:Static vm:SchedulesTexts.ReadingSchedule}" IsVisible="{Binding IsLoading}" />
+    </Panel>
+
+    <!-- The save's refusal directly left of Save -->
+    <ui:DialogFooter Grid.Row="3" CancelCommand="{Binding CancelCommand}">
+      <ui:StatusChip VerticalAlignment="Center" Margin="0,0,12,0" IsError="True" Text="{Binding ErrorText}" IsVisible="{Binding HasErrorText}" MaxWidth="560" />
+      <ui:ProgressRing Width="16" Height="16" VerticalAlignment="Center" Margin="0,0,12,0" IsVisible="{Binding IsSaving}" />
+      <Button x:Name="BackButton" Classes="secondary" Content="{x:Static vm:SchedulesTexts.Back}" Command="{Binding BackCommand}" IsVisible="{Binding CanGoBack}" />
+      <Button x:Name="NextButton" Classes="primary" IsDefault="True" Content="{x:Static vm:SchedulesTexts.Next}" Command="{Binding NextCommand}"
+              IsVisible="{Binding !IsOverviewStep}" ToolTip.Tip="{Binding StepProblem}" ToolTip.ShowOnDisabled="True" />
+      <Button x:Name="SaveButton" Classes="primary" IsDefault="True" Content="{x:Static vm:SchedulesTexts.Save}" Command="{Binding SaveCommand}"
+              IsVisible="{Binding IsOverviewStep}" ToolTip.Tip="{Binding Problem}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

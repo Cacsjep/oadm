@@ -142,6 +142,11 @@ validation before the first write), the node maps its outcome.
 4. Test it with `Harness` (`tests/Oadm.Plugins.Provisioning.Tests/Fakes.cs`): Success, Warning, Error and Not needed with
    their messages, the payload, and the check. Write the spec line and the table row above.
 
+Schedules (`plugins/Oadm.Plugins.Schedules`) compiles the node sources of its actions into its own package (its csproj
+lists them): a change to a node changes that action too; run the Schedules tests as well. `Nodes/RestartNode.cs` is a
+Schedules action only: it is not in `NodeRegistry`, so a profile never offers it and one that names it has the error of an
+unknown node. `ProvisioningOptions` sits in its own file so Schedules can link it without the registry.
+
 The service is the node's `INodeHost`: `AutoAdd`, `Tasks`, `Devices`, `Vapix`, `StarterTasks`, `Vault`, `Time`, `Options`,
 `Owner`, `TakeAddressAsync`. `TaskRuns.RunTaskAsync` starts a task and waits for its end (every 2 s, at most 30 minutes by
 default) for nodes that need more than one task.

@@ -20,9 +20,45 @@
 
   <!-- The actions are Provisioning's nodes (docs/spec/schedules.md "Actions"): the same sources compiled into this assembly
        (a project reference would copy Provisioning's Server.dll into this folder, where the loader would register its tasks
-       a second time). -->
+       a second time). Only the kinds of ActionKinds.All are registered (Engine/ActionCatalog.cs); Network is compiled for the
+       node host's interface only and never offered. -->
   <ItemGroup>
     <Compile Include="..\Oadm.Plugins.Provisioning\Model\Profiles.cs" Link="Provisioning\Model\Profiles.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Model\Runs.cs" Link="Provisioning\Model\Runs.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Engine\NodeVault.cs" Link="Provisioning\Engine\NodeVault.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Nodes\IProvisioningNode.cs" Link="Provisioning\Nodes\IProvisioningNode.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Nodes\ProvisioningOptions.cs" Link="Provisioning\Nodes\ProvisioningOptions.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Nodes\TaskNode.cs" Link="Provisioning\Nodes\TaskNode.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Nodes\DeviceNode.cs" Link="Provisioning\Nodes\DeviceNode.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Nodes\UpgradeNodes.cs" Link="Provisioning\Nodes\UpgradeNodes.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Nodes\ConfigurationNode.cs" Link="Provisioning\Nodes\ConfigurationNode.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Nodes\CertificateNodes.cs" Link="Provisioning\Nodes\CertificateNodes.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Nodes\VapixCommandsNode.cs" Link="Provisioning\Nodes\VapixCommandsNode.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Nodes\RestartNode.cs" Link="Provisioning\Nodes\RestartNode.cs" />
+    <Compile Include="..\Oadm.Plugins.Provisioning\Nodes\NetworkNode.cs" Link="Provisioning\Nodes\NetworkNode.cs" />
+    <Compile Include="..\Oadm.Plugins.Network\Model\Ipv4.cs" Link="Network\Ipv4.cs" />
+  </ItemGroup>
+
+  <!-- The VAPIX Commander library and its checks of the action VAPIX commands (as in Provisioning); the library files are
+       copied into this plugin's folder. -->
+  <ItemGroup>
+    <Compile Include="..\Oadm.Plugins.VapixCommander\CommandModels.cs" Link="Commander\CommandModels.cs" />
+    <Compile Include="..\Oadm.Plugins.VapixCommander\CommandLibrary.cs" Link="Commander\CommandLibrary.cs" />
+    <Compile Include="..\Oadm.Plugins.VapixCommander\CommandValidator.cs" Link="Commander\CommandValidator.cs" />
+    <Compile Include="..\Oadm.Plugins.VapixCommander\FieldValues.cs" Link="Commander\FieldValues.cs" />
+    <Compile Include="..\Oadm.Plugins.VapixCommander\CommandJson.cs" Link="Commander\CommandJson.cs" />
+    <Compile Include="..\Oadm.Plugins.VapixCommander\Compatibility.cs" Link="Commander\Compatibility.cs" />
+    <None Include="..\Oadm.Plugins.VapixCommander\Library\*.json" Link="Library\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The configuration file (.cfg) and the payload of Configure devices for the action Apply configuration (as in
+       Provisioning). -->
+  <ItemGroup>
+    <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\AdmConfigFile.cs" Link="DeviceConfig\AdmConfigFile.cs" />
+    <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\AdmConfigApply.cs" Link="DeviceConfig\AdmConfigApply.cs" />
+    <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\ConfigureModels.cs" Link="DeviceConfig\ConfigureModels.cs" />
+    <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\ParamRules.cs" Link="DeviceConfig\ParamRules.cs" />
+    <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\DeviceConfigIds.cs" Link="DeviceConfig\DeviceConfigIds.cs" />
   </ItemGroup>
 
   <ItemGroup>

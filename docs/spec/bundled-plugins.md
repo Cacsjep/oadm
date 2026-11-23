@@ -396,7 +396,7 @@ toolbar button, Provisioning management, the Add devices page's "Provisioning" a
 ## Schedules (core plugin)
 
 `plugins/Oadm.Plugins.Schedules` (+ `.Client`), id `oadm.schedules`, rail page Schedules (group Automation), icon
-`calendarClock`, **free, on by default**. Spec, not built: [schedules.md](schedules.md). A schedule has devices, a time and
+`calendarClock`, **free, on by default**. Built 2026-11-23: [schedules.md](schedules.md). A schedule has devices, a time and
 actions (the nodes of Provisioning plus Restart); each run gives every device one task "Run <schedule>" with one named
 step per action.
 
@@ -406,7 +406,7 @@ step per action.
   tasks of their areas with their checks; never Network, Users, SD card; files and secrets in the vault like
   Provisioning's; one event "Schedule run ended" per run.
 - Rights: "show" and "manage"; saving also needs the right of every action.
-- MCP: `oadm_schedules`, `_schedule`, `_schedule_runs`, `_schedule_actions`, changes with preview and run.
+- MCP: `oadm_schedules_list`, `_get`, `_runs`, `_actions`, changes with preview and run.
 
 ## VPN Fleet (core plugin)
 

@@ -66,11 +66,36 @@ public static class SchedulesMethods
     /// <summary><see cref="RunRequest"/> -> <see cref="RunFailuresReply"/>: the failed devices of one run (at most 1,000).</summary>
     public const string RunFailures = "runFailures";
 
+    /// <summary>
+    /// () -> PKI's HTTPS and IEEE 802.1X certificate policies (<see cref="Sdk.Certificates.IssuingPolicyInfo"/>), empty when PKI
+    /// does not run. The same method and reply as Provisioning's, for the node editor.
+    /// </summary>
+    public const string Policies = "policies";
+
+    /// <summary>
+    /// () -> the VAPIX Commander commands the action VAPIX commands can run (<see cref="ActionCommand"/>, the JSON of
+    /// Provisioning's <c>ProfileCommand</c>): no dangerous ones, none with a password or a file.
+    /// </summary>
+    public const string VapixCommands = "vapixCommands";
+
+    /// <summary>
+    /// <see cref="FileRequest"/> -> <see cref="Provisioning.Engine.StoredFile"/>: a file the caller uploaded (an AXIS OS file, a
+    /// configuration file), kept for an action. The same method and reply as Provisioning's.
+    /// </summary>
+    public const string StoreFile = "storeFile";
+
+    /// <summary>
+    /// <see cref="IdRequest"/> (a kept file's id) -> <see cref="ConfigFileReply"/>: the text of a configuration file (<c>.cfg</c>,
+    /// at most 1 MB, passwords and secrets masked) for the file preview of the action Apply configuration.
+    /// </summary>
+    public const string ReadConfigFile = "readConfigFile";
+
     /// <summary>Event: <see cref="ChangedEvent"/> after a change of a schedule or a run (to users with the "show" right).</summary>
     public const string ChangedTopic = "changed";
 
     /// <summary>The methods that only read.</summary>
-    public static bool IsRead(string method) => method is List or Get or Check or ActionKinds or Runs or RunFailures;
+    public static bool IsRead(string method) =>
+        method is List or Get or Check or ActionKinds or Runs or RunFailures or Policies or VapixCommands or ReadConfigFile;
 }
 
 /// <summary>How often a schedule runs.</summary>
@@ -298,6 +323,15 @@ public sealed record RunFailuresReply(IReadOnlyList<RunFailure> Failures);
 
 /// <summary>A schedule or its runs changed: the client reads the list (and the selected schedule's runs) again.</summary>
 public sealed record ChangedEvent(Guid? ScheduleId);
+
+/// <summary>A file of the caller's uploads to keep for an action (the request of Provisioning's <c>storeFile</c>).</summary>
+public sealed record FileRequest(string UploadId);
+
+/// <summary>A kept configuration file: its name and its text (secrets masked).</summary>
+public sealed record ConfigFileReply(string Name, string Content);
+
+/// <summary>A command of the VAPIX Commander library for the action VAPIX commands: its id, name, category and fields.</summary>
+public sealed record ActionCommand(string Id, string Name, string Category, string? Description, IReadOnlyList<VapixCommander.CommandField> Fields);
 
 /// <summary>
 /// The check of a schedule (the wizard's steps, the same on save): one error per part, the actions' errors by node id, the

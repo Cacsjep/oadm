@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 using Oadm.Plugins.Provisioning.Model;
 using Oadm.Sdk.Network;
 
@@ -88,9 +86,6 @@ public static class ProvisioningMethods
             or ReadConfigFile;
 }
 
-/// <summary>A command of the VAPIX Commander library for a VAPIX commands node: its id, name, category and fields.</summary>
-public sealed record ProfileCommand(string Id, string Name, string Category, string? Description, IReadOnlyList<VapixCommander.CommandField> Fields);
-
 public sealed record IdRequest(Guid Id);
 
 public sealed record ProfileRequest(Profile Profile);
@@ -144,9 +139,6 @@ public sealed record ProfilesReply(IReadOnlyList<ProfileSummary> Profiles, Guid?
 
 /// <summary>A profile with its check.</summary>
 public sealed record ProfileReply(Profile Profile, ProfileCheckResult Check);
-
-/// <summary>A kind of node for the editor's list.</summary>
-public sealed record NodeKindInfo(NodeKind Kind, string Name, bool IsFixed, bool AlwaysStops, JsonElement DefaultSettings);
 
 /// <summary>The state of provisioning for the Provisioning management dialog and the Devices toolbar.</summary>
 public sealed record StatusReply

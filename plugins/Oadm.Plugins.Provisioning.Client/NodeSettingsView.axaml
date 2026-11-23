@@ -1,0 +1,276 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.Provisioning.Client"
+             xmlns:contract="using:Oadm.Plugins.Provisioning"
+             xmlns:cert="using:Oadm.Sdk.Certificates"
+             xmlns:tz="using:Oadm.Plugins.TimeZones.Client"
+             x:Class="Oadm.Plugins.Provisioning.Client.NodeSettingsView"
+             x:DataType="vm:NodeEditorViewModel">
+  <!-- The settings of one node below its name: its fields (errors below them), its note, Continue on error and, for
+       Configuration, what the file holds. Shared by Provisioning's profile editor and the Schedules wizard's step Then
+       (linked source). -->
+  <StackPanel Classes="form">
+    <ItemsControl x:Name="Fields" ItemsSource="{Binding Fields}">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Classes="form" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <!-- One template per kind of field; a field another field hides takes no room (IsShown). -->
+      <ItemsControl.DataTemplates>
+        <DataTemplate x:DataType="vm:TextFieldViewModel">
+          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}" Help="{Binding Help}" IsVisible="{Binding IsShown}">
+            <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" />
+          </ui:FormField>
+        </DataTemplate>
+        <DataTemplate x:DataType="vm:ListFieldViewModel">
+          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}" Help="{Binding Help}" IsVisible="{Binding IsShown}">
+            <TextBox Text="{Binding Text}" PlaceholderText="{Binding Placeholder}" />
+          </ui:FormField>
+        </DataTemplate>
+        <DataTemplate x:DataType="vm:BoolFieldViewModel">
+          <ui:FormField Classes="wide" LabelAbove="True" Help="{Binding Help}" IsVisible="{Binding IsShown}">
+            <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" />
+          </ui:FormField>
+        </DataTemplate>
+        <DataTemplate x:DataType="vm:ChoiceFieldViewModel">
+          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}" Help="{Binding Help}" IsVisible="{Binding IsShown}">
+            <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Choices}" SelectedItem="{Binding Selected}" />
+          </ui:FormField>
+        </DataTemplate>
+        <DataTemplate x:DataType="vm:PolicyFieldViewModel">
+          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Error="{Binding Error}" Help="{Binding Help}" IsVisible="{Binding IsShown}">
+            <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Policies}" SelectedItem="{Binding Selected}" DisplayMemberBinding="{Binding Name, x:DataType=cert:IssuingPolicyInfo}" />
+          </ui:FormField>
+        </DataTemplate>
+        <DataTemplate x:DataType="vm:TimeZoneFieldViewModel">
+          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Help="{Binding Help}" IsVisible="{Binding IsShown}">
+            <tz:TimeZoneChoice SelectedItem="{Binding Selected}" />
+          </ui:FormField>
+        </DataTemplate>
+        <DataTemplate x:DataType="vm:CheckGroupFieldViewModel">
+          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Error="{Binding Error}" Help="{Binding Help}" IsVisible="{Binding IsShown}">
+            <ItemsControl ItemsSource="{Binding Items}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="6" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:BoolFieldViewModel">
+                  <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ui:FormField>
+        </DataTemplate>
+        <DataTemplate x:DataType="vm:SecretFieldViewModel">
+          <StackPanel Classes="form" IsVisible="{Binding IsShown}">
+            <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Help="{Binding Help}">
+              <ui:PasswordBox Text="{Binding Text}" PlaceholderText="{Binding StoredPlaceholder}" />
+            </ui:FormField>
+            <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding ConfirmLabel}" Help="{x:Static vm:ProvisioningTexts.ConfirmHelp}" IsVisible="{Binding ShowsConfirm}">
+              <ui:PasswordBox Text="{Binding Confirm}" />
+            </ui:FormField>
+          </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:DataType="vm:FileFieldViewModel">
+          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Help="{Binding Help}" IsVisible="{Binding IsShown}">
+            <Grid ColumnDefinitions="*,Auto">
+              <ui:FileRow FileName="{Binding FileName}" Error="{Binding Error}" Command="{Binding ChooseCommand}" />
+              <ui:ProgressRing Grid.Column="1" Width="16" Height="16" VerticalAlignment="Top" Margin="8,8,0,0" IsVisible="{Binding IsBusy}" />
+            </Grid>
+          </ui:FormField>
+        </DataTemplate>
+        <DataTemplate x:DataType="vm:FilesFieldViewModel">
+          <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Help="{Binding Help}" IsVisible="{Binding IsShown}">
+            <StackPanel Spacing="6">
+              <Grid ColumnDefinitions="*,Auto">
+                <ui:FileRow ButtonText="{x:Static vm:ProvisioningTexts.ChooseFiles}" FileName="{Binding Summary}" Error="{Binding Error}" Command="{Binding ChooseCommand}" />
+                <ui:ProgressRing Grid.Column="1" Width="16" Height="16" VerticalAlignment="Top" Margin="8,8,0,0" IsVisible="{Binding IsBusy}" />
+              </Grid>
+              <ItemsControl ItemsSource="{Binding Files}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:OsFileRow">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                      <TextBlock Text="{Binding Text}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Name}" />
+                      <Button Grid.Column="1" Classes="toolbar iconOnly danger" ToolTip.Tip="{x:Static vm:ProvisioningTexts.RemoveFile}"
+                              Command="{Binding $parent[ItemsControl].((vm:FilesFieldViewModel)DataContext).RemoveFileCommand, FallbackValue={x:Null}}" CommandParameter="{Binding}">
+                        <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
+                      </Button>
+                    </Grid>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </ui:FormField>
+        </DataTemplate>
+        <DataTemplate x:DataType="vm:UsersFieldViewModel">
+          <StackPanel Classes="form" IsVisible="{Binding IsShown}">
+            <ItemsControl ItemsSource="{Binding Rows}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Classes="form" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:UserRowViewModel">
+                  <StackPanel Classes="form">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                      <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:ProvisioningTexts.AccountName}" Help="{x:Static vm:ProvisioningTexts.AccountNameHelp}">
+                        <TextBox Text="{Binding Name}" MaxLength="14" />
+                      </ui:FormField>
+                      <Button Grid.Column="1" Classes="toolbar iconOnly danger" VerticalAlignment="Bottom" ToolTip.Tip="{x:Static vm:ProvisioningTexts.RemoveAccount}"
+                              Command="{Binding $parent[ItemsControl].((vm:UsersFieldViewModel)DataContext).RemoveAccountCommand, FallbackValue={x:Null}}" CommandParameter="{Binding}">
+                        <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
+                      </Button>
+                    </Grid>
+                    <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:ProvisioningTexts.Role}" Help="{x:Static vm:ProvisioningTexts.RoleHelp}">
+                      <ComboBox HorizontalAlignment="Stretch" ItemsSource="{x:Static vm:UsersFieldViewModel.Roles}" SelectedItem="{Binding Role}" />
+                    </ui:FormField>
+                    <ui:FormField Classes="wide" LabelAbove="True" Help="{x:Static vm:ProvisioningTexts.PtzHelp}">
+                      <CheckBox Content="{x:Static vm:ProvisioningTexts.Ptz}" IsChecked="{Binding Ptz}" />
+                    </ui:FormField>
+                    <ContentControl Content="{Binding Password}" />
+                    <Separator />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Classes="fieldMessage error" Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <ui:ToolbarButton HorizontalAlignment="Left" IconKey="add" Text="{x:Static vm:ProvisioningTexts.AddAccount}" Command="{Binding AddAccountCommand}" />
+          </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:DataType="vm:VapixCommandsFieldViewModel">
+          <StackPanel Classes="form" IsVisible="{Binding IsShown}">
+            <ItemsControl ItemsSource="{Binding Rows}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Classes="form" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CommandStepViewModel">
+                  <StackPanel Classes="form">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                      <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:ProvisioningTexts.Command}" Error="{Binding Error}" Help="{x:Static vm:ProvisioningTexts.CommandHelp}">
+                        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Commands}" SelectedItem="{Binding Command}">
+                          <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="contract:ProfileCommand">
+                              <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Classes="secondary" Text="{Binding Category}" />
+                              </StackPanel>
+                            </DataTemplate>
+                          </ComboBox.ItemTemplate>
+                        </ComboBox>
+                      </ui:FormField>
+                      <Button Grid.Column="1" Classes="toolbar iconOnly danger" VerticalAlignment="Bottom" ToolTip.Tip="{x:Static vm:ProvisioningTexts.RemoveCommand}"
+                              Command="{Binding $parent[ItemsControl].((vm:VapixCommandsFieldViewModel)DataContext).RemoveCommandCommand, FallbackValue={x:Null}}" CommandParameter="{Binding}">
+                        <ui:OadmIcon Data="{DynamicResource Icon.remove}" />
+                      </Button>
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding Values}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Classes="form" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:CommandValueViewModel">
+                          <Panel>
+                            <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}" IsVisible="{Binding IsText}">
+                              <TextBox Text="{Binding Text}" />
+                            </ui:FormField>
+                            <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Hint="{Binding Hint}" IsVisible="{Binding IsEnum}">
+                              <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}" />
+                            </ui:FormField>
+                            <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" IsVisible="{Binding IsBool}" />
+                          </Panel>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Separator />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Classes="fieldMessage error" Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <ui:ToolbarButton HorizontalAlignment="Left" IconKey="add" Text="{x:Static vm:ProvisioningTexts.AddCommand}" Command="{Binding AddCommandCommand}" />
+          </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:DataType="vm:PasswordFieldViewModel">
+          <StackPanel Classes="form">
+            <ui:FormField Classes="wide" LabelAbove="True" Label="{Binding Label}" Help="{x:Static vm:ProvisioningTexts.PasswordHelp}">
+              <StackPanel Spacing="6">
+                <RadioButton GroupName="password" Content="{x:Static vm:ProvisioningTexts.FromCredentials}" IsChecked="{Binding UseCredential}" />
+                <RadioButton GroupName="password" Content="{x:Static vm:ProvisioningTexts.TypePassword}" IsChecked="{Binding TypesPassword}" />
+              </StackPanel>
+            </ui:FormField>
+            <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:ProvisioningTexts.Credential}" Help="{x:Static vm:ProvisioningTexts.CredentialHelp}" IsVisible="{Binding UseCredential}">
+              <!-- The eye next to the choice, for administrators only (the Credentials page's rules) -->
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Credentials}" SelectedItem="{Binding SelectedCredential}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:CredentialChoice">
+                      <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="{Binding UserName}" />
+                        <TextBlock Classes="secondary" Text="{Binding AddedText}" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+                <ui:PasswordRevealButton Grid.Column="1" IsRevealed="{Binding IsRevealed}" Command="{Binding ToggleRevealCommand}" IsVisible="{Binding CanReveal}"
+                                         IsEnabled="{Binding SelectedCredential, Converter={x:Static ObjectConverters.IsNotNull}}" />
+              </Grid>
+            </ui:FormField>
+            <!-- The stored password, masked like the Credentials page until the eye shows it -->
+            <StackPanel Spacing="2" IsVisible="{Binding ShowsStoredPassword}">
+              <TextBlock Text="{Binding PasswordText}" TextWrapping="Wrap" />
+              <TextBlock Classes="fieldMessage error" Text="{Binding RevealError}" IsVisible="{Binding HasRevealError}" />
+            </StackPanel>
+            <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:ProvisioningTexts.NewPassword}" Help="{x:Static vm:ProvisioningTexts.NewPasswordHelp}" IsVisible="{Binding TypesPassword}"
+                          Hint="{x:Static vm:ProvisioningTexts.PasswordStoredHint}">
+              <ui:PasswordBox Text="{Binding Password}" />
+            </ui:FormField>
+            <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:ProvisioningTexts.ConfirmPassword}" Help="{x:Static vm:ProvisioningTexts.ConfirmHelp}" IsVisible="{Binding TypesPassword}">
+              <ui:PasswordBox Text="{Binding Confirm}" />
+            </ui:FormField>
+          </StackPanel>
+        </DataTemplate>
+      </ItemsControl.DataTemplates>
+    </ItemsControl>
+    <TextBlock Classes="secondary" Text="{Binding Note}" TextWrapping="Wrap" IsVisible="{Binding Note, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    <CheckBox Content="{x:Static vm:ProvisioningTexts.ContinueOnError}" IsChecked="{Binding ContinueOnError}" IsEnabled="{Binding CanChangeContinueOnError}"
+              ToolTip.Tip="{x:Static vm:ProvisioningTexts.ContinueOnErrorTip}" />
+    <TextBlock Classes="secondary" Text="{x:Static vm:ProvisioningTexts.AlwaysStopsHint}" TextWrapping="Wrap" IsVisible="{Binding AlwaysStops}" />
+
+    <!-- Configuration: what the chosen file holds of the ticked areas, read only; the list scrolls in itself (virtualized). -->
+    <StackPanel x:Name="FilePreview" Classes="form" DataContext="{Binding Preview}" x:DataType="vm:ConfigPreviewViewModel"
+                IsVisible="{Binding IsShown, FallbackValue=False}">
+      <Separator />
+      <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsLoading}">
+        <ui:ProgressRing Width="16" Height="16" VerticalAlignment="Center" />
+        <TextBlock Classes="secondary" Text="{x:Static vm:ProvisioningTexts.ReadingFile}" VerticalAlignment="Center" />
+      </StackPanel>
+      <ListBox x:Name="PreviewList" Classes="readOnlyList belowSeparator" ItemsSource="{Binding Rows}" MaxHeight="300" IsVisible="{Binding HasRows}"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+        <ListBox.DataTemplates>
+          <DataTemplate x:DataType="vm:PreviewHeading">
+            <TextBlock Classes="groupHeader" Text="{Binding Text}" />
+          </DataTemplate>
+          <DataTemplate x:DataType="vm:PreviewNote">
+            <TextBlock Classes="secondary" Text="{Binding Text}" TextWrapping="Wrap" />
+          </DataTemplate>
+          <DataTemplate x:DataType="vm:PreviewEntry">
+            <TextBlock Text="{Binding Text}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Text}" />
+          </DataTemplate>
+        </ListBox.DataTemplates>
+      </ListBox>
+    </StackPanel>
+  </StackPanel>
+</UserControl>

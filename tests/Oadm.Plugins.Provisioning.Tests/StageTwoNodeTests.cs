@@ -610,7 +610,8 @@ public sealed class StageTwoNodeTests
     {
         var registry = NodeRegistry.Default;
         NodeKind[] gone = [NodeKind.AddToOadm, NodeKind.WaitForApproval, NodeKind.SetIp, NodeKind.NetworkSettings]; // converted on load
-        Assert.Equal(Enum.GetValues<NodeKind>().Except(gone).Order(), registry.All.Select(n => n.Kind).Order());
+        NodeKind[] schedulesOnly = [NodeKind.Restart]; // a Schedules action, never offered in a profile
+        Assert.Equal(Enum.GetValues<NodeKind>().Except(gone).Except(schedulesOnly).Order(), registry.All.Select(n => n.Kind).Order());
         Assert.Equal(registry.All.Count, registry.All.Select(n => n.Kind).Distinct().Count());
         foreach (var node in registry.All)
         {

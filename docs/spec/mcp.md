@@ -116,7 +116,8 @@ made it. There is no Read only flag and no permission "Use AI agents": the key's
 - **Who calls**: the key itself. Its calls run with the key's role and devices as stored at each call, so a role change or
   new group rules apply to the next call. The caller's user name, the audit user and the task owner read "MCP <key name>"
   (for example "MCP Lobby-bot", `AccessKeyStore.AgentNameOf`); its user id is the key's id (handles, limits, queued tasks:
-  `DeviceViewFactory.ForUserAsync` finds the key's devices when no user has that id).
+  `DeviceViewFactory.ForUserAsync` finds the key's devices when no user has that id). No user name may start with "MCP "
+  (`UserStore.ValidateUserName`), so a user can never be taken for a key; a key never owns a schedule (docs/spec/schedules.md).
 - **What ends a key**: Delete (at once, its jobs end too), its end date (the hourly cleanup removes the row; until then a
   refusal names the key), a restore (backups hold no keys). A role or device group a key names cannot be deleted: the
   refusal names the keys ("The access key Lobby-bot has the role Agents. Delete the key first.", the same for a device
@@ -889,7 +890,7 @@ The website has a user page (Administration > MCP server, `admin/mcp-server`, wi
   Provisioning management `oadm_provisioning_*` (On and Off, the profiles, Run again of failed provisioning tasks, the last
   run of a camera; the root password of Set password only as a secret, `new_password`; a node's password or passphrase
   only as the secret of `oadm_provisioning_secret_store`, which answers its id; a node's settings as JSON text, since a
-  tool's schema takes no value of any type), and the settings reads of Device
+  tool's schema takes no value of any type), Schedules `oadm_schedules_*` (docs/spec/schedules.md "MCP"), and the settings reads of Device
   configuration `oadm_config_parameters` (a setting by a word of its name or label, or exact names: the devices grouped
   by value), `oadm_config_action_rules` and `oadm_config_stream_profiles` (grouped by rule or profile name), read with
   the Configure devices dialog's code, 8 devices at a time within 40 s (the rest counted as not read), no secret value,

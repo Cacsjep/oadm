@@ -281,7 +281,7 @@ must never break.
   ([recipient sessions](docs/spec/recipient-sessions.md)); a rule keeps a link, the host merges the recipient's fields
   into the action's settings before a run; no placeholders in a target, old rules are never converted ("Choose a
   recipient."), delete refused while a rule uses one, passwords encrypted and never sent back; output only.
-- **[Schedules](docs/spec/schedules.md)** (spec, not built; package `oadm.schedules`, free, on by default, rail page
+- **[Schedules](docs/spec/schedules.md)** (built; package `oadm.schedules`, free, on by default, rail page
   Schedules in Automation): devices, a time and actions (Upgrade AXIS OS online or from a file, configuration, Restart,
   certificate, 802.1X, VAPIX commands); one task per device per run; runs as its owner with the owner's current rights and
   devices, fail closed; never two runs of one schedule; Roll out in stages (1, 2 %, 5 %, 10 %, 20 %, the rest) stops at

@@ -45,8 +45,8 @@ public sealed class NodeVault(IPluginSettings settings, ISecretProtector? protec
     /// <summary>Longest secret (the camera's SD card passphrase takes 512 bytes).</summary>
     public const int MaxSecretLength = 512;
 
-    public const string NoSecrets = "This server cannot keep passwords for provisioning.";
-    public const string NoFiles = "This server cannot keep files for provisioning.";
+    public const string NoSecrets = "This server cannot keep passwords.";
+    public const string NoFiles = "This server cannot keep files.";
     public const string FileGone = "The file is no longer on the server. Choose it again.";
     public const string SecretGone = "The password is no longer on the server. Type it again.";
 
@@ -88,7 +88,7 @@ public sealed class NodeVault(IPluginSettings settings, ISecretProtector? protec
         {
             if (_secrets.Count >= MaxSecrets)
             {
-                throw new InvalidOperationException($"OADM keeps at most {MaxSecrets:N0} passwords for provisioning.");
+                throw new InvalidOperationException($"OADM keeps at most {MaxSecrets:N0} passwords.");
             }
 
             _secrets = new Dictionary<Guid, StoredSecret>(_secrets) { [id] = new StoredSecret(protect.Protect(value, Purpose(id)), _time.GetUtcNow()) };
@@ -128,7 +128,7 @@ public sealed class NodeVault(IPluginSettings settings, ISecretProtector? protec
         var folder = Folder ?? throw new InvalidOperationException(NoFiles);
         if (_files.Count >= MaxFiles)
         {
-            throw new InvalidOperationException($"OADM keeps at most {MaxFiles} files for provisioning.");
+            throw new InvalidOperationException($"OADM keeps at most {MaxFiles} files.");
         }
 
         Directory.CreateDirectory(folder);
