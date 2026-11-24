@@ -122,10 +122,14 @@ step is Not needed (success). Not in the first version and never: hardening scan
   device clears it. Empty: "Create a schedule to run tasks at a
   set time."
 - Below, the **runs** of the selected schedule (newest first, the last 50 kept per schedule): Started, Ended, Result
-  chip with counts, and for a run with failures its failed devices (device, step, message; at most 1,000 per run,
-  virtualized). No count captions above the lists. The runs panel has the header "Runs" with **Delete** (the chosen rows)
-  and **Delete all**, as the Tasks pane: "manage", the schedule visible to the caller; a run that still runs is never
-  deleted (left out by Delete all, refused when chosen: "A run that still runs cannot be deleted."); its failed devices go
+  chip with counts, Current step and Progress like the Tasks grid (a running run: "Stage 2 of 4: Install the
+  certificate" with stages, else the step most running devices are on; "Stage 1 of 4" alone before a device started;
+  progress = the devices ended, done, warnings, failed, not reachable or not started, of the run's devices; both empty
+  once it ended; live through `changed`, at most every 2 s), and for a run with failures its failed devices (device,
+  step, message; at most 1,000 per run, virtualized). No count captions above the lists. The runs panel has the header
+  "Runs" with **Delete** (the chosen rows) and **Delete all**, as the Tasks pane: "manage", the schedule visible to the
+  caller; a run that still runs is never deleted (left out by Delete all, refused when chosen: "A run that still runs
+  cannot be deleted."); its failed devices go
   with it; audited "Deleted 3 runs of schedule X" or "Deleted every run of schedule X".
 - Live: the plugin's `changed` event refreshes the grid and the runs.
 

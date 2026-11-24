@@ -271,6 +271,15 @@ public sealed record ScheduleRun
     public int? Stage { get; init; }
 
     public int? StageCount { get; init; }
+
+    /// <summary>
+    /// While it runs: what it does now, "Stage 2 of 4: Install the certificate" (with stages) or "Install the certificate" (the
+    /// step most running devices are on); null once it ended or before a device started.
+    /// </summary>
+    public string? CurrentStep { get; init; }
+
+    /// <summary>While it runs: the devices whose task ended (done, warning, failed, not reachable, not started) of <see cref="Devices"/>, 0 to 100; null once it ended.</summary>
+    public int? Progress { get; init; }
 }
 
 /// <summary>One failed device of a run.</summary>

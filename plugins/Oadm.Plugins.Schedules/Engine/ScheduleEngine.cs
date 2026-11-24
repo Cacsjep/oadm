@@ -966,6 +966,7 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
         }
         finally
         {
+            state.LeaveTask(ctx.TaskId);
             state.Report(ctx.TaskId, (report ?? new DeviceReport(DeviceEnd.Failed, null, "The task was cancelled.")) with { Ran = _time.GetElapsedTime(started) });
         }
 
@@ -990,6 +991,12 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
         {
             var node = _catalog.Find(action.Kind);
             var stepName = StepNameOf(action);
+            state.EnterStep(ctx.TaskId, stepName);
+            if (state.ShouldPublish(_time.GetUtcNow(), _options.PublishInterval))
+            {
+                Changed?.Invoke(state.Schedule.Schedule.Id);
+            }
+
             using var step = ctx.BeginStep(stepName);
             var result = node is null
                 ? NodeResult.Error(ActionCatalog.NotAnAction)

@@ -75,11 +75,26 @@
                 <DataGrid.Columns>
                   <DataGridTextColumn Header="{x:Static vm:SchedulesTexts.Started}" Width="150" Binding="{Binding StartedText}" SortMemberPath="StartedSortKey" x:DataType="vm:RunRow" />
                   <DataGridTextColumn Header="{x:Static vm:SchedulesTexts.Ended}" Width="150" Binding="{Binding EndedText}" SortMemberPath="EndedSortKey" x:DataType="vm:RunRow" />
-                  <DataGridTemplateColumn Header="{x:Static vm:SchedulesTexts.Result}" Width="*" MinWidth="220" SortMemberPath="ResultText">
+                  <DataGridTemplateColumn Header="{x:Static vm:SchedulesTexts.Result}" Width="3*" MinWidth="220" SortMemberPath="ResultText">
                     <DataGridTemplateColumn.CellTemplate>
                       <DataTemplate x:DataType="vm:RunRow">
                         <ui:StatusChip Text="{Binding ResultText}" Detail="{Binding Detail}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}"
                                        IsError="{Binding IsError}" IsAccent="{Binding IsAccent}" MaxLines="2" />
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                  <!-- Current step and Progress like the Tasks grid; empty once the run ended -->
+                  <DataGridTemplateColumn Header="{x:Static vm:SchedulesTexts.CurrentStep}" Width="2*" MinWidth="150" SortMemberPath="CurrentStep">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate x:DataType="vm:RunRow">
+                        <TextBlock Text="{Binding CurrentStep}" />
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                  <DataGridTemplateColumn Header="{x:Static vm:SchedulesTexts.Progress}" Width="*" MinWidth="120" SortMemberPath="Progress">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate x:DataType="vm:RunRow">
+                        <ui:ProgressCell Value="{Binding Progress}" Text="{Binding ProgressText}" IsActive="{Binding IsRunning}" />
                       </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                   </DataGridTemplateColumn>

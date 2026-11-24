@@ -61,7 +61,11 @@ plus the plugin's "manage". A save checks them against the saving user, every ru
   the runner every 5 s and after a close.
 - Result: Stopped (stages and a failure: "Stopped at stage 3: 1 failed."), Failed (a device failed), Done with warnings
   (a warning, a device not reachable or not started), else Done. Missed and Skipped are rows of their own.
-- The run's row is written at the start and the end (the live counts come from memory); at most 50 rows per schedule,
+- The run's row is written at the start and the end (the live counts come from memory). A running row also answers
+  `CurrentStep` and `Progress` (`RunState.Snapshot`): every device task reports the step it enters (`EnterStep`, counters
+  per step, O(1) per change), the step most tasks are on is the current one ("Stage 2 of 4: ..." with stages); progress =
+  devices ended (done, warnings, failed, not reachable, not started) of the run's devices; a step change publishes
+  `changed` at most every 2 s; both are null in stored rows. At most 50 rows per schedule,
   1,000 failed devices per run. A run still Running when the server starts again ends Stopped "The server stopped during
   the run.". `deleteRuns` ("manage", tool `runs_delete`) deletes chosen rows or, with `All`, every ended one with their
   failed devices in one write per collection (`ScheduleStore.DeleteRunsAsync`); a running run is never deleted (skipped

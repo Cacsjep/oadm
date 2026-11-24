@@ -63,6 +63,39 @@ public sealed class ScreenshotTests
     }
 
     [Fact]
+    public async Task A_running_run_shows_its_step_and_progress_like_the_tasks_grid()
+    {
+        var suffix = Headless.Appearance;
+        await Headless.Session.Dispatch(async () =>
+        {
+            var running = Samples.Run(Guid.NewGuid(), Samples.WeeklyId, 0, RunResult.Running, 3) with
+            {
+                Started = Samples.Now, Ended = null, Stage = 2, StageCount = 6, CurrentStep = "Stage 2 of 6", Progress = 42,
+            };
+            var ctx = Samples.Context();
+            ctx.Answers[SchedulesMethods.Runs] = _ => Samples.Serialize(new RunsReply([running, .. Samples.Runs(Samples.WeeklyId)]));
+            var page = new SchedulesViewModel(ctx, new FakeTimeProvider(Samples.Now));
+            var view = new SchedulesView { DataContext = page };
+            var window = Headless.Host(view);
+            window.Show();
+            await page.ReloadTask;
+            page.SelectedSchedule = page.Schedules[0];
+            await page.RunsTask;
+            Headless.Pump();
+
+            var cells = view.FindControl<DataGrid>("RunGrid")!.GetVisualDescendants().OfType<ProgressCell>().ToList();
+            Assert.Single(cells, c => c.IsEffectivelyVisible); // only the running run
+            Assert.Equal(42, cells.Single(c => c.IsEffectivelyVisible).Bar.Value);
+            Assert.Single(VisibleTexts(window, "42 %"));
+            Assert.Single(VisibleTexts(window, "Stage 2 of 6"));
+            Headless.Capture(window, $"schedules-page-running-{suffix}.png");
+            page.Deactivate();
+            window.Close();
+            return true;
+        }, CancellationToken.None);
+    }
+
+    [Fact]
     public async Task An_empty_page_says_what_to_do_first()
     {
         var suffix = Headless.Appearance;

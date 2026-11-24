@@ -117,7 +117,75 @@ internal sealed class RunState(StoredSchedule schedule, ScheduleRun row, DateTim
         }
     }
 
-    public ScheduleRun Snapshot() => Row;
+    /// <summary>The row with what it does now (<see cref="ScheduleRun.CurrentStep"/>) and how far it is (<see cref="ScheduleRun.Progress"/>).</summary>
+    public ScheduleRun Snapshot()
+    {
+        lock (_gate)
+        {
+            var row = _row;
+            if (row.Result != RunResult.Running)
+            {
+                return row with { CurrentStep = null, Progress = null };
+            }
+
+            string? step = null;
+            var most = 0;
+            foreach (var (name, count) in _onStep)
+            {
+                if (count > most)
+                {
+                    (step, most) = (name, count);
+                }
+            }
+
+            var ended = row.Done + row.Warnings + row.Failed + row.NotStarted + row.NotReachable.Values.Sum();
+            var stage = row.StageCount is { } stages && row.Stage is { } at ? $"Stage {at} of {stages}" : null;
+            return row with
+            {
+                CurrentStep = stage is null ? step : step is null ? stage : stage + ": " + step,
+                Progress = row.Devices > 0 ? (int)Math.Min(100, (long)ended * 100 / row.Devices) : 0,
+            };
+        }
+    }
+
+    // The step each running device task is in, and how many tasks are in each step (O(1) per step change).
+    private readonly Dictionary<Guid, string> _stepOf = [];
+    private readonly Dictionary<string, int> _onStep = new(StringComparer.Ordinal);
+
+    /// <summary>A device task enters a step (its next action).</summary>
+    public void EnterStep(Guid taskId, string step)
+    {
+        lock (_gate)
+        {
+            LeaveStepLocked(taskId);
+            _stepOf[taskId] = step;
+            _onStep[step] = _onStep.GetValueOrDefault(step) + 1;
+        }
+    }
+
+    /// <summary>A device task ended: it is in no step any more.</summary>
+    public void LeaveTask(Guid taskId)
+    {
+        lock (_gate)
+        {
+            LeaveStepLocked(taskId);
+        }
+    }
+
+    private void LeaveStepLocked(Guid taskId)
+    {
+        if (_stepOf.Remove(taskId, out var old) && _onStep.TryGetValue(old, out var count))
+        {
+            if (count <= 1)
+            {
+                _onStep.Remove(old);
+            }
+            else
+            {
+                _onStep[old] = count - 1;
+            }
+        }
+    }
 
     private int _fired;
 

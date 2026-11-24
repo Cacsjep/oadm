@@ -1,3 +1,5 @@
+using System.Globalization;
+
 using Avalonia.Controls;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -96,42 +98,77 @@ internal static class RunLook
     };
 }
 
-/// <summary>One run of the selected schedule.</summary>
-public sealed record RunRow(
-    Guid Id,
-    string StartedText,
-    string EndedText,
-    string ResultText,
-    string Detail,
-    bool IsOk,
-    bool IsWarning,
-    bool IsError,
-    bool IsAccent,
-    bool HasFailures,
-    DateTimeOffset StartedSortKey,
-    DateTimeOffset EndedSortKey)
+/// <summary>One run of the selected schedule, updated in place while it runs (current step and progress like the Tasks grid).</summary>
+public sealed partial class RunRow : ObservableObject
 {
+    private RunRow(Guid id) => Id = id;
+
+    public Guid Id { get; }
+
+    [ObservableProperty] public partial string StartedText { get; private set; } = string.Empty;
+
+    [ObservableProperty] public partial string EndedText { get; private set; } = string.Empty;
+
+    /// <summary>"Failed" (the chip's word, <see cref="Detail"/> after it), or why it stopped or never ran.</summary>
+    [ObservableProperty] public partial string ResultText { get; private set; } = string.Empty;
+
+    /// <summary>The counts after the word ("212 done, 3 failed"); empty after a reason.</summary>
+    [ObservableProperty] public partial string Detail { get; private set; } = string.Empty;
+
+    [ObservableProperty] public partial bool IsOk { get; private set; }
+
+    [ObservableProperty] public partial bool IsWarning { get; private set; }
+
+    [ObservableProperty] public partial bool IsError { get; private set; }
+
+    /// <summary>The run still runs (violet); it is never deleted.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRunning))]
+    public partial bool IsAccent { get; private set; }
+
+    [ObservableProperty] public partial bool HasFailures { get; private set; }
+
+    /// <summary>While it runs: the stage and what goes on ("Stage 2 of 6"); empty once it ended.</summary>
+    [ObservableProperty] public partial string CurrentStep { get; private set; } = string.Empty;
+
+    /// <summary>While it runs: 0 to 100.</summary>
+    [ObservableProperty] public partial int Progress { get; private set; }
+
+    /// <summary>"42 %".</summary>
+    [ObservableProperty] public partial string ProgressText { get; private set; } = string.Empty;
+
+    public DateTimeOffset StartedSortKey { get; private set; }
+
+    public DateTimeOffset EndedSortKey { get; private set; }
+
+    /// <summary>The run still runs: it is never deleted, it shows its step and progress.</summary>
+    public bool IsRunning => IsAccent;
+
     internal static RunRow Of(ScheduleRun run, DateTimeOffset now)
     {
-        var (ok, warning, error, accent) = RunLook.Of(run.Result);
-        return new RunRow(
-            run.Id,
-            ScheduleFormat.Moment(run.Started, now),
-            ScheduleFormat.Moment(run.Ended, now),
-            // "Failed: 212 done, 3 failed"; a run that stopped or never ran says why ("Stopped at stage 3: 1 failed. 1 done, ...").
-            HasReason(run) ? ScheduleFormat.Summary(run) : SchedulesTexts.ResultText(run.Result),
-            HasReason(run) ? string.Empty : ScheduleFormat.Counts(run),
-            ok,
-            warning,
-            error,
-            accent,
-            run.Failed > 0,
-            run.Started,
-            run.Ended ?? DateTimeOffset.MaxValue);
+        var row = new RunRow(run.Id);
+        row.Apply(run, now);
+        return row;
     }
 
-    /// <summary>The run still runs: it is never deleted.</summary>
-    public bool IsRunning => IsAccent;
+    /// <summary>Takes the run's newest state; a property that stays the same raises nothing.</summary>
+    internal void Apply(ScheduleRun run, DateTimeOffset now)
+    {
+        var (ok, warning, error, accent) = RunLook.Of(run.Result);
+        StartedText = ScheduleFormat.Moment(run.Started, now);
+        EndedText = ScheduleFormat.Moment(run.Ended, now);
+        // "Failed: 212 done, 3 failed"; a run that stopped or never ran says why ("Stopped at stage 3: 1 failed, 6 not started").
+        ResultText = HasReason(run) ? ScheduleFormat.Summary(run) : SchedulesTexts.ResultText(run.Result);
+        Detail = HasReason(run) ? string.Empty : ScheduleFormat.Counts(run);
+        (IsOk, IsWarning, IsError, IsAccent) = (ok, warning, error, accent);
+        HasFailures = run.Failed > 0;
+        var running = run.Result == RunResult.Running;
+        CurrentStep = running ? run.CurrentStep ?? string.Empty : string.Empty;
+        Progress = running ? Math.Clamp(run.Progress ?? 0, 0, 100) : 0;
+        ProgressText = running ? string.Create(CultureInfo.CurrentCulture, $"{Progress} %") : string.Empty;
+        StartedSortKey = run.Started;
+        EndedSortKey = run.Ended ?? DateTimeOffset.MaxValue;
+    }
 
     private static bool HasReason(ScheduleRun run) => run.Result is RunResult.Stopped or RunResult.Failed && run.Reason is { Length: > 0 };
 }
@@ -333,12 +370,42 @@ public sealed partial class SchedulesViewModel : ObservableObject, IDisposable
             .ConfigureAwait(true);
     }
 
+    /// <summary>
+    /// The runs as the server sent them, newest first. A refresh while a run goes on updates the rows in place (its step,
+    /// progress and counts): the selection and the failed devices stay; only new or deleted runs rebuild the list.
+    /// </summary>
     private void ApplyRuns(IReadOnlyList<ScheduleRun> runs, Guid? selectedRun)
     {
         var now = _time.GetUtcNow();
-        Runs.ReplaceAll([.. runs.OrderByDescending(r => r.Started).Select(r => RunRow.Of(r, now))]);
-        SelectedRun = selectedRun is { } id ? Runs.FirstOrDefault(r => r.Id == id) : null;
-        SelectedRuns = SelectedRun is { } kept ? [kept] : [];
+        var byId = Runs.ToDictionary(r => r.Id);
+        var selectedDetail = SelectedRun?.Detail;
+        var rows = runs.OrderByDescending(r => r.Started).Select(r =>
+        {
+            if (byId.TryGetValue(r.Id, out var row))
+            {
+                row.Apply(r, now);
+                return row;
+            }
+
+            return RunRow.Of(r, now);
+        }).ToList();
+        var structural = rows.Count != Runs.Count || rows.Where((r, i) => !ReferenceEquals(r, Runs[i])).Any();
+        if (structural)
+        {
+            Runs.ReplaceAll(rows);
+            SelectedRun = selectedRun is { } id ? Runs.FirstOrDefault(r => r.Id == id) : null;
+            SelectedRuns = SelectedRun is { } kept ? [kept] : [];
+        }
+        else if (selectedRun is null)
+        {
+            SelectedRun = null;
+            SelectedRuns = [];
+        }
+        else if (SelectedRun is { HasFailures: true } shown && shown.Detail != selectedDetail)
+        {
+            FailuresTask = LoadFailuresAsync(); // the selected run failed on more devices meanwhile
+        }
+
         OnPropertyChanged(nameof(ShowNoRuns));
         RefreshRunCommands();
     }

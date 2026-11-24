@@ -301,6 +301,50 @@ public sealed class SchedulesPageTests
     }
 
     [Fact]
+    public async Task A_running_run_shows_its_step_and_progress_and_a_refresh_updates_it_in_place()
+    {
+        var progress = 42;
+        var runningId = Guid.NewGuid();
+        ScheduleRun Running() => Samples.Run(runningId, Samples.WeeklyId, 0, RunResult.Running, 3) with
+        {
+            Started = Samples.Now, Ended = null, CurrentStep = "Stage 2 of 6", Progress = progress,
+        };
+        var ctx = Samples.Context();
+        ctx.Answers[SchedulesMethods.Runs] = _ => Samples.Serialize(new RunsReply([Running(), .. Samples.Runs(Samples.WeeklyId)]));
+        var (page, _) = await OpenAsync(ctx);
+        page.SelectedSchedule = page.Schedules[0];
+        await page.RunsTask;
+
+        var running = page.Runs.Single(r => r.Id == runningId);
+        Assert.True(running.IsRunning);
+        Assert.Equal("Stage 2 of 6", running.CurrentStep);
+        Assert.Equal(42, running.Progress);
+        Assert.Equal("42 %", running.ProgressText);
+        Assert.All(page.Runs.Where(r => r != running), r => Assert.True(r.CurrentStep.Length == 0 && r.ProgressText.Length == 0)); // ended: both empty
+
+        // A failed run chosen with its failed devices; then the server reports more progress.
+        var failed = page.Runs.First(r => r.HasFailures);
+        page.SelectedRun = failed;
+        page.SetSelectedRuns([failed]);
+        await page.FailuresTask;
+        var failureReads = ctx.CallsOf(SchedulesMethods.RunFailures);
+        var shown = page.Failures.ToList();
+        var resets = 0;
+        page.Runs.CollectionChanged += (_, _) => resets++;
+        progress = 60;
+        page.RequestReload();
+        await page.ReloadTask;
+
+        Assert.Same(running, page.Runs.Single(r => r.Id == runningId)); // the same row, updated
+        Assert.Equal("60 %", running.ProgressText);
+        Assert.Equal(0, resets); // no rebuild of the list
+        Assert.Same(failed, page.SelectedRun);
+        Assert.Equal([failed], page.SelectedRuns);
+        Assert.Equal(failureReads, ctx.CallsOf(SchedulesMethods.RunFailures));
+        Assert.Equal(shown, page.Failures);
+    }
+
+    [Fact]
     public void Every_result_reads_once_without_repeated_counts_or_double_punctuation()
     {
         ScheduleRun Run(RunResult result, int done = 0, int warnings = 0, int failed = 0, int notStarted = 0, string? reason = null, int offline = 0) => new()

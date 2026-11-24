@@ -47,6 +47,8 @@ public static class SchedulesTexts
     public const string Started = "Started";
     public const string Ended = "Ended";
     public const string Result = "Result";
+    public const string CurrentStep = "Current step";
+    public const string Progress = "Progress";
     public const string Device = "Device";
     public const string Step = "Step";
     public const string Message = "Message";

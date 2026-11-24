@@ -362,6 +362,8 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   optional `Middle` (a progress row), the `Actions` right (flat command buttons, a separator, the red one last). The Tasks
   pane of the Devices page (Details, Cancel, Delete, Delete all, the chevron) and the runs of Schedules (Delete, Delete
   all).
+- `ProgressCell`: the Progress cell of a grid of running work, the bar with its flowing stream and the percent beside it,
+  only while the work runs (the Tasks grid, the runs of Schedules).
 - `OverviewList` (`OverviewLine`): the overview step of every wizard, one line per fact with its label in a narrow
   column (the Event rule editor, the Schedules wizard).
 - `GroupedChoice` with `ComboBox.grouped`: every grouped select field. Grey group headers that cannot be chosen, the
