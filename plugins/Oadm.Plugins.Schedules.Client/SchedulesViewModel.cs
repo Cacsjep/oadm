@@ -339,7 +339,8 @@ public sealed partial class SchedulesViewModel : ObservableObject, IDisposable
         var editor = new ScheduleEditorViewModel(_ctx, id, _time);
         if (await ShowEditor(editor).ConfigureAwait(true))
         {
-            await ReloadLoopAsync().ConfigureAwait(true);
+            RequestReload(); // joins a reload a live event started (one at a time), which then reads once more
+            await ReloadTask.ConfigureAwait(true);
             if (editor.Saved is { } saved && _rows.TryGetValue(saved.Id, out var row))
             {
                 SelectedSchedule = row;

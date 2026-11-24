@@ -75,7 +75,11 @@ internal enum DeviceEnd
 }
 
 /// <summary>One device's end: the failed step and its message, how long the task ran (null when it never ran).</summary>
-internal sealed record DeviceReport(DeviceEnd End, string? Step = null, string? Message = null, TimeSpan? Ran = null);
+internal sealed record DeviceReport(DeviceEnd End, string? Step = null, string? Message = null, TimeSpan? Ran = null)
+{
+    /// <summary>A step failed for a missing MyAxis sign-in of the owner (any step, not only the first failure).</summary>
+    public bool SignIn { get; init; }
+}
 
 /// <summary>
 /// The engine of Schedules (docs/spec/schedules.md): looks every <see cref="SchedulesOptions.Tick"/> for due schedules (rule 6,
@@ -94,6 +98,7 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
     public const string RunGone = "The run of this schedule has ended. Nothing was changed.";
     public const string SkippedText = "The run before was still running.";
     public const string MissedText = "The server was off at the time.";
+    public const string OffText = "Schedules was turned off at the time.";
 
     private readonly EngineDeps _deps;
     private readonly ActionCatalog _catalog;
@@ -104,6 +109,8 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
     private readonly Dictionary<Guid, RunState> _running = [];
     private readonly Dictionary<Guid, RunState> _byRun = [];
     private readonly CancellationTokenSource _life = new();
+    private readonly CancellationTokenSource _ticks = new();
+    private bool _stopping;
     private readonly SemaphoreSlim _tick = new(1, 1);
     private readonly Dictionary<string, (ICallContext? Call, DateTimeOffset At)> _owners = new(StringComparer.OrdinalIgnoreCase);
     private Task? _loop;
@@ -130,11 +137,16 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
     public TimeZoneInfo Zone => _time.LocalTimeZone;
 
     /// <summary>Starts the tick loop (the first tick at once: the catch-up of missed starts).</summary>
-    public void Start()
+    /// <param name="catchUp">
+    /// True at the first start in the process (the server started): a start missed while the server was off runs within
+    /// <see cref="SchedulesOptions.CatchUp"/> and its window. False (the plugin was turned off and on again): the first look
+    /// makes up nothing; a start missed while it was off is one Missed row (decision 2026-11-24).
+    /// </param>
+    public void Start(bool catchUp = true)
     {
         using (ExecutionContext.SuppressFlow())
         {
-            _loop = Task.Run(() => LoopAsync(_life.Token));
+            _loop = Task.Run(() => LoopAsync(catchUp, _ticks.Token));
         }
     }
 
@@ -262,12 +274,15 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
     /// the start is older than <see cref="SchedulesOptions.CatchUp"/> or its window has closed: Missed. Else the run starts. Never more
     /// than one per schedule and look.
     /// </summary>
-    public async Task TickAsync(CancellationToken ct)
+    public Task TickAsync(CancellationToken ct) => TickAsync(missedOnly: false, ct);
+
+    /// <summary>A look; <paramref name="missedOnly"/>: every due start is a Missed row (the first look after the plugin was turned on again).</summary>
+    public async Task TickAsync(bool missedOnly, CancellationToken ct)
     {
         await _tick.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await TickCoreAsync(ct).ConfigureAwait(false);
+            await TickCoreAsync(missedOnly, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -284,7 +299,7 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
         }
     }
 
-    private async Task TickCoreAsync(CancellationToken ct)
+    private async Task TickCoreAsync(bool missedOnly, CancellationToken ct)
     {
         var now = _time.GetUtcNow();
         foreach (var stored in Store.All.Where(s => s.Schedule.On))
@@ -310,6 +325,10 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
                 if (IsRunning(current.Schedule.Id))
                 {
                     await RecordAsync(current, due, RunResult.Skipped, SkippedText, ct).ConfigureAwait(false);
+                }
+                else if (missedOnly)
+                {
+                    await RecordAsync(current, due, RunResult.Missed, OffText, ct).ConfigureAwait(false);
                 }
                 else if (now - due > _options.CatchUp || (ScheduleTimes.WindowEnd(current.Schedule.When, due, Zone) is { } end && now >= end))
                 {
@@ -380,6 +399,11 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
         var state = new RunState(stored, row, due);
         lock (_gate)
         {
+            if (_stopping)
+            {
+                throw new InvalidOperationException(Stopping);
+            }
+
             if (_running.ContainsKey(stored.Schedule.Id))
             {
                 throw new InvalidOperationException(AlreadyRunning);
@@ -417,16 +441,57 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            await EndQuietlyAsync(state, RunResult.Failed, ScheduleStore.ServerStopped).ConfigureAwait(false);
+            var running = LeaveRunning(state);
+            await EndQuietlyAsync(state, RunResult.Stopped, running > 0 ? StillRunning(running) : ScheduleStore.ServerStopped).ConfigureAwait(false);
         }
 #pragma warning disable CA1031 // A run that breaks ends Failed with the reason; the engine and the other runs go on.
         catch (Exception ex)
 #pragma warning restore CA1031
         {
             LogRunFailed(ex, state.Schedule.Schedule.Name);
+            LeaveRunning(state);
             await EndQuietlyAsync(state, RunResult.Failed, "The run failed: " + ex.Message).ConfigureAwait(false);
         }
     }
+
+    /// <summary>
+    /// The run ends without waiting for its tasks: the queued ones are cancelled, the running ones run on and go to
+    /// <see cref="EngineDeps.Left"/> (a later run gives their devices no second task while they run). Both count as Not started,
+    /// so the counts add up. Answers how many still run.
+    /// </summary>
+    private int LeaveRunning(RunState state)
+    {
+        var inflight = state.Inflight;
+        if (inflight.Count == 0)
+        {
+            state.Close();
+            return 0;
+        }
+
+        var waiting = state.CloseAndListWaiting(inflight.Keys).ToHashSet();
+        foreach (var taskId in waiting)
+        {
+            _deps.Tasks.Cancel(taskId);
+        }
+
+        var running = inflight.Where(t => !waiting.Contains(t.Key)).Select(t => (t.Key, t.Value.Id)).ToList();
+        if (running.Count > 0)
+        {
+            _deps.Left?.Add(state.Schedule.Schedule.Id, running);
+        }
+
+        var count = inflight.Count;
+        inflight.Clear();
+        state.Update(r => r with { NotStarted = r.NotStarted + count });
+        return running.Count;
+    }
+
+    /// <summary>"Schedules stopped during the run. 2 devices were still running; they are counted as not started."</summary>
+    public static string StillRunning(int running) =>
+        running == 0 ? PluginStopped : $"{PluginStopped.TrimEnd('.')}. {Devices(running)} {(running == 1 ? "was" : "were")} still running; counted as not started.";
+
+    /// <summary>"Schedules is stopping."</summary>
+    public const string Stopping = "Schedules is stopping. Try again when it runs.";
 
     private async Task RunAsync(RunState state, CancellationToken ct)
     {
@@ -477,7 +542,8 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
         // One start per stage (the whole run without stages): one audit entry each, with its outcome; the task engine's limit (the
         // server setting Parallel tasks per plugin) decides how many run, the others wait as queued.
         var audit = new TaskAudit(ScheduleTaskPlugin.TaskNameOf(schedule.Name)) { UserName = AuditUserOf(schedule) };
-        var windowEnd = ScheduleTimes.WindowEnd(schedule.When, state.Due, Zone);
+        // Run now has no window (decision 2026-11-24): the window end applies only to a run at its time.
+        var windowEnd = state.Row.StartedBy is null ? ScheduleTimes.WindowEnd(schedule.When, state.Due, Zone) : null;
         using var window = windowEnd is { } end
             ? _time.CreateTimer(_ => state.Wake(), null, end - _time.GetUtcNow() is var wait && wait > TimeSpan.Zero ? wait : TimeSpan.Zero, Timeout.InfiniteTimeSpan)
             : null;
@@ -570,9 +636,8 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
 
         if (state.Abandon && inflight.Count > 0)
         {
-            // These tasks run on without the run: a later run of this schedule leaves their devices alone until they end.
-            _deps.Left?.Add(schedule.Id, [.. inflight.Select(t => (t.Key, t.Value.Id))]);
-            inflight.Clear();
+            var running = LeaveRunning(state);
+            stopped = StillRunning(running);
         }
 
         var row = state.Row;
@@ -920,6 +985,7 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
         var profile = new Profile { Id = state.Schedule.Schedule.Id, Name = state.Schedule.Schedule.Name, Nodes = actions };
         var failures = new List<(string Step, string Message)>();
         var warned = false;
+        var signIn = false;
         foreach (var action in actions)
         {
             var node = _catalog.Find(action.Kind);
@@ -946,6 +1012,7 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
                     step.Fail(result.Message);
                     ctx.Log(TaskLogLevel.Error, $"{node?.Name ?? action.Kind.ToString()}: {result.Message}");
                     failures.Add((stepName, result.Message));
+                    signIn |= action.Kind == NodeKind.UpgradeOnline && result.Message == UpgradeOnlineNode.SignIn;
                     break;
             }
 
@@ -958,7 +1025,7 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
         if (failures.Count > 0)
         {
             var (firstStep, first) = failures[0];
-            return new DeviceReport(DeviceEnd.Failed, firstStep, failures.Count == 1 ? first : $"{failures.Count} steps failed. {first}");
+            return new DeviceReport(DeviceEnd.Failed, firstStep, failures.Count == 1 ? first : $"{failures.Count} steps failed. {first}") { SignIn = signIn };
         }
 
         return new DeviceReport(warned ? DeviceEnd.Warning : DeviceEnd.Done);
@@ -990,16 +1057,18 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
         return _catalog.Find(action.Kind)?.StepName ?? "Run " + action.Kind;
     }
 
-    private async Task LoopAsync(CancellationToken ct)
+    private async Task LoopAsync(bool catchUp, CancellationToken ct)
     {
         using var timer = new PeriodicTimer(_options.Tick, _time);
+        var first = true;
         try
         {
             do
             {
                 try
                 {
-                    await TickAsync(ct).ConfigureAwait(false);
+                    await TickAsync(missedOnly: first && !catchUp, ct).ConfigureAwait(false);
+                    first = false;
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
@@ -1021,7 +1090,7 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
     }
 
     /// <summary>The reason of a run that ended because the plugin stopped.</summary>
-    public const string PluginStopped = "Schedules stopped during the run. Tasks that ran went on to their end.";
+    public const string PluginStopped = "Schedules stopped during the run.";
 
     /// <summary>
     /// Stops the engine: no tick any more; every running run closes (its queued tasks cancelled, no further stage) and ends
@@ -1029,6 +1098,22 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
     /// </summary>
     public async ValueTask DisposeAsync()
     {
+        // First no new run: the tick loop ends and Run now is refused; then every run closes.
+        lock (_gate)
+        {
+            _stopping = true;
+        }
+
+        if (!_ticks.IsCancellationRequested)
+        {
+            await _ticks.CancelAsync().ConfigureAwait(false);
+        }
+
+        if (_loop is { } loop)
+        {
+            await loop.ConfigureAwait(false);
+        }
+
         List<RunState> states;
         lock (_gate)
         {
@@ -1046,19 +1131,8 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
             await _life.CancelAsync().ConfigureAwait(false);
         }
 
-        if (_loop is { } loop)
-        {
-            await loop.ConfigureAwait(false);
-        }
-
-        List<Task> runs;
-        lock (_gate)
-        {
-            runs = [.. _running.Values.Select(r => r.Loop).OfType<Task>()];
-        }
-
-        await Task.WhenAll(runs).ConfigureAwait(false);
         _life.Dispose();
+        _ticks.Dispose();
         _tick.Dispose();
     }
 

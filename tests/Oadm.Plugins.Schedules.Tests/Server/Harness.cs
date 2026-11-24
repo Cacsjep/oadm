@@ -230,8 +230,16 @@ internal sealed class GateRunner(DeviceTable devices) : ITaskRunner
         }
     }
 
+    /// <summary>IsActive throws (a broken host), to break a run in the middle.</summary>
+    public bool BreakIsActive { get; set; }
+
     public bool? IsActive(Guid taskId)
     {
+        if (BreakIsActive)
+        {
+            throw new InvalidOperationException("The task list broke.");
+        }
+
         lock (_gate)
         {
             return _items.TryGetValue(taskId, out var item) && item.Outcome is null;

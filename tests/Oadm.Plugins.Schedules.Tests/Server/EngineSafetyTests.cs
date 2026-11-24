@@ -1,6 +1,7 @@
 using Oadm.Plugins.Provisioning.Model;
 using Oadm.Plugins.Schedules.Engine;
 using Oadm.Sdk.Devices;
+using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Tasks;
 using Oadm.Sdk.Testing;
 
@@ -103,7 +104,9 @@ public sealed class EngineSafetyTests
 
         await h.Engine.DisposeAsync();
         var stopped = h.Runs(s.Schedule.Id)[0];
-        Assert.Equal((RunResult.Stopped, ScheduleEngine.PluginStopped), (stopped.Result, stopped.Reason));
+        Assert.Equal((RunResult.Stopped, "Schedules stopped during the run. 2 devices were still running; counted as not started.", 2), (stopped.Result, stopped.Reason, stopped.NotStarted));
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => RunNowAsync(h, s)); // the stopped engine starts nothing
+        Assert.Equal(ScheduleEngine.Stopping, refused.Message);
 
         // Turned on again: the devices whose task still runs get none.
         h.NewEngine();
@@ -198,5 +201,117 @@ public sealed class EngineSafetyTests
         await task;
         Assert.Equal("oadm.restart", h.Runner.Actions.Last().PluginId);
         Assert.DoesNotContain(h.Runner.Actions, a => a.PluginId.StartsWith("oadm.network", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_stopped_engine_looks_for_no_due_start_any_more()
+    {
+        await using var h = new EngineHarness();
+        h.AddDevices(1);
+        var s = await h.AddAsync();
+        h.Engine.Start();
+        await h.Engine.DisposeAsync();
+
+        h.Time.SetUtcNow(new DateTimeOffset(2026, 11, 23, 23, 0, 10, TimeSpan.Zero));
+        h.Time.Advance(TimeSpan.FromMinutes(1));
+        Assert.Empty(h.Runs(s.Schedule.Id));
+        Assert.Equal(0, h.Runner.ScheduleTasks);
+        h.NewEngine();
+    }
+
+    [Fact]
+    public async Task A_run_that_breaks_cancels_its_queued_tasks_and_leaves_its_running_device_alone()
+    {
+        await using var h = new EngineHarness();
+        h.Runner.Limit = 1;
+        var devices = h.AddDevices(3);
+        var gate = HoldActions(h);
+        var s = await h.AddAsync();
+        await RunNowAsync(h, s);
+        await Eventually.TrueAsync(() => h.Runner.Actions.Count == 1 && h.Runner.ScheduleTasks == 3, "one task runs, two wait");
+
+        // The host's task list breaks: the next look at the tasks (every 5 s) throws.
+        h.Runner.BreakIsActive = true;
+        await Eventually.TrueAsync(
+            () =>
+            {
+                h.Time.Advance(TimeSpan.FromSeconds(5));
+                return !h.Engine.IsRunning(s.Schedule.Id);
+            },
+            "the broken run ended");
+        h.Runner.BreakIsActive = false;
+
+        var run = h.Runs(s.Schedule.Id)[0];
+        Assert.Equal((RunResult.Failed, "The run failed: The task list broke.", 3), (run.Result, run.Reason, run.NotStarted));
+        Assert.Equal(1, h.Runner.Running); // the queued two were cancelled, the running one goes on
+        Assert.Equal([devices[0].Id], h.Left.Busy(s.Schedule.Id, h.Runner));
+        gate.SetResult();
+    }
+
+    [Fact]
+    public async Task Runs_the_server_stopped_during_end_stopped_when_it_starts_again()
+    {
+        var settings = new FakeSettings();
+        var records = new MemoryPluginRecords();
+        var id = Guid.NewGuid();
+        var store = new ScheduleStore(settings, records);
+        await store.SaveAsync(new StoredSchedule { Schedule = new Schedule { Id = id, Name = "Nightly" } }, CancellationToken.None);
+        await store.SaveRunAsync(new StoredRun { Run = new ScheduleRun { Id = Guid.NewGuid(), ScheduleId = id, Result = RunResult.Running } }, null, CancellationToken.None);
+        store.Dispose();
+
+        using var again = new ScheduleStore(settings, records);
+        Assert.Equal(1, await again.LoadAsync(EngineHarness.Start, CancellationToken.None));
+        var run = again.RunsOf(id)[0].Run;
+        Assert.Equal((RunResult.Stopped, ScheduleStore.ServerStopped), (run.Result, run.Reason));
+    }
+
+    [Fact]
+    public async Task A_missing_myaxis_sign_in_of_a_later_step_still_warns()
+    {
+        await using var h = new EngineHarness();
+        h.AddDevices(1);
+        h.Runner.Decide = (_, _) => Task.FromResult<(TaskEndState, string?)>((TaskEndState.Failed, "The device did not come back."));
+        h.OwnerTasks.Decide = (_, _) => Task.FromResult<(TaskEndState, string?)>((TaskEndState.Failed, AxisDownloadTexts.SignIn));
+        var s = await h.AddAsync(x => x with { Actions = [EngineHarness.Action("r", NodeKind.Restart), EngineHarness.Action("u", NodeKind.UpgradeOnline)] });
+
+        await RunNowAsync(h, s);
+        var run = await h.EndedAsync(s.Schedule.Id);
+        Assert.StartsWith("2 steps failed. The device did not come back.", Assert.Single(await h.Store.FailuresAsync(run.Id, CancellationToken.None)).Message, StringComparison.Ordinal);
+        Assert.True(h.Store.Find(s.Schedule.Id)!.SignInMissing);
+    }
+
+    [Fact]
+    public async Task Turned_on_again_the_first_look_makes_up_nothing_and_records_one_missed_row()
+    {
+        await using var h = new EngineHarness();
+        h.AddDevices(1);
+        var s = await h.AddAsync();
+
+        // Turned off at 22:00, on again at Tuesday 01:00: Monday 23:00 was missed while it was off.
+        h.Time.SetUtcNow(new DateTimeOffset(2026, 11, 24, 1, 0, 0, TimeSpan.Zero));
+        h.Engine.Start(catchUp: false);
+        await Eventually.TrueAsync(() => h.Runs(s.Schedule.Id).Count == 1, "the missed start is recorded");
+        var missed = h.Runs(s.Schedule.Id)[0];
+        Assert.Equal((RunResult.Missed, ScheduleEngine.OffText), (missed.Result, missed.Reason));
+        Assert.Equal(0, h.Runner.ScheduleTasks);
+        Assert.Equal("Missed", Assert.Single(Ended(h)).Data["result"]);
+
+        // It runs at its next time.
+        h.Time.SetUtcNow(new DateTimeOffset(2026, 11, 24, 23, 0, 10, TimeSpan.Zero));
+        await h.Engine.TickAsync(CancellationToken.None);
+        Assert.Equal(RunResult.Done, (await h.EndedAsync(s.Schedule.Id)).Result);
+    }
+
+    [Fact]
+    public async Task At_the_servers_start_a_missed_start_within_24_hours_runs()
+    {
+        await using var h = new EngineHarness();
+        h.AddDevices(1);
+        var s = await h.AddAsync();
+
+        h.Time.SetUtcNow(new DateTimeOffset(2026, 11, 24, 1, 0, 0, TimeSpan.Zero));
+        h.Engine.Start(catchUp: true);
+        Assert.Equal(RunResult.Done, (await h.EndedAsync(s.Schedule.Id)).Result);
+        Assert.Equal(1, h.Runner.ScheduleTasks);
     }
 }

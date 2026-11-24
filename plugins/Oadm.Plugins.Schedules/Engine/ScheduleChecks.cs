@@ -67,6 +67,7 @@ public static partial class ScheduleChecks
     /// <param name="LearnedDeviceTime">The time per device of the schedule's last ended run; null: the starting estimates.</param>
     /// <param name="CheckPast">Refuse a Once whose time has passed (true for the wizard and a save).</param>
     /// <param name="StrictDevices">A chosen device outside the caller's view throws <see cref="DevicesNotAvailableException"/> like an unknown id (the wizard, a save); false: an error below the devices (a stored schedule shown).</param>
+    /// <param name="KnownDeviceCount">The wizard's devices did not change: their count from before, no resolve and no device check (never on save).</param>
     public sealed record Inputs(
         IReadOnlyCollection<StoredSchedule> Others,
         ActionCatalog Catalog,
@@ -76,7 +77,8 @@ public static partial class ScheduleChecks
         int Parallel,
         TimeSpan? LearnedDeviceTime,
         bool CheckPast = true,
-        bool StrictDevices = true);
+        bool StrictDevices = true,
+        int? KnownDeviceCount = null);
 
     public static async Task<ScheduleCheck> CheckAsync(Schedule schedule, ICallContext caller, Inputs inputs, CancellationToken ct)
     {
@@ -100,7 +102,9 @@ public static partial class ScheduleChecks
         }
 
         var choice = schedule.Devices ?? new ScheduleDevices();
-        var resolved = DeviceChoice.Resolve(choice, await caller.Devices.ListAsync(ct).ConfigureAwait(false));
+        var resolved = inputs.KnownDeviceCount is null
+            ? DeviceChoice.Resolve(choice, await caller.Devices.ListAsync(ct).ConfigureAwait(false))
+            : new DeviceChoice([], []);
         string? devicesError = null;
         if (choice.Kind == ScheduleDevicesKind.Chosen && (choice.DeviceIds ?? []).Count == 0 && (choice.Tags ?? []).Count == 0)
         {
@@ -172,7 +176,7 @@ public static partial class ScheduleChecks
             }
         }
 
-        var count = resolved.Devices.Count;
+        var count = inputs.KnownDeviceCount is { } known ? Math.Max(0, known) : resolved.Devices.Count;
         var stageSizes = schedule.Stages ? Rollout.StageSizes(count) : [];
         var perDevice = inputs.LearnedDeviceTime ?? StartingDeviceTime(actions);
         var estimate = actions.Count == 0 ? null : Rollout.Estimate(count, schedule.Stages, inputs.Parallel, perDevice);
@@ -191,6 +195,32 @@ public static partial class ScheduleChecks
             Estimate = estimate,
             NextRun = next,
         };
+    }
+
+    /// <summary>
+    /// The schedule without the chosen devices it had stored that are no longer in the caller's view (removed from OADM, or the
+    /// view changed): they are simply no longer in it, so a schedule whose camera was deleted can still be changed. A device id
+    /// the stored schedule did not have is checked as usual (outside the view: like an unknown id), so nothing tells an unknown id
+    /// from one outside the view.
+    /// </summary>
+    public static Schedule DropGone(Schedule schedule, Schedule? stored, IReadOnlyList<IDeviceInfo> view)
+    {
+        ArgumentNullException.ThrowIfNull(schedule);
+        ArgumentNullException.ThrowIfNull(view);
+        if (stored?.Devices?.DeviceIds is not { Count: > 0 } before || schedule.Devices?.DeviceIds is not { Count: > 0 } ids)
+        {
+            return schedule;
+        }
+
+        var had = before.ToHashSet();
+        var inView = new HashSet<Guid>(view.Count);
+        foreach (var device in view)
+        {
+            inView.Add(device.Id);
+        }
+
+        var kept = ids.Where(id => inView.Contains(id) || !had.Contains(id)).ToList();
+        return kept.Count == ids.Count ? schedule : schedule with { Devices = schedule.Devices with { DeviceIds = kept } };
     }
 
     /// <summary>The time per device of the starting estimates (the sum of the actions).</summary>

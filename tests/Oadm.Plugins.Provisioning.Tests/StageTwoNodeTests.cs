@@ -600,7 +600,7 @@ public sealed class StageTwoNodeTests
         var node = new VapixCommandsNode(Library());
         Assert.Equal("Add a command.", node.Check(Harness.Json(new VapixCommandsSettings([])), ProfileCheckContext.Empty));
         Assert.Equal("image.nothing is not in the VAPIX Commander library.", node.Check(Harness.Json(new VapixCommandsSettings([Step("image.nothing")])), ProfileCheckContext.Empty));
-        Assert.Equal("Set a password needs a password or a file; it cannot run in a profile.", node.Check(Harness.Json(new VapixCommandsSettings([Step("image.users.set")])), ProfileCheckContext.Empty));
+        Assert.Equal("Set a password needs a password or a file; it cannot run here.", node.Check(Harness.Json(new VapixCommandsSettings([Step("image.users.set")])), ProfileCheckContext.Empty));
         Assert.StartsWith("Set overlay text: Text", node.Check(Harness.Json(new VapixCommandsSettings([Step("image.text.set", "Lobby 1!")])), ProfileCheckContext.Empty), StringComparison.Ordinal);
         Assert.StartsWith("Set overlay text: Text is required", node.Check(Harness.Json(new VapixCommandsSettings([Step("image.text.set")])), ProfileCheckContext.Empty), StringComparison.Ordinal);
     }

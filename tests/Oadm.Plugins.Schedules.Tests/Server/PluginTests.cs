@@ -14,7 +14,10 @@ namespace Oadm.Plugins.Schedules.Tests.Server;
 public sealed class PluginTests : IAsyncLifetime
 {
     private readonly FakeTimeProvider _time = new(EngineHarness.Start);
-    private readonly FakeCoreContext _ctx = new() { EventPublisher = new FakeEventPublisher() };
+    private readonly string _data = Path.Combine(Path.GetTempPath(), "oadm-schedules-tests", Guid.NewGuid().ToString("N"));
+    private readonly FakeCoreContext _ctx;
+
+    public PluginTests() => _ctx = new FakeCoreContext { EventPublisher = new FakeEventPublisher(), DataDirectory = _data };
     private readonly FakeUserCalls _users = new();
     private SchedulesPlugin _plugin = null!;
 
@@ -26,7 +29,14 @@ public sealed class PluginTests : IAsyncLifetime
         await _plugin.StartAsync(_ctx, CancellationToken.None);
     }
 
-    public async Task DisposeAsync() => await _plugin.DisposeAsync();
+    public async Task DisposeAsync()
+    {
+        await _plugin.DisposeAsync();
+        if (Directory.Exists(_data))
+        {
+            Directory.Delete(_data, recursive: true);
+        }
+    }
 
     private static JsonSerializerOptions Json => SchedulesJson.Options;
 
@@ -286,5 +296,84 @@ public sealed class PluginTests : IAsyncLifetime
 
         var bad = await _ctx.InvokeAsync(_plugin, anna, "tool.save.preview", args.Replace("\"23:00\"", "\"11pm\"", StringComparison.Ordinal));
         Assert.Contains("when.time", bad, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_schedule_whose_chosen_camera_was_removed_can_still_be_changed()
+    {
+        var kept = _ctx.Add(new FakeDevice { Address = "10.0.0.1", Serial = "ACCC8E000001" });
+        var removed = _ctx.Add(new FakeDevice { Address = "10.0.0.2", Serial = "ACCC8E000002" });
+        var anna = _ctx.CallAsAllDevices("anna");
+        var saved = await CallAsync<ScheduleReply>(anna, SchedulesMethods.Save, new ScheduleRequest(NewSchedule("Nightly", new ScheduleDevices { DeviceIds = [kept.Id, removed.Id] })));
+        _ctx.DeviceList.Remove(removed);
+
+        var renamed = saved.Schedule with { Name = "Nightly cameras" };
+        var check = await CallAsync<ScheduleCheck>(anna, SchedulesMethods.Check, new ScheduleRequest(renamed));
+        Assert.Equal((null, 1), (check.DevicesError, check.DeviceCount));
+        var again = await CallAsync<ScheduleReply>(anna, SchedulesMethods.Save, new ScheduleRequest(renamed));
+        Assert.Equal([kept.Id], again.Schedule.Devices.DeviceIds);
+
+        // A device id the schedule did not have is checked as usual: unknown or outside the view, the same answer.
+        var added = renamed with { Devices = new ScheduleDevices { DeviceIds = [kept.Id, Guid.NewGuid()] } };
+        await Assert.ThrowsAsync<DevicesNotAvailableException>(() => CallAsync<ScheduleReply>(anna, SchedulesMethods.Save, new ScheduleRequest(added)));
+    }
+
+    [Fact]
+    public async Task The_wizard_check_with_unchanged_devices_neither_resolves_nor_checks_them()
+    {
+        var anna = _ctx.CallAsAllDevices("anna");
+        var schedule = NewSchedule("Upgrade", new ScheduleDevices { DeviceIds = [Guid.NewGuid()] }) with { Stages = true };
+
+        var check = await CallAsync<ScheduleCheck>(anna, SchedulesMethods.Check, new ScheduleRequest(schedule, DevicesUnchanged: true, KnownDeviceCount: 150));
+        Assert.Equal((150, (string?)null), (check.DeviceCount, check.DevicesError));
+        Assert.Equal([1, 3, 8, 15, 30, 93], check.StageSizes);
+
+        // Save always resolves: the unknown id is refused.
+        await Assert.ThrowsAsync<DevicesNotAvailableException>(() => CallAsync<ScheduleReply>(anna, SchedulesMethods.Save, new ScheduleRequest(schedule, DevicesUnchanged: true, KnownDeviceCount: 150)));
+    }
+
+    [Fact]
+    public async Task A_kept_configuration_file_is_read_only_by_its_storer_or_who_sees_a_schedule_naming_it()
+    {
+        var inside = _ctx.Add(new FakeDevice { Address = "10.0.0.1", Serial = "ACCC8E000001" });
+        var olaf = FakeCallContext.WithGroup(_ctx, [inside.Id], "olaf", "g1");
+        var per = FakeCallContext.WithGroup(_ctx, [inside.Id], "per", "g1");
+        var eva = FakeCallContext.WithGroup(_ctx, [inside.Id], "eva", "g2");
+        _users.Set("olaf", olaf);
+        var upload = _ctx.FakeUploads.Add("site.cfg", System.Text.Encoding.UTF8.GetBytes("root.Image.I0.Appearance.Resolution=1920x1080\n"));
+        olaf.Uploads = _ctx.FakeUploads;
+        per.Uploads = _ctx.FakeUploads;
+
+        var file = await CallAsync<Provisioning.Engine.StoredFile>(olaf, SchedulesMethods.StoreFile, new FileRequest(upload.Id));
+        Assert.Equal("site.cfg", (await CallAsync<ConfigFileReply>(olaf, SchedulesMethods.ReadConfigFile, new IdRequest(file.Id))).Name);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => CallAsync<ConfigFileReply>(per, SchedulesMethods.ReadConfigFile, new IdRequest(file.Id)));
+
+        await CallAsync<ScheduleReply>(olaf, SchedulesMethods.Save, new ScheduleRequest(NewSchedule("Config", new ScheduleDevices { DeviceIds = [inside.Id] }, EngineHarness.Action("c1", NodeKind.Configuration, new ConfigurationSettings(file.Id)))));
+        Assert.Equal("site.cfg", (await CallAsync<ConfigFileReply>(per, SchedulesMethods.ReadConfigFile, new IdRequest(file.Id))).Name);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => CallAsync<ConfigFileReply>(eva, SchedulesMethods.ReadConfigFile, new IdRequest(file.Id)));
+    }
+
+    [Fact]
+    public async Task Only_the_first_start_in_the_process_makes_up_a_missed_start()
+    {
+        var device = _ctx.Add(new FakeDevice());
+        _users.Set("anna", _ctx.CallAsAllDevices("anna"));
+        var anna = _ctx.CallAsAllDevices("anna");
+        var saved = await CallAsync<ScheduleReply>(anna, SchedulesMethods.Save, new ScheduleRequest(NewSchedule("Nightly")));
+
+        // Turned off and on again over Monday 23:00: one Missed row, no task.
+        await _plugin.StopAsync(CancellationToken.None);
+        _time.SetUtcNow(new DateTimeOffset(2026, 11, 24, 1, 0, 0, TimeSpan.Zero));
+        await _plugin.StartAsync(_ctx, CancellationToken.None);
+        await Eventually.TrueAsync(() => _plugin.RunningStore.RunsOf(saved.Schedule.Id).Count == 1, "the missed start is recorded");
+        Assert.Equal((RunResult.Missed, ScheduleEngine.OffText), (_plugin.RunningStore.RunsOf(saved.Schedule.Id)[0].Run.Result, _plugin.RunningStore.RunsOf(saved.Schedule.Id)[0].Run.Reason));
+        Assert.DoesNotContain(_ctx.TaskRuns, r => r.PluginId == SchedulesInfo.TaskPluginId);
+
+        // A server start (a new instance in a new process) makes up Tuesday 23:00 the next morning.
+        await _plugin.StopAsync(CancellationToken.None);
+        _time.SetUtcNow(new DateTimeOffset(2026, 11, 25, 1, 0, 0, TimeSpan.Zero));
+        await using var restarted = new SchedulesPlugin(new SchedulesOptions(), _time);
+        await restarted.StartAsync(_ctx, CancellationToken.None);
+        await Eventually.TrueAsync(() => _ctx.TaskRuns.Any(r => r.PluginId == SchedulesInfo.TaskPluginId && r.DeviceIds.Contains(device.Id)), "the missed start runs");
     }
 }

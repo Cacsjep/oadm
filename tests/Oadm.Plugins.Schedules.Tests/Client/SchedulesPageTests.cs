@@ -215,6 +215,30 @@ public sealed class SchedulesPageTests
         Assert.Equal(3, page.Schedules.Count);
     }
 
+    [Fact]
+    public async Task A_save_during_a_live_reload_joins_it_and_reads_once_more_never_two_reads_at_once()
+    {
+        var ctx = Samples.Context();
+        var (page, _) = await OpenAsync(ctx);
+        var gate = new TaskCompletionSource();
+        ctx.MethodGates[SchedulesMethods.List] = gate.Task;
+        var lists = ctx.CallsOf(SchedulesMethods.List);
+
+        ctx.Push(SchedulesMethods.ChangedTopic, new ChangedEvent(null)); // a live reload, held at the list
+        await Eventually.TrueAsync(() => ctx.CallsOf(SchedulesMethods.List) == lists + 1, "the live reload asked for the list");
+        page.ShowEditor = _ => Task.FromResult(true); // the wizard saved
+        var opened = page.NewScheduleCommand.ExecuteAsync(null);
+
+        Assert.False(opened.IsCompleted); // waits for the running reload
+        Assert.Equal(lists + 1, ctx.CallsOf(SchedulesMethods.List));
+        gate.SetResult();
+        await opened;
+
+        Assert.Equal(1, ctx.MostAtOnce[SchedulesMethods.List]);
+        Assert.Equal(lists + 2, ctx.CallsOf(SchedulesMethods.List)); // once more after the save
+        page.Deactivate();
+    }
+
     [Theory]
     [InlineData(1, "about 1 min")]
     [InlineData(20, "about 20 min")]

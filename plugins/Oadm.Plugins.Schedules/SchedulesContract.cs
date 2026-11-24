@@ -309,7 +309,12 @@ public sealed record SchedulesReply(IReadOnlyList<ScheduleSummary> Schedules);
 /// <summary>A schedule with its check.</summary>
 public sealed record ScheduleReply(Schedule Schedule, ScheduleCheck Check);
 
-public sealed record ScheduleRequest(Schedule Schedule);
+/// <summary>
+/// A schedule to check or save. <paramref name="DevicesUnchanged"/> (the wizard, after the devices were checked once): Check
+/// skips resolving and checking the devices and takes <paramref name="KnownDeviceCount"/> for the stages and the estimate. Save
+/// ignores both and always resolves the devices.
+/// </summary>
+public sealed record ScheduleRequest(Schedule Schedule, bool DevicesUnchanged = false, int? KnownDeviceCount = null);
 
 public sealed record IdRequest(Guid Id);
 

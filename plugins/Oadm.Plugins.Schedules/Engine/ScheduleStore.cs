@@ -79,7 +79,7 @@ public sealed class ScheduleStore(IPluginSettings settings, IPluginRecords recor
     public StoredRun? LastEnded(Guid scheduleId) =>
         RunsOf(scheduleId).FirstOrDefault(r => r.Run.Result is not (RunResult.Running or RunResult.Missed or RunResult.Skipped) && r.DeviceTime is not null);
 
-    /// <summary>Reads the schedules and runs; a run still Running (the server stopped during it) ends Failed with the reason.</summary>
+    /// <summary>Reads the schedules and runs; a run still Running (the server stopped during it) ends Stopped with the reason.</summary>
     public async Task<int> LoadAsync(DateTimeOffset now, CancellationToken ct)
     {
         var list = PluginJson.TryParse<List<StoredSchedule>>(await settings.GetAsync(SchedulesKey, ct).ConfigureAwait(false), Json) ?? [];
@@ -101,7 +101,7 @@ public sealed class ScheduleStore(IPluginSettings settings, IPluginRecords recor
                 {
                     if (rows[i].Run.Result == RunResult.Running)
                     {
-                        rows[i] = rows[i] with { Run = rows[i].Run with { Result = RunResult.Failed, Ended = now, Reason = ServerStopped } };
+                        rows[i] = rows[i] with { Run = rows[i].Run with { Result = RunResult.Stopped, Ended = now, Reason = ServerStopped } };
                         changed = true;
                     }
                 }

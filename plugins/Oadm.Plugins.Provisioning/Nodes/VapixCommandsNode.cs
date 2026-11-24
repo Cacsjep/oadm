@@ -55,12 +55,12 @@ public sealed class VapixCommandsNode(CommandLibrary library) : DeviceNode<Vapix
 
             if (command.Dangerous)
             {
-                return $"{command.Name} cannot run in a profile.";
+                return $"{command.Name} is a dangerous command; it cannot run here.";
             }
 
             if (command.Fields.Any(f => f.Type is FieldTypes.Password or FieldTypes.File))
             {
-                return $"{command.Name} needs a password or a file; it cannot run in a profile.";
+                return $"{command.Name} needs a password or a file; it cannot run here.";
             }
 
             try

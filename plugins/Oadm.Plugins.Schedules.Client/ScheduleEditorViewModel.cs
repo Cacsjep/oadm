@@ -81,6 +81,9 @@ public sealed partial class ScheduleEditorViewModel : ValidatingViewModel, INode
     private bool _checkAgain;
     private bool _syncing;
     private bool _thenShown;
+    private DateTimeOffset _checkDue;
+    private DeviceChoice? _checkedChoice;
+    private Schedule? _checked;
     private int _addAfter = -1;
 
     public ScheduleEditorViewModel(ICorePluginClientContext ctx, Guid? scheduleId, TimeProvider? time = null)
@@ -116,9 +119,9 @@ public sealed partial class ScheduleEditorViewModel : ValidatingViewModel, INode
         Validation.Rule(nameof(Name), () =>
             Name.Trim().Length == 0 ? SchedulesTexts.EnterName
             : Name.Trim().Length > SchedulesInfo.MaxNameLength ? SchedulesTexts.NameTooLong
-            : _check?.NameError);
-        Validation.Rule(nameof(Choice), () => Choice.IsEmpty ? SchedulesTexts.ChooseDevicesFirst : _check?.DevicesError);
-        Validation.Rule(nameof(Repeat), () => _check?.WhenError);
+            : Name.Trim() == _checked?.Name ? _check?.NameError : null); // a server error of what the check saw
+        Validation.Rule(nameof(Choice), () => Choice.IsEmpty ? SchedulesTexts.ChooseDevicesFirst : ReferenceEquals(Choice, _checkedChoice) ? _check?.DevicesError : null);
+        Validation.Rule(nameof(Repeat), () => WhenKey(CurrentWhen()) == WhenKey(_checked?.When) ? _check?.WhenError : null);
         Validation.Rule(nameof(Date), () => IsOnce && Date is null ? SchedulesTexts.ChooseDate : null);
         Validation.Rule(nameof(Days), () => IsWeekly && !Days.Any(d => d.IsChecked) ? SchedulesTexts.ChooseDays : null);
         Validation.Rule(nameof(DayOfMonth), () => IsMonthly && DayOfMonth is null ? SchedulesTexts.ChooseDay : null);
@@ -327,6 +330,7 @@ public sealed partial class ScheduleEditorViewModel : ValidatingViewModel, INode
             {
                 var reply = Parse<ScheduleReply>(await _ctx.InvokeAsync(SchedulesMethods.Get, Serialize(new IdRequest(id)), ct).ConfigureAwait(true));
                 Fill(reply.Schedule);
+                Remember(reply.Schedule, Choice); // the reply's check knows the saved schedule
                 ApplyCheck(reply.Check);
             }
             else
@@ -407,17 +411,29 @@ public sealed partial class ScheduleEditorViewModel : ValidatingViewModel, INode
         Devices = Choice.Kind == DeviceChoiceKind.All
             ? new ScheduleDevices { Kind = ScheduleDevicesKind.All }
             : new ScheduleDevices { Kind = ScheduleDevicesKind.Chosen, DeviceIds = [.. Choice.DeviceIds], Tags = [.. Choice.Tags] },
-        When = new ScheduleWhen
-        {
-            Recurrence = Repeat.Value,
-            Date = IsOnce && Date is { } date ? DateOnly.FromDateTime(date.Date) : null,
-            Time = ParseTime(Time) ?? new TimeOnly(23, 0),
-            Days = IsWeekly ? [.. Days.Where(d => d.IsChecked).Select(d => d.Day)] : [],
-            DayOfMonth = IsMonthly ? DayOfMonth : null,
-            WindowEnd = ParseTime(WindowEnd),
-        },
+        When = CurrentWhen(),
         Actions = [.. Nodes.Select(n => n.ToFlowNode())],
     };
+
+    /// <summary>When the schedule runs, as the step When holds it now.</summary>
+    private ScheduleWhen CurrentWhen() => new()
+    {
+        Recurrence = Repeat.Value,
+        Date = IsOnce && Date is { } date ? DateOnly.FromDateTime(date.Date) : null,
+        Time = ParseTime(Time) ?? new TimeOnly(23, 0),
+        Days = IsWeekly ? [.. Days.Where(d => d.IsChecked).Select(d => d.Day)] : [],
+        DayOfMonth = IsMonthly ? DayOfMonth : null,
+        WindowEnd = ParseTime(WindowEnd),
+    };
+
+    /// <summary>The schedule and device choice the last check saw: its errors count only while they are unchanged.</summary>
+    private void Remember(Schedule schedule, DeviceChoice choice)
+    {
+        _checked = schedule;
+        _checkedChoice = choice;
+    }
+
+    private static string? WhenKey(ScheduleWhen? when) => when is null ? null : Serialize(when);
 
     /// <summary>Replaces the device choice (the picker's OK, tests).</summary>
     public void SetChoice(DeviceChoice choice)
@@ -647,12 +663,42 @@ public sealed partial class ScheduleEditorViewModel : ValidatingViewModel, INode
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            ErrorText = ServerErrors.Message(ex);
+            await ShowRefusalAsync(ServerErrors.Message(ex)).ConfigureAwait(true);
         }
         finally
         {
             IsSaving = false;
         }
+    }
+
+    /// <summary>
+    /// Save was refused: a full check says which field (a device removed meanwhile, a name taken): its error shows below
+    /// that field and its step opens; only a refusal no field explains goes left of Save.
+    /// </summary>
+    private async Task ShowRefusalAsync(string message)
+    {
+        try
+        {
+            var check = Parse<ScheduleCheck>(await _ctx.InvokeAsync(SchedulesMethods.Check, Serialize(new ScheduleRequest(ToSchedule())), CancellationToken.None).ConfigureAwait(true));
+            Remember(ToSchedule(), Choice);
+            ApplyCheck(check);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            ErrorText = message;
+            return;
+        }
+
+        Validation.ShowAll();
+        RefreshState();
+        var step = Enumerable.Range(ScheduleStep, OverviewStep).FirstOrDefault(s => ProblemOf(s) is not null, -1);
+        if (step < 0)
+        {
+            ErrorText = message;
+            return;
+        }
+
+        GoTo(step);
     }
 
     [RelayCommand]
@@ -779,7 +825,7 @@ public sealed partial class ScheduleEditorViewModel : ValidatingViewModel, INode
     private string? ListProblem =>
         Nodes.Count == 0 ? SchedulesTexts.AddActionFirst
         : Nodes.Count > SchedulesInfo.MaxActions ? SchedulesTexts.TooManyActions
-        : _check?.ActionsError;
+        : _checked is { } seen && seen.Actions.Select(a => a.Id).SequenceEqual(Nodes.Select(n => n.Id)) ? _check?.ActionsError : null;
 
     /// <summary>The server's check after a change: one at a time, and once more when something changed meanwhile.</summary>
     private void RequestCheck()
@@ -789,6 +835,8 @@ public sealed partial class ScheduleEditorViewModel : ValidatingViewModel, INode
             return;
         }
 
+        // Debounce: the check runs once the typing paused (CheckDelay); a change meanwhile moves the time on.
+        _checkDue = _time.GetUtcNow() + CheckDelay;
         if (_checking)
         {
             _checkAgain = true;
@@ -806,12 +854,26 @@ public sealed partial class ScheduleEditorViewModel : ValidatingViewModel, INode
             do
             {
                 _checkAgain = false;
+                for (var wait = _checkDue - _time.GetUtcNow(); wait > TimeSpan.Zero; wait = _checkDue - _time.GetUtcNow())
+                {
+                    await Task.Delay(wait, _time).ConfigureAwait(true);
+                }
+
+                _checkAgain = false;
                 try
                 {
-                    var answer = await _ctx.InvokeAsync(SchedulesMethods.Check, Serialize(new ScheduleRequest(ToSchedule())), CancellationToken.None).ConfigureAwait(true);
+                    var (request, choice) = CheckRequest();
+                    var answer = await _ctx.InvokeAsync(SchedulesMethods.Check, Serialize(request), CancellationToken.None).ConfigureAwait(true);
                     if (!_checkAgain)
                     {
-                        ApplyCheck(Parse<ScheduleCheck>(answer));
+                        var check = Parse<ScheduleCheck>(answer);
+                        if (request.DevicesUnchanged && _check is { } last)
+                        {
+                            check = check with { DevicesError = last.DevicesError, DeviceCount = last.DeviceCount }; // the server did not look at the devices
+                        }
+
+                        Remember(request.Schedule, choice);
+                        ApplyCheck(check);
                     }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -826,6 +888,32 @@ public sealed partial class ScheduleEditorViewModel : ValidatingViewModel, INode
             _checking = false;
         }
     }
+
+    /// <summary>
+    /// The check's request: the device ids only when the device choice changed since the last check (up to 100,000 ids);
+    /// else none, with the last check's device count (docs/spec/schedules.md "Scale"). Save always sends everything.
+    /// </summary>
+    internal (ScheduleRequest Request, DeviceChoice Choice) CheckRequest()
+    {
+        var choice = Choice;
+        var schedule = ToSchedule();
+        if (_check is { } last && ReferenceEquals(choice, _checkedChoice))
+        {
+            return (new ScheduleRequest(schedule with { Devices = schedule.Devices with { DeviceIds = [] } })
+            {
+                DevicesUnchanged = true,
+                KnownDeviceCount = last.DeviceCount,
+            }, choice);
+        }
+
+        return (new ScheduleRequest(schedule), choice);
+    }
+
+    /// <summary>The time the wizard waits after a change before it asks the server's check.</summary>
+    public static TimeSpan CheckDelay { get; } = TimeSpan.FromMilliseconds(400);
+
+    /// <summary>The wizard's clock (tests advance it).</summary>
+    internal TimeProvider Clock => _time;
 
     private void ApplyCheck(ScheduleCheck check)
     {

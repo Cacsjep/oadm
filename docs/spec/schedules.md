@@ -28,17 +28,20 @@ actions' own tasks decide per device). Details in the plugin's README.
    logged as its own run row (Skipped). A device already in a running schedule task of the same schedule gets no second.
 4. **Roll out in stages stops at the first failure** (below); offline devices never stop it.
 5. **Nothing secret stored in clear.** Files and typed secrets of actions are kept like Provisioning's (the vault:
-   files in the plugin's data folder, secrets encrypted with the master key, named by id); payloads in memory only.
+   files in the plugin's data folder, secrets encrypted with the master key, named by id); payloads in memory only. A kept
+   configuration file is read (the file preview) only by the session that stored it or by users who see a schedule naming it.
 6. **Time through `TimeProvider`**, server time; a run is due when its time has passed and it has not run for that time.
 
 ## A schedule
 
 - **Name** (required, unique, at most 100 characters), **Turned on**, **Roll out in stages**.
 - **Devices**: All devices, or chosen devices and tags (the shared `DevicePickerWindow`), worked out at the start of every
-  run within the owner's view. A device removed from OADM is simply no longer in it.
+  run within the owner's view. A device removed from OADM is simply no longer in it: a check or save drops the chosen
+  devices the stored schedule had that are no longer in the caller's view; a device id it did not have is checked (outside
+  the view answers like an unknown id).
 - **When**: Once (date and time), Daily (time), Weekly (days and time), Monthly (day 1 to 28 and time). Optional
   **window end** ("Start no new devices after 05:00"): no device task starts after it; tasks still queued then are
-  cancelled and counted as Not started.
+  cancelled and counted as Not started. Only for runs at their time, never Run now (decision 2026-11-24).
 - **Then**: a straight list of actions, at least one, at most 10, in order, each with **Continue on error** (on by
   default). An action failing with it off ends that device's task; the next device is unaffected.
 - At most 200 schedules per server.
@@ -82,7 +85,10 @@ step is Not needed (success). Not in the first version and never: hardening scan
   "Stopped at stage 1: no device could be tested.", stage 2 never starts. The next run starts from the beginning again.
 - **Delete and stop during a run**: deleting the schedule closes its run (queued tasks cancelled, no further stage,
   running tasks run to their end, the event Stopped); turning the plugin off or stopping the server ends the run Stopped
-  at once, its running tasks run to their end and a later run gives their devices no second task while they run.
+  at once ("Schedules stopped during the run. 2 devices were still running; counted as not started."; after a server
+  restart a run left Running ends Stopped "The server stopped during the run."): its queued tasks are cancelled, the
+  devices still running count as Not started so the counts add up, their tasks run to their end and a later run gives
+  those devices no second task while they run. A run that breaks ends Failed the same way.
 - **Times of a run** are stored in the server's local time (the offset of Next run and Missed). A look for due starts
   re-reads each schedule (still on, not saved meanwhile, the start not handled yet); a start that cannot begin is a
   Failed row with the reason, the other schedules still run.
@@ -91,8 +97,13 @@ step is Not needed (success). Not in the first version and never: hardening scan
   reachable or not started: Done with warnings. Counts: done, warnings, failed, not reachable (by status), not started.
 - **Missed times**: at server start a due run of the last 24 hours starts while its window is open (or it has none);
   else one Missed row. Never more than one catch-up per schedule.
+  Only after a server restart (decision 2026-11-24): turning the plugin off and on again makes up nothing; a start missed
+  while it was off is one Missed row ("Schedules was turned off at the time.", once per schedule, its event once) and the
+  schedule runs at its next time. The host loads one plugin instance per process and turns it off and on with Stop and
+  Start; the instance's first start is the server's start.
 - **Run now** (page and MCP): starts a run at once as the owner; the user who pressed it needs "manage"; audited with
-  their name.
+  their name. Run now has no window (decision 2026-11-24): it starts every device of all its stages; the window end
+  applies only to runs at their time.
 - **Estimate**: devices of the choice now / parallel limit x the time per device (sum of the actions; from this
   schedule's last ended run when it had one, else the table's starting values), plus one per stage for its wait. The
   parallel limit of the estimate is 16, the setting's default (the SDK does not tell a plugin the setting). Shown
@@ -118,7 +129,9 @@ step is Not needed (success). Not in the first version and never: hardening scan
 ## The editor: a wizard
 
 `ScheduleEditorWindow`, a wizard like the Event rule editor (`ui:WizardSteps`, a step opens when every step before is
-complete, Back / Next disabled with the step's first problem as tooltip, errors directly below their field):
+complete, Back / Next disabled with the step's first problem as tooltip, errors directly below their field). The check
+after the devices were checked once sends `DevicesUnchanged` and their count (no 100,000 ids per keystroke); Save always
+resolves the devices.
 
 1. **Schedule**: Name, Turned on, Roll out in stages.
 2. **Devices**: the shared device choice and the list it gives.

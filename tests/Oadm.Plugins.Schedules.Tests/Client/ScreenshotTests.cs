@@ -121,7 +121,7 @@ public sealed class ScreenshotTests
             window.Attach(editor);
             window.Show();
             await editor.LoadAsync();
-            await editor.CheckTask;
+            await editor.SettleAsync();
             Headless.Pump();
 
             // 1 Schedule: untouched, no error; Next says why it waits.
@@ -135,17 +135,17 @@ public sealed class ScreenshotTests
             Headless.Capture(window, $"schedules-wizard-1-schedule-error-{suffix}.png");
             editor.Name = "Upgrade Site A";
             editor.Stages = true;
-            await editor.CheckTask;
+            await editor.SettleAsync();
             editor.NextCommand.Execute(null);
 
             // 2 Devices: the error below the button, then the devices the choice gives.
             editor.SetChoice(DeviceChoice.Devices([]));
-            await editor.CheckTask;
+            await editor.SettleAsync();
             Headless.Pump();
             Assert.Single(VisibleTexts(window, SchedulesTexts.ChooseDevicesFirst));
             Headless.Capture(window, $"schedules-wizard-2-devices-error-{suffix}.png");
             editor.SetChoice(DeviceChoice.Devices([Samples.Devices().Last().Id], ["Site A"]));
-            await editor.CheckTask;
+            await editor.SettleAsync();
             Headless.Pump();
             Assert.Empty(VisibleTexts(window, SchedulesTexts.ChooseDevicesFirst));
             Assert.Equal(9, window.FindControl<DataGrid>("DeviceGrid")!.ItemsSource!.Cast<object>().Count());
@@ -155,14 +155,14 @@ public sealed class ScreenshotTests
             // 3 When: daily with a window, the estimate warning below When; then a wrong time below Time.
             editor.Repeat = ScheduleEditorViewModel.RepeatChoices.Single(c => c.Value == Recurrence.Daily);
             editor.WindowEnd = "05:00";
-            await editor.CheckTask;
+            await editor.SettleAsync();
             Headless.Pump();
             Assert.True(window.FindControl<TextBlock>("WhenWarning")!.IsEffectivelyVisible);
             Headless.Capture(window, $"schedules-wizard-3-when-warning-{suffix}.png");
             editor.Repeat = ScheduleEditorViewModel.RepeatChoices.Single(c => c.Value == Recurrence.Weekly);
             editor.Days[2].IsChecked = true;
             editor.Time = "24:00";
-            await editor.CheckTask;
+            await editor.SettleAsync();
             Headless.Pump();
             Assert.False(window.FindControl<TextBlock>("WhenWarning")!.IsEffectivelyVisible);
             Assert.Single(VisibleTexts(window, SchedulesTexts.EnterTime));
@@ -177,7 +177,7 @@ public sealed class ScreenshotTests
             Headless.Capture(window, $"schedules-wizard-3-when-once-date-{suffix}.png");
             editor.Repeat = ScheduleEditorViewModel.RepeatChoices.Single(c => c.Value == Recurrence.Weekly);
             editor.Time = "23:00";
-            await editor.CheckTask;
+            await editor.SettleAsync();
             editor.NextCommand.Execute(null);
 
             // 4 Then: empty, the node list, three actions with Configuration's error on its card and in the panel.
@@ -192,7 +192,7 @@ public sealed class ScreenshotTests
             editor.Picker.Choose(editor.Picker.ShownItems.Single(i => i.Label == "Upgrade AXIS OS online"));
             editor.AddAfter(0, Samples.Kinds.Single(k => k.Kind == NodeKind.Restart));
             var config = editor.AddAfter(0, Samples.Kinds.Single(k => k.Kind == NodeKind.Configuration))!;
-            await editor.CheckTask;
+            await editor.SettleAsync();
             editor.SelectedNode = config;
             editor.FitView();
             Headless.Pump();
@@ -205,7 +205,7 @@ public sealed class ScreenshotTests
             Headless.Capture(window, $"schedules-wizard-4-then-online-{suffix}.png");
             editor.SelectedNode = config;
             editor.RemoveNodeCommand.Execute(null);
-            await editor.CheckTask;
+            await editor.SettleAsync();
             editor.NextCommand.Execute(null);
 
             // 5 Overview: the facts the steps before do not show, then Save.

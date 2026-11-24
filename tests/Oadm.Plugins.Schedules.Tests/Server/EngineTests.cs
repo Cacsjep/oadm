@@ -261,27 +261,47 @@ public sealed class EngineTests
     }
 
     [Fact]
-    public async Task A_run_starts_its_devices_at_once_and_the_engines_parallel_limit_holds()
+    public async Task Each_stage_is_one_start_with_all_its_devices_and_the_next_starts_only_after_it_ended()
     {
         await using var h = new EngineHarness();
-        h.Runner.Limit = 2; // the server setting Parallel tasks per plugin
-        h.AddDevices(5);
-        var gate = new TaskCompletionSource();
+        var devices = h.AddDevices(20);
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         h.Runner.Decide = async (_, _) =>
         {
             await gate.Task;
             return (TaskEndState.Done, null);
         };
-        var s = await h.AddAsync();
+        var s = await h.AddAsync(x => x with { Stages = true });
 
         await RunNowAsync(h, s);
-        await Eventually.TrueAsync(() => h.Runner.Running == 2 && h.Runner.Actions.Count == 2, "two tasks run and wait");
-        Assert.Equal(5, h.Runner.ScheduleTasks); // all started at once; the engine's limit holds them
+
+        // Stage 1 is one start of one device; while it runs the engine starts nothing more.
+        await Eventually.TrueAsync(() => h.Runner.Actions.Count == 1, "the first stage's task runs");
+        var starts = () => h.Runner.Runs.Where(r => r.PluginId == SchedulesInfo.TaskPluginId).Select(r => r.DeviceIds).ToList();
+        Assert.Equal([[devices[0].Id]], starts());
 
         gate.SetResult();
         var run = await h.EndedAsync(s.Schedule.Id);
-        Assert.Equal(5, run.Done);
-        Assert.Equal(2, h.Runner.MaxRunning);
+        Assert.Equal(20, run.Done);
+
+        // One start per stage (1, 2, 4, 13), each with all the stage's devices in order; nothing else.
+        var all = starts();
+        Assert.Equal([1, 2, 4, 13], all.Select(d => d.Count));
+        Assert.Equal(devices.Select(d => d.Id), all.SelectMany(d => d));
+    }
+
+    [Fact]
+    public async Task Without_stages_the_whole_run_is_one_start()
+    {
+        await using var h = new EngineHarness();
+        var devices = h.AddDevices(5);
+        h.AddDevices(1, DeviceStatus.Unreachable);
+        var s = await h.AddAsync();
+
+        await RunNowAsync(h, s);
+        await h.EndedAsync(s.Schedule.Id);
+        var start = Assert.Single(h.Runner.Runs, r => r.PluginId == SchedulesInfo.TaskPluginId);
+        Assert.Equal(devices.Select(d => d.Id), start.DeviceIds);
     }
 
     [Fact]
@@ -298,7 +318,9 @@ public sealed class EngineTests
         };
         var s = await h.AddAsync(x => x with { When = x.When with { WindowEnd = new TimeOnly(5, 0) } });
 
-        await RunNowAsync(h, s);
+        // A run at its time (Monday 23:00): its window ends Tuesday 05:00.
+        h.Time.SetUtcNow(new DateTimeOffset(2026, 11, 23, 23, 0, 10, TimeSpan.Zero));
+        await h.Engine.TickAsync(CancellationToken.None);
         await Eventually.TrueAsync(() => h.Runner.Actions.Count == 1 && h.Runner.ScheduleTasks == 5, "one task runs, four wait");
 
         h.Time.SetUtcNow(new DateTimeOffset(2026, 11, 24, 5, 0, 0, TimeSpan.Zero));
@@ -309,6 +331,31 @@ public sealed class EngineTests
         Assert.Equal("The window ended before 4 devices started.", run.Reason);
         Assert.Single(h.Runner.Actions);
         Assert.Equal(5, h.Runner.ScheduleTasks);
+    }
+
+    [Fact]
+    public async Task Run_now_has_no_window_every_device_starts()
+    {
+        await using var h = new EngineHarness();
+        h.Runner.Limit = 1;
+        h.AddDevices(3);
+        var gate = new TaskCompletionSource();
+        h.Runner.Decide = async (_, _) =>
+        {
+            await gate.Task;
+            return (TaskEndState.Done, null);
+        };
+        var s = await h.AddAsync(x => x with { Stages = true, When = x.When with { WindowEnd = new TimeOnly(11, 0) } });
+
+        await RunNowAsync(h, s);
+        await Eventually.TrueAsync(() => h.Runner.Actions.Count == 1, "the first device runs");
+
+        // Past the window end (11:00) while the first stage runs: Run now goes on with every stage.
+        h.Time.SetUtcNow(new DateTimeOffset(2026, 11, 23, 12, 0, 0, TimeSpan.Zero));
+        gate.SetResult();
+        var run = await h.EndedAsync(s.Schedule.Id);
+        Assert.Equal((RunResult.Done, 3, 0), (run.Result, run.Done, run.NotStarted));
+        Assert.Equal(3, h.Runner.ScheduleTasks);
     }
 
     [Fact]

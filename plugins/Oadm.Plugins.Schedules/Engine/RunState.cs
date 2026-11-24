@@ -250,7 +250,7 @@ internal sealed class RunState(StoredSchedule schedule, ScheduleRun row, DateTim
             if (report.End == DeviceEnd.Failed)
             {
                 var message = report.Message ?? "The task failed.";
-                if (message.Contains(UpgradeOnlineNode.SignIn, StringComparison.Ordinal))
+                if (report.SignIn)
                 {
                     SignInFailed = true;
                 }

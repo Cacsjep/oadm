@@ -90,6 +90,16 @@ internal static class Headless
     }
 }
 
+/// <summary>The wizard's debounced check in tests: the fake clock moves past the wait, then the check ends.</summary>
+internal static class EditorTesting
+{
+    public static async Task SettleAsync(this ScheduleEditorViewModel editor)
+    {
+        ((Microsoft.Extensions.Time.Testing.FakeTimeProvider)editor.Clock).Advance(ScheduleEditorViewModel.CheckDelay * 2);
+        await editor.CheckTask;
+    }
+}
+
 /// <summary>A device of the client's device list.</summary>
 internal sealed record FakeDevice(Guid Id, string Address, string? Model, string? HostName, IReadOnlyList<string> Tags) : IDeviceInfo
 {
@@ -142,13 +152,28 @@ internal sealed class FakePageContext : ICorePluginClientContext
     {
         ct.ThrowIfCancellationRequested();
         Calls.Add((method, payloadJson));
-        if (MethodGates.TryGetValue(method, out var held))
+        var running = InFlight[method] = InFlight.GetValueOrDefault(method) + 1;
+        MostAtOnce[method] = Math.Max(MostAtOnce.GetValueOrDefault(method), running);
+        try
         {
-            await held;
-        }
+            if (MethodGates.TryGetValue(method, out var held))
+            {
+                await held;
+            }
 
-        return Answers.TryGetValue(method, out var answer) ? answer(payloadJson) : throw new InvalidOperationException("No answer for " + method);
+            return Answers.TryGetValue(method, out var answer) ? answer(payloadJson) : throw new InvalidOperationException("No answer for " + method);
+        }
+        finally
+        {
+            InFlight[method]--;
+        }
     }
+
+    /// <summary>Calls of a method that run now.</summary>
+    public Dictionary<string, int> InFlight { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>The most calls of a method that ran at the same time.</summary>
+    public Dictionary<string, int> MostAtOnce { get; } = new(StringComparer.Ordinal);
 
     public void Push(string topic, object payload) =>
         _events.Writer.TryWrite(new PluginEvent(topic, JsonSerializer.Serialize(payload, payload.GetType(), SchedulesJson.Options)));

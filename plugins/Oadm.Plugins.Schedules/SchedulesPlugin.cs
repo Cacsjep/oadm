@@ -27,6 +27,7 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
     private volatile ScheduleStore? _store;
     private volatile NodeVault? _vault;
     private ActionCatalog _catalog = ActionCatalog.Default;
+    private bool _startedBefore;
 
     // Kept across off and on: devices whose task of a schedule still runs get no second one from the next engine.
     private readonly LeftTasks _left = new();
@@ -137,7 +138,7 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
         }
 
         var store = new ScheduleStore(ctx.Settings, ctx.Records ?? new MemoryPluginRecords());
-        await store.LoadAsync(_time.GetUtcNow(), ct).ConfigureAwait(false);
+        await store.LoadAsync(TimeZoneInfo.ConvertTime(_time.GetUtcNow(), _time.LocalTimeZone), ct).ConfigureAwait(false);
         var vault = new NodeVault(ctx.Settings, ctx.Secrets, ctx.DataDirectory, ctx.Uploads, _time);
         await vault.LoadAsync(ct).ConfigureAwait(false);
         var engine = new ScheduleEngine(
@@ -151,7 +152,11 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
         _vault = vault;
         _engine = engine;
         await PruneAsync(ct).ConfigureAwait(false);
-        engine.Start();
+
+        // The host loads one instance per process and turns it off and on with StopAsync and StartAsync (CorePluginHost): only the
+        // first start in the process (the server started) makes up missed starts (decision 2026-11-24).
+        engine.Start(catchUp: !_startedBefore);
+        _startedBefore = true;
     }
 
     public async Task StopAsync(CancellationToken ct)
@@ -193,7 +198,7 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
         {
             SchedulesMethods.List => PluginJson.Serialize(await ListAsync(caller, ct).ConfigureAwait(false), json),
             SchedulesMethods.Get => PluginJson.Serialize(await GetAsync(caller, PluginJson.Parse<IdRequest>(payloadJson, json).Id, ct).ConfigureAwait(false), json),
-            SchedulesMethods.Check => PluginJson.Serialize(await CheckAsync(caller, RequestOf(payloadJson), ct).ConfigureAwait(false), json),
+            SchedulesMethods.Check => PluginJson.Serialize(await CheckAsync(caller, PluginJson.Parse<ScheduleRequest>(payloadJson, json), ct).ConfigureAwait(false), json),
             SchedulesMethods.ActionKinds => PluginJson.Serialize(ActionKindInfos(), json),
             SchedulesMethods.Save => PluginJson.Serialize(await SaveAsync(caller, RequestOf(payloadJson), ct).ConfigureAwait(false), json),
             SchedulesMethods.Delete => PluginJson.Serialize(await DeleteAsync(caller, PluginJson.Parse<IdRequest>(payloadJson, json).Id, ct).ConfigureAwait(false), json),
@@ -204,7 +209,7 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
             SchedulesMethods.Policies => PluginJson.Serialize(await PoliciesAsync(ct).ConfigureAwait(false) ?? [], json),
             SchedulesMethods.VapixCommands => PluginJson.Serialize(VapixCommands(), json),
             SchedulesMethods.StoreFile => PluginJson.Serialize(await StoreFileAsync(caller, PluginJson.Parse<FileRequest>(payloadJson, json).UploadId, ct).ConfigureAwait(false), json),
-            SchedulesMethods.ReadConfigFile => PluginJson.Serialize(await ReadConfigFileAsync(PluginJson.Parse<IdRequest>(payloadJson, json).Id, ct).ConfigureAwait(false), json),
+            SchedulesMethods.ReadConfigFile => PluginJson.Serialize(await ReadConfigFileAsync(caller, PluginJson.Parse<IdRequest>(payloadJson, json).Id, ct).ConfigureAwait(false), json),
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
         };
     }
@@ -291,22 +296,27 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
     internal async Task<ScheduleReply> GetAsync(ICallContext caller, Guid id, CancellationToken ct)
     {
         var stored = await VisibleAsync(caller, id, ct).ConfigureAwait(false);
-        return new ScheduleReply(stored.Schedule, await CheckCoreAsync(caller, stored.Schedule, strict: false, ct).ConfigureAwait(false));
+        return new ScheduleReply(stored.Schedule, await CheckCoreAsync(caller, stored.Schedule, strict: false, null, ct).ConfigureAwait(false));
     }
 
     /// <summary>The wizard's check (the same as on save); a chosen device outside the caller's view answers like an unknown id.</summary>
-    internal async Task<ScheduleCheck> CheckAsync(ICallContext caller, Schedule schedule, CancellationToken ct)
+    internal async Task<ScheduleCheck> CheckAsync(ICallContext caller, ScheduleRequest request, CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(schedule);
+        ArgumentNullException.ThrowIfNull(request);
+        var schedule = request.Schedule ?? throw new ArgumentException("The request has no schedule.");
         if (schedule.Id != Guid.Empty && RunningStore.Find(schedule.Id) is not null)
         {
-            await VisibleAsync(caller, schedule.Id, ct).ConfigureAwait(false);
+            var stored = await VisibleAsync(caller, schedule.Id, ct).ConfigureAwait(false);
+            if (!request.DevicesUnchanged)
+            {
+                schedule = ScheduleChecks.DropGone(schedule, stored.Schedule, await caller.Devices.ListAsync(ct).ConfigureAwait(false));
+            }
         }
 
-        return await CheckCoreAsync(caller, schedule, strict: true, ct).ConfigureAwait(false);
+        return await CheckCoreAsync(caller, schedule, strict: true, request.DevicesUnchanged ? request.KnownDeviceCount ?? 0 : null, ct).ConfigureAwait(false);
     }
 
-    private async Task<ScheduleCheck> CheckCoreAsync(ICallContext caller, Schedule schedule, bool strict, CancellationToken ct)
+    private async Task<ScheduleCheck> CheckCoreAsync(ICallContext caller, Schedule schedule, bool strict, int? knownDeviceCount, CancellationToken ct)
     {
         var engine = RunningEngine;
         var inputs = new ScheduleChecks.Inputs(
@@ -318,7 +328,8 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
             _options.EstimateParallel,
             schedule.Id == Guid.Empty ? null : RunningStore.LastEnded(schedule.Id)?.DeviceTime,
             CheckPast: strict,
-            StrictDevices: strict);
+            StrictDevices: strict,
+            KnownDeviceCount: knownDeviceCount);
         return await ScheduleChecks.CheckAsync(schedule, caller, inputs, ct).ConfigureAwait(false);
     }
 
@@ -331,7 +342,8 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
         var store = RunningStore;
         if (schedule.Id != Guid.Empty)
         {
-            await VisibleAsync(caller, schedule.Id, ct).ConfigureAwait(false);
+            var stored = await VisibleAsync(caller, schedule.Id, ct).ConfigureAwait(false);
+            schedule = ScheduleChecks.DropGone(schedule, stored.Schedule, await caller.Devices.ListAsync(ct).ConfigureAwait(false));
         }
         else if (store.All.Count >= SchedulesInfo.MaxSchedules)
         {
@@ -345,7 +357,7 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
             When = schedule.When ?? new ScheduleWhen(),
             Actions = [.. (schedule.Actions ?? []).Where(a => a is not null)],
         };
-        var check = await CheckCoreAsync(caller, normalized, strict: true, ct).ConfigureAwait(false);
+        var check = await CheckCoreAsync(caller, normalized, strict: true, null, ct).ConfigureAwait(false);
         if (!check.IsValid)
         {
             throw new ArgumentException(ScheduleChecks.FirstError(check, normalized, _catalog));
@@ -467,14 +479,58 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
         var upload = await caller.Uploads.FindAsync(uploadId ?? string.Empty, ct).ConfigureAwait(false)
             ?? throw new KeyNotFoundException("The uploaded file is no longer on the server. Upload it again.");
         await using var stream = await caller.Uploads.OpenReadAsync(upload.Id, ct).ConfigureAwait(false);
-        return await RunningVault.AddFileAsync(upload.Name, stream, ct).ConfigureAwait(false);
+        var file = await RunningVault.AddFileAsync(upload.Name, stream, ct).ConfigureAwait(false);
+        lock (_storedBy)
+        {
+            if (!_storedBy.TryGetValue(StorerOf(caller), out var files))
+            {
+                _storedBy[StorerOf(caller)] = files = [];
+            }
+
+            files.Add(file.Id);
+        }
+
+        return file;
+    }
+
+    // The files each login session (or user, without one) kept, for its own preview before the schedule is saved.
+    private readonly Dictionary<string, HashSet<Guid>> _storedBy = new(StringComparer.Ordinal);
+
+    private static string StorerOf(ICallContext caller) =>
+        string.IsNullOrEmpty(caller.SessionId) ? "user:" + caller.UserName : "session:" + caller.SessionId;
+
+    /// <summary>
+    /// Whether the caller may read a kept file: one it kept itself (this session), or one a schedule it may see names. Fail
+    /// closed: any other id answers like a file that is gone.
+    /// </summary>
+    private async Task<bool> MayReadAsync(ICallContext caller, Guid fileId, CancellationToken ct)
+    {
+        lock (_storedBy)
+        {
+            if (_storedBy.TryGetValue(StorerOf(caller), out var own) && own.Contains(fileId))
+            {
+                return true;
+            }
+        }
+
+        var engine = RunningEngine;
+        foreach (var stored in RunningStore.All)
+        {
+            if (NodeRefs.Of([new Profile { Nodes = stored.Schedule.Actions ?? [] }]).Files.Contains(fileId)
+                && await engine.CanSeeAsync(caller, stored, ct).ConfigureAwait(false))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>A kept configuration file (<c>.cfg</c>, at most 1 MB) for the action's file preview; secrets masked.</summary>
-    internal async Task<ConfigFileReply> ReadConfigFileAsync(Guid fileId, CancellationToken ct)
+    internal async Task<ConfigFileReply> ReadConfigFileAsync(ICallContext caller, Guid fileId, CancellationToken ct)
     {
         var vault = RunningVault;
-        if (vault.Files.GetValueOrDefault(fileId) is not { } file)
+        if (vault.Files.GetValueOrDefault(fileId) is not { } file || !await MayReadAsync(caller, fileId, ct).ConfigureAwait(false))
         {
             throw new KeyNotFoundException(NodeVault.FileGone);
         }

@@ -15,7 +15,7 @@ public sealed class ScheduleEditorTests
         var ctx = Samples.Context(check);
         var editor = new ScheduleEditorViewModel(ctx, id, new FakeTimeProvider(Samples.Now));
         await editor.LoadAsync();
-        await editor.CheckTask;
+        await editor.SettleAsync();
         return (editor, ctx);
     }
 
@@ -28,7 +28,7 @@ public sealed class ScheduleEditorTests
         editor.Name = "Upgrade Site A";
         editor.NextCommand.Execute(null);
         editor.SetChoice(DeviceChoice.Devices([], ["Site A"]));
-        await editor.CheckTask;
+        await editor.SettleAsync();
         editor.NextCommand.Execute(null);
         editor.NextCommand.Execute(null);
         Assert.Equal(ScheduleEditorViewModel.ThenStep, editor.Step);
@@ -66,7 +66,7 @@ public sealed class ScheduleEditorTests
         Assert.Equal(ScheduleEditorViewModel.ScheduleStep, editor.Step);
 
         editor.Name = "Nightly restart";
-        await editor.CheckTask;
+        await editor.SettleAsync();
         Assert.True(editor.NextCommand.CanExecute(null));
         Assert.True(editor.Steps[ScheduleEditorViewModel.DevicesStep].CanOpen);
         Assert.False(editor.Steps[ScheduleEditorViewModel.WhenStep].CanOpen); // no devices yet
@@ -77,7 +77,7 @@ public sealed class ScheduleEditorTests
         Assert.False(editor.NextCommand.CanExecute(null));
 
         editor.SetChoice(DeviceChoice.AllDevices);
-        await editor.CheckTask;
+        await editor.SettleAsync();
         Assert.Equal(12, editor.ChosenDevices.Count);
         Assert.Equal("Selected devices: All", editor.DevicesButtonText);
         Assert.True(editor.Steps[ScheduleEditorViewModel.WhenStep].CanOpen);
@@ -134,14 +134,14 @@ public sealed class ScheduleEditorTests
         var (editor, _) = await OpenAsync(null);
 
         editor.Name = "Taken";
-        await editor.CheckTask;
+        await editor.SettleAsync();
 
         Assert.Equal("A schedule with this name exists.", editor.ErrorOf(nameof(ScheduleEditorViewModel.Name)));
         Assert.Equal("A schedule with this name exists.", editor.StepProblem);
         Assert.False(editor.NextCommand.CanExecute(null));
 
         editor.Name = "Upgrade Site A";
-        await editor.CheckTask;
+        await editor.SettleAsync();
         Assert.Null(editor.ErrorOf(nameof(ScheduleEditorViewModel.Name)));
         Assert.True(editor.NextCommand.CanExecute(null));
     }
@@ -155,13 +155,13 @@ public sealed class ScheduleEditorTests
 
         Assert.False(editor.HasWhenWarning);
         editor.Repeat = ScheduleEditorViewModel.RepeatChoices.Single(c => c.Value == Recurrence.Daily);
-        await editor.CheckTask;
+        await editor.SettleAsync();
         Assert.Equal(warning, editor.WhenWarning);
         Assert.Null(editor.ErrorOf(nameof(ScheduleEditorViewModel.Repeat)));
         Assert.True(editor.NextCommand.CanExecute(null)); // a warning never blocks
 
         editor.Repeat = ScheduleEditorViewModel.RepeatChoices.Single(c => c.Value == Recurrence.Weekly);
-        await editor.CheckTask;
+        await editor.SettleAsync();
         Assert.False(editor.HasWhenWarning);
     }
 
@@ -185,7 +185,7 @@ public sealed class ScheduleEditorTests
         Assert.False(editor.ShowsAddFirst);
 
         var config = editor.AddAfter(-1, Kind(NodeKind.Configuration))!;
-        await editor.CheckTask;
+        await editor.SettleAsync();
         Assert.Equal([NodeKind.Configuration, NodeKind.Restart], editor.Nodes.Select(n => n.Kind));
         Assert.Equal("Choose the configuration file.", config.CanvasError);
         Assert.NotNull(editor.Chain.Nodes[0].Below);
@@ -202,7 +202,7 @@ public sealed class ScheduleEditorTests
             editor.RemoveNodeCommand.Execute(null);
         }
 
-        await editor.CheckTask;
+        await editor.SettleAsync();
         Assert.Empty(editor.Nodes);
         Assert.Equal(SchedulesTexts.AddActionFirst, editor.ActionsError); // the list's error below the canvas
     }
@@ -227,7 +227,7 @@ public sealed class ScheduleEditorTests
         var editor = await ToThenAsync();
         editor.AddAfter(-1, Kind(NodeKind.UpgradeOnline));
         editor.AddAfter(0, Kind(NodeKind.Restart));
-        await editor.CheckTask;
+        await editor.SettleAsync();
         editor.NextCommand.Execute(null);
 
         Assert.Equal(ScheduleEditorViewModel.OverviewStep, editor.Step);
@@ -238,7 +238,7 @@ public sealed class ScheduleEditorTests
 
         editor.Steps[ScheduleEditorViewModel.ScheduleStep].OpenCommand.Execute(null);
         editor.Stages = true;
-        await editor.CheckTask;
+        await editor.SettleAsync();
         editor.Steps[ScheduleEditorViewModel.OverviewStep].OpenCommand.Execute(null);
         Assert.Equal(["Next run", "Then", "Stages", "Estimated"], editor.Overview.Select(l => l.Label));
         Assert.Equal("1 → 3 → 8 → 15 → 30 → 93", editor.Overview[2].Text);
@@ -250,7 +250,7 @@ public sealed class ScheduleEditorTests
     {
         var editor = await ToThenAsync();
         editor.AddAfter(-1, Kind(NodeKind.Restart));
-        await editor.CheckTask;
+        await editor.SettleAsync();
         editor.NextCommand.Execute(null);
         bool? closed = null;
         editor.CloseRequested += (_, saved) => closed = saved;
@@ -303,5 +303,84 @@ public sealed class ScheduleEditorTests
         Assert.Equal(15, when.DayOfMonth);
         Assert.Null(when.Date);
         Assert.Empty(when.Days);
+    }
+
+    [Fact]
+    public async Task The_check_waits_until_the_typing_paused_and_then_runs_once()
+    {
+        var (editor, ctx) = await OpenAsync(null);
+        var clock = (FakeTimeProvider)editor.Clock;
+        var checks = ctx.CallsOf(SchedulesMethods.Check);
+
+        editor.Name = "N";
+        clock.Advance(ScheduleEditorViewModel.CheckDelay / 2);
+        editor.Name = "Ni";
+        clock.Advance(ScheduleEditorViewModel.CheckDelay / 2);
+        editor.Name = "Nightly";
+        Assert.Equal(checks, ctx.CallsOf(SchedulesMethods.Check)); // still typing
+
+        await editor.SettleAsync();
+        Assert.Equal(checks + 1, ctx.CallsOf(SchedulesMethods.Check));
+        Assert.Contains("\"Nightly\"", ctx.Calls.Last(c => c.Method == SchedulesMethods.Check).Payload, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task The_device_ids_go_to_the_check_only_when_the_choice_changed_and_save_always_sends_them()
+    {
+        var ids = Samples.Devices().Select(d => d.Id).Take(5).ToList();
+        var (editor, ctx) = await OpenAsync(null);
+        editor.Name = "Five cameras";
+        editor.SetChoice(DeviceChoice.Devices(ids));
+        await editor.SettleAsync();
+        var changed = Samples.Parse<ScheduleRequest>(ctx.Calls.Last(c => c.Method == SchedulesMethods.Check).Payload);
+        Assert.False(changed.DevicesUnchanged);
+        Assert.Equal(ids, changed.Schedule.Devices.DeviceIds);
+
+        editor.Name = "Five cameras at night";
+        await editor.SettleAsync();
+        var unchanged = Samples.Parse<ScheduleRequest>(ctx.Calls.Last(c => c.Method == SchedulesMethods.Check).Payload);
+        Assert.True(unchanged.DevicesUnchanged);
+        Assert.Equal(9, unchanged.KnownDeviceCount); // the last check's count
+        Assert.Empty(unchanged.Schedule.Devices.DeviceIds);
+        Assert.Null(editor.ChoiceError);
+
+        editor.AddAfter(-1, Kind(NodeKind.Restart));
+        await editor.SettleAsync();
+        await editor.SaveCommand.ExecuteAsync(null);
+        var saved = Samples.Parse<ScheduleRequest>(ctx.Calls.Last(c => c.Method == SchedulesMethods.Save).Payload);
+        Assert.False(saved.DevicesUnchanged);
+        Assert.Null(saved.KnownDeviceCount);
+        Assert.Equal(ids, saved.Schedule.Devices.DeviceIds);
+    }
+
+    [Fact]
+    public async Task A_save_refused_for_the_devices_shows_the_error_below_the_devices_button_never_in_the_footer()
+    {
+        var gone = false;
+        var (editor, ctx) = await OpenAsync(Samples.WeeklyId, s => gone ? Samples.Check(s) with { DevicesError = "Choose at least one device or tag." } : Samples.Check(s));
+        Assert.Equal("Selected devices: Tag Site A and 1 device", editor.DevicesButtonText);
+        editor.Steps[ScheduleEditorViewModel.OverviewStep].OpenCommand.Execute(null);
+        Assert.True(editor.IsOverviewStep);
+
+        gone = true; // meanwhile the devices of the choice were removed from OADM
+        ctx.Answers[SchedulesMethods.Save] = _ => throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.FailedPrecondition, "Choose at least one device or tag."));
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Null(editor.ErrorText);
+        Assert.Equal(ScheduleEditorViewModel.DevicesStep, editor.Step);
+        Assert.Equal("Choose at least one device or tag.", editor.ChoiceError);
+    }
+
+    [Fact]
+    public async Task A_device_removed_from_oadm_is_not_counted_on_the_devices_button()
+    {
+        var ctx = Samples.Context();
+        var stored = Samples.Weekly with { Devices = new ScheduleDevices { Kind = ScheduleDevicesKind.Chosen, Tags = ["Site A"] } }; // the server dropped the removed one
+        ctx.Answers[SchedulesMethods.Get] = _ => Samples.Serialize(new ScheduleReply(stored, Samples.Check(stored)));
+        var editor = new ScheduleEditorViewModel(ctx, Samples.WeeklyId, new FakeTimeProvider(Samples.Now));
+        await editor.LoadAsync();
+
+        Assert.Equal("Selected devices: Tag Site A", editor.DevicesButtonText);
+        Assert.Equal(8, editor.ChosenDevices.Count);
     }
 }

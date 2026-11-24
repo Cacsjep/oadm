@@ -42,7 +42,11 @@ plus the plugin's "manage". A save checks them against the saving user, every ru
 
 - Start: a tick every 30 s takes the latest start after the one last handled (`StoredSchedule.Handled`; a save and a
   turn on set it to now). A run of the schedule goes on: a Skipped row. Older than 24 h or its window closed: a Missed
-  row. Else the run starts. One per schedule and tick, so a server that was off catches up at most once.
+  row. Else the run starts. One per schedule and tick, so a server that was off catches up at most once. Only the first
+  start of the plugin instance (the server's start; the host keeps one instance per process and turns it off and on with
+  `StopAsync`/`StartAsync`) catches up: after the plugin was turned on again the first look records due starts as Missed
+  ("Schedules was turned off at the time.", `ScheduleEngine.Start(catchUp: false)`; decision 2026-11-24).
+- Window end: only for runs at their time; Run now starts every device of all its stages (decision 2026-11-24).
 - Owner: `ICorePluginContext.UserCalls` asked at the start of every run; no host support, no account, a missing right or a
   chosen device outside the owner's view: the run ends Failed with the reason, nothing starts. A chosen device removed
   from OADM is left out.
@@ -58,7 +62,7 @@ plus the plugin's "manage". A save checks them against the saving user, every ru
 - Result: Stopped (stages and a failure: "Stopped at stage 3: 1 failed."), Failed (a device failed), Done with warnings
   (a warning, a device not reachable or not started), else Done. Missed and Skipped are rows of their own.
 - The run's row is written at the start and the end (the live counts come from memory); at most 50 rows per schedule,
-  1,000 failed devices per run. A run still Running when the server starts again ends Failed "The server stopped during
+  1,000 failed devices per run. A run still Running when the server starts again ends Stopped "The server stopped during
   the run.".
 - Audit: one entry per start, so one per stage (one per run without stages), user "Schedule <name> (<owner>)",
   target "Run <name>".
@@ -86,7 +90,16 @@ An access key (user name "MCP <key>") never owns a schedule: save, turn on and R
 
 Delete closes the schedule's run (`ScheduleEngine.StopRun`: queued tasks cancelled, no further stage). Stopping the
 plugin ends every run Stopped at once (`DisposeAsync`); its running tasks go to `LeftTasks`, kept by the plugin, so the next
-engine gives those devices no second task while they run.
+engine gives those devices no second task while they run. The tick loop stops first and Run now is refused while it stops;
+the devices still running count as Not started ("2 devices were still running; counted as not started."). A run that
+breaks does the same and ends Failed.
+
+Checks and saves drop the chosen devices the stored schedule had that are no longer in the caller's view
+(`ScheduleChecks.DropGone`; a camera removed from OADM never blocks a save); a new id outside the view answers like an unknown
+id. `ScheduleRequest.DevicesUnchanged` with `KnownDeviceCount` lets the wizard's Check skip the devices (Save never).
+
+A kept configuration file is readable (`readConfigFile`) only by the session that stored it (`storeFile`) or by users who
+see a schedule naming it; any other id answers like a file that is gone.
 
 ## Tests
 
