@@ -10,6 +10,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Added
 
 - Schedules: upgrade AXIS OS, apply a configuration, restart and more on chosen devices at a set time, optionally rolled out in stages.
+- Plugin SDK 0.16.0: work a user set up runs later with that user's current rights, and the shared pane header, progress cell and wizard overview.
 
 ### Fixed
 
