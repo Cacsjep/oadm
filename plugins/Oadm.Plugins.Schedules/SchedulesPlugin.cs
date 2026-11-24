@@ -116,7 +116,7 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
         return rules switch
         {
             SchedulesMethods.Save when PluginJson.TryParse<ScheduleRequest>(payloadJson, json)?.Schedule is { } s =>
-                (s.Id == Guid.Empty ? "Created schedule " : "Changed schedule ") + s.Name?.Trim(),
+                "Saved schedule " + s.Name?.Trim(),
             SchedulesMethods.Delete => "Deleted a schedule",
             SchedulesMethods.TurnOn when PluginJson.TryParse<TurnOnRequest>(payloadJson, json) is { } t =>
                 (t.On ? "Turned on schedule " : "Turned off schedule ") + NameOf(t.Id),
@@ -340,7 +340,8 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
         ArgumentNullException.ThrowIfNull(schedule);
         RequireUser(caller);
         var store = RunningStore;
-        if (schedule.Id != Guid.Empty)
+        // The wizard gives a new schedule its id: an id the store does not have is a new schedule; a stored one is an edit.
+        if (schedule.Id != Guid.Empty && store.Find(schedule.Id) is not null)
         {
             var stored = await VisibleAsync(caller, schedule.Id, ct).ConfigureAwait(false);
             schedule = ScheduleChecks.DropGone(schedule, stored.Schedule, await caller.Devices.ListAsync(ct).ConfigureAwait(false));

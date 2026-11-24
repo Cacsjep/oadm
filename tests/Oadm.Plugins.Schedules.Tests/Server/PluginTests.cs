@@ -67,10 +67,24 @@ public sealed class PluginTests : IAsyncLifetime
         Assert.False(_plugin.IsAudited("tool.save.preview"));
         Assert.False(_plugin.IsAudited(SchedulesMethods.List));
         Assert.Equal((CorePluginGroup.Automation, true, "calendarClock"), (_plugin.Group, _plugin.HasPage, _plugin.IconKey));
-        Assert.Equal("Created schedule Nightly", _plugin.AuditDetail(SchedulesMethods.Save, JsonSerializer.Serialize(new ScheduleRequest(NewSchedule("Nightly")), Json)));
+        Assert.Equal("Saved schedule Nightly", _plugin.AuditDetail(SchedulesMethods.Save, JsonSerializer.Serialize(new ScheduleRequest(NewSchedule("Nightly")), Json)));
         var task = Assert.Single(_plugin.TaskPlugins);
         Assert.Equal((SchedulesInfo.TaskPluginId, false), (task.Id, task.ShowInMenus));
         Assert.Equal(SchedulesInfo.RunEndedEvent, Assert.Single(_plugin.EventTypes).Id);
+    }
+
+    [Fact]
+    public async Task A_new_schedule_with_the_id_the_wizard_gave_it_is_saved_and_saved_again_as_a_change()
+    {
+        var anna = _ctx.CallAsAllDevices("anna");
+        _users.Set("anna", anna);
+        var id = Guid.NewGuid();
+        var created = await CallAsync<ScheduleReply>(anna, SchedulesMethods.Save, new ScheduleRequest(NewSchedule("Nightly") with { Id = id }));
+        Assert.Equal(id, created.Schedule.Id);
+
+        var changed = await CallAsync<ScheduleReply>(anna, SchedulesMethods.Save, new ScheduleRequest(created.Schedule with { Name = "Nightly restart" }));
+        var list = await CallAsync<SchedulesReply>(anna, SchedulesMethods.List);
+        Assert.Equal((id, "Nightly restart"), (changed.Schedule.Id, Assert.Single(list.Schedules).Name));
     }
 
     [Fact]
