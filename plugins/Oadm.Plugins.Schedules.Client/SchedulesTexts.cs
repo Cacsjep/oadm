@@ -27,6 +27,15 @@ public static class SchedulesTexts
 
     public static string DeleteMessage(string name) => $"Delete the schedule {name}? A run that goes on runs to its end.";
 
+    // Runs pane
+    public const string Runs = "Runs";
+    public const string DeleteRunsTip = "Delete the chosen runs";
+    public const string DeleteAll = "Delete all";
+    public const string DeleteAllRunsTip = "Delete every run of this schedule";
+    public const string DeleteAllRunsTitle = "Delete all runs";
+
+    public static string DeleteAllRunsMessage(string name) => $"Delete every run of {name}?";
+
     // Grid columns
     public const string Name = "Name";
     public const string Devices = "Devices";

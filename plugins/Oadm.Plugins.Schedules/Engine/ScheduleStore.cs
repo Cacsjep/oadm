@@ -300,6 +300,56 @@ public sealed class ScheduleStore(IPluginSettings settings, IPluginRecords recor
         }
     }
 
+    /// <summary>
+    /// Deletes the run rows of a schedule that <paramref name="delete"/> picks, with their failed devices; answers how many went.
+    /// One write per collection under the write lock; nothing is written when none goes.
+    /// </summary>
+    public async Task<int> DeleteRunsAsync(Guid scheduleId, Func<StoredRun, bool> delete, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(delete);
+        await _write.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            List<StoredRun> gone;
+            List<StoredRun> kept;
+            lock (_gate)
+            {
+                if (!_runs.TryGetValue(scheduleId, out var list))
+                {
+                    return 0;
+                }
+
+                gone = [.. list.Where(delete)];
+                if (gone.Count == 0)
+                {
+                    return 0;
+                }
+
+                kept = [.. list.Where(r => !gone.Contains(r))];
+            }
+
+            await records.SetManyAsync(RunsCollection, [new(Key(scheduleId), kept.Count == 0 ? null : JsonSerializer.Serialize(kept, Json))], ct).ConfigureAwait(false);
+            await records.SetManyAsync(FailuresCollection, [.. gone.Select(r => new KeyValuePair<string, string?>(Key(r.Run.Id), null))], ct).ConfigureAwait(false);
+            lock (_gate)
+            {
+                if (kept.Count == 0)
+                {
+                    _runs.Remove(scheduleId);
+                }
+                else
+                {
+                    _runs[scheduleId] = kept;
+                }
+            }
+
+            return gone.Count;
+        }
+        finally
+        {
+            _write.Release();
+        }
+    }
+
     /// <summary>The failed devices of an ended run (at most 1,000).</summary>
     public async Task<IReadOnlyList<RunFailure>> FailuresAsync(Guid runId, CancellationToken ct) =>
         PluginJson.TryParse<List<RunFailure>>(await records.GetAsync(FailuresCollection, Key(runId), ct).ConfigureAwait(false), Json) ?? [];

@@ -51,6 +51,10 @@ public sealed class ScreenshotTests
             Assert.True(view.FindControl<DataGrid>("FailureGrid")!.IsEffectivelyVisible);
             Assert.True(view.FindControl<ToolbarButton>("DeleteButton")!.IsEffectivelyEnabled);
             Assert.Empty(VisibleTexts(window, SchedulesTexts.ChooseSchedule));
+            Assert.Single(VisibleTexts(window, SchedulesTexts.Runs)); // the shared pane header of the Tasks pane
+            Assert.Contains("danger", view.FindControl<Button>("DeleteAllRunsButton")!.Classes);
+            Assert.True(view.FindControl<Button>("DeleteRunsButton")!.IsEffectivelyEnabled); // the chosen run ended
+            Assert.Equal(DataGridSelectionMode.Extended, view.FindControl<DataGrid>("RunGrid")!.SelectionMode);
             Headless.Capture(window, $"schedules-page-runs-{suffix}.png");
             page.Deactivate();
             window.Close();

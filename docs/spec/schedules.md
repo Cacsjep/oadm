@@ -123,7 +123,10 @@ step is Not needed (success). Not in the first version and never: hardening scan
   set time."
 - Below, the **runs** of the selected schedule (newest first, the last 50 kept per schedule): Started, Ended, Result
   chip with counts, and for a run with failures its failed devices (device, step, message; at most 1,000 per run,
-  virtualized). No count captions above the lists.
+  virtualized). No count captions above the lists. The runs panel has the header "Runs" with **Delete** (the chosen rows)
+  and **Delete all**, as the Tasks pane: "manage", the schedule visible to the caller; a run that still runs is never
+  deleted (left out by Delete all, refused when chosen: "A run that still runs cannot be deleted."); its failed devices go
+  with it; audited "Deleted 3 runs of schedule X" or "Deleted every run of schedule X".
 - Live: the plugin's `changed` event refreshes the grid and the runs.
 
 ## The editor: a wizard
@@ -177,7 +180,8 @@ Area `schedules` (the host names a plugin's tools `oadm_<area>_<name>`): `oadm_s
 `oadm_schedules_get` (one, with the estimate and the next five runs), `oadm_schedules_runs` (paged; with `run_id` that
 run's failed devices, at most 50, with `more`), `oadm_schedules_actions` (the actions with their default settings, PKI's
 policies, VAPIX Commander commands by `command_search`), changes with preview and run: `_save`, `_delete`, `_turn_on`,
-`_turn_off`, `_run_now`; `_file_store` (an uploaded file for an action) as in Provisioning.
+`_turn_off`, `_run_now`, `_runs_delete` (`run_ids`, or `all`; never a running run); `_file_store` (an uploaded file
+for an action) as in Provisioning.
 
 ## Scale
 

@@ -352,6 +352,11 @@ internal static class Samples
             var id = Parse<IdRequest>(payload).Id;
             return Serialize(new SchedulesReply([.. Summaries.Where(s => s.Id != id)]));
         };
+        ctx.Answers[SchedulesMethods.DeleteRuns] = payload =>
+        {
+            var request = Parse<DeleteRunsRequest>(payload);
+            return Serialize(new RunsReply([.. Runs(request.ScheduleId).Where(r => r.Result == RunResult.Running || !(request.All || request.RunIds.Contains(r.Id)))]));
+        };
         ctx.Answers[SchedulesMethods.StoreFile] = _ => Serialize(new StoredFile(Guid.NewGuid(), "site-a.cfg", 1234, "abc", DateTimeOffset.UnixEpoch));
         return ctx;
     }

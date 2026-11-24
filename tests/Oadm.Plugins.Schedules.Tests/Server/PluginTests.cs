@@ -289,7 +289,7 @@ public sealed class PluginTests : IAsyncLifetime
         _ctx.Add(new FakeDevice());
         var anna = _ctx.CallAsAllDevices("anna");
         Assert.Equal(
-            ["list", "get", "runs", "actions", "save", "delete", "turn_on", "turn_off", "run_now", "file_store"],
+            ["list", "get", "runs", "actions", "save", "delete", "turn_on", "turn_off", "run_now", "runs_delete", "file_store"],
             _plugin.Tools.Select(t => t.Name));
         const string args = """{"name":"Nightly","devices":{"all":true},"when":{"recurrence":"weekly","time":"23:00","days":["monday"],"window_end":"05:00"},"actions":[{"id":"a1","kind":"restart"}],"stages":true}""";
         using (var plan = JsonDocument.Parse((await _ctx.InvokeAsync(_plugin, anna, "tool.save.preview", args))!))
@@ -389,5 +389,69 @@ public sealed class PluginTests : IAsyncLifetime
         await using var restarted = new SchedulesPlugin(new SchedulesOptions(), _time);
         await restarted.StartAsync(_ctx, CancellationToken.None);
         await Eventually.TrueAsync(() => _ctx.TaskRuns.Any(r => r.PluginId == SchedulesInfo.TaskPluginId && r.DeviceIds.Contains(device.Id)), "the missed start runs");
+    }
+
+    /// <summary>Two ended runs (one with a failed device) and a running one of a new schedule of anna's.</summary>
+    private async Task<(Guid Schedule, Guid First, Guid Second, Guid Running)> RunsAsync()
+    {
+        _ctx.Add(new FakeDevice());
+        _users.Set("anna", _ctx.CallAsAllDevices("anna"));
+        var saved = await CallAsync<ScheduleReply>(_ctx.CallAsAllDevices("anna"), SchedulesMethods.Save, new ScheduleRequest(NewSchedule("Nightly")));
+        var id = saved.Schedule.Id;
+        var store = _plugin.RunningStore;
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        await store.SaveRunAsync(new StoredRun { Run = new ScheduleRun { Id = first, ScheduleId = id, Result = RunResult.Failed, Started = EngineHarness.Start } }, [new RunFailure(Guid.NewGuid(), "10.0.0.1", "Restart the device", "No answer.")], CancellationToken.None);
+        await store.SaveRunAsync(new StoredRun { Run = new ScheduleRun { Id = second, ScheduleId = id, Result = RunResult.Done, Started = EngineHarness.Start } }, null, CancellationToken.None);
+
+        // Run now: the context's tasks never end, so this run keeps running.
+        var running = await CallAsync<ScheduleRun>(_ctx.CallAsAllDevices("anna"), SchedulesMethods.RunNow, new IdRequest(id));
+        return (id, first, second, running.Id);
+    }
+
+    [Fact]
+    public async Task Deleting_runs_removes_the_chosen_rows_and_their_failed_devices_never_a_running_run()
+    {
+        var (id, first, second, running) = await RunsAsync();
+        var anna = _ctx.CallAsAllDevices("anna");
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => CallAsync<RunsReply>(anna, SchedulesMethods.DeleteRuns, new DeleteRunsRequest(id, [first, running])));
+        Assert.Equal(SchedulesPlugin.RunStillRuns, refused.Message);
+        Assert.Equal(3, _plugin.RunningStore.RunsOf(id).Count);
+
+        var left = await CallAsync<RunsReply>(anna, SchedulesMethods.DeleteRuns, new DeleteRunsRequest(id, [first]));
+        Assert.Equal([running, second], left.Runs.Select(r => r.Id));
+        Assert.Empty(await _plugin.RunningStore.FailuresAsync(first, CancellationToken.None));
+        Assert.Contains(_ctx.PublishedEvents, e => e.Topic == SchedulesMethods.ChangedTopic);
+        Assert.Equal("Deleted 1 run of schedule Nightly", _plugin.AuditDetail(SchedulesMethods.DeleteRuns, JsonSerializer.Serialize(new DeleteRunsRequest(id, [first]), Json)));
+        Assert.True(_plugin.IsAudited(SchedulesMethods.DeleteRuns));
+        Assert.Equal(PermissionKeys.Manage, _plugin.RequiredPermission(SchedulesMethods.DeleteRuns));
+
+        // Delete all: every ended run; the running one stays.
+        var all = await CallAsync<RunsReply>(anna, SchedulesMethods.DeleteRuns, new DeleteRunsRequest(id, [], All: true));
+        Assert.Equal([running], all.Runs.Select(r => r.Id));
+        Assert.Equal("Deleted every run of schedule Nightly", _plugin.AuditDetail(SchedulesMethods.DeleteRuns, JsonSerializer.Serialize(new DeleteRunsRequest(id, [], true), Json)));
+
+        // A user of another group answers like an unknown schedule.
+        var eva = FakeCallContext.WithGroup(_ctx, [], "eva", "g2");
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => CallAsync<RunsReply>(eva, SchedulesMethods.DeleteRuns, new DeleteRunsRequest(id, [], All: true)));
+    }
+
+    [Fact]
+    public async Task The_runs_delete_tool_previews_then_deletes()
+    {
+        var (id, first, second, running) = await RunsAsync();
+        var anna = _ctx.CallAsAllDevices("anna");
+        var args = JsonSerializer.Serialize(new { schedule_id = id, all = true });
+
+        using (var plan = JsonDocument.Parse((await _ctx.InvokeAsync(_plugin, anna, "tool.runs_delete.preview", args))!))
+        {
+            Assert.Equal((2, "run"), (plan.RootElement.GetProperty("will_change").GetInt32(), plan.RootElement.GetProperty("unit").GetString()));
+        }
+
+        Assert.Equal(3, _plugin.RunningStore.RunsOf(id).Count);
+        await _ctx.InvokeAsync(_plugin, anna, "tool.runs_delete", args);
+        Assert.Equal([running], _plugin.RunningStore.RunsOf(id).Select(r => r.Run.Id));
+        _ = (first, second);
     }
 }

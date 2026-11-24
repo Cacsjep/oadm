@@ -94,6 +94,8 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
 
     public bool IsAudited(string method) => !PluginTool.IsPreviewMethod(method) && !SchedulesMethods.IsRead(SchedulesTools.Set.RulesMethodOf(method));
 
+    private static string RunsText(int count) => count == 1 ? "1 run" : count.ToString(System.Globalization.CultureInfo.InvariantCulture) + " runs";
+
     /// <summary>The audit text: what was done to which schedule.</summary>
     public string? AuditDetail(string method, string? payloadJson)
     {
@@ -107,6 +109,7 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
                 SchedulesMethods.TurnOn => "Turned a schedule on or off",
                 SchedulesMethods.RunNow => "Ran a schedule now",
                 SchedulesMethods.StoreFile => "Stored a file for a schedule",
+                SchedulesMethods.DeleteRuns => "Deleted runs of a schedule",
                 _ => null,
             };
         }
@@ -121,6 +124,9 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
             SchedulesMethods.TurnOn when PluginJson.TryParse<TurnOnRequest>(payloadJson, json) is { } t =>
                 (t.On ? "Turned on schedule " : "Turned off schedule ") + NameOf(t.Id),
             SchedulesMethods.RunNow when PluginJson.TryParse<IdRequest>(payloadJson, json) is { } r => "Ran schedule " + NameOf(r.Id) + " now",
+            SchedulesMethods.DeleteRuns when PluginJson.TryParse<DeleteRunsRequest>(payloadJson, json) is { } d => d.All
+                ? "Deleted every run of schedule " + NameOf(d.ScheduleId)
+                : $"Deleted {RunsText(d.RunIds?.Count ?? 0)} of schedule {NameOf(d.ScheduleId)}",
             SchedulesMethods.StoreFile => "Stored a file for a schedule",
             _ => null,
         };
@@ -206,6 +212,7 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
             SchedulesMethods.RunNow => PluginJson.Serialize(await RunNowAsync(caller, PluginJson.Parse<IdRequest>(payloadJson, json).Id, ct).ConfigureAwait(false), json),
             SchedulesMethods.Runs => PluginJson.Serialize(new RunsReply(await RunsOfAsync(caller, PluginJson.Parse<IdRequest>(payloadJson, json).Id, ct).ConfigureAwait(false)), json),
             SchedulesMethods.RunFailures => PluginJson.Serialize(await FailuresAsync(caller, PluginJson.Parse<RunRequest>(payloadJson, json), ct).ConfigureAwait(false), json),
+            SchedulesMethods.DeleteRuns => PluginJson.Serialize(await DeleteRunsAsync(caller, PluginJson.Parse<DeleteRunsRequest>(payloadJson, json), ct).ConfigureAwait(false), json),
             SchedulesMethods.Policies => PluginJson.Serialize(await PoliciesAsync(ct).ConfigureAwait(false) ?? [], json),
             SchedulesMethods.VapixCommands => PluginJson.Serialize(VapixCommands(), json),
             SchedulesMethods.StoreFile => PluginJson.Serialize(await StoreFileAsync(caller, PluginJson.Parse<FileRequest>(payloadJson, json).UploadId, ct).ConfigureAwait(false), json),
@@ -438,6 +445,43 @@ public sealed class SchedulesPlugin : ICorePlugin, IEventSource, IAsyncDisposabl
         await VisibleAsync(caller, scheduleId, ct).ConfigureAwait(false);
         var live = RunningEngine.LiveRun(scheduleId);
         return [.. RunningStore.RunsOf(scheduleId).Select(r => live is not null && r.Run.Id == live.Id ? live : r.Run)];
+    }
+
+    /// <summary>"A run that still runs cannot be deleted."</summary>
+    public const string RunStillRuns = "A run that still runs cannot be deleted.";
+
+    /// <summary>
+    /// The runs a delete would remove (the tool's preview too; never writes): the chosen ones, or with All every ended one. A
+    /// running run is never deleted: skipped with All, refused when chosen. Ids no longer there are left out.
+    /// </summary>
+    internal async Task<IReadOnlyList<Guid>> CheckDeleteRunsAsync(ICallContext caller, DeleteRunsRequest request, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        await VisibleAsync(caller, request.ScheduleId, ct).ConfigureAwait(false);
+        var live = RunningEngine.LiveRun(request.ScheduleId)?.Id;
+        bool Running(ScheduleRun r) => r.Result == RunResult.Running || r.Id == live;
+        var runs = RunningStore.RunsOf(request.ScheduleId).Select(r => r.Run).ToList();
+        if (request.All)
+        {
+            return [.. runs.Where(r => !Running(r)).Select(r => r.Id)];
+        }
+
+        var chosen = (request.RunIds ?? []).ToHashSet();
+        var picked = runs.Where(r => chosen.Contains(r.Id)).ToList();
+        return picked.Any(Running) ? throw new InvalidOperationException(RunStillRuns) : [.. picked.Select(r => r.Id)];
+    }
+
+    internal async Task<RunsReply> DeleteRunsAsync(ICallContext caller, DeleteRunsRequest request, CancellationToken ct)
+    {
+        var ids = (await CheckDeleteRunsAsync(caller, request, ct).ConfigureAwait(false)).ToHashSet();
+        var live = RunningEngine.LiveRun(request.ScheduleId)?.Id;
+        if (ids.Count > 0
+            && await RunningStore.DeleteRunsAsync(request.ScheduleId, r => ids.Contains(r.Run.Id) && r.Run.Result != RunResult.Running && r.Run.Id != live, ct).ConfigureAwait(false) > 0)
+        {
+            Publish(request.ScheduleId, RunningStore.Find(request.ScheduleId)?.OwnerScopeKey);
+        }
+
+        return new RunsReply(await RunsOfAsync(caller, request.ScheduleId, ct).ConfigureAwait(false));
     }
 
     internal async Task<RunFailuresReply> FailuresAsync(ICallContext caller, RunRequest request, CancellationToken ct)

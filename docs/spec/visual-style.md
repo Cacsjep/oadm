@@ -358,6 +358,10 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 - `WizardSteps` + `WizardStepItem`: the step row of every wizard. Numbered dot and name, thin line between, current
   accent, done with a check, a step opens when every step before it is complete; theme `Button.wizardStep`,
   `Border.wizardDot`, `TextBlock.wizardLabel`, `Border.wizardLine`.
+- `PaneHeader`: the header bar of a pane below a list, one `titleRow`: the title left with an optional `Badge`, an
+  optional `Middle` (a progress row), the `Actions` right (flat command buttons, a separator, the red one last). The Tasks
+  pane of the Devices page (Details, Cancel, Delete, Delete all, the chevron) and the runs of Schedules (Delete, Delete
+  all).
 - `OverviewList` (`OverviewLine`): the overview step of every wizard, one line per fact with its label in a narrow
   column (the Event rule editor, the Schedules wizard).
 - `GroupedChoice` with `ComboBox.grouped`: every grouped select field. Grey group headers that cannot be chosen, the

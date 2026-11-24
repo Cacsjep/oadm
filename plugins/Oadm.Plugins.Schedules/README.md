@@ -63,7 +63,9 @@ plus the plugin's "manage". A save checks them against the saving user, every ru
   (a warning, a device not reachable or not started), else Done. Missed and Skipped are rows of their own.
 - The run's row is written at the start and the end (the live counts come from memory); at most 50 rows per schedule,
   1,000 failed devices per run. A run still Running when the server starts again ends Stopped "The server stopped during
-  the run.".
+  the run.". `deleteRuns` ("manage", tool `runs_delete`) deletes chosen rows or, with `All`, every ended one with their
+  failed devices in one write per collection (`ScheduleStore.DeleteRunsAsync`); a running run is never deleted (skipped
+  by All, refused when chosen).
 - Audit: one entry per start, so one per stage (one per run without stages), user "Schedule <name> (<owner>)",
   target "Run <name>".
 - Event: "Schedule run ended" (`oadm.schedules.run-ended`, server scope, owner scope "all") once per run, also Missed and

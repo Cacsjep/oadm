@@ -130,6 +130,9 @@ public sealed record RunRow(
             run.Ended ?? DateTimeOffset.MaxValue);
     }
 
+    /// <summary>The run still runs: it is never deleted.</summary>
+    public bool IsRunning => IsAccent;
+
     private static bool HasReason(ScheduleRun run) => run.Result is RunResult.Stopped or RunResult.Failed && run.Reason is { Length: > 0 };
 }
 
@@ -184,7 +187,7 @@ public sealed partial class SchedulesViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelection), nameof(ToggleText), nameof(ToggleIcon), nameof(ShowNoRuns), nameof(ShowChooseSchedule))]
-    [NotifyCanExecuteChangedFor(nameof(EditCommand), nameof(RunNowCommand), nameof(ToggleCommand), nameof(DeleteCommand))]
+    [NotifyCanExecuteChangedFor(nameof(EditCommand), nameof(RunNowCommand), nameof(ToggleCommand), nameof(DeleteCommand), nameof(DeleteRunsCommand), nameof(DeleteAllRunsCommand))]
     public partial ScheduleRow? SelectedSchedule { get; set; }
 
     [ObservableProperty]
@@ -208,7 +211,7 @@ public sealed partial class SchedulesViewModel : ObservableObject, IDisposable
 
     /// <summary>A change runs (Run now, turn on or off, delete): the buttons wait.</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(NewScheduleCommand), nameof(EditCommand), nameof(RunNowCommand), nameof(ToggleCommand), nameof(DeleteCommand))]
+    [NotifyCanExecuteChangedFor(nameof(NewScheduleCommand), nameof(EditCommand), nameof(RunNowCommand), nameof(ToggleCommand), nameof(DeleteCommand), nameof(DeleteRunsCommand), nameof(DeleteAllRunsCommand))]
     public partial bool IsBusy { get; private set; }
 
     [ObservableProperty]
@@ -291,6 +294,60 @@ public sealed partial class SchedulesViewModel : ObservableObject, IDisposable
     }
 
     partial void OnSelectedRunChanged(RunRow? value) => FailuresTask = LoadFailuresAsync();
+
+    /// <summary>The runs chosen in the runs grid (several with Ctrl or Shift); the view hands them over.</summary>
+    public IReadOnlyList<RunRow> SelectedRuns { get; private set; } = [];
+
+    /// <summary>The grid's choice changed (the view, tests).</summary>
+    public void SetSelectedRuns(IEnumerable<RunRow> runs)
+    {
+        ArgumentNullException.ThrowIfNull(runs);
+        SelectedRuns = [.. runs];
+        RefreshRunCommands();
+    }
+
+    private bool CanDeleteRuns() => CanChange() && SelectedRuns.Any(r => !r.IsRunning);
+
+    private bool CanDeleteAllRuns() => CanChange() && Runs.Any(r => !r.IsRunning);
+
+    /// <summary>Delete: the chosen runs that ended (a running run is never deleted).</summary>
+    [RelayCommand(CanExecute = nameof(CanDeleteRuns))]
+    private Task DeleteRunsAsync() => ChangeAsync(async row =>
+    {
+        var ids = SelectedRuns.Where(r => !r.IsRunning).Select(r => r.Id).ToList();
+        ApplyRuns(Parse<RunsReply>(await _ctx.InvokeAsync(SchedulesMethods.DeleteRuns, Serialize(new DeleteRunsRequest(row.Id, ids)), CancellationToken.None).ConfigureAwait(true)).Runs, null);
+    });
+
+    /// <summary>Delete all: every run of the schedule that ended, after a confirmation with a red Delete.</summary>
+    [RelayCommand(CanExecute = nameof(CanDeleteAllRuns))]
+    private async Task DeleteAllRunsAsync()
+    {
+        if (SelectedSchedule is not { } schedule
+            || !await _ctx.ConfirmAsync(SchedulesTexts.DeleteAllRunsTitle, SchedulesTexts.DeleteAllRunsMessage(schedule.Name), SchedulesTexts.Delete).ConfigureAwait(true))
+        {
+            return;
+        }
+
+        await ChangeAsync(async row =>
+            ApplyRuns(Parse<RunsReply>(await _ctx.InvokeAsync(SchedulesMethods.DeleteRuns, Serialize(new DeleteRunsRequest(row.Id, [], All: true)), CancellationToken.None).ConfigureAwait(true)).Runs, null))
+            .ConfigureAwait(true);
+    }
+
+    private void ApplyRuns(IReadOnlyList<ScheduleRun> runs, Guid? selectedRun)
+    {
+        var now = _time.GetUtcNow();
+        Runs.ReplaceAll([.. runs.OrderByDescending(r => r.Started).Select(r => RunRow.Of(r, now))]);
+        SelectedRun = selectedRun is { } id ? Runs.FirstOrDefault(r => r.Id == id) : null;
+        SelectedRuns = SelectedRun is { } kept ? [kept] : [];
+        OnPropertyChanged(nameof(ShowNoRuns));
+        RefreshRunCommands();
+    }
+
+    private void RefreshRunCommands()
+    {
+        DeleteRunsCommand.NotifyCanExecuteChanged();
+        DeleteAllRunsCommand.NotifyCanExecuteChanged();
+    }
 
     private bool CanCreate() => MayManage && !IsBusy;
 
@@ -465,8 +522,7 @@ public sealed partial class SchedulesViewModel : ObservableObject, IDisposable
         var version = ++_runsVersion;
         if (SelectedSchedule is not { } row)
         {
-            Runs.ReplaceAll([]);
-            OnPropertyChanged(nameof(ShowNoRuns));
+            ApplyRuns([], null);
             return;
         }
 
@@ -482,9 +538,7 @@ public sealed partial class SchedulesViewModel : ObservableObject, IDisposable
                     return;
                 }
 
-                var now = _time.GetUtcNow();
-                Runs.ReplaceAll([.. reply.Runs.OrderByDescending(r => r.Started).Select(r => RunRow.Of(r, now))]);
-                SelectedRun = selectedRun is { } id ? Runs.FirstOrDefault(r => r.Id == id) : null;
+                ApplyRuns(reply.Runs, selectedRun);
             }).ConfigureAwait(true);
             if (error is not null && version == _runsVersion)
             {
@@ -581,6 +635,7 @@ public sealed partial class SchedulesViewModel : ObservableObject, IDisposable
         RunNowCommand.NotifyCanExecuteChanged();
         ToggleCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();
+        RefreshRunCommands();
     }
 
     private static string Serialize<T>(T value) => PluginJson.Serialize(value, SchedulesJson.Options);

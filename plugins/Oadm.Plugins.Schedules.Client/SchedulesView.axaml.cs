@@ -16,6 +16,14 @@ public partial class SchedulesView : UserControl
                 vm.EditCommand.Execute(null);
             }
         };
+        // Several runs with Ctrl or Shift: the chosen ones go to the view model in one step.
+        RunGrid.SelectionChanged += (_, _) =>
+        {
+            if (DataContext is SchedulesViewModel vm && !Oadm.Sdk.Client.Controls.GridSort.IsMovingSelection(RunGrid))
+            {
+                vm.SetSelectedRuns(RunGrid.SelectedItems.OfType<RunRow>());
+            }
+        };
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)

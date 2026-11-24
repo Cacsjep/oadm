@@ -116,6 +116,22 @@ internal static class SchedulesTools
                 var run = await plugin.RunNowAsync(caller, input.Args.Id, ct).ConfigureAwait(false);
                 return new RunAnswer(run.Id, run.Started);
             })
+        .Change<DeleteRunsArgs, RunsPlan, DoneAnswer>(
+            new("runs_delete", "Delete schedule runs", "Deletes run rows of a schedule with their failed devices: the chosen run_ids, or with all every ended run. A run that still runs is never deleted.")
+            {
+                Destructive = true,
+            },
+            SchedulesMethods.DeleteRuns,
+            async (plugin, caller, input, ct) =>
+            {
+                var ids = await plugin.CheckDeleteRunsAsync(caller, input.Args.Request(), ct).ConfigureAwait(false);
+                return ids.Count == 0 ? throw new PluginToolInputException("run_ids", "None of these runs can be deleted.") : new RunsPlan(ids.Count);
+            },
+            async (plugin, caller, input, _, ct) =>
+            {
+                await plugin.DeleteRunsAsync(caller, input.Args.Request(), ct).ConfigureAwait(false);
+                return new DoneAnswer("Deleted.");
+            })
         .Change<FileArgs, FilePlan, FileAnswer>(
             new("file_store", "Keep a schedule file", "Keeps a file the caller uploaded (an AXIS OS file, a configuration file .cfg of Create configuration file or ADM) for an action; the answer is its file_id for the action's settings."),
             SchedulesMethods.StoreFile,
@@ -444,3 +460,13 @@ internal sealed record ActionsAnswer(IReadOnlyList<ActionKindRow> Actions, IRead
             .Take(MaxCommands)
             .Select(c => new CommandRow(c.Id, c.Name, c.Category, [.. c.Fields.Select(f => new CommandFieldRow(f.Name, f.Label, f.Type, f.IsRequired && f.Default is null))]))]);
 }
+
+internal sealed record DeleteRunsArgs(
+    [property: Description("The schedule id.")] Guid ScheduleId,
+    [property: Description("The runs to delete (see runs)."), MaxLength(SchedulesInfo.KeptRuns)] IReadOnlyList<Guid>? RunIds = null,
+    [property: Description("Delete every ended run of the schedule instead.")] bool All = false)
+{
+    public DeleteRunsRequest Request() => new(ScheduleId, RunIds ?? [], All);
+}
+
+internal sealed record RunsPlan(int Runs) : PluginToolPlan(Runs, "run");

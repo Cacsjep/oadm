@@ -51,49 +51,65 @@
 
       <GridSplitter Grid.Row="1" Classes="paneSplitter" />
 
-      <!-- The runs of the selected schedule, newest first; a run with failures: its failed devices beside the runs -->
-      <Border Grid.Row="2" Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
-        <Grid ColumnDefinitions="5*,7*" ColumnSpacing="16">
-          <Panel Grid.ColumnSpan="{Binding RunsSpan}">
-            <DataGrid x:Name="RunGrid" Classes="wrapRows" ItemsSource="{Binding Runs}" SelectedItem="{Binding SelectedRun}"
-                      IsReadOnly="True" SelectionMode="Single" CanUserSortColumns="True" CanUserReorderColumns="False">
-              <DataGrid.Columns>
-                <DataGridTextColumn Header="{x:Static vm:SchedulesTexts.Started}" Width="150" Binding="{Binding StartedText}" SortMemberPath="StartedSortKey" x:DataType="vm:RunRow" />
-                <DataGridTextColumn Header="{x:Static vm:SchedulesTexts.Ended}" Width="150" Binding="{Binding EndedText}" SortMemberPath="EndedSortKey" x:DataType="vm:RunRow" />
-                <DataGridTemplateColumn Header="{x:Static vm:SchedulesTexts.Result}" Width="*" MinWidth="220" SortMemberPath="ResultText">
-                  <DataGridTemplateColumn.CellTemplate>
-                    <DataTemplate x:DataType="vm:RunRow">
-                      <ui:StatusChip Text="{Binding ResultText}" Detail="{Binding Detail}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}"
-                                     IsError="{Binding IsError}" IsAccent="{Binding IsAccent}" MaxLines="2" />
-                    </DataTemplate>
-                  </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-              </DataGrid.Columns>
-            </DataGrid>
-            <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:SchedulesTexts.ChooseSchedule}"
-                       IsVisible="{Binding ShowChooseSchedule}" />
-            <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:SchedulesTexts.NoRuns}"
-                       IsVisible="{Binding ShowNoRuns}" />
-            <ui:ProgressRing Width="24" Height="24" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsRunsLoading}" />
-          </Panel>
-
-          <Panel Grid.Column="1" IsVisible="{Binding ShowFailures}">
-            <DataGrid x:Name="FailureGrid" Classes="wrapRows" ItemsSource="{Binding Failures}" IsReadOnly="True" SelectionMode="Extended"
-                      CanUserSortColumns="True" CanUserReorderColumns="False">
-              <DataGrid.Columns>
-                <DataGridTextColumn Header="{x:Static vm:SchedulesTexts.Device}" Width="140" Binding="{Binding Device}" x:DataType="vm:FailureRow" />
-                <DataGridTextColumn Header="{x:Static vm:SchedulesTexts.Step}" Width="250" Binding="{Binding Step}" x:DataType="vm:FailureRow" />
-                <DataGridTemplateColumn Header="{x:Static vm:SchedulesTexts.Message}" Width="*" MinWidth="200" SortMemberPath="Message">
-                  <DataGridTemplateColumn.CellTemplate>
-                    <DataTemplate x:DataType="vm:FailureRow">
-                      <ui:StatusChip Text="{Binding Message}" IsError="True" MaxLines="2" ToolTip.Tip="{Binding Message}" />
-                    </DataTemplate>
-                  </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-              </DataGrid.Columns>
-            </DataGrid>
-            <ui:ProgressRing Width="24" Height="24" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsFailuresLoading}" />
-          </Panel>
+      <!-- The runs of the selected schedule, newest first, under the shared pane header of the Tasks pane (Delete, Delete all);
+           a run with failures: its failed devices beside the runs -->
+      <Border Grid.Row="2" Classes="card" Padding="16,12,16,12">
+        <Grid RowDefinitions="Auto,*">
+          <ui:PaneHeader Grid.Row="0" Title="{x:Static vm:SchedulesTexts.Runs}">
+            <ui:PaneHeader.Actions>
+              <StackPanel Orientation="Horizontal" Spacing="2" IsVisible="{Binding MayManage}">
+                <Button x:Name="DeleteRunsButton" Classes="toolbar" Command="{Binding DeleteRunsCommand}" ToolTip.Tip="{x:Static vm:SchedulesTexts.DeleteRunsTip}">
+                  <ui:IconLabel Icon="{StaticResource Icon.remove}" Text="{x:Static vm:SchedulesTexts.Delete}" Spacing="8" />
+                </Button>
+                <Border Classes="vseparator" />
+                <Button x:Name="DeleteAllRunsButton" Classes="toolbar danger" Command="{Binding DeleteAllRunsCommand}" ToolTip.Tip="{x:Static vm:SchedulesTexts.DeleteAllRunsTip}">
+                  <ui:IconLabel Icon="{StaticResource Icon.deleteAll}" Text="{x:Static vm:SchedulesTexts.DeleteAll}" Spacing="8" />
+                </Button>
+              </StackPanel>
+            </ui:PaneHeader.Actions>
+          </ui:PaneHeader>
+          <Grid Grid.Row="1" Margin="0,8,0,0" ColumnDefinitions="5*,7*" ColumnSpacing="16">
+            <Panel Grid.ColumnSpan="{Binding RunsSpan}">
+              <DataGrid x:Name="RunGrid" Classes="wrapRows" ItemsSource="{Binding Runs}" SelectedItem="{Binding SelectedRun}"
+                        IsReadOnly="True" SelectionMode="Extended" CanUserSortColumns="True" CanUserReorderColumns="False">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="{x:Static vm:SchedulesTexts.Started}" Width="150" Binding="{Binding StartedText}" SortMemberPath="StartedSortKey" x:DataType="vm:RunRow" />
+                  <DataGridTextColumn Header="{x:Static vm:SchedulesTexts.Ended}" Width="150" Binding="{Binding EndedText}" SortMemberPath="EndedSortKey" x:DataType="vm:RunRow" />
+                  <DataGridTemplateColumn Header="{x:Static vm:SchedulesTexts.Result}" Width="*" MinWidth="220" SortMemberPath="ResultText">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate x:DataType="vm:RunRow">
+                        <ui:StatusChip Text="{Binding ResultText}" Detail="{Binding Detail}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}"
+                                       IsError="{Binding IsError}" IsAccent="{Binding IsAccent}" MaxLines="2" />
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                </DataGrid.Columns>
+              </DataGrid>
+              <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:SchedulesTexts.ChooseSchedule}"
+                         IsVisible="{Binding ShowChooseSchedule}" />
+              <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:SchedulesTexts.NoRuns}"
+                         IsVisible="{Binding ShowNoRuns}" />
+              <ui:ProgressRing Width="24" Height="24" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsRunsLoading}" />
+            </Panel>
+  
+            <Panel Grid.Column="1" IsVisible="{Binding ShowFailures}">
+              <DataGrid x:Name="FailureGrid" Classes="wrapRows" ItemsSource="{Binding Failures}" IsReadOnly="True" SelectionMode="Extended"
+                        CanUserSortColumns="True" CanUserReorderColumns="False">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="{x:Static vm:SchedulesTexts.Device}" Width="140" Binding="{Binding Device}" x:DataType="vm:FailureRow" />
+                  <DataGridTextColumn Header="{x:Static vm:SchedulesTexts.Step}" Width="250" Binding="{Binding Step}" x:DataType="vm:FailureRow" />
+                  <DataGridTemplateColumn Header="{x:Static vm:SchedulesTexts.Message}" Width="*" MinWidth="200" SortMemberPath="Message">
+                    <DataGridTemplateColumn.CellTemplate>
+                      <DataTemplate x:DataType="vm:FailureRow">
+                        <ui:StatusChip Text="{Binding Message}" IsError="True" MaxLines="2" ToolTip.Tip="{Binding Message}" />
+                      </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                  </DataGridTemplateColumn>
+                </DataGrid.Columns>
+              </DataGrid>
+              <ui:ProgressRing Width="24" Height="24" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsFailuresLoading}" />
+            </Panel>
+          </Grid>
         </Grid>
       </Border>
     </Grid>

@@ -116,7 +116,7 @@ public sealed class SchedulesPageTests
         Assert.True(page.Runs.Zip(page.Runs.Skip(1)).All(p => p.First.StartedSortKey >= p.Second.StartedSortKey));
         Assert.Equal("Failed", page.Runs[0].ResultText);
         Assert.Equal("212 done, 3 failed, 12 offline", page.Runs[0].Detail);
-        Assert.Equal("Stopped at stage 2: 1 failed. 1 done, 1 failed, 12 offline", page.Runs[1].ResultText); // why it stopped
+        Assert.Equal("Stopped at stage 2: 1 failed, 1 done, 12 offline", page.Runs[1].ResultText); // why it stopped
         Assert.Equal(string.Empty, page.Runs[1].Detail);
         Assert.Equal("Done with warnings", page.Runs[2].ResultText);
         Assert.Equal("Missed", page.Runs[3].ResultText);
@@ -237,6 +237,97 @@ public sealed class SchedulesPageTests
         Assert.Equal(1, ctx.MostAtOnce[SchedulesMethods.List]);
         Assert.Equal(lists + 2, ctx.CallsOf(SchedulesMethods.List)); // once more after the save
         page.Deactivate();
+    }
+
+    [Fact]
+    public async Task Delete_waits_for_chosen_runs_that_ended_and_sends_their_ids()
+    {
+        var running = Samples.Run(Guid.NewGuid(), Samples.WeeklyId, 0, RunResult.Running, 3);
+        var ctx = Samples.Context();
+        ctx.Answers[SchedulesMethods.Runs] = _ => Samples.Serialize(new RunsReply([running, .. Samples.Runs(Samples.WeeklyId)]));
+        var (page, _) = await OpenAsync(ctx);
+        Assert.False(page.DeleteRunsCommand.CanExecute(null));
+        Assert.False(page.DeleteAllRunsCommand.CanExecute(null)); // no schedule chosen
+
+        page.SelectedSchedule = page.Schedules[0];
+        await page.RunsTask;
+        Assert.False(page.DeleteRunsCommand.CanExecute(null)); // no run chosen
+        Assert.True(page.DeleteAllRunsCommand.CanExecute(null));
+        page.SetSelectedRuns([page.Runs.Single(r => r.Id == running.Id)]);
+        Assert.False(page.DeleteRunsCommand.CanExecute(null)); // a running run is never deleted
+        var ended = page.Runs.Where(r => !r.IsRunning).Take(2).ToList();
+        page.SetSelectedRuns([page.Runs.Single(r => r.Id == running.Id), .. ended]);
+        Assert.True(page.DeleteRunsCommand.CanExecute(null));
+
+        await page.DeleteRunsCommand.ExecuteAsync(null);
+        var request = Samples.Parse<DeleteRunsRequest>(ctx.Calls.Last(c => c.Method == SchedulesMethods.DeleteRuns).Payload);
+        Assert.Equal(Samples.WeeklyId, request.ScheduleId);
+        Assert.False(request.All);
+        Assert.Equal(ended.Select(r => r.Id), request.RunIds);
+        Assert.Empty(page.SelectedRuns);
+        Assert.False(page.DeleteRunsCommand.CanExecute(null));
+
+        ctx.Denied.Add(Manage);
+        var (viewer, _) = await OpenAsync(ctx);
+        viewer.SelectedSchedule = viewer.Schedules[0];
+        await viewer.RunsTask;
+        viewer.SetSelectedRuns([.. viewer.Runs]);
+        Assert.False(viewer.DeleteRunsCommand.CanExecute(null));
+        Assert.False(viewer.DeleteAllRunsCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Delete_all_asks_first_with_a_red_delete_and_deletes_every_run_of_the_schedule()
+    {
+        var (page, ctx) = await OpenAsync();
+        page.SelectedSchedule = page.Schedules[0];
+        await page.RunsTask;
+
+        ctx.ConfirmAnswer = false;
+        await page.DeleteAllRunsCommand.ExecuteAsync(null);
+        Assert.Equal(0, ctx.CallsOf(SchedulesMethods.DeleteRuns));
+        Assert.Equal(4, page.Runs.Count);
+
+        ctx.ConfirmAnswer = true;
+        await page.DeleteAllRunsCommand.ExecuteAsync(null);
+        var (title, message, confirm) = ctx.Confirmations[^1];
+        Assert.Equal(SchedulesTexts.DeleteAllRunsTitle, title);
+        Assert.Equal("Delete every run of Upgrade Site A?", message);
+        Assert.True(MessageWindow.IsDestructive(confirm));
+        Assert.True(Samples.Parse<DeleteRunsRequest>(ctx.Calls.Last(c => c.Method == SchedulesMethods.DeleteRuns).Payload).All);
+        Assert.Empty(page.Runs);
+        Assert.True(page.ShowNoRuns);
+        Assert.False(page.DeleteAllRunsCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void Every_result_reads_once_without_repeated_counts_or_double_punctuation()
+    {
+        ScheduleRun Run(RunResult result, int done = 0, int warnings = 0, int failed = 0, int notStarted = 0, string? reason = null, int offline = 0) => new()
+        {
+            Result = result, Done = done, Warnings = warnings, Failed = failed, NotStarted = notStarted, Reason = reason,
+            NotReachable = offline == 0 ? new Dictionary<string, int>() : new Dictionary<string, int> { ["Offline"] = offline },
+        };
+
+        Assert.Equal("230 done", ScheduleFormat.Summary(Run(RunResult.Done, done: 230)));
+        Assert.Equal("220 done, 4 warnings, 12 offline", ScheduleFormat.Summary(Run(RunResult.DoneWithWarnings, done: 220, warnings: 4, offline: 12)));
+        Assert.Equal("212 done, 3 failed", ScheduleFormat.Summary(Run(RunResult.Failed, done: 212, failed: 3)));
+        Assert.Equal("Stopped at stage 1: 1 failed, 6 not started", ScheduleFormat.Summary(Run(RunResult.Stopped, failed: 1, notStarted: 6, reason: "Stopped at stage 1: 1 failed.")));
+        Assert.Equal("Stopped at stage 1: 1 failed, 6 not started", ScheduleFormat.Summary(Run(RunResult.Stopped, failed: 1, notStarted: 6, reason: "Stopped at stage 1: 1 failed")));
+        Assert.Equal("Stopped at stage 3: 1 failed", ScheduleFormat.Summary(Run(RunResult.Stopped, failed: 1, reason: "Stopped at stage 3: 1 failed.")));
+        Assert.Equal("The owner no longer has the right Restart.", ScheduleFormat.Summary(Run(RunResult.Failed, reason: "The owner no longer has the right Restart.")));
+        Assert.Equal("The owner no longer has the right Restart. 9 not started",
+            ScheduleFormat.Summary(Run(RunResult.Failed, notStarted: 9, reason: "The owner no longer has the right Restart.")));
+        Assert.Equal("Missed", ScheduleFormat.Summary(Run(RunResult.Missed)));
+        Assert.Equal("Skipped", ScheduleFormat.Summary(Run(RunResult.Skipped)));
+        Assert.Equal("Running, 12 done", ScheduleFormat.Summary(Run(RunResult.Running, done: 12)));
+
+        var row = RunRow.Of(Run(RunResult.Stopped, failed: 1, notStarted: 6, reason: "Stopped at stage 1: 1 failed."), Samples.Now);
+        Assert.Equal("Stopped at stage 1: 1 failed, 6 not started", row.ResultText);
+        Assert.Equal(string.Empty, row.Detail); // nothing after it
+        var failed = RunRow.Of(Run(RunResult.Failed, done: 212, failed: 3), Samples.Now);
+        Assert.Equal("Failed: 212 done, 3 failed", failed.ResultText + ": " + failed.Detail); // as the chip shows it
+        Assert.All(new[] { row.ResultText, failed.Detail }, t => Assert.DoesNotContain("..", t, StringComparison.Ordinal));
     }
 
     [Theory]

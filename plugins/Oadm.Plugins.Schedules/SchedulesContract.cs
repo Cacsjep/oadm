@@ -67,6 +67,12 @@ public static class SchedulesMethods
     public const string RunFailures = "runFailures";
 
     /// <summary>
+    /// <see cref="DeleteRunsRequest"/> -> <see cref="RunsReply"/>: deletes run rows of one schedule (the chosen ones, or with
+    /// <see cref="DeleteRunsRequest.All"/> every one); a run that still runs is never deleted. Needs "manage".
+    /// </summary>
+    public const string DeleteRuns = "deleteRuns";
+
+    /// <summary>
     /// () -> PKI's HTTPS and IEEE 802.1X certificate policies (<see cref="Sdk.Certificates.IssuingPolicyInfo"/>), empty when PKI
     /// does not run. The same method and reply as Provisioning's, for the node editor.
     /// </summary>
@@ -321,6 +327,9 @@ public sealed record IdRequest(Guid Id);
 public sealed record TurnOnRequest(Guid Id, bool On);
 
 public sealed record RunRequest(Guid ScheduleId, Guid RunId);
+
+/// <summary>Run rows of one schedule to delete: <paramref name="RunIds"/>, or every ended one with <paramref name="All"/>.</summary>
+public sealed record DeleteRunsRequest(Guid ScheduleId, IReadOnlyList<Guid> RunIds, bool All = false);
 
 public sealed record RunsReply(IReadOnlyList<ScheduleRun> Runs);
 

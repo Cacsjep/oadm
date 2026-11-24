@@ -52,7 +52,9 @@ public static class ScheduleFormat
     }
 
     /// <summary>"212 done, 3 warnings, 3 failed, 12 offline, 5 not started": the counts that are not 0.</summary>
-    public static string Counts(ScheduleRun run)
+    public static string Counts(ScheduleRun run) => string.Join(", ", CountParts(run));
+
+    private static List<string> CountParts(ScheduleRun run)
     {
         ArgumentNullException.ThrowIfNull(run);
         var parts = new List<string>();
@@ -65,10 +67,13 @@ public static class ScheduleFormat
         }
 
         Add(parts, run.NotStarted, "not started");
-        return string.Join(", ", parts);
+        return parts;
     }
 
-    /// <summary>The Last run cell and the detail of a run's result: the reason when it has one, else the counts.</summary>
+    /// <summary>
+    /// The Last run cell and the text of a run that stopped or never ran: the reason and the counts it does not say itself
+    /// ("Stopped at stage 1: 1 failed, 6 not started"; "The owner no longer has the right Restart."), else the counts.
+    /// </summary>
     public static string Summary(ScheduleRun run)
     {
         ArgumentNullException.ThrowIfNull(run);
@@ -76,10 +81,26 @@ public static class ScheduleFormat
         return run.Result switch
         {
             RunResult.Missed or RunResult.Skipped => SchedulesTexts.ResultText(run.Result),
-            RunResult.Stopped or RunResult.Failed when run.Reason is { Length: > 0 } reason => counts.Length == 0 ? reason : reason + ". " + Capital(counts),
+            RunResult.Stopped or RunResult.Failed when run.Reason is { Length: > 0 } reason => WithReason(reason.Trim(), CountParts(run)),
             RunResult.Running => counts.Length == 0 ? SchedulesTexts.Running : SchedulesTexts.Running + ", " + counts,
             _ => counts.Length == 0 ? SchedulesTexts.ResultText(run.Result) : counts,
         };
+    }
+
+    /// <summary>The reason, then the counts it does not name: after a sentence as a new sentence, else after a comma.</summary>
+    private static string WithReason(string reason, List<string> parts)
+    {
+        // "Stopped at stage 3: 1 failed" is a phrase (no period of its own); "The owner no longer has the right Restart." a sentence.
+        var phrase = reason.Contains(':', StringComparison.Ordinal) || !reason.EndsWith('.');
+        var head = phrase ? reason.TrimEnd('.') : reason;
+        var rest = parts.Where(p => !reason.Contains(p, StringComparison.OrdinalIgnoreCase)).ToList();
+        if (rest.Count == 0)
+        {
+            return head;
+        }
+
+        var text = string.Join(", ", rest);
+        return phrase ? head + ", " + text : head + " " + Capital(text);
     }
 
     /// <summary>"about 3 h 20 min", "about 24 h", "about 5 min".</summary>
