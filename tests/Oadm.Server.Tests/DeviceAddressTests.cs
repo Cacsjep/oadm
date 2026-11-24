@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Runtime.CompilerServices;
 
@@ -43,8 +44,9 @@ public sealed class DeviceAddressTests
         var device = await DeviceServiceTests.AddDeviceAsync(host, Old, 701);
         await host.Get<DeviceRepository>().UpdateAsync(device.Id, d => d.CertFingerprintSha256 = "AB12", CancellationToken.None);
         Move(host, 701, New);
-        var changes = new List<DeviceChange>();
-        host.Get<DeviceRepository>().Changes.Changed += (_, c) => changes.Add(c);
+        // Changes come from the host's background work on other threads too: a thread-safe queue, read inside the wait.
+        var changes = new ConcurrentQueue<DeviceChange>();
+        host.Get<DeviceRepository>().Changes.Changed += (_, c) => changes.Enqueue(c);
 
         var result = await host.Get<DeviceAddressService>().UpdateAddressAsync(device.Id, New, CancellationToken.None);
 
@@ -53,7 +55,7 @@ public sealed class DeviceAddressTests
         Assert.Equal(New, stored!.Address);
         Assert.Equal("AB12", stored.CertFingerprintSha256);
         Assert.Equal("root", (await host.Get<CredentialStore>().GetAsync(device.Id, CancellationToken.None))!.UserName);
-        Assert.Contains(changes, c => c.DeviceId == device.Id && c.Kind == DeviceChangeKind.Updated);
+        await Oadm.Sdk.Testing.Eventually.TrueAsync(() => changes.Any(c => c.DeviceId == device.Id && c.Kind == DeviceChangeKind.Updated), "the Updated change of the moved device");
         Assert.Equal(DeviceAddressChangeResult.Unchanged, await host.Get<DeviceAddressService>().UpdateAddressAsync(device.Id, New, CancellationToken.None));
     }
 
