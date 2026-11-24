@@ -11,6 +11,10 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 - Schedules: upgrade AXIS OS, apply a configuration, restart and more on chosen devices at a set time, optionally rolled out in stages.
 
+### Fixed
+
+- Certificates: cameras that do not list their key types get an RSA certificate instead of an error.
+
 ## [5.3.1] - 2026-11-21
 
 ### Changed

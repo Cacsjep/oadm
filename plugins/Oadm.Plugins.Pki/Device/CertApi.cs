@@ -42,7 +42,7 @@ public static class CertApi
     /// <summary>
     /// The key types the device's default keystore offers (<c>GET cert/v1</c>: <c>settings.keystore</c> and its
     /// <c>keystores[].key_types</c>; without a default keystore, the types every keystore offers). Null when the device does
-    /// not say (an older AXIS OS, an unreadable answer). Read-only.
+    /// not say (an older AXIS OS, a keystore without <c>key_types</c>, an unreadable answer). Read-only.
     /// </summary>
     public static async Task<IReadOnlySet<string>?> KeyTypesAsync(IVapixClient vapix, CancellationToken ct)
     {
@@ -78,8 +78,14 @@ public static class CertApi
                     continue;
                 }
 
-                var own = (keystore["key_types"] as JsonArray)?.Select(t => t?.GetValue<string>()).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase)
-                    ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (keystore["key_types"] is not JsonArray listed)
+                {
+                    // A keystore without its key types (AXIS OS that lists only id and security level, e.g. SOFTWARE0) does
+                    // not say: the caller's fallback applies (RSA 2048), never "no key type at all".
+                    return null;
+                }
+
+                var own = listed.Select(t => t?.GetValue<string>()).OfType<string>().ToHashSet(StringComparer.OrdinalIgnoreCase);
                 if (types is null)
                 {
                     types = own;

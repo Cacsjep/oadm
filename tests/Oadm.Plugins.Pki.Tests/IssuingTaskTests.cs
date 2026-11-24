@@ -209,6 +209,11 @@ public sealed class IssuingTaskTests
         var withoutDefault = JsonNode.Parse("""{"keystores":[{"id":"A","key_types":["RSA-2048","EC-P256"]},{"id":"B","key_types":["RSA-2048"]}]}""");
         Assert.Equal(["RSA-2048"], CertApi.ParseKeyTypes(withoutDefault)!); // the types every keystore offers
         Assert.Null(CertApi.ParseKeyTypes(JsonNode.Parse("{}")));
+
+        // Recorded from a camera at 10.0.0.97 (2026-11-24): its keystore lists no key types; the device does not say, so the
+        // RSA 2048 fallback applies instead of refusing every key.
+        var withoutTypes = JsonNode.Parse("""{"settings":{"keystore":"SOFTWARE0"},"keystores":[{"certifications":[],"id":"SOFTWARE0","security_level":"SOFTWARE"}]}""");
+        Assert.Null(CertApi.ParseKeyTypes(withoutTypes));
         Assert.Equal("EC-P256", CertApi.KeyTypeOf(PolicyKeys.Ecc));
         Assert.Equal("RSA-2048", CertApi.KeyTypeOf(PolicyKeys.Rsa));
     }
