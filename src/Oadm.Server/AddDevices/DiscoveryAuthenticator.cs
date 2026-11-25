@@ -76,7 +76,10 @@ public sealed record DeviceAuthResult(
 public sealed partial class DiscoveryAuthenticator : IDisposable
 {
     /// <summary>Most known credentials tried on one device.</summary>
-    public const int MaxAttemptsPerDevice = 10;
+    public const int MaxAttemptsPerDevice = 4;
+
+    /// <summary>More credentials chosen than a device gets tried.</summary>
+    public const string TooManyChosenText = "Choose at most 4 credentials.";
 
     /// <summary>Devices logged in to at the same time.</summary>
     public const int Parallelism = 32;
@@ -262,7 +265,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
             result = outcome.Kind switch
             {
                 AttemptKind.Rejected => new DeviceAuthResult(DeviceAuthState.LoginFailed, Detail: "The user name or password is wrong."),
-                AttemptKind.BasicOnly => new DeviceAuthResult(DeviceAuthState.LoginFailed, Detail: outcome.Detail),
+                AttemptKind.BasicOnly or AttemptKind.Blocked => new DeviceAuthResult(DeviceAuthState.LoginFailed, Detail: outcome.Detail),
                 _ => new DeviceAuthResult(DeviceAuthState.Unreachable, Detail: outcome.Detail),
             };
             if (outcome.Kind == AttemptKind.NotAxis)
@@ -319,7 +322,12 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
     /// The automatic login of the session may try the credential list (a user with all devices, the server itself). Call it
     /// before the first device of the session is seen; without it the session tries only credentials typed for it.
     /// </summary>
-    public void AllowCredentialList(string sessionId) => Session(sessionId).UsesCredentialList = true;
+    public void AllowCredentialList(string sessionId, IReadOnlyList<Guid>? chosen = null)
+    {
+        var session = Session(sessionId);
+        session.Chosen = chosen is { Count: > 0 } ? [.. chosen.Select(id => "list:" + id.ToString("N"))] : null;
+        session.UsesCredentialList = true;
+    }
 
     /// <summary>Whether the session may try the credential list.</summary>
     public bool UsesCredentialList(string sessionId) => _sessions.TryGetValue(sessionId, out var session) && session.UsesCredentialList;
@@ -392,7 +400,12 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         }
 
         var known = await session.CandidatesAsync(LoadCandidatesAsync).ConfigureAwait(false);
-        return [.. session.Entered(), .. known];
+        // The page's choice in its order, else the first entries of the list: never more than a device gets tried, so
+        // the credentials after them never count against the camera's brute force protection.
+        IEnumerable<Candidate> tried = session.Chosen is { } chosen
+            ? chosen.Select(id => known.FirstOrDefault(c => c.Id == id)).OfType<Candidate>()
+            : known.Take(MaxAttemptsPerDevice);
+        return [.. session.Entered(), .. tried];
     }
 
     /// <summary>Identity of a credential for "already tried" checks; the password itself is not kept twice.</summary>
@@ -548,8 +561,9 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
                         return;
                     }
 
-                    if (outcome.Kind == AttemptKind.BasicOnly)
+                    if (outcome.Kind is AttemptKind.BasicOnly or AttemptKind.Blocked)
                     {
+                        // Blocked: no further credential (each would keep the block going), this one is not counted.
                         Apply(session, device.Serial, version, new DeviceAuthResult(DeviceAuthState.LoginFailed, Detail: outcome.Detail), null);
                         return;
                     }
@@ -633,6 +647,11 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         foreach (var scheme in LoginSchemes(device))
         {
             var verdict = await axis.GetAsync(scheme, () => CheckAxisAsync(device, scheme, ct)).ConfigureAwait(false);
+            if (verdict.Kind == AxisVerdictKind.Blocked)
+            {
+                return new Attempt(AttemptKind.Blocked, verdict.Detail); // every request is refused for now: nothing else is tried
+            }
+
             if (verdict.Kind != AxisVerdictKind.Verified)
             {
                 if (verdict.Kind == AxisVerdictKind.NoAnswer)
@@ -678,6 +697,12 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
             var properties = await client.GetUnrestrictedPropertiesAsync(ct).ConfigureAwait(false);
             return Judge(properties, device.Serial);
         }
+        catch (VapixAuthenticationException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            // An Axis device answers this call without a login with 200 or 401; 403 is its brute force protection
+            // (verified on an AXIS P3735-PLE with AXIS OS 13.0.114 on 2026-11-25: 5 failed logins, then 403 for every request).
+            return new AxisVerdict(AxisVerdictKind.Blocked, Oadm.Sdk.Devices.DeviceMessages.BruteForceBlocked);
+        }
         catch (VapixAuthenticationException ex) when (ex.RealmSerial is { } realmSerial)
         {
             return JudgeRealm(realmSerial, device.Serial);
@@ -708,7 +733,7 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
             var verdict = await CheckAxisAsync(device, scheme, ct).ConfigureAwait(false);
             switch (verdict.Kind)
             {
-                case AxisVerdictKind.Verified:
+                case AxisVerdictKind.Verified or AxisVerdictKind.Blocked:
                     return verdict;
                 case AxisVerdictKind.NotAxis:
                     notAxis ??= verdict;
@@ -781,6 +806,14 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         {
             // Through a site with the setting off: the password was not sent, another credential would not help.
             return new Attempt(AttemptKind.BasicOnly, Oadm.Sdk.Devices.DeviceMessages.BasicOnlyOverHttp);
+        }
+        catch (VapixAuthenticationException ex) when (ex.StatusCode == HttpStatusCode.Forbidden)
+        {
+            // 403 with a login: no rights, or the brute force protection. Only the second refuses the anonymous check too,
+            // and then it is no verdict on this password: the device refuses every login for now.
+            return await CheckAxisAsync(device, scheme, ct).ConfigureAwait(false) is { Kind: AxisVerdictKind.Blocked } blocked
+                ? new Attempt(AttemptKind.Blocked, blocked.Detail)
+                : new Attempt(AttemptKind.Rejected, null);
         }
         catch (VapixAuthenticationException)
         {
@@ -874,6 +907,9 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
 
         /// <summary>The device did not pass the anonymous Axis check: no credential was sent.</summary>
         NotAxis,
+
+        /// <summary>The device's brute force protection refuses every request for now.</summary>
+        Blocked,
     }
 
     /// <param name="Kind">Outcome.</param>
@@ -886,6 +922,9 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
         Verified,
         NotAxis,
         NoAnswer,
+
+        /// <summary>The device's brute force protection refused the check: an Axis device, but not now.</summary>
+        Blocked,
     }
 
     internal sealed record AxisVerdict(AxisVerdictKind Kind, string? Detail);
@@ -968,6 +1007,9 @@ public sealed partial class DiscoveryAuthenticator : IDisposable
 
         /// <summary>The credential list may be tried (a user with all devices, the server); false = only typed credentials.</summary>
         public bool UsesCredentialList { get; set; }
+
+        /// <summary>The candidate ids ("list:&lt;id&gt;") the page chose, in order; null = the first entries of the list.</summary>
+        public IReadOnlyList<string>? Chosen { get; set; }
 
         public event Action<string>? Changed;
 

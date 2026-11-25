@@ -400,6 +400,13 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
     /// <summary>Administrators only: other roles do not see "Save to credential list" and never save.</summary>
     public bool CanSaveToCredentialList { get; init; } = true;
+
+    /// <summary>
+    /// The credential list entries the automatic login tries on every device of this page, in this order (the Choose
+    /// credentials dialog before the page, <see cref="CredentialChoiceViewModel"/>); empty = the server takes the first ones.
+    /// </summary>
+    public IReadOnlyList<string> CredentialIds { get; set; } = [];
+
     [ObservableProperty] public partial string NewPassword { get; set; } = "";
     [ObservableProperty] public partial string ConfirmPassword { get; set; } = "";
 
@@ -648,6 +655,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
                         ExpectedSerial = line.ExpectedSerial ?? "",
                         ImportLine = true,
                         Site = line.Site ?? "",
+                        CredentialIds = { CredentialIds },
                     }, stop).ConfigureAwait(true);
                     (sessionId, siteId) = (session.SessionId, session.SiteId);
                 }
@@ -819,7 +827,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         ScanStatusText = "Searching the network...";
         ScanProgress = 0;
         IsProgressIndeterminate = true;
-        await StartSessionAsync(() => _api.StartZeroConfAsync(_cts.Token), null).ConfigureAwait(true);
+        await StartSessionAsync(() => _api.StartZeroConfAsync(CredentialIds, _cts.Token), null).ConfigureAwait(true);
     }
 
     public async ValueTask DisposeAsync()
@@ -866,7 +874,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
         ScanStatusText = $"Scanning {from} - {to}";
         ScanProgress = 0;
         IsProgressIndeterminate = false;
-        await StartSessionAsync(() => _api.StartRangeScanAsync(from, to, _cts.Token), null).ConfigureAwait(true);
+        await StartSessionAsync(() => _api.StartRangeScanAsync(from, to, CredentialIds, _cts.Token), null).ConfigureAwait(true);
     }
 
     private bool CanStartRange() => Validation.IsValidFor(RangeFields);
@@ -915,7 +923,7 @@ public sealed partial class AddDevicesViewModel : ValidatingViewModel, IAsyncDis
 
         ScanStatusText = $"Looking for a device at {address}";
         IsProgressIndeterminate = true;
-        if (await StartSessionAsync(() => _api.ProbeAddressAsync(address, _cts.Token), address).ConfigureAwait(true))
+        if (await StartSessionAsync(() => _api.ProbeAddressAsync(address, CredentialIds, _cts.Token), address).ConfigureAwait(true))
         {
             ManualAddress = "";
             Validation.Reset(nameof(ManualAddress)); // ready for the next address, no "Enter an address" yet

@@ -11,6 +11,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 - Autofocus in the Maintenance menu focuses every lens of the selected cameras.
 - Live view: save the current PTZ position to the chosen preset.
+- Add devices: with more than 4 credentials, choose which 4 OADM tries, so cameras do not block it.
 
 ### Changed
 
@@ -22,6 +23,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 - Live view: a camera with PTZ and remote focus shows both bars, no longer on top of each other.
 - Live view: a multisensor camera paired with a PTZ camera no longer shows PTZ controls for its own pictures.
+- Add devices: a camera that blocks logins after failed tries now says so instead of "not an Axis device", and gets no more tries.
 
 ## [5.4.0] - 2026-11-24
 

@@ -40,6 +40,7 @@ public static class ServiceRegistration
             services.AddSingleton<IOadmApi>(_ =>
             {
                 var fake = new FakeOadmApi(simulationTime: options.FakeSimulationTime);
+                fake.SeedMoreCredentials(); // more than one add tries: the Choose credentials dialog shows
                 if (options.FakeUser is { } user)
                 {
                     fake.CurrentUserName = user; // a sample user, e.g. tech2 with the device group Building B

@@ -46,13 +46,15 @@ public sealed class DiscoveryGrpcService(
 
     public override async Task<Proto.DiscoverySession> StartZeroConf(Proto.ZeroConfRequest request, ServerCallContext context)
     {
+        var chosen = ChosenCredentials(request.CredentialIds);
         var reach = await ReachAsync(context).ConfigureAwait(false);
         var session = await discovery.StartZeroConfAsync(context.CancellationToken, reach.Routes).ConfigureAwait(false);
-        return new() { SessionId = await OwnAsync(session.Id, reach, context, request.NoLogins).ConfigureAwait(false) };
+        return new() { SessionId = await OwnAsync(session.Id, reach, context, request.NoLogins, chosen).ConfigureAwait(false) };
     }
 
     public override async Task<Proto.DiscoverySession> StartRangeScan(Proto.RangeScanRequest request, ServerCallContext context)
     {
+        var chosen = ChosenCredentials(request.CredentialIds);
         var reach = await ReachAsync(context).ConfigureAwait(false);
         try
         {
@@ -68,7 +70,7 @@ public sealed class DiscoveryGrpcService(
             }
 
             var session = await discovery.StartRangeScanAsync(request.From, request.To, context.CancellationToken, routes).ConfigureAwait(false);
-            return new Proto.DiscoverySession { SessionId = await OwnAsync(session.Id, reach, context, request.NoLogins).ConfigureAwait(false) };
+            return new Proto.DiscoverySession { SessionId = await OwnAsync(session.Id, reach, context, request.NoLogins, chosen).ConfigureAwait(false) };
         }
         catch (ArgumentException ex)
         {
@@ -93,6 +95,7 @@ public sealed class DiscoveryGrpcService(
             throw GrpcGuard.InvalidArgument("The MAC address must be 12 hexadecimal digits.");
         }
 
+        var chosen = ChosenCredentials(request.CredentialIds);
         if (request.NoLogins && hasCredentials)
         {
             throw GrpcGuard.InvalidArgument("A look without logins takes no user name and password.");
@@ -124,7 +127,7 @@ public sealed class DiscoveryGrpcService(
         {
             var session = await discovery.StartAddressProbeAsync(request.Address, request.ImportLine, context.CancellationToken, siteId,
                 expectedSerial.Length > 0 ? expectedSerial : null, routes).ConfigureAwait(false);
-            await OwnAsync(session.Id, reach, context, request.NoLogins).ConfigureAwait(false);
+            await OwnAsync(session.Id, reach, context, request.NoLogins, chosen).ConfigureAwait(false);
             if (expectedSerial.Length > 0)
             {
                 // Before the watch starts the automatic login: another device at this address gets no password.
@@ -271,6 +274,31 @@ public sealed class DiscoveryGrpcService(
         return new Proto.Empty();
     }
 
+    /// <summary>The credential list entries the caller chose to try (at most <see cref="DiscoveryAuthenticator.MaxAttemptsPerDevice"/>), in order.</summary>
+    internal static List<Guid> ChosenCredentials(IReadOnlyCollection<string> ids)
+    {
+        if (ids.Count > DiscoveryAuthenticator.MaxAttemptsPerDevice)
+        {
+            throw GrpcGuard.InvalidArgument(DiscoveryAuthenticator.TooManyChosenText);
+        }
+
+        var chosen = new List<Guid>(ids.Count);
+        foreach (var id in ids)
+        {
+            if (!Guid.TryParse(id, out var guid))
+            {
+                throw GrpcGuard.InvalidArgument("Unknown credential.");
+            }
+
+            if (!chosen.Contains(guid))
+            {
+                chosen.Add(guid);
+            }
+        }
+
+        return chosen;
+    }
+
     /// <summary>The caller's reach; a caller who cannot add devices anywhere is refused before anything is asked.</summary>
     private async Task<AddReach> ReachAsync(ServerCallContext context)
     {
@@ -283,11 +311,11 @@ public sealed class DiscoveryGrpcService(
     /// credential list only for a user with all devices (before the first device is seen). A session of a call whose
     /// user's devices, role or login changed meanwhile is stopped at once and refused ("Your devices changed. Connect again.").
     /// </summary>
-    private async Task<string> OwnAsync(string sessionId, AddReach reach, ServerCallContext context, bool noLogins = false)
+    private async Task<string> OwnAsync(string sessionId, AddReach reach, ServerCallContext context, bool noLogins = false, IReadOnlyList<Guid>? chosen = null)
     {
         if (reach.UsesCredentialList && !noLogins)
         {
-            authenticator.AllowCredentialList(sessionId);
+            authenticator.AllowCredentialList(sessionId, chosen);
         }
 
         if (!owners.Register(sessionId, AuthInterceptor.CallerOf(context)))

@@ -9,6 +9,24 @@ Toolbar (toolbar plugins, see [plugins.md](plugins.md#toolbar-plugins)): the **A
 range, Add manually, Import from file and Import from ADM open the same dialog window (title = the entry name, its one line grey beside it; the card has no heading)
 (`Discovery/AddDevicesWindow`, shared dialog controls: title bar, one card, footer) in its modes. How OADM finds devices:
 [discovery.md](discovery.md).
+- **Choose credentials** (decision 2026-11-25: a step before the add window, which the one-page rule allows for this
+  choice): cameras block an address after 5 failed logins in 30 s, so one add tries at most 4 entries of the credential
+  list per device (`DiscoveryAuthenticator.MaxAttemptsPerDevice`; client constant `CredentialChoiceViewModel.MaxCredentials`,
+  kept equal). Every Add entry (also both imports, after the file was picked) first shows the dialog "Choose credentials"
+  (`Discovery/CredentialChoiceWindow` + `CredentialChoiceViewModel`, one card, footer Cancel and Continue) when the
+  signed-in user is an Administrator (the only role that reads the credential list) and the list holds more than 4
+  entries; otherwise no dialog and the server takes the first 4 of the list. The list in its order: a box per entry, the
+  user name and the password, masked; **Show passwords** / **Hide passwords** (command button next to Add credential,
+  one for all, no eye per row; `RevealCredential`, same rules; a failed read masks all and says why below the list). At
+  most 4 ticked: with 4 ticked the other boxes are off; with none ticked "Choose a credential." directly below the list
+  and Continue is off (its tooltip says why). "Add credential" (command button above the list) opens an inline editor
+  (user name, password, Add, Cancel; the Credentials page's rules, errors below the fields; while open its Add is the
+  accent button): the entry is saved to the credential list (`AddCredential`) and ticked; with 4 ticked the last ticked one
+  makes room. The ticked entries are tried in the list's order. Cancel (or the X) opens no add window. The choice is kept
+  in client memory for the session (`DevicesViewModel`) and pre-ticked next time (entries removed meanwhile dropped);
+  nothing chosen yet (or none left) pre-ticks the first 4. The add window sends the ids in `credential_ids` on every
+  session start: Discovery and Scan again, Network range, Add manually, every import line (more than 4 = INVALID_ARGUMENT
+  "Choose at most 4 credentials.").
 - **Discovery**: zero-conf discovery starts immediately; devices appear live. The scan ends after
   `Discovery.ZeroConfSeconds` (Settings page "Discovery duration (s)", default 30, 5..300).
 - **Network range**: From / To inputs on top; Enter or the Scan button starts (several ranges add to
@@ -78,7 +96,7 @@ setting applies within a minute) or at once for `TryNow`; each round reads the e
 drops every entry whose address or MAC address OADM manages by now (`DeviceRepository.ListAddressesAsync`, no full rows),
 then tries the rest 32 at a time the import's way but with the normal first contact (`StartAddressProbeAsync(importLine:
 false)`: a device behind a slow link is found), the expected MAC address and the line's login in the session, the Axis check
-before any password, then the credential list, at most 10 rejected per device) and stores a device that answers with
+before any password, then the credential list, at most 4 rejected per device) and stores a device that answers with
 `DeviceAdder` like the add page (the login that worked; factory default as Password not set), its tags, a full refresh and
 the audit entry "Device added automatically" (user "system", "<source> (waiting list, kept by <user>): ..."), only while
 its entry is still the one the round read (`IsCurrentAsync`: removed or kept again meanwhile = not added, nothing written
@@ -178,9 +196,13 @@ Every password field (login editor, first password + confirm) is `ui:PasswordBox
 Server: `DiscoveryAuthenticator` (Oadm.Server/AddDevices). For every device event of a watched
 session it starts the automatic login once per device state: managed serial = ALREADY_ADDED, probe
 said factory default = PASSWORD_NOT_SET (plus the passphrase policy read anonymously), unreachable =
-UNREACHABLE, otherwise it tries the known credentials one at a time, at most 10 per device (no
-lockout risk): the credentials typed on the page (RetryAuth), then the credential list in the order
-added. Passwords of managed devices are never tried on new devices. Before the first credential goes to
+UNREACHABLE, otherwise it tries the known credentials one at a time, at most 4 per device
+(`MaxAttemptsPerDevice`: cameras block an address after 5 failed logins in 30 s): the credentials typed on the page
+(RetryAuth), then the credential list in the order added (or the entries of `credential_ids`, the Choose credentials
+dialog). While a camera blocks after failed logins it answers every request with HTTP 403, also the anonymous Axis check;
+the row then shows `DeviceMessages.BruteForceBlocked` ("The device blocks logins for a while after failed tries (brute
+force protection). Wait a few minutes, then retry.") and OADM sends nothing more to it (verified on an AXIS P3735-PLE,
+AXIS OS 13.0.114, 2026-11-25: 5 failed logins, then 403). Passwords of managed devices are never tried on new devices. Before the first credential goes to
 a scheme the device must pass the **Axis check** on it: anonymous `basicdeviceinfo
 getAllUnrestrictedProperties` answering a 12-hex `SerialNumber` equal to the discovered serial and a
 `ProdNbr` (once per scheme and login run); firmware without basicdeviceinfo (404) answers the same from the device
@@ -253,7 +275,7 @@ address"): the SDK service `IDeviceAutoAdd` (`ICorePluginContext.AutoAdd`, DIM n
 expectedSerial, source)` runs the anonymous probe (`VapixProbe`; nothing = Unreachable, another serial = SerialMismatch),
 the Axis check of `DiscoveryAuthenticator` without any credential (fails = NotAxis, "No password was sent."), then for a
 factory-default device no login at all, else the automatic login in a session of its own (credential list only, at most
-10 rejected, HTTPS first; Unreachable = not added) and stores the device through `DeviceAdder` (shared with `Commit`:
+4 rejected, HTTPS first; Unreachable = not added) and stores the device through `DeviceAdder` (shared with `Commit`:
 address = the IP, pin from the probe, the credential that worked, verified) with status Ok, Credentials required (no
 credential fits; the context menu's "Log in" fixes it) or Password not set (the context menu's "Set password"), queues the
 first full refresh and writes the audit entry "Device added automatically" (user "system", target "<ip> (<serial>)",
@@ -282,7 +304,7 @@ attempts left and has not rejected it: (a) a successful `RetryAuth` adds it ("en
 entry when saved) to the session and its `related_session_ids` and starts those logins before the reply
 returns (the devices show PENDING); (b) a credential added to the credential list (Credentials page or
 "Save to credential list") reloads the candidates of every session. The follow-up uses the normal login
-loop: one login at a time per device, at most 32 devices at once (`DiscoveryAuthenticator.Parallelism`), at most 10 rejected credentials per
+loop: one login at a time per device, at most 32 devices at once (`DiscoveryAuthenticator.Parallelism`), at most 4 rejected credentials per
 device in total (typed credentials of `RetryAuth` are remembered as rejected but not counted), entered
 credentials first, then the list; credentials added while it runs are
 tried in the same run. Unreachable attempts count neither as attempt nor as rejected.

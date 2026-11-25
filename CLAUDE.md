@@ -147,9 +147,12 @@ must never break.
 - **[Device communication (VAPIX)](docs/spec/vapix.md)**: all VAPIX in `VapixClient`; Digest over HTTP, Basic only over
   HTTPS (one exception: the add page's verified login); trust on first use with a pinned certificate; every connection
   through `DeviceRouter` on the device's route; banned socket APIs in `src/` and `plugins/`.
-- **[Add devices page](docs/spec/add-devices.md)**: one page, no wizard: Discovery, Network range, Add manually, Import
-  from file, Import from ADM, the waiting list; automatic login with the credential list after the Axis check, at most
-  10 rejected credentials per device, passwords of managed devices never tried on new devices; at most 100,000 devices.
+- **[Add devices page](docs/spec/add-devices.md)**: one page, no wizard (one exception: with more than 4 saved
+  credentials, administrators choose the 4 to try before it opens; decision 2026-11-25): Discovery, Network range, Add
+  manually, Import from file, Import from ADM, the waiting list; automatic login with the credential list after the Axis
+  check, at most 4 rejected credentials per device (cameras block an address after 5 failed logins), a camera that blocks
+  (403 to the anonymous check) is said to block and gets nothing more; passwords of managed devices never tried on new
+  devices; at most 100,000 devices.
 - **[Visual style](docs/spec/visual-style.md)**: dark (and light) Fluent look of MultiDrive, the colors in
   `Oadm.Theme`, the rail, cards, dialogs, status chips, small screens, and the catalogue of shared controls.
 - **[Main window](docs/spec/main-window.md)**: the device grid and its columns, toolbar, context menu, tasks pane, Logs

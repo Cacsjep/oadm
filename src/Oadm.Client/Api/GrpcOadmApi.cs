@@ -417,14 +417,14 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<string> GetWebUiUrlAsync(string deviceId, CancellationToken ct) =>
         (await C.Devices.GetWebUiUrlAsync(new DeviceId { Id = deviceId }, cancellationToken: ct)).Url;
 
-    public async Task<string> StartZeroConfAsync(CancellationToken ct) =>
-        (await C.Discovery.StartZeroConfAsync(new ZeroConfRequest(), cancellationToken: ct)).SessionId;
+    public async Task<string> StartZeroConfAsync(IReadOnlyList<string> credentialIds, CancellationToken ct) =>
+        (await C.Discovery.StartZeroConfAsync(new ZeroConfRequest { CredentialIds = { credentialIds } }, cancellationToken: ct)).SessionId;
 
-    public async Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, CancellationToken ct) =>
-        (await C.Discovery.StartRangeScanAsync(new RangeScanRequest { From = firstAddress, To = lastAddress }, cancellationToken: ct)).SessionId;
+    public async Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, IReadOnlyList<string> credentialIds, CancellationToken ct) =>
+        (await C.Discovery.StartRangeScanAsync(new RangeScanRequest { From = firstAddress, To = lastAddress, CredentialIds = { credentialIds } }, cancellationToken: ct)).SessionId;
 
-    public async Task<string> ProbeAddressAsync(string address, CancellationToken ct) =>
-        (await C.Discovery.ProbeAddressAsync(new ProbeAddressRequest { Address = address }, cancellationToken: ct)).SessionId;
+    public async Task<string> ProbeAddressAsync(string address, IReadOnlyList<string> credentialIds, CancellationToken ct) =>
+        (await C.Discovery.ProbeAddressAsync(new ProbeAddressRequest { Address = address, CredentialIds = { credentialIds } }, cancellationToken: ct)).SessionId;
 
     // The overloads with a login are the import's lines: a short first contact (import_line).
     public async Task<string> ProbeAddressAsync(string address, string? userName, string? password, CancellationToken ct) =>

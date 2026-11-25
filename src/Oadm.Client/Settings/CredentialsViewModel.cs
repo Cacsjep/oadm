@@ -83,11 +83,17 @@ public sealed partial class CredentialsViewModel : ValidatingViewModel
         }
 
         Validation
-            .Rule(nameof(NewCredentialUserName), () => NewCredentialUserName.Trim().Length == 0 ? "Enter a user name." : null)
-            .Rule(nameof(NewCredentialPassword), () => NewCredentialPassword.Length == 0 ? "Enter the password." : null);
+            .Rule(nameof(NewCredentialUserName), () => UserNameError(NewCredentialUserName))
+            .Rule(nameof(NewCredentialPassword), () => PasswordError(NewCredentialPassword));
         Validation.Validate();
         Validation.Reset();
     }
+
+    /// <summary>The user name rule of a new entry (this page, the add page's Choose credentials dialog).</summary>
+    public static string? UserNameError(string userName) => userName.Trim().Length == 0 ? "Enter a user name." : null;
+
+    /// <summary>The password rule of a new entry (this page, the add page's Choose credentials dialog).</summary>
+    public static string? PasswordError(string password) => password.Length == 0 ? "Enter the password." : null;
 
     /// <summary>The credential list is read and changed only by administrators (the server checks it too).</summary>
     public bool IsAdmin => _session?.IsAdmin ?? true;

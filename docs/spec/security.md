@@ -326,7 +326,10 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
 - "Save to credential list" of the login editor is shown to administrators only and the server ignores it for other
   roles (`RetryAuth`), like everywhere the credential list is written.
 - Candidates: the credential list and credentials typed on the page; passwords of managed devices are never tried on new
-  devices; at most 10 rejected credentials per device. Details in `docs/spec/add-devices.md`.
+  devices; at most 4 rejected credentials per device (`DiscoveryAuthenticator.MaxAttemptsPerDevice`: AXIS OS blocks an
+  address after 5 failed logins in 30 s by default, verified on an AXIS P3735-PLE with 13.0.114 on 2026-11-25; while it
+  blocks, every request gets 403, also the anonymous Axis check, and the add page says so with
+  `DeviceMessages.BruteForceBlocked` and sends nothing more). Details in `docs/spec/add-devices.md`.
 - Users with a device group: the credential list is never tried for them (adding, Retry, Log in, the waiting list): a
   session tries the list only after `DiscoveryAuthenticator.AllowCredentialList` (users with all devices, the server's
   automatic add), else only what was typed for it (fail closed). Test `AddDevicesScopeTests` (no credential request reaches

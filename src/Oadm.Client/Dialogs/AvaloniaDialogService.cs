@@ -90,6 +90,19 @@ public sealed class AvaloniaDialogService(IOadmApi api, Shell.UserSession? sessi
         return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
     }
 
+    public async Task<bool> ShowCredentialChoiceAsync(CredentialChoiceViewModel choice)
+    {
+        ArgumentNullException.ThrowIfNull(choice);
+        if (CurrentOwner() is not { } owner)
+        {
+            return false;
+        }
+
+        var window = new CredentialChoiceWindow();
+        window.Attach(choice);
+        return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+    }
+
     public async Task<bool> ShowDeviceLoginAsync(Devices.DeviceLoginViewModel login)
     {
         ArgumentNullException.ThrowIfNull(login);

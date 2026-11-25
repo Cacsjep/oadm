@@ -81,6 +81,12 @@ internal sealed class FakeAxisDevice
     public int RejectedLogins { get; private set; }
 
     /// <summary>
+    /// The device's brute force protection: after this many rejected logins every request gets 403 Forbidden, also without
+    /// a login (AXIS OS default 5 failures in 30 s, as an AXIS P3735-PLE with 13.0.114 answered). Null = never.
+    /// </summary>
+    public int? BlockAfterRejected { get; set; }
+
+    /// <summary>
     /// What the device answers to the anonymous <c>getAllUnrestrictedProperties</c> (the add page's Axis check).
     /// Default: a valid Axis answer with its serial number.
     /// </summary>
@@ -143,6 +149,7 @@ internal sealed class FakeAxisDevice
         }
 
         Interlocked.Exchange(ref _downRequests, 0);
+        var blocked = BlockAfterRejected is { } limit && RejectedLogins >= limit;
         _basicChallenge = BasicOnlyOverHttp && request.RequestUri!.Scheme == Uri.UriSchemeHttp;
         var path = request.RequestUri!.AbsolutePath.TrimStart('/');
         var query = request.RequestUri.Query;
@@ -157,6 +164,12 @@ internal sealed class FakeAxisDevice
             {
                 _credentialRequests.Add((request.RequestUri.Scheme, credentials.UserName));
             }
+        }
+
+        if (blocked)
+        {
+            // AXIS OS brute force protection: every request of the address is refused for a while, with or without a login.
+            return new HttpResponseMessage(HttpStatusCode.Forbidden);
         }
 
         var authorized = !NeedSetup && credentials is not null

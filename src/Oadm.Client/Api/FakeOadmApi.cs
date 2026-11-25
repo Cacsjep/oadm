@@ -366,21 +366,64 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
 
     // ---------------------------------------------------------------- discovery
 
-    public Task<string> StartZeroConfAsync(CancellationToken ct)
+    /// <summary>The credential choice of the last session start (Discovery, range, Add manually, an import line).</summary>
+    public IReadOnlyList<string> LastCredentialIds
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _lastCredentialIds;
+            }
+        }
+    }
+
+    private IReadOnlyList<string> _lastCredentialIds = [];
+
+    /// <summary>Like the server: at most 4 entries of the list, in try order (the fake logs in as before).</summary>
+    private void TakeCredentialChoiceLocked(IReadOnlyList<string> credentialIds)
+    {
+        if (credentialIds.Count > Oadm.Client.Discovery.CredentialChoiceViewModel.MaxCredentials)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Choose at most 4 credentials."));
+        }
+
+        _lastCredentialIds = [.. credentialIds];
+    }
+
+    /// <summary>
+    /// Fake mode: more entries than one add tries (the Choose credentials dialog shows). Not in the default seed, which the
+    /// Credentials page tests count.
+    /// </summary>
+    public void SeedMoreCredentials()
     {
         lock (_gate)
         {
+            AddCredentialLocked("admin", "Fake-admin-pass1");
+            AddCredentialLocked("service", "Fake-service-pass1");
+            AddCredentialLocked("installer", "Fake-installer-pass1");
+        }
+    }
+
+    public Task<string> StartZeroConfAsync(IReadOnlyList<string> credentialIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(credentialIds);
+        lock (_gate)
+        {
             ThrowIfCannotAddLocked();
+            TakeCredentialChoiceLocked(credentialIds);
         }
 
         return Task.FromResult(NewSession(FakeSessionKind.Scan, null, null, null));
     }
 
-    public Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, CancellationToken ct)
+    public Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, IReadOnlyList<string> credentialIds, CancellationToken ct)
     {
+        ArgumentNullException.ThrowIfNull(credentialIds);
         lock (_gate)
         {
             ThrowIfCannotAddLocked();
+            TakeCredentialChoiceLocked(credentialIds);
         }
 
         if (!IPAddress.TryParse(firstAddress, out IPAddress? first) || !IPAddress.TryParse(lastAddress, out IPAddress? last))
@@ -391,7 +434,16 @@ public sealed partial class FakeOadmApi : IOadmApi, IDisposable
         return Task.FromResult(NewSession(FakeSessionKind.Range, first, last, null));
     }
 
-    public Task<string> ProbeAddressAsync(string address, CancellationToken ct) => ProbeAddressAsync(address, null, null, ct);
+    public Task<string> ProbeAddressAsync(string address, IReadOnlyList<string> credentialIds, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(credentialIds);
+        lock (_gate)
+        {
+            TakeCredentialChoiceLocked(credentialIds);
+        }
+
+        return ProbeAddressAsync(address, null, null, ct);
+    }
 
     /// <summary>The expected MAC address only matters to the server (no password for another device); the fake probes as usual.</summary>
     public Task<string> ProbeAddressAsync(string address, string? userName, string? password, string expectedSerial, CancellationToken ct) =>

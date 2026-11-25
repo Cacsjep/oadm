@@ -30,7 +30,9 @@ service DiscoveryService {
 }
 
 // no_logins: as for RangeScanRequest (the AI agents' add preview only looks).
-message ZeroConfRequest { bool no_logins = 1; }
+// credential_ids: the entries of the credential list the automatic login tries, in this order (at most 4, the add page's
+// choice before it opens); empty = the first 4 of the list. Cameras block logins after 5 failures in 30 s by default.
+message ZeroConfRequest { bool no_logins = 1; repeated string credential_ids = 2; }
 
 message DiscoverySession {
   string session_id = 1;
@@ -39,7 +41,8 @@ message DiscoverySession {
 // own_networks_only: only addresses inside a network of one of the server's own interfaces or of an online site node are
 // scanned, and only those routes are used; else FAILED_PRECONDITION naming the allowed networks (AI agents).
 // no_logins: the devices are only looked at: no login is tried, not even with the credential list or a typed credential.
-message RangeScanRequest { string from = 1; string to = 2; bool own_networks_only = 3; bool no_logins = 4; }
+// credential_ids: as for ZeroConfRequest.
+message RangeScanRequest { string from = 1; string to = 2; bool own_networks_only = 3; bool no_logins = 4; repeated string credential_ids = 5; }
 // expected_serial: the MAC address the line names (an AXIS Device Manager export); a device with another one gets no
 // password at all, not even from the credential list. Empty = any device.
 // import_line: a line of an imported file; the first contact waits only Scan.TimeoutMs (like the range scan), so
@@ -49,7 +52,8 @@ message RangeScanRequest { string from = 1; string to = 2; bool own_networks_onl
 // own_networks_only: the address must be a bare IP address (no host name, scheme or port) inside a network of one of the
 // server's own interfaces or of an online site node, probed only on those routes; else FAILED_PRECONDITION naming the
 // allowed networks. no_logins: as for RangeScanRequest (a user_name and password are then refused).
-message ProbeAddressRequest { string address = 1; string user_name = 2; string password = 3; string expected_serial = 4; bool import_line = 5; string site = 6; bool own_networks_only = 7; bool no_logins = 8; }
+// credential_ids: as for ZeroConfRequest.
+message ProbeAddressRequest { string address = 1; string user_name = 2; string password = 3; string expected_serial = 4; bool import_line = 5; string site = 6; bool own_networks_only = 7; bool no_logins = 8; repeated string credential_ids = 9; }
 
 enum DiscoverySource { DISCOVERY_SOURCE_UNSPECIFIED = 0; MDNS = 1; RANGE_SCAN = 2; MANUAL = 3; }
 

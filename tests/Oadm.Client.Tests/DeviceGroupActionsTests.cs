@@ -484,7 +484,7 @@ public sealed class DeviceGroupActionsTests
         SiteList sites = await api.ListSitesAsync(CancellationToken.None);
         Assert.Equal(["Building B"], sites.Sites.Select(s => s.Name));
         Assert.All(sites.Sites, s => Assert.Empty(s.GroupNames));
-        Assert.NotNull(await api.StartZeroConfAsync(CancellationToken.None)); // a group with a site adds devices
+        Assert.NotNull(await api.StartZeroConfAsync([], CancellationToken.None)); // a group with a site adds devices
 
         // A device outside the group: the web interface answers like a removed one.
         Device outside = (await AllDevicesAsync()).First(d => mine.All(m => m.Id != d.Id));
@@ -493,7 +493,7 @@ public sealed class DeviceGroupActionsTests
 
         // guard has Lobby: single devices only, so adding is refused with the server's text.
         api.CurrentUserName = "guard";
-        var cannot = await Assert.ThrowsAsync<RpcException>(() => api.StartZeroConfAsync(CancellationToken.None));
+        var cannot = await Assert.ThrowsAsync<RpcException>(() => api.StartZeroConfAsync([], CancellationToken.None));
         Assert.Equal(StatusCode.PermissionDenied, cannot.StatusCode);
         Assert.Equal(DeviceGroupMessages.CannotAdd, cannot.Status.Detail);
         Assert.Empty((await api.GetMyRoleAsync(CancellationToken.None)).Devices.SiteNames);

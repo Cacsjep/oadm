@@ -68,6 +68,9 @@ public static class DeviceMessages
     /// <summary>The device refused the login of a request (HTTP 401).</summary>
     public const string Unauthorized = "Unauthorized - HTTP 401 (check the credentials)";
 
+    /// <summary>The device's brute force protection blocks OADM's address after failed logins (HTTP 403 with its page).</summary>
+    public const string BruteForceBlocked = "The device blocks logins for a while after failed tries (brute force protection). Wait a few minutes, then retry.";
+
     /// <summary>HTTP 403.</summary>
     public const string Forbidden = "Forbidden - HTTP 403 (administrator rights are required)";
 

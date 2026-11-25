@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 
 using Oadm.Core.Security;
 using Oadm.Sdk.Testing;
+using Oadm.Server.AddDevices;
 using Oadm.Server.Discovery;
 using Oadm.Server.Tests.Support;
 
@@ -89,23 +90,6 @@ public sealed class FastAddTests
         Assert.Equal(Proto.AuthState.LoginFailed, next["10.9.0.5"].AuthState);
         Assert.StartsWith("No known credentials", next["10.9.0.5"].AuthDetail, StringComparison.Ordinal);
         Assert.Empty(network["10.9.0.5"].CredentialRequests);
-    }
-
-    [Fact]
-    public async Task AtMostTenKnownCredentialsAreTriedPerDevice()
-    {
-        var network = Network();
-        await using var host = await TestServerHost.StartAsync(network);
-        for (var i = 0; i < 12; i++)
-        {
-            await host.Settings.AddCredentialAsync(new Proto.AddCredentialRequest { UserName = "user" + i, Password = "wrong-" + i });
-        }
-
-        var (_, devices) = await TestHelpers.ScanWithLoginAsync(host, "10.9.0.2", "10.9.0.2");
-
-        Assert.Equal(Proto.AuthState.LoginFailed, devices["10.9.0.2"].AuthState);
-        Assert.Equal("None of the 10 known credentials worked.", devices["10.9.0.2"].AuthDetail);
-        Assert.Equal(10, network["10.9.0.2"].RejectedLogins);
     }
 
     [Fact]
@@ -236,13 +220,13 @@ public sealed class FastAddTests
     {
         var network = Network();
         await using var host = await TestServerHost.StartAsync(network);
-        for (var i = 0; i < 10; i++)
+        for (var i = 0; i < DiscoveryAuthenticator.MaxAttemptsPerDevice; i++)
         {
             await host.Settings.AddCredentialAsync(new Proto.AddCredentialRequest { UserName = "user" + i, Password = "wrong-" + i });
         }
 
         var (session, devices) = await TestHelpers.ScanWithLoginAsync(host, "10.9.0.1", "10.9.0.2");
-        Assert.Equal(10, network["10.9.0.2"].RejectedLogins);
+        Assert.Equal(4, network["10.9.0.2"].RejectedLogins);
 
         // The right password of 10.9.0.1 also goes into the list: 10.9.0.2 has no attempts left.
         var retry = await host.AddDevices.RetryAuthAsync(new Proto.RetryAuthRequest
@@ -257,8 +241,8 @@ public sealed class FastAddTests
 
         var now = (await TestHelpers.WatchToEndAsync(host, session)).Values.ToDictionary(d => d.Address);
         Assert.Equal(Proto.AuthState.LoginFailed, now["10.9.0.2"].AuthState);
-        Assert.Equal("None of the 10 known credentials worked.", now["10.9.0.2"].AuthDetail);
-        Assert.Equal(10, network["10.9.0.2"].RejectedLogins);
+        Assert.Equal("None of the 4 known credentials worked.", now["10.9.0.2"].AuthDetail);
+        Assert.Equal(4, network["10.9.0.2"].RejectedLogins);
     }
 
     [Fact]

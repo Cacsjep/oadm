@@ -34,6 +34,18 @@ devices you no longer need first.
 **Use DNS names instead of IP addresses** (Discovery and Network range) lists and adds the devices by their DNS name.
 Devices without a DNS name are added by IP address. OADM keeps the address a device was added with.
 
+## Choose credentials
+
+Cameras block logins after 5 wrong passwords, so OADM tries at most 4 credentials of the **Credentials** page on each
+device. When the list holds more than 4, an administrator first sees **Choose credentials**:
+
+- Check up to 4. They are tried in the order of the list.
+- **Show passwords** shows all passwords at once, **Hide passwords** masks them again.
+- **Add credential** saves a new one to the list and checks it.
+- **Continue** opens the add page. OADM remembers your choice until you close the client.
+
+With 4 or fewer, or for users who are not administrators, OADM tries the first 4 of the list.
+
 ## Login results
 
 | Result | What to do |

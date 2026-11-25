@@ -165,11 +165,17 @@ public interface IOadmApi
     Task<WaitingSummary> TryWaitingNowAsync(IReadOnlyCollection<string> ids, bool all, CancellationToken ct);
 
     // DiscoveryService
-    Task<string> StartZeroConfAsync(CancellationToken ct);
-    Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, CancellationToken ct);
+    // credentialIds: the credential list entries the automatic login tries, in this order (at most
+    // Discovery.CredentialChoiceViewModel.MaxCredentials, the add page's Choose credentials dialog); empty = the server takes the first ones.
+
+    /// <summary>Discovery; the automatic login tries <paramref name="credentialIds"/> (empty: the first ones of the list).</summary>
+    Task<string> StartZeroConfAsync(IReadOnlyList<string> credentialIds, CancellationToken ct);
+
+    /// <summary>Network range; the automatic login tries <paramref name="credentialIds"/> (empty: the first ones of the list).</summary>
+    Task<string> StartRangeScanAsync(string firstAddress, string lastAddress, IReadOnlyList<string> credentialIds, CancellationToken ct);
 
     /// <summary>Probes one entered address (IP or host name, optional port and scheme); returns the session id.</summary>
-    Task<string> ProbeAddressAsync(string address, CancellationToken ct);
+    Task<string> ProbeAddressAsync(string address, IReadOnlyList<string> credentialIds, CancellationToken ct);
 
     /// <summary>
     /// Probes one address with credentials for that device only (a line of an imported device list): the

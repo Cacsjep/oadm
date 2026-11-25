@@ -591,11 +591,58 @@ public sealed partial class DevicesViewModel : ObservableObject
 
     private async Task RunAddPageAsync(AddDevicesMode mode)
     {
+        if (await ChooseCredentialsAsync().ConfigureAwait(true) is not { } credentialIds)
+        {
+            return;
+        }
+
         AddDevicesViewModel page = _addPageFactory(mode);
+        page.CredentialIds = credentialIds;
         await using (page.ConfigureAwait(true))
         {
             await _dialogs.ShowAddDevicesAsync(page).ConfigureAwait(true);
         }
+    }
+
+    /// <summary>The last Continue of Choose credentials in this client session (pre-ticked next time); UI thread only.</summary>
+    private IReadOnlyList<string> _lastCredentialIds = [];
+
+    /// <summary>
+    /// Choose credentials before the add page (docs/spec/add-devices.md): only for an Administrator whose credential list
+    /// holds more entries than one add tries. Returns the chosen ids in try order, empty when the server takes the first
+    /// ones (no dialog), null on Cancel (no add page).
+    /// </summary>
+    internal async Task<IReadOnlyList<string>?> ChooseCredentialsAsync()
+    {
+        if (_session?.IsAdmin != true)
+        {
+            return [];
+        }
+
+        IReadOnlyList<CredentialEntry> entries;
+        try
+        {
+            entries = await _api.ListCredentialsAsync(CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogCredentialListFailed(_logger, ex.Message); // the server still takes the first ones of the list
+            return [];
+        }
+
+        if (!CredentialChoiceViewModel.Applies(isAdministrator: true, entries.Count))
+        {
+            return [];
+        }
+
+        var choice = new CredentialChoiceViewModel(_api, entries, _lastCredentialIds);
+        if (!await _dialogs.ShowCredentialChoiceAsync(choice).ConfigureAwait(true))
+        {
+            return null;
+        }
+
+        _lastCredentialIds = choice.ChosenIds;
+        return _lastCredentialIds;
     }
 
     /// <summary>CSV files of the export and the import.</summary>
@@ -682,8 +729,14 @@ public sealed partial class DevicesViewModel : ObservableObject
             return;
         }
 
+        if (await ChooseCredentialsAsync().ConfigureAwait(true) is not { } credentialIds)
+        {
+            return;
+        }
+
         LogImporting(_logger, file.Lines.Count, file.FileName);
         AddDevicesViewModel page = _addPageFactory(AddDevicesMode.Import);
+        page.CredentialIds = credentialIds;
         page.SetImport(file);
         await using (page.ConfigureAwait(true))
         {
@@ -972,6 +1025,9 @@ public sealed partial class DevicesViewModel : ObservableObject
         TaskGroups.Overlays => "text",
         _ => "plugin",
     };
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not read the credential list before adding devices: {Reason}")]
+    private static partial void LogCredentialListFailed(ILogger logger, string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Removed {Count} device(s)")]
     private static partial void LogRemoved(ILogger logger, int count);

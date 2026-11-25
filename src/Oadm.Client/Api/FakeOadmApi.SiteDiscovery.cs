@@ -17,6 +17,11 @@ public sealed partial class FakeOadmApi
     public async Task<DiscoverySession> ProbeLineAsync(ProbeAddressRequest request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
+        lock (_gate)
+        {
+            TakeCredentialChoiceLocked(request.CredentialIds);
+        }
+
         Guid? site = null;
         if (!string.IsNullOrWhiteSpace(request.Site))
         {

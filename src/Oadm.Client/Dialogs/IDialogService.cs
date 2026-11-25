@@ -24,6 +24,9 @@ public interface IDialogService
     /// <summary>Shows the add devices page; true when devices were added.</summary>
     Task<bool> ShowAddDevicesAsync(AddDevicesViewModel page);
 
+    /// <summary>The Choose credentials dialog before the add devices page; true on Continue.</summary>
+    Task<bool> ShowCredentialChoiceAsync(CredentialChoiceViewModel choice);
+
     /// <summary>Shows the "Log in" dialog of devices that reject their stored credentials; true when all accepted the login.</summary>
     Task<bool> ShowDeviceLoginAsync(Oadm.Client.Devices.DeviceLoginViewModel login);
 
