@@ -72,6 +72,7 @@ plugins/               folders, build and tests of a bundled plugin: plugins/REA
   Oadm.Plugins.Vision(.Client)/ optional plugin (add-on, not in the installers): Vision Center (docs/spec/vision-center.md)
   Oadm.Plugins.Provisioning(.Client)/ Provisioning (docs/spec/provisioning.md): profiles of nodes, one task per factory-new
                                 camera OADM finds while on; nodes in Nodes/ ("Adding a node" in its README)
+  Oadm.Plugins.Autofocus/       Autofocus (Maintenance): every lens of the camera, one task each
   Oadm.Plugins.Overlays(.Client)/ Text overlays (docs/spec/overlays.md): the text overlays of many cameras, one task each
   Oadm.Plugins.Schedules(.Client)/ Schedules (docs/spec/schedules.md): devices, time and actions; the action nodes are
                                 Provisioning's sources compiled in
@@ -79,7 +80,7 @@ plugins/               folders, build and tests of a bundled plugin: plugins/REA
                                 outside the host: the apps' releases on github.com
   Shared/                       source linked into several plugins (CachedApiCheck, ContextCall, DeviceSweep, SweepRows,
                                 ViewerScopes, ActionEngine: the devices' action rules over SOAP, DeviceEvents: a
-                                device's event list, DeviceClock: the clock check before a certificate, DeviceId: the
+                                device's event list, DeviceClock: the clock check before a certificate, LensFocus: the autofocus of every lens, DeviceId: the
                                 Axis device ID roots); Vision/ and Vision.Client/ shared by the vision add-ons (frames,
                                 engine, previews, stats; the picture overlay, the Stream settings dialog)
 tests/

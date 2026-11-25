@@ -465,6 +465,7 @@ public sealed partial class CanaryTests
         ["oadm.notifications"] = "no methods and no devices; its actions run only in event rules, which are for users with all devices",
         ["oadm.outputs"] = "no methods; its action runs only in event rules, which are for users with all devices (EventService closed by the rule)",
         ["oadm.acap"] = TaskPluginOnly,
+        ["oadm.autofocus"] = TaskPluginOnly,
         ["oadm.datetime"] = TaskPluginOnly,
         ["oadm.firmware"] = TaskPluginOnly,
         ["oadm.network"] = TaskPluginOnly + "; the address check: Oadm.Plugins.Network.Tests DeviceGroupTests",

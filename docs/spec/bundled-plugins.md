@@ -32,6 +32,13 @@ rule names.
 `restart.cgi`, then waits until the device went offline and answers again (3 min); a different serial afterwards is a
 Warning. Task name "Restart device".
 
+## Autofocus
+
+`plugins/Oadm.Plugins.Autofocus`, id `oadm.autofocus`, always on, context menu (Maintenance), no dialog: the autofocus
+of every lens of the camera, one after the other (a multisensor camera has one lens per sensor; decision 2026-11-24),
+each lens its own step ("Focus camera 2"). Optics Control API checked in a fresh API list before the first call; a lens
+that finds no focus is a warning and the others still run; only the lens moves. Task name "Autofocus".
+
 ## Users
 
 `plugins/Oadm.Plugins.Users` (+ `.Client`), id `oadm.users`, always on, context menu (Users) **Users**: add a user,

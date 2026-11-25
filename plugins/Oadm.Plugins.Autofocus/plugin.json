@@ -1,0 +1,9 @@
+{
+  "id": "oadm.autofocus",
+  "version": "0.1.0",
+  "minSdkVersion": "0.4.0",
+  "displayName": "Autofocus",
+  "description": "Runs the autofocus of every lens of the cameras.",
+  "alwaysOn": true,
+  "siteSupport": "full"
+}

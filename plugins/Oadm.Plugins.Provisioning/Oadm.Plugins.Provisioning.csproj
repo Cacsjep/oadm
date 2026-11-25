@@ -56,6 +56,7 @@
     <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\ConfigureModels.cs" Link="DeviceConfig\ConfigureModels.cs" />
     <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\ParamRules.cs" Link="DeviceConfig\ParamRules.cs" />
     <Compile Include="..\Oadm.Plugins.DeviceConfig\Shared\DeviceConfigIds.cs" Link="DeviceConfig\DeviceConfigIds.cs" />
+    <Compile Include="..\Shared\LensFocus.cs" Link="Common\LensFocus.cs" />
   </ItemGroup>
 
   <ItemGroup>

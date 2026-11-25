@@ -613,7 +613,7 @@ box back with the error below the list (`PluginsViewModel.SwitchAsync`).
   own Turn on, below). The administrator's choices are the server setting `Plugins.Enabled` (JSON object package id ->
   on; packages without a choice use their default), applied before the core plugins start
   (`Oadm.Server.Plugins.PluginActivation.LoadAsync`).
-- **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Upgrade AXIS OS, Date and time, Applications
+- **Always on** (manifest `alwaysOn`, `PluginOrigin.AlwaysOn`): Restart, Autofocus, Upgrade AXIS OS, Date and time, Applications
   (ACAP), Users, Network settings, PKI, Provisioning, System report, Device configuration, Outputs, Notifications, Modbus, MQTT and OPC UA (core
   functionality). Enabled whatever the stored choice says; `SetEnabled` throws, `SetPackageEnabled` answers
   FAILED_PRECONDITION "<name> is always on.". Every other bundled package is switchable (on by default:

@@ -173,6 +173,7 @@ plugin that links it.
 | `ActionEngine/` | The devices' own action rules, recipients and schedules over SOAP (`SoapActionEngine`, namespace `Oadm.Plugins.ActionEngine`) |
 | `DeviceEvents/` | A device's event list (`EventDeclarations`, `DeviceEvent`); the client part's filter rows in `DeviceEvents/Client` |
 | `DeviceClock/` | `CameraClock`: the clock check before a certificate goes onto a camera |
+| `LensFocus.cs` | The autofocus of every lens of a camera (Optics Control): the Autofocus task and Provisioning's Autofocus node |
 | `DeviceId/` | `AxisDeviceId`: the Axis device ID check, with the Axis root certificates |
 | `Vision/`, `Vision.Client/` | Shared by the optional plugins Text recognition and Vision Center: frames, engine, previews, stats; the picture overlay, the Stream settings dialog |
 

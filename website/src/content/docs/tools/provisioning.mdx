@@ -286,13 +286,14 @@ Results:
 
 ### Autofocus
 
-Starts the autofocus and waits until it is done, at most 2 minutes. No settings. Nothing else is changed.
+Focuses every lens of the camera, one after the other (all sensors of a camera with several), and waits until each is
+done, at most 2 minutes together. A lens without focus does not stop the others. No settings. Nothing else is changed.
 
 Results:
 
-- Success: "Focus found."
+- Success: "Focus found." or, with several lenses, "Focus found on 4 lenses."
 - Not needed: "Not needed: no remote focus."
-- Error: "The camera could not find focus. Set focus by hand.", "The camera is too hot or too cold to move the lens." or
+- Error: "The camera could not find focus. Set focus by hand." (with several lenses per lens: "Camera 2: ..."), "The camera is too hot or too cold to move the lens." or
   "The autofocus did not end within 2 minutes."
 
 ### VAPIX commands

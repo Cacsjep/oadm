@@ -179,7 +179,8 @@ this model."). A node that does not apply (no SD card, no remote focus) is Succe
    PKI no longer has, the node has an error and the profile is a draft. PKI's task checks the policy again before the
    first write.
 10. **SD card**: format, encrypt (passphrase typed), maximum age. No card: Not needed.
-11. **Autofocus**: starts it and waits until done (at most 2 minutes). No remote focus: Not needed.
+11. **Autofocus**: every lens of the camera, one after the other (all sensors of a multisensor camera), each waited for
+    (at most 2 minutes together); a lens without focus does not stop the others. No remote focus: Not needed.
 12. **VAPIX commands**: commands of the VAPIX Commander library with their values; a command the model lacks: Warning.
 
 Tags for the new device come from the Add devices page as usual (or none); the profile has no Add to OADM node.

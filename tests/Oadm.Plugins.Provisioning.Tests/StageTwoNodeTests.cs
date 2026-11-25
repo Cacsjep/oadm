@@ -513,6 +513,32 @@ public sealed class StageTwoNodeTests
     }
 
     [Fact]
+    public async Task Autofocus_focuses_every_lens_of_a_multisensor_camera()
+    {
+        // getCapabilities of an AXIS P4708-PLVE (AXIS OS 12.11.147, two sensors), recorded 2026-11-24
+        const string twoLenses = """{"apiVersion": "1.3", "method": "getCapabilities", "data": {"numberOfOptics": 2,"optics": [{"opticsId": "0", "maxMagnification": 2.5000, "capabilities": ["zoom", "focus", "irCutFilter"]},{"opticsId": "1", "maxMagnification": 2.5000, "capabilities": ["zoom", "focus", "irCutFilter"]}]}}""";
+        await using var h = await StartedAsync();
+        var device = Device(h);
+        var camera = Camera(device);
+        var client = h.Vapix.For(device.Id);
+        client.Apis = [new DeviceApi("optics-control", "1.3")];
+        client.Handler = (_, body, _) => Task.FromResult(ScriptedVapix.Json(body!.Contains("getCapabilities", StringComparison.Ordinal) ? twoLenses : """{"apiVersion":"1.3","method":"performAutofocus","data":{}}"""));
+
+        Assert.Equal(NodeResult.Success("Focus found on 2 lenses."), await RunAsync(h, new AutofocusNode(), new AutofocusSettings(), camera));
+        Assert.Contains(client.Requests, r => r.Body!.Contains("\"performAutofocus\"", StringComparison.Ordinal) && r.Body.Contains("\"opticsId\":\"0\"", StringComparison.Ordinal));
+        Assert.Contains(client.Requests, r => r.Body!.Contains("\"performAutofocus\"", StringComparison.Ordinal) && r.Body.Contains("\"opticsId\":\"1\"", StringComparison.Ordinal));
+
+        // A lens without focus does not stop the other one; the node names it
+        client.Handler = (_, body, _) => Task.FromResult(ScriptedVapix.Json(
+            body!.Contains("getCapabilities", StringComparison.Ordinal) ? twoLenses
+            : body.Contains("\"opticsId\":\"0\"", StringComparison.Ordinal) ? """{"apiVersion":"1.3","method":"performAutofocus","error":{"code":1300,"message":"Focus not found"}}"""
+            : """{"apiVersion":"1.3","method":"performAutofocus","data":{}}"""));
+        var before = client.Requests.Count;
+        Assert.Equal(NodeResult.Error("Camera 1: The camera could not find focus. Set focus by hand."), await RunAsync(h, new AutofocusNode(), new AutofocusSettings(), camera));
+        Assert.Contains(client.Requests.Skip(before), r => r.Body!.Contains("\"opticsId\":\"1\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Autofocus_that_never_answers_ends_after_two_minutes()
     {
         await using var h = await StartedAsync();
