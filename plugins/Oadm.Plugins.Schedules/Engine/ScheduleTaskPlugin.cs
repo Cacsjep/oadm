@@ -11,7 +11,7 @@ namespace Oadm.Plugins.Schedules.Engine;
 /// </summary>
 internal sealed class ScheduleTaskPlugin(Func<ScheduleEngine?> engine) : ITaskPlugin
 {
-    public const string NotRunning = "Schedules is not running. Turn the plugin on, or restart the OADM server.";
+    public const string NotRunning = "Scheduled tasks is not running. Restart the OADM server.";
 
     public string Id => SchedulesInfo.TaskPluginId;
 

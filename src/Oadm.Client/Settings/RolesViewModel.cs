@@ -829,9 +829,10 @@ public sealed partial class RolesViewModel : ValidatingViewModel
         [
             new("", "Devices"),
             new(Oadm.Sdk.Client.HostPages.Compliance, "Compliance"),
+            .. _pluginPages.Where(IsTop).Select(p => new StartPageChoice("plugin:" + p.Id, p.DisplayName)), // Scheduled tasks, as in the rail
             new(Oadm.Sdk.Client.HostPages.Sites, "Sites"),
             new(Oadm.Sdk.Client.HostPages.EventRules, "Event rules"),
-            .. _pluginPages.OrderBy(p => p.DisplayName, StringComparer.CurrentCultureIgnoreCase).Select(p => new StartPageChoice("plugin:" + p.Id, p.DisplayName)),
+            .. _pluginPages.Where(p => !IsTop(p)).OrderBy(p => p.DisplayName, StringComparer.CurrentCultureIgnoreCase).Select(p => new StartPageChoice("plugin:" + p.Id, p.DisplayName)),
             new(Oadm.Sdk.Client.HostPages.Logs, "Logs"),
         ];
         if (current.Length > 0 && choices.All(c => c.Key != current))
@@ -840,6 +841,8 @@ public sealed partial class RolesViewModel : ValidatingViewModel
         }
 
         return choices;
+
+        static bool IsTop(CorePluginInfo page) => page.Id == Shell.MainWindowViewModel.ScheduledTasksPluginId;
     }
 
     /// <summary>The name of a start page ("Live View"; a plugin page that is off: its id with "(off)").</summary>

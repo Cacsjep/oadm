@@ -14,6 +14,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 ### Changed
 
+- Schedules is now Scheduled tasks, always on, right above Sites in the navigation.
 - Provisioning: the autofocus now focuses every lens of a camera with several sensors.
 - Tasks: the Start time column comes first.
 

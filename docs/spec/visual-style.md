@@ -44,9 +44,10 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   page: the plugin context drops every `DevicesChanged` subscription and the view's DataContext is disposed when it is
   `IDisposable`; the main window unsubscribes from the shell view model when it closes (a new main window per login) (`MainWindowViewModel.PluginWindowRequested` /
   `ClosePluginWindowsRequested`; tests `PluginWindowTests`). Entries top: Devices, **Compliance** (built in, right below Devices, no group; while the role may see
-  compliance), **Sites** (built in, below Compliance; while the role may see sites), then one per Core plugin
+  compliance), **Scheduled tasks** (the page of the always-on plugin `oadm.schedules`, no group; decision 2026-11-25),
+  **Sites** (built in, below Scheduled tasks; while the role may see sites), then one per Core plugin
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (the built-in
-  Event rules first, then Schedules, VAPIX Commander, Device triggers, Action Rule Editor), Security (PKI, Hardening scan), Monitoring
+  Event rules first, then VAPIX Commander, Device triggers, Action Rule Editor), Security (PKI, Hardening scan), Monitoring
   (Live View, Dashboards, Metadata Monitor, I/O Monitor, Image Health Dashboard, Load test), Vision (Text recognition, Vision Center;
   `CorePluginGroups.RailOrder`), Reporting (Snapshot report; System report
   has no page), Maintenance (Edge Recording Export, Edge storage), Integrations, Utilities (Web View), Extensions (default,

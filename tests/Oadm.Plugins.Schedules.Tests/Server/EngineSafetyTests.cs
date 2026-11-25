@@ -104,7 +104,7 @@ public sealed class EngineSafetyTests
 
         await h.Engine.DisposeAsync();
         var stopped = h.Runs(s.Schedule.Id)[0];
-        Assert.Equal((RunResult.Stopped, "Schedules stopped during the run. 2 devices were still running; counted as not started.", 2), (stopped.Result, stopped.Reason, stopped.NotStarted));
+        Assert.Equal((RunResult.Stopped, "Scheduled tasks stopped during the run. 2 devices were still running; counted as not started.", 2), (stopped.Result, stopped.Reason, stopped.NotStarted));
         var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => RunNowAsync(h, s)); // the stopped engine starts nothing
         Assert.Equal(ScheduleEngine.Stopping, refused.Message);
 

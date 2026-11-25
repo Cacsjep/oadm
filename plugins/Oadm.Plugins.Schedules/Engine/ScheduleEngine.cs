@@ -91,14 +91,14 @@ internal sealed record DeviceReport(DeviceEnd End, string? Step = null, string? 
 /// </summary>
 internal sealed partial class ScheduleEngine : IAsyncDisposable
 {
-    public const string OwnerName = "Schedules";
+    public const string OwnerName = "Scheduled tasks";
     public const string AlreadyRunning = "A run of this schedule is still running.";
     public const string NoUserCalls = "This OADM server cannot run schedules as their owner.";
     public const string OwnerGone = "The owner's account no longer exists or is turned off.";
     public const string RunGone = "The run of this schedule has ended. Nothing was changed.";
     public const string SkippedText = "The run before was still running.";
     public const string MissedText = "The server was off at the time.";
-    public const string OffText = "Schedules was turned off at the time.";
+    public const string OffText = "Scheduled tasks was stopped at the time.";
 
     private readonly EngineDeps _deps;
     private readonly ActionCatalog _catalog;
@@ -486,12 +486,12 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
         return running.Count;
     }
 
-    /// <summary>"Schedules stopped during the run. 2 devices were still running; they are counted as not started."</summary>
+    /// <summary>"Scheduled tasks stopped during the run. 2 devices were still running; they are counted as not started."</summary>
     public static string StillRunning(int running) =>
         running == 0 ? PluginStopped : $"{PluginStopped.TrimEnd('.')}. {Devices(running)} {(running == 1 ? "was" : "were")} still running; counted as not started.";
 
-    /// <summary>"Schedules is stopping."</summary>
-    public const string Stopping = "Schedules is stopping. Try again when it runs.";
+    /// <summary>"Scheduled tasks is stopping."</summary>
+    public const string Stopping = "Scheduled tasks is stopping. Try again when it runs.";
 
     private async Task RunAsync(RunState state, CancellationToken ct)
     {
@@ -1097,7 +1097,7 @@ internal sealed partial class ScheduleEngine : IAsyncDisposable
     }
 
     /// <summary>The reason of a run that ended because the plugin stopped.</summary>
-    public const string PluginStopped = "Schedules stopped during the run.";
+    public const string PluginStopped = "Scheduled tasks stopped during the run.";
 
     /// <summary>
     /// Stops the engine: no tick any more; every running run closes (its queued tasks cancelled, no further stage) and ends

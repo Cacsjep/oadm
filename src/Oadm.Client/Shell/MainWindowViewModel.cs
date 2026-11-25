@@ -111,7 +111,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         _logger = logger;
         IsNavExpanded = clientSettings.Current.NavRailExpanded;
 
-        // Top: Devices, then one entry per core plugin page (added on connect).
+        // Top: Devices, Compliance, Scheduled tasks, Sites, then one entry per core plugin page (added on connect).
         // Bottom: Users, Credentials and Plugins (administrators only), Logs, Settings, About.
         _devicesItem = new NavItemViewModel(HostPages.Devices, "Devices", "devices", devices);
         NavItems.Add(_devicesItem);
@@ -136,7 +136,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
         if (sites is not null)
         {
-            // Built-in page right below Compliance (no group), shown while the role may see sites.
+            // Built-in page below Compliance and Scheduled tasks (no group), shown while the role may see sites.
             _sitesItem = new NavItemViewModel(HostPages.Sites, "Sites", "server", sites);
             SyncSitesItem();
         }
@@ -769,7 +769,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>The Sites entry (right below Compliance, else Devices) shows while the role may see sites; a hidden page that was open falls back to Devices.</summary>
+    /// <summary>The Sites entry (right below Scheduled tasks, Compliance or Devices) shows while the role may see sites; a hidden page that was open falls back to Devices.</summary>
     private void SyncSitesItem()
     {
         if (_sitesItem is null)
@@ -781,7 +781,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         bool shown = NavItems.Contains(_sitesItem);
         if (wanted && !shown)
         {
-            var above = _complianceItem is not null && NavItems.Contains(_complianceItem) ? _complianceItem : _devicesItem;
+            var above = NavItems.FirstOrDefault(n => n.Key == "plugin:" + ScheduledTasksPluginId)
+                ?? (_complianceItem is not null && NavItems.Contains(_complianceItem) ? _complianceItem : _devicesItem);
             NavItems.Insert(Math.Min(NavItems.IndexOf(above) + 1, NavItems.Count), _sitesItem);
             UpdateNavGroups();
             OpenStartPage();
@@ -1002,16 +1003,31 @@ public sealed partial class MainWindowViewModel : ObservableObject
         CorePluginGroup group = Enum.TryParse(plugin.Group, ignoreCase: true, out CorePluginGroup parsed) && Enum.IsDefined(parsed)
             ? parsed
             : CorePluginGroup.Extensions;
-        NavItems.Add(new NavItemViewModel("plugin:" + plugin.Id, plugin.DisplayName,
+        bool top = string.Equals(plugin.Id, ScheduledTasksPluginId, StringComparison.Ordinal);
+        var item = new NavItemViewModel("plugin:" + plugin.Id, plugin.DisplayName,
             string.IsNullOrEmpty(plugin.IconKey) ? "plugin" : plugin.IconKey,
             new CorePluginPageViewModel(plugin.Id, plugin.DisplayName, view, page?.HasOwnCards == true,
                 page?.ShowTasksPane == true && view is not null ? Devices.Tasks : null, error, context))
         {
-            GroupTitle = RailGroups.Title(group),
-            GroupOrder = RailGroups.Order(group),
+            GroupTitle = top ? null : RailGroups.Title(group),
+            GroupOrder = top ? 0 : RailGroups.Order(group),
             OpenInWindow = OpenPluginWindow,
-        });
+        };
+        if (top)
+        {
+            // Scheduled tasks sits with the built-in entries: right above Sites, else below Compliance or Devices.
+            NavItems.Insert(_sitesItem is not null && NavItems.Contains(_sitesItem)
+                ? NavItems.IndexOf(_sitesItem)
+                : NavItems.IndexOf(_complianceItem is not null && NavItems.Contains(_complianceItem) ? _complianceItem : _devicesItem) + 1, item);
+        }
+        else
+        {
+            NavItems.Add(item);
+        }
     }
+
+    /// <summary>The package of Scheduled tasks, whose page sits with the built-in entries above Sites (decision 2026-11-25).</summary>
+    internal const string ScheduledTasksPluginId = "oadm.schedules";
 
     private static int IndexIn(IReadOnlyList<CorePluginInfo> listed, string pluginId)
     {

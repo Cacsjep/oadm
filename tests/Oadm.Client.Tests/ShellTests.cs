@@ -180,6 +180,34 @@ public sealed class ShellNavigationTests
     }
 
     [Fact]
+    public void Scheduled_tasks_sits_with_the_built_in_entries_not_in_its_group()
+    {
+        using var f = new DevicesFixture();
+        using var connection = new ServerConnection(f.Api, f.Store, f.Tasks, f.Ui, NullLogger<ServerConnection>.Instance);
+        MainWindowViewModel vm = CreateShell(f, connection);
+
+        vm.SyncCorePluginPages(
+        [
+            new CorePluginInfo { Id = "oadm.vapix-commander", DisplayName = "VAPIX Commander", Group = "Automation" },
+            new CorePluginInfo { Id = "oadm.schedules", DisplayName = "Scheduled tasks", Group = "Automation" },
+        ]);
+
+        Assert.Equal(["devices", "plugin:oadm.schedules", "plugin:oadm.vapix-commander"], vm.NavItems.Select(n => n.Key).ToArray());
+        Assert.Null(vm.NavItems[1].GroupTitle);
+        Assert.False(vm.NavItems[1].HasSeparatorBefore);
+        Assert.True(vm.NavItems[2].ShowGroupHeader); // Automation starts below it
+
+        // A second sync (a plugin list change) keeps it in place.
+        vm.SyncCorePluginPages(
+        [
+            new CorePluginInfo { Id = "oadm.ntp", DisplayName = "NTP server", Group = "Servers" },
+            new CorePluginInfo { Id = "oadm.vapix-commander", DisplayName = "VAPIX Commander", Group = "Automation" },
+            new CorePluginInfo { Id = "oadm.schedules", DisplayName = "Scheduled tasks", Group = "Automation" },
+        ]);
+        Assert.Equal(["devices", "plugin:oadm.schedules", "plugin:oadm.ntp", "plugin:oadm.vapix-commander"], vm.NavItems.Select(n => n.Key).ToArray());
+    }
+
+    [Fact]
     public void Core_plugin_pages_are_grouped_with_a_header_and_empty_groups_are_left_out()
     {
         using var f = new DevicesFixture();

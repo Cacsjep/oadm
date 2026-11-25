@@ -2,7 +2,8 @@
   "id": "oadm.schedules",
   "version": "0.1.0",
   "minSdkVersion": "0.16.0",
-  "displayName": "Schedules",
+  "displayName": "Scheduled tasks",
   "description": "Runs tasks on devices at a set time.",
+  "alwaysOn": true,
   "siteSupport": "full"
 }

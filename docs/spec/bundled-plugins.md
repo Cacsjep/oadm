@@ -400,10 +400,10 @@ toolbar button, Provisioning management, the Add devices page's "Provisioning" a
   `_secret_store` (the person enters a node's password) and `_file_store` (an uploaded file) answer the ids a node's
   settings name.
 
-## Schedules (core plugin)
+## Scheduled tasks (core plugin)
 
-`plugins/Oadm.Plugins.Schedules` (+ `.Client`), id `oadm.schedules`, rail page Schedules (group Automation), icon
-`calendarClock`, **free, on by default**. Built 2026-11-23: [schedules.md](schedules.md). A schedule has devices, a time and
+`plugins/Oadm.Plugins.Schedules` (+ `.Client`), id `oadm.schedules`, rail page Scheduled tasks (with the built-in entries,
+above Sites), icon `calendarClock`, **free, always on**. Built 2026-11-23: [schedules.md](schedules.md). A schedule has devices, a time and
 actions (the nodes of Provisioning plus Restart); each run gives every device one task "Run <schedule>" with one named
 step per action.
 

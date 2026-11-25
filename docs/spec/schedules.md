@@ -1,4 +1,4 @@
-# Schedules
+# Scheduled tasks
 
 Status: **built 2026-11-23** (spec agreed 2026-11-23).
 
@@ -8,8 +8,9 @@ Maintenance at a set time: "every Monday at 23:00, upgrade AXIS OS and restart t
 has devices, a time and a list of actions; each run gives every device one task with one named step per action, like
 Provisioning.
 
-Package `plugins/Oadm.Plugins.Schedules` (+ `.Client`), id `oadm.schedules`, free, on by default (switchable), core plugin
-with a rail page **Schedules** in the group Automation (after Event rules), icon `calendarClock`, `siteSupport` full (the
+Package `plugins/Oadm.Plugins.Schedules` (+ `.Client`), id `oadm.schedules`, display name **Scheduled tasks**, free,
+always on (not listed on the Plugins page), core plugin with a rail page **Scheduled tasks** with the built-in entries,
+right above Sites (decision 2026-11-25; its permissions stay in the group Automation), icon `calendarClock`, `siteSupport` full (the
 actions' own tasks decide per device). Details in the plugin's README.
 
 ## Rules that never break
@@ -84,8 +85,8 @@ step is Not needed (success). Not in the first version and never: hardening scan
   first stage goes on until a device that is Ok started (one that went offline is skipped); no device of it ran well:
   "Stopped at stage 1: no device could be tested.", stage 2 never starts. The next run starts from the beginning again.
 - **Delete and stop during a run**: deleting the schedule closes its run (queued tasks cancelled, no further stage,
-  running tasks run to their end, the event Stopped); turning the plugin off or stopping the server ends the run Stopped
-  at once ("Schedules stopped during the run. 2 devices were still running; counted as not started."; after a server
+  running tasks run to their end, the event Stopped); stopping the plugin or the server ends the run Stopped
+  at once ("Scheduled tasks stopped during the run. 2 devices were still running; counted as not started."; after a server
   restart a run left Running ends Stopped "The server stopped during the run."): its queued tasks are cancelled, the
   devices still running count as Not started so the counts add up, their tasks run to their end and a later run gives
   those devices no second task while they run. A run that breaks ends Failed the same way.
@@ -97,9 +98,9 @@ step is Not needed (success). Not in the first version and never: hardening scan
   reachable or not started: Done with warnings. Counts: done, warnings, failed, not reachable (by status), not started.
 - **Missed times**: at server start a due run of the last 24 hours starts while its window is open (or it has none);
   else one Missed row. Never more than one catch-up per schedule.
-  Only after a server restart (decision 2026-11-24): turning the plugin off and on again makes up nothing; a start missed
-  while it was off is one Missed row ("Schedules was turned off at the time.", once per schedule, its event once) and the
-  schedule runs at its next time. The host loads one plugin instance per process and turns it off and on with Stop and
+  Only after a server restart (decision 2026-11-24): the plugin is always on, but should the host stop and start it again,
+  that makes up nothing; a start missed while it was stopped is one Missed row ("Scheduled tasks was stopped at the
+  time.", once per schedule, its event once) and the schedule runs at its next time. The host loads one plugin instance per process and turns it off and on with Stop and
   Start; the instance's first start is the server's start.
 - **Run now** (page and MCP): starts a run at once as the owner; the user who pressed it needs "manage"; audited with
   their name. Run now has no window (decision 2026-11-24): it starts every device of all its stages; the window end

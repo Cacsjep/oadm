@@ -8,7 +8,7 @@ namespace Oadm.Plugins.Schedules;
 public static class SchedulesInfo
 {
     public const string PluginId = "oadm.schedules";
-    public const string DisplayName = "Schedules";
+    public const string DisplayName = "Scheduled tasks";
     public const string IconKey = "calendarClock";
 
     /// <summary>The task "Run &lt;schedule&gt;" (one per device and run; hidden from the menus, only Schedules starts it).</summary>

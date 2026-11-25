@@ -1,8 +1,8 @@
-# Schedules
+# Scheduled tasks
 
 Core plugin `oadm.schedules` (spec: [docs/spec/schedules.md](../../docs/spec/schedules.md)). Maintenance at a set time: a
 schedule has devices, a time and a list of actions; each run gives every device one task "Run <schedule>" with one named
-step per action. Rail page Schedules (group Automation), free, on by default. The client part is
+step per action. Rail page Scheduled tasks (with the built-in entries, above Sites), free, always on. The client part is
 `plugins/Oadm.Plugins.Schedules.Client`.
 
 ## Files
@@ -44,8 +44,8 @@ plus the plugin's "manage". A save checks them against the saving user, every ru
   turn on set it to now). A run of the schedule goes on: a Skipped row. Older than 24 h or its window closed: a Missed
   row. Else the run starts. One per schedule and tick, so a server that was off catches up at most once. Only the first
   start of the plugin instance (the server's start; the host keeps one instance per process and turns it off and on with
-  `StopAsync`/`StartAsync`) catches up: after the plugin was turned on again the first look records due starts as Missed
-  ("Schedules was turned off at the time.", `ScheduleEngine.Start(catchUp: false)`; decision 2026-11-24).
+  `StopAsync`/`StartAsync`) catches up: after the plugin was started again the first look records due starts as Missed
+  ("Scheduled tasks was stopped at the time.", `ScheduleEngine.Start(catchUp: false)`; decision 2026-11-24).
 - Window end: only for runs at their time; Run now starts every device of all its stages (decision 2026-11-24).
 - Owner: `ICorePluginContext.UserCalls` asked at the start of every run; no host support, no account, a missing right or a
   chosen device outside the owner's view: the run ends Failed with the reason, nothing starts. A chosen device removed
