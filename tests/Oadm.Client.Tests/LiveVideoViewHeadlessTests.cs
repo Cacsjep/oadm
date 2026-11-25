@@ -10,6 +10,8 @@ using Grpc.Core;
 
 using Microsoft.Extensions.Logging.Abstractions;
 
+using NSubstitute;
+
 using Oadm.Client.Api;
 using Oadm.Client.Controls;
 using Oadm.Client.Infrastructure;
@@ -118,6 +120,40 @@ public sealed class LiveVideoViewHeadlessTests
             Dispatcher.UIThread.RunJobs();
             Assert.Empty(window.OwnedWindows);
             Assert.True(await UntilAsync(() => own.Cancelled));
+            window.Close();
+            return true;
+        }, CancellationToken.None);
+        Assert.True(done);
+    }
+
+    [Fact]
+    public async Task A_camera_with_PTZ_and_focus_shows_both_bars_stacked()
+    {
+        var done = await HeadlessSession.Shared.Dispatch(async () =>
+        {
+            var fakes = new LiveVideoFakes();
+            fakes.Api.GetOpticsAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(new OpticsState { Supported = true, HasFocus = true, FocusPosition = 0.48 });
+            fakes.Api.GetPtzAsync(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(new PtzState { Supported = true, CanMove = true, CanZoom = true, CanGoHome = true, Presets = { "Home", "Gate" }, Zoom = 1 });
+            using var video = new LiveVideoViewModel(fakes.Api, fakes.Decoders, new AvaloniaUiDispatcher(), NullLogger.Instance, new LiveVideoSettings());
+            var window = new Window { Width = 760, Height = 460, Content = new LiveVideoView { DataContext = video } };
+            window.Show();
+            video.Start("a");
+            Assert.True(await UntilAsync(() => fakes.StreamCount == 1 && video.ShowPtz && video.ShowOpticsBar));
+            fakes.Streams[0].Send();
+            Assert.True(await UntilAsync(() => video.State == LiveViewState.Live));
+            Dispatcher.UIThread.RunJobs();
+
+            var ptz = Find<PtzBar>(window, _ => true);
+            var optics = Find<OpticsBar>(window, _ => true);
+            Assert.True(ptz.IsEffectivelyVisible && optics.IsEffectivelyVisible);
+            Assert.False(ptz.Bounds.Intersects(optics.Bounds)); // one above the other, never on top of each other
+            video.Ptz.SelectedPreset = "Gate"; // a chosen preset: its position can be saved
+            Dispatcher.UIThread.RunJobs();
+            var savePreset = Find<Button>(window, b => b.Command == video.Ptz.SavePresetCommand);
+            Assert.True(savePreset.IsEffectivelyVisible && savePreset.IsEffectivelyEnabled);
+            Save(window, "client-liveview-ptz-and-focus.png");
             window.Close();
             return true;
         }, CancellationToken.None);

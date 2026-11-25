@@ -102,6 +102,7 @@ enum PtzMove {
   PTZ_MOVE_CENTER = 5;      // x, y: 0..1 of the picture
   PTZ_MOVE_HOME = 6;
   PTZ_MOVE_PRESET = 7;      // preset: name
+  PTZ_MOVE_SAVE_PRESET = 8; // preset: name of a preset the camera lists; it takes the current position (audited)
 }
 
 message MovePtzRequest {

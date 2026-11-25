@@ -27,7 +27,8 @@ web UI.
   the sensor's aspect: `LiveVideoViewModel.PreferredAspect`); top right on hover the channel switch ("1 2 ...", tooltip = name; the
   place can turn it off and set the channel), below it the details card when the setting is on (`Border.videoDetails`,
   one row each: Codec, Resolution, Frame rate, Bit rate, Decoding GPU or Processor; `VideoDetails`; top right because the
-  bottom belongs to the controls); at the bottom one row: the zoom and focus or PTZ bar over the width and at its right end
+  bottom belongs to the controls); at the bottom the PTZ bar and the zoom and focus bar over the width (stacked, PTZ on top,
+  when a camera has both: multisensor cameras like the AXIS Q6300-E have remote focus and PTZ) and at their right end
   the controls button (`Icon.sliders`, only for a camera with zoom and focus or PTZ and a role with "Optics Control"; on
   hover only while the controls are closed): it opens and closes the bar, **open from the start** (`LiveVideoOptions.ControlsOpen`,
   default true; a grid tile can start closed); the user's choice holds while the component lives and goes to fullscreen; the
@@ -56,11 +57,14 @@ web UI.
   ("The camera could not find focus. ..."). The server checks the fresh capabilities and clamps every value before
   sending (zoom 1..maximum, focus 0..1, the area inside the picture with at least 5 % per side); refused statuses
   without a request. Per source: the lens of the live view source's sensor (`OpticsRequest.sensor` = the 0-based
-  `LiveViewSource.sensor` = opticsId, else the first optics); switching the source reads it again. Verified on the AXIS P3265-V (AXIS OS 12.11, API 1.3): set calls
+  `LiveViewSource.sensor` = opticsId, else the first optics); switching the source reads it again. Every lens at once is
+  the task Autofocus (`oadm.autofocus`, docs/spec/bundled-plugins.md), never the live view. Verified on the AXIS P3265-V (AXIS OS 12.11, API 1.3): set calls
   answer at once, zoom also moves focus, out-of-range values are error 2104; opt-in `OpticsHardwareWriteTests`
   (`OADM_OPTICS_WRITE=1`, puts zoom, focus and area back). Fake mode: the P3265-V models have zoom and focus.
 - **PTZ** (`LiveView/PtzViewModel`, `PtzOverlay`, `PtzBar`; server `Core/LiveView/DevicePtz`, `VapixClient.Ptz.cs`, PTZ API
-  `axis-cgi/com/ptz.cgi`): for a camera with `Properties.PTZ.PTZ=yes` (these have no Optics Control) and a role with
+  `axis-cgi/com/ptz.cgi`): for a camera with `Properties.PTZ.PTZ=yes` (it can have Optics Control too) whose `Properties.PTZ.DriverModeList` has no
+  `remote` (an AXIS Q6300-E paired with a PTZ camera only forwards to it: `disabled,remote`, no PTZ of its own; a PTZ camera
+  has `none`) and a role with
   "Optics Control", per channel (the live view's source; both channels of a bispectral camera move the same head) what
   `info=1` lists, while the controls are open: a circle with a cross in the middle of the picture: dragging from it moves the camera
   (`continuouspantiltmove`, speed by the distance, reach half the picture, 8 % dead zone, up on screen = tilt up), repeated
@@ -69,8 +73,17 @@ web UI.
   is never overtaken); only the left button drags, another button or finger is ignored; the drag also ends when the window
   loses the focus, the overlay hides or the role loses "Optics Control"; the mouse wheel zooms (`rzoom`, 400 steps a notch, sent once the wheel rests); a click elsewhere
   centers the camera on that point (`center`, thousandths of the picture). The bar (`Border.opticsBar`): Home
-  (`move=home`, `Icon.home`), the presets (`query=presetposall&format=json`, choosing one = `gotoserverpresetname`) and a
-  zoom slider (`zoom=1..9999`); the zoom is read again after a move. Errors are HTTP 200 "Error:..." (`PtzException`).
+  (`move=home`, `Icon.home`), the presets (`query=presetposall&format=json`, choosing one = `gotoserverpresetname`; the
+  chosen one stays chosen), right of them Save (`Icon.save`, icon-only, tooltip "Save the position to this preset",
+  enabled only with a chosen preset, not during a drag or another save; `MovePtz` `SAVE_PRESET`) and a zoom slider
+  (`zoom=1..9999`); the zoom is read again after a move. Save puts the current position into the chosen preset
+  (`setserverpresetname=<name>`, the name escaped): the server reads the channel's presets first and refuses a name the
+  camera does not list exactly ("The camera has no preset with this name.", nothing sent), so a save never adds a preset;
+  the home preset (its number = `PTZ.Preset.P#.HomePosition` of the channel's group, found by `ImageSource`; -1 = none)
+  gets `&home=yes` so it stays the home position; audited "Saved PTZ preset" (detail: the preset). Saving is not verified
+  on a camera yet (not on the AXIS Q6411-LE either: its `info=1` does not list `setserverpresetname`, and the
+  `PTZ.Preset` parameters and `home=yes` are taken from the VAPIX documentation). Errors are HTTP 200 "Error:..."
+  (`PtzException`).
   Verified with an AXIS Q6411-LE of the AXIS Virtual Loan Tool (AXIS OS 13.0.88) behind port forwards; opt-in
   `PtzHardwareWriteTests` (`OADM_PTZ_URL`, `_USER`, `_PASSWORD`, `_RTSP_PORT`; also streams over the forwarded RTSP port).
   Fake mode: the Q6135-LE (10.0.0.22) is a PTZ camera with three presets.

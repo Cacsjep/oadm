@@ -22,7 +22,7 @@ internal sealed record PlannedRtspPort(IReadOnlyList<string> DeviceIds, int Port
 
 /// <summary>
 /// The live view's controls (docs/spec/mcp.md "Other areas"): zoom, focus, autofocus and the autofocus area of a camera with a
-/// remote lens (<c>LiveViewService.GetOptics</c>, <c>SetOptics</c>), PTZ home, presets, zoom and center
+/// remote lens (<c>LiveViewService.GetOptics</c>, <c>SetOptics</c>), PTZ home, presets (go to, save), zoom and center
 /// (<c>GetPtz</c>, <c>MovePtz</c>) and the RTSP port OADM uses (<c>SetRtspPort</c>, stored in OADM only). The camera moves,
 /// so every change is a preview and a run; the preview reads what the camera supports first and refuses what it does not
 /// (device safety). Continuous pan and tilt stay in the live view (they need a held button).
@@ -45,12 +45,12 @@ internal static class LiveViewTools
     public const string NoPtz = "This camera has no PTZ.";
     public const string NoHome = "This camera has no home position.";
     public const string NoCenter = "This camera cannot center on a point.";
-    public const string NoSuchPreset = "The camera has no preset with this name.";
+    public const string NoSuchPreset = Oadm.Core.LiveView.PtzCommand.NoSuchPreset;
     public const string OneOpticsChange = "Pass exactly one of zoom, focus, autofocus, focus_area or reset_focus.";
     public const string PassValue = "Pass the value of this move.";
     public const string TooManyDevices = "Change the port of at most 1,000 devices at a time. Narrow the filter.";
 
-    public static IReadOnlyList<string> PtzMoves { get; } = ["home", "preset", "zoom", "center"];
+    public static IReadOnlyList<string> PtzMoves { get; } = ["home", "preset", "save_preset", "zoom", "center"];
 
     public static IEnumerable<OadmTool> Create(ToolHandles handles)
     {
@@ -136,13 +136,13 @@ internal static class LiveViewTools
         yield return new OadmTool(
             "oadm_devices_ptz_preview",
             "Preview a PTZ move",
-            "Checks a move to home, a preset, a zoom or a point against what the camera supports; nothing moves yet. Then call oadm_devices_ptz_run with the handle.",
+            "Checks a move to home, a preset, a zoom or a point, or saving the current position to a preset, against what the camera supports; nothing changes yet. Then call oadm_devices_ptz_run with the handle.",
             Object(null,
             [
                 P("device_id", Text("The device id.", 36, "uuid")),
                 P("camera", Number("The channel (1 = the first).", 1, 16, 1)),
-                P("move", Choice("home, preset (by name), zoom (1 to 9999) or center (a point of the picture).", PtzMoves)),
-                P("preset", Text("The preset's name for move preset.", 64, minLength: 1)),
+                P("move", Choice("home, preset (go to a preset by name), save_preset (the current position becomes that preset), zoom (1 to 9999) or center (a point of the picture).", PtzMoves)),
+                P("preset", Text("The preset's name for move preset or save_preset.", 64, minLength: 1)),
                 P("zoom", Number("The zoom for move zoom.", 1, 9999)),
                 P("x", Decimal("For move center: from 0 (left) to 1 (right).", 0, 1)),
                 P("y", Decimal("For move center: from 0 (top) to 1 (bottom).", 0, 1)),
@@ -163,9 +163,9 @@ internal static class LiveViewTools
         yield return new OadmTool(
             "oadm_devices_ptz_run",
             "Move the PTZ",
-            "Moves the camera as the preview said.",
+            "Moves the camera or saves the preset as the preview said.",
             ToolChanges.RunInput("oadm_devices_ptz_preview"),
-            OutObject(null, [P("moved", Out("boolean", "The camera took the move."))], "moved"),
+            OutObject(null, [P("moved", Out("boolean", "The camera took the command."))], "moved"),
             [MovePtzPath],
             call => PtzRunAsync(call, handles))
         {
@@ -369,12 +369,12 @@ internal static class LiveViewTools
                 kind = state.CanGoHome ? Proto.PtzMove.Home : throw new ToolException(NoHome, [new ToolFieldError("move", NoHome)]);
                 change = "Move to the home position";
                 break;
-            case "preset":
+            case "preset" or "save_preset":
                 preset = call.Text("preset") ?? throw new ToolException(PassValue, [new ToolFieldError("preset", PassValue)]);
                 preset = state.Presets.FirstOrDefault(p => string.Equals(p, preset, StringComparison.OrdinalIgnoreCase))
                     ?? throw new ToolException(NoSuchPreset, [new ToolFieldError("preset", NoSuchPreset)]);
-                kind = Proto.PtzMove.Preset;
-                change = "Move to the preset " + preset;
+                kind = move == "preset" ? Proto.PtzMove.Preset : Proto.PtzMove.SavePreset;
+                change = (move == "preset" ? "Move to the preset " : "Save the current position to the preset ") + preset;
                 break;
             case "zoom":
                 value = call.Number("zoom") ?? throw new ToolException(PassValue, [new ToolFieldError("zoom", PassValue)]);
@@ -391,7 +391,10 @@ internal static class LiveViewTools
 
         var answer = new JsonObject { ["device_id"] = call.Text("device_id"), ["change"] = change, ["now"] = PtzJson(state) };
         var plan = new PlannedPtz(call.Text("device_id")!, call.Number("camera") ?? 1, (int)kind, x, y, value, preset);
-        return ToolChanges.WithHandle(answer, call, handles, "oadm_devices_ptz_run", plan, ["The camera turns. A camera that records keeps the new view."]);
+        string[] warnings = kind == Proto.PtzMove.SavePreset
+            ? ["The preset then goes to where the camera looks now. Its old position is lost."]
+            : ["The camera turns. A camera that records keeps the new view."];
+        return ToolChanges.WithHandle(answer, call, handles, "oadm_devices_ptz_run", plan, warnings);
     }
 
     private static async Task<JsonObject> PtzRunAsync(ToolCall call, ToolHandles handles)

@@ -183,6 +183,63 @@ public sealed class OpticsAndRtspPortTests
     }
 
     [Fact]
+    public async Task The_position_is_saved_to_the_chosen_preset_while_nothing_else_runs()
+    {
+        var api = Substitute.For<IOadmApi>();
+        api.GetPtzAsync("ptz", Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(new PtzState
+        {
+            Supported = true, CanMove = true, Presets = { "Home", "Gate" }, Zoom = 1,
+        });
+        var sent = new List<MovePtzRequest>();
+        var hold = new TaskCompletionSource();
+        api.MovePtzAsync(Arg.Any<MovePtzRequest>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            var request = call.Arg<MovePtzRequest>();
+            lock (sent)
+            {
+                sent.Add(request.Clone());
+            }
+
+            return request.Move == PtzMove.SavePreset ? hold.Task : Task.CompletedTask; // the camera answers the save late
+        });
+        using var vm = new PtzViewModel(api) { Debounce = TimeSpan.Zero, RefreshDelay = TimeSpan.FromHours(1), RepeatInterval = TimeSpan.FromHours(1) };
+        await vm.LoadAsync("ptz", 1);
+
+        Assert.False(vm.SavePresetCommand.CanExecute(null)); // no preset chosen
+        vm.SelectedPreset = "Gate";
+        Assert.True(vm.SavePresetCommand.CanExecute(null));
+        vm.BeginDrag();
+        Assert.False(vm.SavePresetCommand.CanExecute(null)); // not while the camera is moved
+        vm.EndDrag();
+        Assert.True(vm.SavePresetCommand.CanExecute(null));
+
+        var save = vm.SavePresetCommand.ExecuteAsync(null);
+        Assert.False(vm.SavePresetCommand.CanExecute(null)); // not twice at once
+        hold.SetResult();
+        await save;
+        Assert.True(vm.SavePresetCommand.CanExecute(null));
+        MovePtzRequest saved;
+        lock (sent)
+        {
+            saved = Assert.Single(sent, r => r.Move == PtzMove.SavePreset);
+        }
+
+        Assert.Equal(("ptz", 1, "Gate"), (saved.DeviceId, saved.Camera, saved.Preset));
+        Assert.Equal("", vm.StatusText);
+
+        // The server's refusal shows in the bar.
+        api.MovePtzAsync(Arg.Any<MovePtzRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new RpcException(new Status(StatusCode.InvalidArgument, "The camera has no preset with this name.")));
+        await vm.SavePresetCommand.ExecuteAsync(null);
+        Assert.Equal("The camera has no preset with this name.", vm.StatusText);
+
+        // Another source: nothing chosen, nothing to save.
+        await vm.LoadAsync("ptz", 2);
+        Assert.Null(vm.SelectedPreset);
+        Assert.False(vm.SavePresetCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task A_drag_sends_one_move_at_a_time_and_the_stop_always_comes_last()
     {
         var api = Substitute.For<IOadmApi>();
@@ -215,12 +272,11 @@ public sealed class OpticsAndRtspPortTests
         await Eventually.StaysTrueAsync(() => { lock (sent) { return sent.Count == 2; } }, "no move after the stop", TimeSpan.FromMilliseconds(200));
         Assert.Equal([PtzMove.Continuous, PtzMove.Stop], sent.Select(r => r.Move)); // the moves in between are skipped
 
-        // The same preset again goes there again; wheel notches never carry over to another camera.
+        // The chosen preset stays chosen (its position can be saved); wheel notches never carry over to another camera.
         sent.Clear();
         vm.SelectedPreset = "Gate";
-        Assert.Null(vm.SelectedPreset);
-        vm.SelectedPreset = "Gate";
-        await TestSupport.WaitUntilAsync(() => sent.Count(r => r.Move == PtzMove.Preset) == 2);
+        Assert.Equal("Gate", vm.SelectedPreset);
+        await TestSupport.WaitUntilAsync(() => { lock (sent) { return sent.Count(r => r.Move == PtzMove.Preset) == 1; } });
         using var wheel = new PtzViewModel(api) { Debounce = TimeSpan.FromHours(1), RefreshDelay = TimeSpan.FromHours(1) };
         await wheel.LoadAsync("ptz", 1);
         wheel.Wheel(3);

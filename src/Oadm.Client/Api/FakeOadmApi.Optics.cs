@@ -74,6 +74,9 @@ public sealed partial class FakeOadmApi
     /// <summary>The PTZ commands the fake received (tests); the Q6135-LE (10.0.0.22) is a PTZ camera with three presets.</summary>
     public List<MovePtzRequest> PtzMoves { get; } = [];
 
+    /// <summary>The presets of the fake PTZ camera; saving to another name is refused like the server does.</summary>
+    private static readonly string[] FakePtzPresets = ["Home", "Gate", "Parking"];
+
     public async Task<PtzState> GetPtzAsync(string deviceId, int camera, CancellationToken ct)
     {
         await Task.Delay(TimeSpan.FromMilliseconds(50), ct).ConfigureAwait(false);
@@ -94,7 +97,7 @@ public sealed partial class FakeOadmApi
                 CanZoom = true,
                 CanCenter = true,
                 CanGoHome = true,
-                Presets = { "Home", "Gate", "Parking" },
+                Presets = { FakePtzPresets },
                 Zoom = 1,
             };
         }
@@ -106,6 +109,11 @@ public sealed partial class FakeOadmApi
         lock (_gate)
         {
             ThrowIfOffline();
+            if (request.Move == PtzMove.SavePreset && !FakePtzPresets.Contains(request.Preset, StringComparer.Ordinal))
+            {
+                throw new RpcException(new Status(StatusCode.InvalidArgument, "The camera has no preset with this name."));
+            }
+
             PtzMoves.Add(request.Clone());
         }
 

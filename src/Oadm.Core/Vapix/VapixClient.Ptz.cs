@@ -5,7 +5,7 @@ namespace Oadm.Core.Vapix;
 
 /// <summary>
 /// PTZ API (<c>axis-cgi/com/ptz.cgi</c>) for the live view of PTZ cameras: presets, home, continuous pan and tilt, zoom,
-/// centering on a point. Verified on an AXIS Q6411-LE (AXIS OS 13.0.88): commands answer 204, errors answer 200 with a
+/// centering on a point; a camera that only forwards PTZ to a paired PTZ camera counts as without PTZ. Verified on an AXIS Q6411-LE (AXIS OS 13.0.88): commands answer 204, errors answer 200 with a
 /// body "Error:..."; <c>continuouspantiltmove</c> takes <c>timeout=[seconds]</c> and the camera stops by itself after it;
 /// both channels (visual, thermal) move the same head and list the same presets.
 /// </summary>
@@ -16,8 +16,9 @@ public sealed partial class VapixClient
     /// <summary>What the PTZ camera offers on <paramref name="camera"/> (1-based channel); <see cref="PtzState.None"/> for a camera without PTZ.</summary>
     public async Task<PtzState> GetPtzAsync(int camera, CancellationToken ct)
     {
-        var properties = await ListParametersAsync(["Properties.PTZ.PTZ"], ct).ConfigureAwait(false);
-        if (!properties.TryGetValue("Properties.PTZ.PTZ", out var ptz) || !string.Equals(ptz, "yes", StringComparison.OrdinalIgnoreCase))
+        var properties = await ListParametersAsync(["Properties.PTZ.PTZ", "Properties.PTZ.DriverModeList"], ct).ConfigureAwait(false);
+        if (!properties.TryGetValue("Properties.PTZ.PTZ", out var ptz) || !string.Equals(ptz, "yes", StringComparison.OrdinalIgnoreCase)
+            || VapixParsers.IsRemotePtzOnly(properties.GetValueOrDefault("Properties.PTZ.DriverModeList")))
         {
             return PtzState.None;
         }
@@ -49,6 +50,19 @@ public sealed partial class VapixClient
             Presets = presets,
             Zoom = zoom ?? 1,
         };
+    }
+
+    /// <summary>
+    /// The presets of <paramref name="camera"/> with their numbers (<c>query=presetposall&amp;format=json</c>) and the number
+    /// of the home preset (<c>PTZ.Preset.P#.HomePosition</c> of the channel's preset group, -1 or missing = none). Not
+    /// verified on a camera yet.
+    /// </summary>
+    public async Task<PtzPresets> GetPtzPresetsAsync(int camera, CancellationToken ct)
+    {
+        camera = Math.Max(1, camera);
+        var presets = VapixParsers.ParsePtzPresetNumbers(await PtzTextAsync("query=presetposall&format=json", ct).ConfigureAwait(false), camera);
+        var parameters = await ListParametersAsync(["PTZ.Preset"], ct).ConfigureAwait(false);
+        return new PtzPresets(presets, VapixParsers.PtzHomePreset(parameters, camera));
     }
 
     /// <summary>Sends one PTZ command (arguments without <c>camera</c>); throws <see cref="PtzException"/> for the camera's "Error:" answer.</summary>
@@ -96,6 +110,12 @@ public sealed record PtzState
     public int Zoom { get; init; } = 1;
 }
 
+/// <summary>One preset of a PTZ channel: its number (<c>presetposno&lt;n&gt;</c>) and name.</summary>
+public sealed record PtzPreset(int Number, string Name);
+
+/// <summary>The presets of a PTZ channel and the number of its home preset (null = none known).</summary>
+public sealed record PtzPresets(IReadOnlyList<PtzPreset> Presets, int? HomeNumber);
+
 /// <summary>The PTZ camera refused a command ("Error: ..." answer).</summary>
 public sealed class PtzException(string message) : VapixException(message);
 
@@ -124,27 +144,84 @@ public static partial class VapixParsers
     }
 
     /// <summary>Preset names of one channel from <c>query=presetposall&amp;format=json</c> ({"Camera 1": {"presets": ["presetposno1=Home"]}}).</summary>
-    internal static IReadOnlyList<string> ParsePtzPresets(string json, int camera)
+    internal static IReadOnlyList<string> ParsePtzPresets(string json, int camera) =>
+        [.. ParsePtzPresetNumbers(json, camera).Select(p => p.Name)];
+
+    /// <summary>The presets of one channel with their numbers ("presetposno2=Gate" -> 2, "Gate"; 0 when the number is missing).</summary>
+    internal static IReadOnlyList<PtzPreset> ParsePtzPresetNumbers(string json, int camera)
     {
         try
         {
             using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty($"Camera {camera}", out var channel) || !channel.TryGetProperty("presets", out var list)
-                || list.ValueKind != JsonValueKind.Array)
+            if (doc.RootElement.ValueKind != JsonValueKind.Object
+                || !doc.RootElement.TryGetProperty($"Camera {camera}", out var channel) || channel.ValueKind != JsonValueKind.Object
+                || !channel.TryGetProperty("presets", out var list) || list.ValueKind != JsonValueKind.Array)
             {
                 return [];
             }
 
-            return [.. list.EnumerateArray()
-                .Select(e => e.GetString() ?? "")
-                .Select(s => s.IndexOf('=', StringComparison.Ordinal) is var i and >= 0 ? s[(i + 1)..] : s)
-                .Where(s => s.Length > 0)];
+            var presets = new List<PtzPreset>();
+            foreach (var entry in list.EnumerateArray())
+            {
+                var text = entry.ValueKind == JsonValueKind.String ? entry.GetString() ?? "" : "";
+                var eq = text.IndexOf('=', StringComparison.Ordinal);
+                var name = eq >= 0 ? text[(eq + 1)..] : text;
+                if (name.Length == 0)
+                {
+                    continue;
+                }
+
+                var key = eq >= 0 ? text[..eq] : "";
+                var number = key.StartsWith("presetposno", StringComparison.OrdinalIgnoreCase)
+                    && int.TryParse(key.AsSpan("presetposno".Length), NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : 0;
+                presets.Add(new PtzPreset(number, name));
+            }
+
+            return presets;
         }
         catch (JsonException)
         {
             return [];
         }
     }
+
+    /// <summary>
+    /// The number of the home preset of a channel from the <c>PTZ.Preset</c> parameters: the group whose <c>ImageSource</c>
+    /// is the channel (0-based; without any <c>ImageSource</c> the group P&lt;channel - 1&gt;), its <c>HomePosition</c>;
+    /// null for none (-1, 0, missing).
+    /// </summary>
+    internal static int? PtzHomePreset(IReadOnlyDictionary<string, string> parameters, int camera)
+    {
+        const string prefix = "PTZ.Preset.P";
+        string? group = null;
+        var anySource = false;
+        foreach (var (key, value) in parameters)
+        {
+            if (key.StartsWith(prefix, StringComparison.Ordinal) && key.EndsWith(".ImageSource", StringComparison.Ordinal)
+                && !key[prefix.Length..^".ImageSource".Length].Contains('.', StringComparison.Ordinal))
+            {
+                anySource = true;
+                if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var source) && source == camera - 1)
+                {
+                    group = key[..^".ImageSource".Length];
+                    break;
+                }
+            }
+        }
+
+        group ??= anySource ? null : prefix + (camera - 1).ToString(CultureInfo.InvariantCulture);
+        return group is not null && parameters.TryGetValue(group + ".HomePosition", out var home)
+            && int.TryParse(home, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) && number > 0 ? number : null;
+    }
+
+    /// <summary>
+    /// True for a camera whose PTZ only forwards to a paired PTZ camera (AXIS Q6300-E with One-click PTZ control:
+    /// <c>DriverModeList=disabled,remote</c>); its own pictures never move. A PTZ camera has <c>none</c> (AXIS Q6154-E).
+    /// </summary>
+    internal static bool IsRemotePtzOnly(string? driverModeList) =>
+        driverModeList is not null
+        && driverModeList.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Contains("remote", StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The text of a ptz.cgi "Error:" answer ("goto preset: No such preset position found"), or null.</summary>
     internal static string? PtzError(string text)

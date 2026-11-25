@@ -305,8 +305,10 @@ used again.
   the shared port, 554 = default, `mixed`), `SetRtspPort(device_ids, port)` ("Optics Control"; 0 or 554 = default;
   stored in OADM, the devices are not changed; audited "Changed RTSP port in OADM"), `GetPtz(device_id, camera)` (live
   view permission; presets, home, move, zoom, center of a PTZ channel, `supported` false otherwise, never an error),
-  `MovePtz(device_id, camera, move, x, y, value, preset)` ("Optics Control"; not audited, a drag sends several a second;
-  FAILED_PRECONDITION "The camera refused: <camera text>"). Only for devices of the caller's view (NOT_FOUND "1 device
+  `MovePtz(device_id, camera, move, x, y, value, preset)` ("Optics Control"; moves are not audited, a drag sends several
+  a second; `SAVE_PRESET` puts the current position into a preset the camera lists, else INVALID_ARGUMENT "The camera has
+  no preset with this name." and nothing is sent, audited "Saved PTZ preset"; FAILED_PRECONDITION "The camera refused:
+  <camera text>"). Only for devices of the caller's view (NOT_FOUND "1 device
   is no longer available.", the camera is never asked; the RTSP port methods refuse the whole selection); `Watch` ends
   with that NOT_FOUND when its device leaves the view.
   - `GetSnapshot(device_id, camera, max_width, compression)` (Live view permission, device group): one JPEG of the largest

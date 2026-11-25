@@ -53,6 +53,9 @@ it. Cameras without a remote lens have no button.
   **Set**: the camera focuses there.
 - **Reset focus** moves focus back to its default and focuses again.
 
+On a camera with several sensors the bar works on the lens of the source you watch. To focus every lens of many
+cameras at once, use **Maintenance** > **Autofocus** in the context menu of the device list.
+
 <Image src={area} alt="Autofocus area drawn over the live picture" class="screen" />
 
 You need the permission **Optics Control** (Operator has it). Every change is in the audit log.
@@ -68,6 +71,11 @@ PTZ cameras show a circle in the middle of the picture and a bar with **Home**, 
 - **Zoom**: the mouse wheel over the picture, or the zoom slider.
 - **Center**: click a point of the picture and the camera turns there.
 - **Presets**: choose one in the list and the camera goes there. **Home** goes to the home position.
+- **Save a preset**: choose the preset, move the camera, then click the save button right of the list. The preset then
+  goes to where the camera looks now.
+
+A camera with PTZ and a remote focus lens shows both bars, the PTZ bar above. A camera with several sensors that steers
+a paired PTZ camera (One-click PTZ control, for example AXIS Q6300-E) has no PTZ controls: open the PTZ camera itself.
 
 You need the permission **Optics Control**. If the connection to the server breaks while you drag, the camera stops by
 itself after a second.

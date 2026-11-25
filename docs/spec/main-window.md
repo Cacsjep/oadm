@@ -119,7 +119,7 @@ Layout, top to bottom:
    **OADM** (icon `settings`, after the task groups, before Remove): settings of OADM itself for the selected devices,
    rarely needed; today **RTSP port** (devices with live video, "Optics Control"), see [live-view.md](live-view.md).
 5. Resizable, collapsible bottom pane **Tasks** (no tabs), one row per task (= per device).
-   Columns: Name (3*, min 220 px), Device (110 px), Status (3*, min 220 px: icon plus message), Current step, Start time, Owner, Progress (bar).
+   Columns: Start time (first, 150 px), Name (3*, min 220 px), Device (110 px), Status (3*, min 220 px: icon plus message), Current step, Owner, Progress (bar).
    An empty history says "No tasks yet. Right-click devices to run one." **Current step** is
    "Step 3/6 · Upload AXIS OS to the device" plus " · 45 %" while the running step reports progress (tooltip: the text
    and the step detail); a failed task shows its failed step, a successful one just "Completed"; empty for plugins without steps. **Device** is the task's

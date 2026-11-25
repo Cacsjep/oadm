@@ -39,8 +39,8 @@ and runs after the user agreed.
 | `oadm_devices_optics_preview` | Preview | Checks one zoom or focus change against what the camera supports; nothing moves yet. Then call oadm_devices_optics_run with the handle. |
 | `oadm_devices_optics_run` | Run (changes) | Moves the camera's zoom or focus as the preview said and answers where they stand afterwards. |
 | `oadm_devices_ptz` | Change | Reads now what the PTZ of a camera can do and its presets. |
-| `oadm_devices_ptz_preview` | Preview | Checks a move to home, a preset, a zoom or a point against what the camera supports; nothing moves yet. Then call oadm_devices_ptz_run with the handle. |
-| `oadm_devices_ptz_run` | Run (changes) | Moves the camera as the preview said. |
+| `oadm_devices_ptz_preview` | Preview | Checks a move to home, a preset, a zoom or a point, or saving the current position to a preset, against what the camera supports; nothing changes yet. Then call oadm_devices_ptz_run with the handle. |
+| `oadm_devices_ptz_run` | Run (changes) | Moves the camera or saves the preset as the preview said. |
 | `oadm_devices_refresh_preview` | Preview | Shows which devices OADM would read again. Nothing is changed; then call oadm_devices_refresh_run with the handle. |
 | `oadm_devices_refresh_run` | Run (changes) | Queues a full refresh of the devices of a preview. The results show in oadm_devices_search as they arrive. |
 | `oadm_devices_remove_all_preview` | Preview | Counts every device OADM manages and what leaves with them; nothing is changed. Then call oadm_devices_remove_all_run with the handle. |

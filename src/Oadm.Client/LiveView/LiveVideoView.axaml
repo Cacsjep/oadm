@@ -77,12 +77,15 @@
         </Border>
       </StackPanel>
 
-      <!-- Bottom, one row: the zoom and focus or PTZ bar over the width, the controls button at its right end -->
+      <!-- Bottom: the PTZ bar and the zoom and focus bar over the width (stacked when a camera has both, e.g. a
+           multisensor camera with remote focus and PTZ), the controls button at the right end -->
       <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Bottom">
-        <lv:OpticsBar Grid.Column="0" DataContext="{Binding Optics}"
-                      IsVisible="{Binding $parent[lv:LiveVideoView].((lv:LiveVideoViewModel)DataContext).ShowOpticsBar, FallbackValue=False}" />
-        <lv:PtzBar Grid.Column="0" DataContext="{Binding Ptz}"
-                   IsVisible="{Binding $parent[lv:LiveVideoView].((lv:LiveVideoViewModel)DataContext).ShowPtz, FallbackValue=False}" />
+        <StackPanel Grid.Column="0" VerticalAlignment="Bottom">
+          <lv:PtzBar DataContext="{Binding Ptz}"
+                     IsVisible="{Binding $parent[lv:LiveVideoView].((lv:LiveVideoViewModel)DataContext).ShowPtz, FallbackValue=False}" />
+          <lv:OpticsBar DataContext="{Binding Optics}"
+                        IsVisible="{Binding $parent[lv:LiveVideoView].((lv:LiveVideoViewModel)DataContext).ShowOpticsBar, FallbackValue=False}" />
+        </StackPanel>
         <Panel Grid.Column="1" Classes.videoHover="{Binding !IsControlsOpen}" VerticalAlignment="Center">
           <Border Classes="videoOverlay videoCorner" IsVisible="{Binding HasControls}">
             <Button x:Name="ControlsButton" Classes="toolbar iconOnly" Classes.active="{Binding IsControlsOpen}"

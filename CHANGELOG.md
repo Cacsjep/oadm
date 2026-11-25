@@ -5,6 +5,23 @@ Notable changes to OADM, newest first. Format: [Keep a Changelog](https://keepac
 version and date, and the release workflow copies it into the GitHub release (the client's new version notice shows it).
 Each entry is one short line in plain words (what the user gets, not how); no nested lists, no bold, no code.
 
+## [Unreleased]
+
+### Added
+
+- Autofocus in the Maintenance menu focuses every lens of the selected cameras.
+- Live view: save the current PTZ position to the chosen preset.
+
+### Changed
+
+- Provisioning: the autofocus now focuses every lens of a camera with several sensors.
+- Tasks: the Start time column comes first.
+
+### Fixed
+
+- Live view: a camera with PTZ and remote focus shows both bars, no longer on top of each other.
+- Live view: a multisensor camera paired with a PTZ camera no longer shows PTZ controls for its own pictures.
+
 ## [5.4.0] - 2026-11-24
 
 ### Added

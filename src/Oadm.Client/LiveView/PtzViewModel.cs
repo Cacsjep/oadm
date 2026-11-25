@@ -13,9 +13,9 @@ namespace Oadm.Client.LiveView;
 /// <summary>
 /// PTZ of the camera in the live view: the circle in the middle of the picture moves the camera while it is dragged (the
 /// further from the center, the faster), the mouse wheel zooms, a click centers the camera on that point, and the bar
-/// offers Home, the presets and a zoom slider. Shown only for a PTZ camera and a role with "Optics Control". A drag sends
-/// the current speed every <see cref="RepeatInterval"/>; the camera stops by itself one second after the last one, so a
-/// lost connection never leaves it turning.
+/// offers Home, the presets (saving the current position into the chosen one) and a zoom slider. Shown only for a PTZ
+/// camera and a role with "Optics Control". A drag sends the current speed every <see cref="RepeatInterval"/>; the camera
+/// stops by itself one second after the last one, so a lost connection never leaves it turning.
 /// </summary>
 public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null) : ObservableObject, IDisposable
 {
@@ -97,8 +97,9 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
     [ObservableProperty]
     public partial bool HasPresets { get; private set; }
 
-    /// <summary>Choosing a preset moves the camera there.</summary>
+    /// <summary>Choosing a preset moves the camera there; it stays chosen, so the position can be saved to it.</summary>
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SavePresetCommand))]
     public partial string? SelectedPreset { get; set; }
 
     /// <summary>1 (wide) .. 9999 (tele); the slider binds it two-way.</summary>
@@ -107,6 +108,7 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
 
     /// <summary>A drag of the circle runs: the overlay draws the line to the pointer.</summary>
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SavePresetCommand))]
     public partial bool IsDragging { get; private set; }
 
     /// <summary>The camera's refusal or "The camera did not answer."; empty otherwise.</summary>
@@ -156,6 +158,7 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
         IsDragging = false;
         Presets.Clear();
         HasPresets = false;
+        SelectedPreset = null;
         StatusText = "";
     }
 
@@ -262,12 +265,15 @@ public sealed partial class PtzViewModel(IOadmApi api, TimeProvider? time = null
         {
             _ = SendAsync(new MovePtzRequest { Move = PtzMove.Preset, Preset = value });
             RefreshLater();
-            // Back to "Presets", so choosing the same one again goes there again.
-            _applying = true;
-            SelectedPreset = null;
-            _applying = false;
         }
     }
+
+    private bool CanSavePreset() => !string.IsNullOrEmpty(SelectedPreset) && !IsDragging;
+
+    /// <summary>The current position becomes the chosen preset (the server checks the camera lists it); errors show in the bar.</summary>
+    [RelayCommand(CanExecute = nameof(CanSavePreset))]
+    private Task SavePresetAsync() =>
+        SelectedPreset is { Length: > 0 } preset ? SendAsync(new MovePtzRequest { Move = PtzMove.SavePreset, Preset = preset }) : Task.CompletedTask;
 
     partial void OnZoomChanged(double value)
     {

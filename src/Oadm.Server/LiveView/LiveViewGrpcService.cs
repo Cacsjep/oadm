@@ -144,7 +144,10 @@ public sealed class LiveViewGrpcService(
         }
     }
 
-    /// <summary>One PTZ command ("Optics Control"). Not audited: a drag sends several moves a second.</summary>
+    /// <summary>
+    /// One PTZ command ("Optics Control"). Moves are not audited (a drag sends several a second); saving a preset changes
+    /// the camera's preset and is ("Saved PTZ preset", the preset's name).
+    /// </summary>
     public override async Task<Proto.Empty> MovePtz(Proto.MovePtzRequest request, ServerCallContext context)
     {
         var device = await RequireDeviceAsync(request.DeviceId, context).ConfigureAwait(false);
@@ -167,6 +170,7 @@ public sealed class LiveViewGrpcService(
             Proto.PtzMove.Center => PtzCommandKind.Center,
             Proto.PtzMove.Home => PtzCommandKind.Home,
             Proto.PtzMove.Preset => PtzCommandKind.Preset,
+            Proto.PtzMove.SavePreset => PtzCommandKind.SavePreset,
             _ => throw GrpcGuard.InvalidArgument("Choose a PTZ command."),
         };
         try
@@ -188,6 +192,11 @@ public sealed class LiveViewGrpcService(
         catch (Exception ex) when (ex is not OperationCanceledException and not RpcException)
         {
             throw ToRpc(ex);
+        }
+
+        if (kind == PtzCommandKind.SavePreset)
+        {
+            await audit.WriteAsync(AuditActions.PtzPresetSaved, $"{device[0].Address} ({device[0].Serial})", request.Preset, CancellationToken.None).ConfigureAwait(false);
         }
 
         return new Proto.Empty();

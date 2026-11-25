@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 using Oadm.Core.Vapix;
@@ -25,11 +26,20 @@ public enum PtzCommandKind
 
     /// <summary>Go to the preset <see cref="PtzCommand.Preset"/>.</summary>
     Preset,
+
+    /// <summary>
+    /// The current position becomes the preset <see cref="PtzCommand.Preset"/>, which the camera must list; the home preset
+    /// stays home (<see cref="PtzCommand.Home"/>).
+    /// </summary>
+    SavePreset,
 }
 
-/// <summary>One PTZ command of the live view.</summary>
-public sealed record PtzCommand(PtzCommandKind Kind, double X = 0, double Y = 0, int Value = 0, string? Preset = null)
+/// <summary>One PTZ command of the live view; <paramref name="Home"/>: the saved preset is the camera's home position.</summary>
+public sealed record PtzCommand(PtzCommandKind Kind, double X = 0, double Y = 0, int Value = 0, string? Preset = null, bool Home = false)
 {
+    /// <summary>The refusal of a save to a preset the camera does not list.</summary>
+    public const string NoSuchPreset = "The camera has no preset with this name.";
+
     /// <summary>The ptz.cgi arguments (without camera); values clamped, the preset name escaped.</summary>
     public string Arguments()
     {
@@ -44,12 +54,15 @@ public sealed record PtzCommand(PtzCommandKind Kind, double X = 0, double Y = 0,
             PtzCommandKind.Center => $"center={I(Math.Clamp(X, 0, 1) * DevicePtz.CenterScale)},{I(Math.Clamp(Y, 0, 1) * DevicePtz.CenterScale)}"
                 + $"&imagewidth={DevicePtz.CenterScale}&imageheight={DevicePtz.CenterScale}",
             PtzCommandKind.Home => "move=home",
-            PtzCommandKind.Preset when !string.IsNullOrWhiteSpace(Preset) && Preset.Length <= 64 && !Preset.Any(char.IsControl) =>
-                "gotoserverpresetname=" + Uri.EscapeDataString(Preset),
-            PtzCommandKind.Preset => throw new ArgumentException("Choose a preset.", nameof(Preset)),
+            PtzCommandKind.Preset when IsPresetName(Preset) => "gotoserverpresetname=" + Uri.EscapeDataString(Preset),
+            PtzCommandKind.SavePreset when IsPresetName(Preset) => "setserverpresetname=" + Uri.EscapeDataString(Preset) + (Home ? "&home=yes" : ""),
+            PtzCommandKind.Preset or PtzCommandKind.SavePreset => throw new ArgumentException("Choose a preset.", nameof(Preset)),
             _ => throw new ArgumentException("Unknown PTZ command.", nameof(Kind)),
         };
     }
+
+    private static bool IsPresetName([NotNullWhen(true)] string? name) =>
+        !string.IsNullOrWhiteSpace(name) && name.Length <= 64 && !name.Any(char.IsControl);
 }
 
 /// <summary>PTZ of managed devices for the live view. Tests replace it with fakes.</summary>
@@ -82,6 +95,25 @@ public sealed class DevicePtz(VapixClientFactory clients) : IDevicePtz
         ArgumentNullException.ThrowIfNull(command);
         var arguments = command.Arguments();
         var client = await clients.GetClientAsync(deviceId, ct).ConfigureAwait(false);
+        if (command.Kind == PtzCommandKind.SavePreset)
+        {
+            await SavePresetAsync(client, camera, command, ct).ConfigureAwait(false);
+            return;
+        }
+
+        await client.SendPtzAsync(camera, arguments, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Device safety of a save: the channel's presets are read first and only a name the camera lists (exactly) is written,
+    /// so a save never adds a preset; the home preset gets <c>home=yes</c> so it stays the home position.
+    /// </summary>
+    internal static async Task SavePresetAsync(VapixClient client, int camera, PtzCommand command, CancellationToken ct)
+    {
+        var presets = await client.GetPtzPresetsAsync(camera, ct).ConfigureAwait(false);
+        var preset = presets.Presets.FirstOrDefault(p => string.Equals(p.Name, command.Preset, StringComparison.Ordinal))
+            ?? throw new ArgumentException(PtzCommand.NoSuchPreset); // the message only: it is the user's text
+        var arguments = (command with { Preset = preset.Name, Home = preset.Number == presets.HomeNumber }).Arguments();
         await client.SendPtzAsync(camera, arguments, ct).ConfigureAwait(false);
     }
 }

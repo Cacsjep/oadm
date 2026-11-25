@@ -91,7 +91,7 @@ public sealed class HeadlessSmokeTests
             await PumpUntilAsync(() => vm.Devices.Tasks.Tasks.Any(t => t.DeviceText.Length > 0));
             DataGrid tasksGrid = window.GetVisualDescendants().OfType<Oadm.Client.Tasks.TasksGridView>().Single()
                 .GetVisualDescendants().OfType<DataGrid>().Single();
-            Assert.Equal(["Name", "Device", "Status", "Current step", "Start time", "Owner", "Progress"], tasksGrid.Columns.Select(c => c.Header as string ?? "").ToArray());
+            Assert.Equal(["Start time", "Name", "Device", "Status", "Current step", "Owner", "Progress"], tasksGrid.Columns.Select(c => c.Header as string ?? "").ToArray());
             await PumpUntilAsync(() => vm.Devices.Tasks.Tasks.Any(t => t.CurrentStepText.Contains("Upload AXIS OS to the device", StringComparison.Ordinal)));
             Capture(window, outDir, "client-tasks-pane.png");
 

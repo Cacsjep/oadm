@@ -968,7 +968,8 @@ unit, the key fields, red Run for deletes and removals) and a short status line 
 - **Live view** (device safety: the preview reads what the camera supports and refuses the rest): `oadm_devices_optics`
   and `oadm_devices_ptz` (reads of the camera now), `oadm_devices_optics_preview`/`_run` (one change: zoom within the
   camera's range, focus, autofocus, an autofocus area or the default focus; Optics control), `oadm_devices_ptz_preview`/`_run`
-  (home, a preset by name, zoom, center on a point; continuous moves stay in the live view),
+  (home, a preset by name, saving the current position to a preset the camera lists (`save_preset`), zoom, center on a
+  point; continuous moves stay in the live view),
   `oadm_devices_rtsp_port_preview`/`_run` (the port OADM stores for at most 1,000 devices of a filter, `SetRtspPort`; the
   devices are not changed).
 - **Vulnerabilities**: `oadm_vulnerabilities_update_preview`/`_run` (Check now, `VulnerabilityService.Refresh`,

@@ -31,6 +31,23 @@ public sealed class PtzControlTests
         Assert.DoesNotContain(paths, p => p.Contains("ptz.cgi", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task AMultisensorCameraPairedWithAPtzCameraHasNoPtzOfItsOwn()
+    {
+        // AXIS Q6300-E with One-click PTZ control: PTZ=yes, but every command goes to the paired PTZ camera
+        using var client = new VapixClient(Base, Camera(ptz: true, out var paths, "root.Properties.PTZ.DriverModeList=disabled,remote\n"));
+        Assert.Same(PtzState.None, await client.GetPtzAsync(1, CancellationToken.None));
+        Assert.DoesNotContain(paths, p => p.Contains("ptz.cgi", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("none", false)] // AXIS Q6154-E
+    [InlineData(null, false)]
+    [InlineData("disabled,remote", true)] // AXIS Q6300-E
+    [InlineData("Disabled, Remote", true)]
+    public void OnlyARemoteDriverModeMeansAPairedPtz(string? list, bool expected) =>
+        Assert.Equal(expected, VapixParsers.IsRemotePtzOnly(list));
+
     [Theory]
     [InlineData(PtzCommandKind.Move, 40.4, -150, 0, null, "continuouspantiltmove=40,-100&timeout=1")]
     [InlineData(PtzCommandKind.Move, 0.2, -0.3, 0, null, "continuouspantiltmove=0,0")]
@@ -52,7 +69,7 @@ public sealed class PtzControlTests
         Assert.Equal("goto preset: No such preset position found", ex.Message);
     }
 
-    private static FakeHttpMessageHandler Camera(bool ptz, out List<string> paths)
+    private static FakeHttpMessageHandler Camera(bool ptz, out List<string> paths, string extraProperties = "root.Properties.PTZ.DriverModeList=none\n")
     {
         var seen = new List<string>();
         paths = seen;
@@ -62,7 +79,7 @@ public sealed class PtzControlTests
             seen.Add(query);
             if (query.Contains("param.cgi", StringComparison.Ordinal))
             {
-                return Fixtures.Text($"root.Properties.PTZ.PTZ={(ptz ? "yes" : "no")}\n");
+                return Fixtures.Text($"root.Properties.PTZ.PTZ={(ptz ? "yes" : "no")}\n" + extraProperties);
             }
 
             return query switch

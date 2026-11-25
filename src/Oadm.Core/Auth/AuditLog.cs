@@ -93,6 +93,7 @@ public static class AuditActions
     public const string RoleChanged = "Changed role";
     public const string RoleDeleted = "Deleted role";
     public const string OpticsChanged = "Changed zoom or focus";
+    public const string PtzPresetSaved = "Saved PTZ preset";
     public const string SnapshotTaken = "Took a snapshot";
     public const string RtspPortChanged = "Changed RTSP port in OADM";
     public const string BackupCreated = "Created backup";

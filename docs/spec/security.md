@@ -202,7 +202,7 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   actions, DHCP / NTP save, task runs (plugin, device count, then the outcome: "Task outcome" below), Delete all, device remove, device login and first password
   (counts), devices added or moved automatically (user "system"), the waiting list (kept, removed), tags ("Tagged 12 devices: +Building A -PTZ"), plugins
   on / off, event rules, VAPIX Commander send / rollout, Web View ("Opened web interface", the device), zoom and focus ("Changed zoom or
-  focus", "Zoom 1.50"), RTSP port ("Changed RTSP port in OADM"), server updates ("Started server update" with the
+  focus", "Zoom 1.50"), PTZ presets ("Saved PTZ preset", the preset's name), RTSP port ("Changed RTSP port in OADM"), server updates ("Started server update" with the
   version it came from, then "Updated server" or "Server update failed" with from, to and the reason, written once by the
   server that completes the record), log exports ("Exported log", target "Server log", "Audit log" or "Client log",
   detail "PDF, 5,000 entries, Last 24 hours: 2026-11-20 10:00 to 2026-11-21 10:00 UTC, search "gate""). The Logs page
