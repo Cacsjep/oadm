@@ -210,8 +210,7 @@ computer. A client loads the client part its server hands it: the user must trus
 
 ## Plugins page
 
-- Right below the plugin list (at every window size: the list is as high as its rows and scrolls when the window is too
-  small, the card follows directly) a card **Optional plugins**: one row per add-on of this version: name, one line,
+- Right below the plugin tiles (they and the card scroll together) a card **Optional plugins**: one row per add-on of this version: name, one line,
   version, state (Not installed, Upload 42 %, Check, Install, Installing 42 % for another administrator's install, Up to date,
   Update available, Removed), the server's sentence when there is one (why it is not loaded, when the files go), a refusal in red, and:
   - **Download ZIP** (link, tooltip the file name, for a server without internet): opens the ZIP of the server's exact
@@ -232,7 +231,8 @@ computer. A client loads the client part its server hands it: the user must trus
 - **Dialog** (`AddOnNotice`, started by `AppShell` over the main window after the new version dialog, Administrators only): "Update optional plugins" names each add-on with Update
   available or not loaded, with **Open Plugins** and **Later**. Once per server, user and state (`ClientSettings.AddOnNotices`, stored when the dialog closed):
   it comes back when the state changes, so an OADM update with nothing new for the add-on shows nothing.
-- The plugin list shows an installed add-on like every other plugin, without a mark (decision 2026-11-03: the list stays as it was).
+- The tiles show an installed add-on like every other plugin, without a mark (decision 2026-11-03, kept with the tiles of
+  2026-11-27); the quick filter **Optional** finds the installed ones (the ids of the card's rows).
 
 ## AI agents
 

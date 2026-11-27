@@ -136,8 +136,8 @@ or to lock buttons. The server part must check again, because a client can be ch
 
 ## On the Plugins page
 
-While a plugin needs a license, administrators see a **License** column: the state (Licensed, Trial, Trial ended, No
-license, Expired, Other server, Not valid) with the reason as tooltip, **Enter license** and **Remove**. **Enter license**
+While a plugin needs a license, its tile shows administrators the state (Licensed, Trial, Trial ended, No license,
+Expired, Other server, Not valid) with the reason as tooltip, **Enter license** and **Remove**. **Enter license**
 shows the server ID with a copy button; paste the key or choose its file. Below the field OADM shows whom the key is
 for, and a key that does not fit is refused with the reason. The button reads **Change license** once a key is stored. Entering and
 removing a license is written to the audit log.

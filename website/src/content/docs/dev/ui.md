@@ -31,7 +31,7 @@ Add the namespace `xmlns:ui="using:Oadm.Sdk.Client.Controls"` to your XAML.
 | `ui:DayChips` + `DayChoice.Week()` | The weekday toggle chips, Monday first (`IDayChoice` items) |
 | `ui:DateTimeInput SelectedDate SelectedTime` | A date and a 24-hour time side by side (SDK 0.15.0); put it in a `ui:FormField` and give the pair's error through `Error` |
 | `ui:EventPicker Tree Selected` | The event select: an `EventTree` of `EventChoice`s with search, folders and the event's description |
-| `ui:FlowColumns MinColumnWidth MaxColumns Packing` | A panel that uses its width: as many equal columns as fit, row by row (`FlowPacking.Rows`, form fields) or each child into the shortest column (`Columns`, cards) |
+| `ui:FlowColumns MinColumnWidth MaxColumns Packing` | A panel that uses its width: as many equal columns as fit, row by row (`FlowPacking.Rows`, form fields) or each child into the shortest column (`Columns`, cards), or tiles of one width in rows as high as their tallest (`Tiles`) |
 | `ui:FileRow FileName Details Error Command` | A chosen local file with its "Choose file" button; write sizes with `ByteSize.Text` |
 | `ui:TagChips Tags` | **Tags of your own on one line** (SDK 0.17.0), like the device grid's Tags column: a chip per `TagChip(Name, Color)` in its colour, "+N" for what does not fit, every name in the tooltip. In a grid cell it lines up with the header by itself |
 | `ui:TagColorPicker SelectedColor` | **The colour of a tag** (SDK 0.17.0): the eight colours as swatches, 1 Blue to 8 Violet like the device tags (two-way). `TagColors` has their names, theme brushes and `BrushConverter` for a dot or a name in the tag's colour |

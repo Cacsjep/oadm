@@ -9,12 +9,17 @@ import plugins from '../../../assets/screens/client-plugins-page.png';
 import licenses from '../../../assets/screens/client-plugins-licenses.png';
 import licenseDialog from '../../../assets/screens/client-plugin-license.png';
 
-<Image src={plugins} alt="The Plugins page: the plugin list and below it the Optional plugins card with Download ZIP and Install" class="screen" />
+<Image src={plugins} alt="The Plugins page: the plugin tiles and below them the Optional plugins card" class="screen" />
 
-The **Plugins** page lists the plugins you can turn off, each with a short description. Only administrators see it.
+The **Plugins** page shows the plugins you can turn off as tiles, grouped like the navigation, each with a short
+description. Only administrators see it. The top right says how many are on.
 
-Turn a plugin on or off with its check box. The server applies the change at once, without a restart, and writes it to
-the audit log. A plugin that is off shows no page, menu entry or toolbar button, and the server does not run it. Other
+Click a tile to turn the plugin on or off; with the keyboard, Space or Enter. A plugin that is on has a colored tile with
+a check mark. The server applies the change at once, without a restart, and writes it to the audit log. When the server
+refuses, the tile goes back and says why in red.
+
+Type in the search box to find a plugin by its name, description or group, for example `SD card`. **All**, **On**,
+**Off** and **Optional** show only those plugins, with their count. A plugin that is off shows no page, menu entry or toolbar button, and the server does not run it. Other
 clients see the change the next time they connect.
 
 | Plugin | Default |
@@ -47,7 +52,7 @@ shows the ones of your OADM version with their state: **Not installed**, **Insta
    [OADM releases](https://github.com/Cacsjep/oadm/releases) list it as `oadm-addon-<id>-<version>-<system>.zip`.
 2. Click **Install** and choose the ZIP on this computer. The row shows **Upload**, **Check** and **Install** with their
    progress. **Cancel** stops the upload.
-3. When the row says **Up to date**, turn the plugin on in the list above. It starts off.
+3. When the row says **Up to date**, click the plugin's tile above to turn it on. It starts off.
 
 </Steps>
 
@@ -106,22 +111,22 @@ install the plugin again.
 
 ## OADM PRO plugins
 
-Plugins that need OADM PRO are listed for everyone. Their License column shows **OADM PRO**:
+Plugins that need OADM PRO are listed for everyone:
 
-- While an OADM PRO license or trial is active, the chip is green and you turn the plugin on or off like any other.
-- Without one, the check box is locked and **Activate** (administrators) opens Settings, where under **OADM PRO**
-  you start the 30-day trial or import a license.
+- While an OADM PRO license or trial is active, you turn the plugin on or off like any other.
+- Without one, its tile says **Needs an OADM PRO license or trial.** A click offers **Open Settings**, where under
+  **OADM PRO** you start the 30-day trial or import a license.
 - When the license ends or is removed, the PRO plugins stop at once. Your choice is kept: with a new license they run
   again.
 
 ## Licenses
 
-Some plugins from others are sold with a license. They show a **License** column with their state: Licensed, Trial, Trial
-ended, No license, Expired, Other server or Not valid; the tooltip says why.
+Some plugins from others are sold with a license. Their tile shows the state: Licensed, Trial, Trial ended, No license,
+Expired, Other server or Not valid; the tooltip says why.
 
 1. Copy the **Server ID** at the top of the page or in Settings > License (copy button) and send it to the plugin's vendor.
 2. You get a license key back, one line starting with `OADM1.`, or a file with it. Click **Enter license** in the plugin's
-   row, paste the key or click **Choose file**, then **Save**. Below the field OADM shows whom the key is for. A key for
+   tile, paste the key or click **Choose file**, then **Save**. Below the field OADM shows whom the key is for. A key for
    another server, an expired one or a changed one is refused with the reason.
 3. **Change license** replaces it, **Remove** takes it away.
 
