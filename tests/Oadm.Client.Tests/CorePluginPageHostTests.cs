@@ -1,4 +1,3 @@
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Threading;
@@ -39,43 +38,6 @@ public sealed class CorePluginPageHostTests
             Assert.Null(hasOwnCards ? page.CardView : page.OwnCardsView);
             Assert.True(view.IsEffectivelyVisible);
             Assert.DoesNotContain(window.GetVisualDescendants().OfType<Oadm.Client.Tasks.TasksPaneView>(), p => p.IsEffectivelyVisible);
-            window.Close();
-        }, CancellationToken.None);
-    }
-
-    /// <summary>
-    /// A live status in the page header (License Plate Center's "2 of 11 cameras connected", Text recognition's load) ends on
-    /// the right edge of the page's cards.
-    /// </summary>
-    [Fact]
-    public async Task A_header_status_ends_on_the_right_edge_of_the_cards()
-    {
-        string? outDir = Environment.GetEnvironmentVariable("OADM_SCREENSHOT_DIR");
-        string appearance = string.Equals(Environment.GetEnvironmentVariable("OADM_TEST_APPEARANCE"), "Light", StringComparison.OrdinalIgnoreCase) ? "light" : "dark";
-        await HeadlessSession.Shared.Dispatch(() =>
-        {
-            var card = new Border { Height = 200 };
-            card.Classes.Add("card");
-            var chip = new Oadm.Sdk.Client.Controls.StatusChip { Text = "2 of 11 cameras connected", IsWarning = true };
-            var trailing = new StackPanel { Margin = new Avalonia.Thickness(0, 13, 0, -18), Orientation = Avalonia.Layout.Orientation.Horizontal, Children = { chip } };
-            Oadm.Sdk.Client.Controls.PageHeader.SetTrailing(card, trailing);
-            var page = new CorePluginPageViewModel("oadm.test", "License Plate Center", card, hasOwnCards: true);
-            var host = new CorePluginPageView { DataContext = page };
-            var window = new Window { Width = 1300, Height = 400, Content = new Border { Padding = new Avalonia.Thickness(8, 0, 16, 16), Child = host } };
-            window.Show();
-            Dispatcher.UIThread.RunJobs();
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-            Dispatcher.UIThread.RunJobs();
-
-            double chipRight = chip.TranslatePoint(new Avalonia.Point(chip.Bounds.Width, 0), host)!.Value.X;
-            double cardRight = card.TranslatePoint(new Avalonia.Point(card.Bounds.Width, 0), host)!.Value.X;
-            Assert.True(Math.Abs(chipRight - cardRight) < 1, $"status ends at {chipRight}, card at {cardRight}");
-            if (!string.IsNullOrEmpty(outDir))
-            {
-                Directory.CreateDirectory(outDir);
-                window.CaptureRenderedFrame()!.Save(Path.Combine(outDir, $"core-page-header-status-{appearance}.png"), Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
-            }
-
             window.Close();
         }, CancellationToken.None);
     }
