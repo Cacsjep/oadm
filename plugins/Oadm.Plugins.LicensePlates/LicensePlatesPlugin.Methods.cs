@@ -931,7 +931,7 @@ public sealed partial class LicensePlatesPlugin
         return errors;
     }
 
-    /// <summary>Why a folder cannot hold the log; null when it can (it is created when missing).</summary>
+    /// <summary>Why a folder cannot hold the log, without touching it; null when it may (the host's checks and the write test follow).</summary>
     internal string? FolderProblem(string folder)
     {
         if (!Path.IsPathFullyQualified(folder))
@@ -946,9 +946,15 @@ public sealed partial class LicensePlatesPlugin
             return "Choose a folder outside the plugins' data of OADM: that is part of every backup.";
         }
 
+        // Save never creates a folder: new folders only through the picker's New folder (decision 2026-11-27).
+        return Directory.Exists(full) ? null : LicensePlateTexts.FolderMissing;
+    }
+
+    /// <summary>Whether OADM can write to a folder that passed every check: a file written and deleted again.</summary>
+    internal static string? WriteProblem(string full)
+    {
         try
         {
-            Directory.CreateDirectory(full);
             var probe = Path.Combine(full, ".oadm-write-test-" + Guid.NewGuid().ToString("N"));
             File.WriteAllBytes(probe, [1]);
             File.Delete(probe);
@@ -965,12 +971,19 @@ public sealed partial class LicensePlatesPlugin
         ArgumentNullException.ThrowIfNull(incoming);
         var errors = CheckSettings(incoming);
 
-        // The host's folder checks (docs/spec/security.md "Folders a plugin writes to"), the same as the folder picker's;
-        // after the plugin's own, which create a missing folder. Also for an unchanged folder: its rights may have changed.
-        if (!errors.ContainsKey("folder") && !string.IsNullOrWhiteSpace(incoming.Folder) && _ctx?.FolderCheck is { } folders
-            && await folders.CheckAsync(Path.GetFullPath(incoming.Folder.Trim()), ct).ConfigureAwait(false) is { } problem)
+        // The host's folder checks (docs/spec/security.md "Folders a plugin writes to"), the same as the folder picker's, before
+        // anything is written there; then the write test. Also for an unchanged folder: its rights may have changed.
+        if (!errors.ContainsKey("folder") && !string.IsNullOrWhiteSpace(incoming.Folder))
         {
-            errors["folder"] = problem;
+            var full = Path.GetFullPath(incoming.Folder.Trim());
+            if (_ctx?.FolderCheck is { } folders && await folders.CheckAsync(full, ct).ConfigureAwait(false) is { } problem)
+            {
+                errors["folder"] = problem;
+            }
+            else if (WriteProblem(full) is { } write)
+            {
+                errors["folder"] = write;
+            }
         }
 
         if (errors.Count > 0)

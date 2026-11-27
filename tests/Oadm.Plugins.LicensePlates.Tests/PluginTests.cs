@@ -504,6 +504,8 @@ public sealed class PluginTests
         await using var rig = await Rig.StartAsync(cameras: 0);
         var loose = Path.Combine(rig.Folder, "loose");
         var safe = Path.Combine(rig.Folder, "safe");
+        Directory.CreateDirectory(loose);
+        Directory.CreateDirectory(safe);
         var folders = new FakeServerFolderCheck().Refuse(loose, ServerFolderTexts.OthersCanChange);
         rig.Ctx.FolderCheck = folders;
         var before = PluginJson.Parse<LicensePlateSettings>(await rig.CallAsync(LicensePlatesMethods.Settings), LicensePlatesJson.Options);
@@ -523,6 +525,27 @@ public sealed class PluginTests
         // The plugin's own checks come first: a relative path never reaches the host.
         await rig.CallAsync<SaveSettingsReply>(LicensePlatesMethods.SaveSettings, before with { Folder = "relative/log" });
         Assert.Equal([loose, safe], folders.Checked);
+    }
+
+    [Fact]
+    public async Task Save_never_creates_a_folder_and_writes_nothing_where_the_host_refuses()
+    {
+        await using var rig = await Rig.StartAsync(cameras: 0);
+        var missing = Path.Combine(rig.Folder, "not-there");
+        var system = Path.Combine(rig.Folder, "system");
+        Directory.CreateDirectory(system);
+        var folders = new FakeServerFolderCheck().Refuse(system, ServerFolderTexts.SystemFolder);
+        rig.Ctx.FolderCheck = folders;
+        var before = PluginJson.Parse<LicensePlateSettings>(await rig.CallAsync(LicensePlatesMethods.Settings), LicensePlatesJson.Options);
+
+        var refused = await rig.CallAsync<SaveSettingsReply>(LicensePlatesMethods.SaveSettings, before with { Folder = missing });
+        Assert.Equal(LicensePlateTexts.FolderMissing, refused.Errors!["folder"]);
+        Assert.False(Directory.Exists(missing)); // new folders only with the picker's New folder
+
+        var system1 = await rig.CallAsync<SaveSettingsReply>(LicensePlatesMethods.SaveSettings, before with { Folder = system });
+        Assert.Equal(ServerFolderTexts.SystemFolder, system1.Errors!["folder"]);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(system));
+        Assert.Equal([system], folders.Checked);
     }
 
     [Fact]
