@@ -514,7 +514,7 @@ event of the event rules, plus "<Trigger>: connection lost".
 
 ## License Plate Center (core plugin)
 
-`plugins/Oadm.Plugins.LicensePlates` (+ `.Client`, not built yet), id `oadm.license-plates`, rail page **License Plate
+`plugins/Oadm.Plugins.LicensePlates` (+ `.Client`), id `oadm.license-plates`, rail page **License Plate
 Center** (group Integrations, icon `car`), free, **off by default**. One plate list with plate tags for every camera with
 AXIS License Plate Verifier 3; the server decides every read; spec [license-plate-center.md](license-plate-center.md),
 details in the plugin's README.

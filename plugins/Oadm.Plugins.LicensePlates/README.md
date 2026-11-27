@@ -9,8 +9,9 @@ the build: where things are, what was verified, and the contract of the client p
 
 ## Status
 
-Server part built (2026-11-27). The client part (`Oadm.Plugins.LicensePlates.Client`, the rail page) is not built yet;
-it builds against "Client contract" below. The folder picker of the Settings dialog is a host control of its own.
+Built (2026-11-27): the server part and the client part (`Oadm.Plugins.LicensePlates.Client`, the rail page with the tabs
+Log, Plates, Cameras and Stats and their dialogs). The client builds against "Client contract" below; the folder of the
+Settings dialog is the shared `ui:ServerFolderPicker`.
 
 ## Use
 
@@ -36,6 +37,10 @@ it builds against "Client contract" below. The folder picker of the Settings dia
 | `Events/` | The rule events and the problem reporter |
 | `Tasks/` | The page tasks Set up License Plate Verifier and Use recommended image settings, `SetupRules` |
 | `Tools/` | The MCP tools (`oadm_license_plates_*`) |
+| `../Oadm.Plugins.LicensePlates.Client` | The page: `LicensePlatesViewModel` (tabs, the header's connected count, the live events, the plate tags and camera choice the tabs share), `LogViewModel`, `PlatesViewModel`, `CamerasViewModel`, `StatsViewModel`; the dialogs `PlateEditorViewModel`, `ImportViewModel`, `TagsDialogViewModel` (Change tags, Allowed tags, Manage tags), `SetupViewModel` with `AreaPicture` (the areas over the live video), `CopySettingsViewModel`, `SettingsViewModel`; `PageClient` (the calls) and `IPageDialogs` (the view shows the dialogs; tests replace it); `PageTexts` |
+
+The client part links the shape rules and the overlay painter of the vision plugins (`plugins/Shared/Vision.Client`:
+`ShapeGeometry.cs`, `PictureOverlay.cs`) and uses the server part's `PlateRules`, so the editor's checks are the server's.
 
 Linked sources: `plugins/Shared/EventStream` (the event connection, shared with Device triggers), `ContextCall.cs`, the
 Applications client (`Oadm.Plugins.Acap/ApplicationApiClient.cs` and `Shared/`), the Logs page export's `LogTable.cs`
@@ -138,3 +143,11 @@ Notes for the page: the Picture column reads `picture` only for visible rows; th
 3.1.7, the tasks against a fake camera, the log store, the export, the plugin through its methods with a fake event
 stream, the device group canary and the tools. `PerfTests` (`Category=Perf`): 100,000 plates, 1,000 cameras among
 100,000 devices, a log of 10 million reads (plate search under 100 ms), the export at 10,000 rows.
+
+`Client/`: the page's view models against a sample server (`ClientSupport.cs`: Austrian plates, garages as tags, a camera
+of every status, a log with every result): `LogTabTests` (rows, the deviation triangle, the result's tooltip, the
+Confidence colours, filters, Pause, Add to plates, Export, pictures for shown rows only), `PlatesTabTests` (search, tag
+filter, rights, Delete, Change and Manage tags, the editor's errors and Delete when it ends, Import), `CamerasTabTests`
+(statuses, image settings, toolbar rights, Set up, Copy settings, Settings, Stats); `ScreenshotTests` (headless, PNGs with
+`OADM_SCREENSHOT_DIR`, `OADM_TEST_APPEARANCE=Light` for the light theme); `ClientPerfTests` (`Category=Perf`: 100,000
+plates, 1,000 cameras).

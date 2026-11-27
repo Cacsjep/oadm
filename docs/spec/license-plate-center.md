@@ -1,7 +1,7 @@
 # License Plate Center
 
-Status: **server part built (2026-11-27); the client part is not built**. The client builds against "Client contract" of
-the plugin README (`plugins/Oadm.Plugins.LicensePlates/README.md`).
+Status: **built (2026-11-27)**: the server part and the client part (`plugins/Oadm.Plugins.LicensePlates.Client`, the rail
+page). The client builds against "Client contract" of the plugin README (`plugins/Oadm.Plugins.LicensePlates/README.md`).
 
 Part of the OADM spec (`CLAUDE.md` "Feature specs"): read it before you change this area, update it in the same change.
 
@@ -354,6 +354,46 @@ Details the spec left open, decided while building; none changes a rule above.
 - **Camera problem** is also on for a camera OADM cannot contact (site offline, credentials) once that lasted 30 s; Any
   camera problem is also on for a problem of the log store.
 
+## Settled by the build (client, 2026-11-27)
+
+Details the spec left open, decided while building the page; none changes a rule above.
+
+- **Shared controls**: the tag chips, the tag colour picker and the palette moved from the client host into the client SDK
+  (`TagChipRow`, `TagChips`, `TagColorPicker`, `TagColors`, SDK 0.17.0), so plate tags look like device tags; the tags
+  dialog is laid out like the device tags dialog. Change tags (plates), Allowed tags (cameras) and Manage tags are one
+  dialog: a check box per tag for all, some or none of the selected; OK sends only the clicked tags as add and remove.
+- **Log**: the camera choice is the shared page choice (default All cameras of the plugin, kept on this computer) and is
+  shared with Stats. The time filter is the shared date range button of the Logs page (Last hour, Today, Last 24 hours,
+  Last 7 days, All, Custom with From and To). Result and Tags are check-box selects; Area, Direction and the vehicle's View
+  are single choices; Country and the vehicle's Type, Colour, Make and Model are typed (one read 300 ms after the last
+  key); the vehicle fields sit in the flyout of a Vehicle button. Pages of 200 rows; the next older page is read when a row
+  20 from the end shows; newer rows on every `reads` event of a shown camera; crops read four at a time.
+- **Log columns**: a gap row shows the warning icon in Plate and "Connection lost from 13:58 to 14:06" in Name. The deviation
+  triangle and the ended triangle of Plates are the theme's warning icon left of the text. Result's icons: the OK check,
+  the error colour with the no-entry icon, the neutral question mark.
+- **Export** is the shared Export button of the Logs page (its menu: CSV, PDF); the save notice "Saved: The newest
+  10,000 of 48,213 reads" (the count from `logCount`) or "Saved: 1,204 reads". Times in this computer's time zone.
+- **Plates** are read in pages of 5,000 (the first shows at once) and searched and filtered in memory: the plate from its
+  start with spaces, dashes and dots ignored, or the name; the tag filter "All tags" or one tag. Ended means Allowed to
+  before this computer's clock (the server's zone is not known to the client). A day without a time is 00:00 for Allowed
+  from and 23:59 for Allowed to. The editor runs the server's `PlateRules`, so its errors match the server's.
+- **Import**: the file is uploaded once; changing the tags for every plate makes a new preview; refused rows come first.
+- **Cameras**: Status chips: Connected ok; Connecting running; Connection lost ("since 13:58"), Events are off in ALPV and
+  Site offline warnings; the ALPV problems and the device problems errors. Add cameras offers every camera of the device
+  list that is not in the plugin (see "Open"). Refresh reads the selected cameras, all without a selection. Use recommended
+  image settings and Remove ask with the count; Set up and Copy settings need one selected camera; a double click sets up.
+  The Image settings tooltip is the wide tooltip: the setting, a warning icon when it differs, the camera's value, the
+  recommended one.
+- **Set up**: the live video without channel switch, fullscreen, quality switch or controls, channel 1. The areas are
+  drawn on a 16:9 picture (the stream size is not in the Set up read), each with its tag and an arrow from its middle; the
+  direction is degrees clockwise from up (0 up, 180 down), ALPV's `angle` divided by 1000. Area 1 is the accent colour,
+  area 2 teal; a new area 2 takes ALPV's inactive area 2 or a box in the right half. Save sends the areas only when they
+  changed, only the changed Recognition values, the allowed tags only when changed.
+- **Stats**: "Reads per hour" is a bar per hour of the day (00 to 23, this computer's zone); over 7 or 30 days each bar is
+  the sum of that hour over the days. The counts are stat cards; By direction, Per camera and the two top lists are grids.
+- **Settings**: the folder is optional (without one nothing is stored); the number limits of the dialog are Wait 1 to 10 s,
+  Keep reads 1 to 3,650 days, Maximum size 1 to 10,000 GB; the server's refusal shows below its field.
+
 ## Open
 
 - The order and timing of ALPV's real events (when Lost comes, how often Update, whether `carState` of an Update is
@@ -369,3 +409,9 @@ Details the spec left open, decided while building; none changes a rule above.
   form only (Region letters, digits, `_` and `-`; Camera location alpha-3 or empty).
 - The event topics (`tnsaxis:CameraApplicationPlatform/ALPV.New` and the others) and the WebSocket messages of ALPV are not
   recorded yet: the read checks used GET only.
+- The Export menu says CSV and PDF (the shared Export button of the Logs page), not "PDF report" and "CSV" as decided on
+  2026-11-27: a different text on this page only would be two phrases for one concept; to be decided by the maintainer.
+- The direction of an area (`angle`): 0 as up and clockwise is assumed, not checked against ALPV's page on hardware; the
+  picture's shape is taken as 16:9 (a 4:3 stream would shift the drawn areas against the video).
+- A read that changes after it was shown (a better picture, the direction) keeps its row until the log is read again: the
+  live read asks only for rows newer than the newest shown.

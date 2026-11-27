@@ -253,7 +253,7 @@ must never break.
 - **[Audio](docs/spec/audio.md)** (spec, not built; core plugin `oadm.audio`, free, off by default): clips, sound,
   display, siren and light of many devices; every change a task, hazardous settings confirmed, tests ask first; no live
   audio, no multicast, presets via the Action Rule Editor.
-- **[License Plate Center](docs/spec/license-plate-center.md)** (server built, client not built; core plugin `oadm.license-plates`,
+- **[License Plate Center](docs/spec/license-plate-center.md)** (built; core plugin `oadm.license-plates`,
   free, off by default): one plate list with tags for every camera with AXIS License Plate Verifier 3; the server
   decides per read (Allowed, Not allowed, Unknown plate) over its own event connection per camera, an exact match fires
   at once, other reads wait for the best one; the cameras' own lists and ALPV's access control are never touched; a live
