@@ -16,7 +16,7 @@ namespace Oadm.Client.Settings;
 
 /// <summary>
 /// A group of the Plugins page: the rail group of the package (<see cref="CorePluginGroup"/>, "Servers", "Monitoring"),
-/// in rail order. The header shows <see cref="ToString"/>.
+/// in rail order. The heading shows <see cref="ToString"/>.
 /// </summary>
 public sealed record PluginGroupKey(CorePluginGroup Group)
 {
@@ -24,16 +24,30 @@ public sealed record PluginGroupKey(CorePluginGroup Group)
 
     public override string ToString() => Shell.RailGroups.Title(Group);
 
+    /// <summary>The icon of the group's tiles (a theme icon key without "Icon.").</summary>
+    public string IconKey => Group switch
+    {
+        CorePluginGroup.Servers => "server",
+        CorePluginGroup.Automation => "zap",
+        CorePluginGroup.Security => "shield",
+        CorePluginGroup.Monitoring => "activity",
+        CorePluginGroup.Vision => "eye",
+        CorePluginGroup.Integrations => "network",
+        CorePluginGroup.Reporting => "file",
+        CorePluginGroup.Maintenance => "wrench",
+        CorePluginGroup.Utilities => "app",
+        _ => "plugin",
+    };
+
     /// <summary>The group the server reports ("Monitoring"); unknown or empty is Extensions, like the rail.</summary>
     public static PluginGroupKey Parse(string? group) =>
         new(Enum.TryParse(group, ignoreCase: true, out CorePluginGroup parsed) && Enum.IsDefined(parsed) ? parsed : CorePluginGroup.Extensions);
 }
 
-/// <summary>One plugin package of the Plugins page; the check box turns it on or off at once.</summary>
+/// <summary>One plugin package of the Plugins page, a tile: one click on it turns the package on or off at once.</summary>
 public sealed partial class PluginRowViewModel : ObservableObject
 {
     private readonly PluginsViewModel _owner;
-    private bool _applying;
 
     internal PluginRowViewModel(PluginsViewModel owner, PluginPackageInfo info)
     {
@@ -49,10 +63,9 @@ public sealed partial class PluginRowViewModel : ObservableObject
         SitePortsText = string.Join(", ", info.SitePorts.Select(p => $"{(p.Protocol == "udp" ? "UDP" : "TCP")} {p.Port}"));
         IsPro = info.Pro;
         ProLocked = info.Pro && !owner.ProActive;
-        _applying = true;
         if (owner.SwitchingTo(Id) is { } target)
         {
-            // A rebuild while this package is being switched: the row keeps its ring and the state it is going to.
+            // A rebuild while this package is being switched: the tile keeps its ring and the state it is going to.
             IsEnabled = target;
             IsBusy = true;
         }
@@ -61,12 +74,13 @@ public sealed partial class PluginRowViewModel : ObservableObject
             IsEnabled = info.Enabled;
         }
 
-        _applying = false;
+        ErrorText = owner.ErrorOf(Id);
+        SearchWords = owner.Words;
     }
 
     public string Id { get; }
 
-    /// <summary>The group the page shows the package under (the grid groups by this property).</summary>
+    /// <summary>The group the page shows the package under.</summary>
     public PluginGroupKey Group { get; }
 
     public string Name { get; }
@@ -74,10 +88,9 @@ public sealed partial class PluginRowViewModel : ObservableObject
     /// <summary>One sentence from plugin.json.</summary>
     public string Description { get; }
 
-
     public bool OffByDefault { get; }
 
-    /// <summary>Core functionality listed only for its license: the check box stays on.</summary>
+    /// <summary>Core functionality listed only for its license: it stays on.</summary>
     public bool AlwaysOn { get; }
 
     /// <summary>"Works at sites", "Only this server's network"; empty from a server without sites.</summary>
@@ -88,7 +101,12 @@ public sealed partial class PluginRowViewModel : ObservableObject
 
     public bool HasSitePorts => SitePortsText.Length > 0;
 
-    /// <summary>The texts of the Sites column (plugin.json siteSupport).</summary>
+    /// <summary>"Works at sites (UDP 123)": the line of the tile while the server has sites.</summary>
+    public string SiteLine => HasSitePorts ? $"{SiteText} ({SitePortsText})" : SiteText;
+
+    public bool ShowSiteLine => _owner.HasSites && SiteText.Length > 0;
+
+    /// <summary>The texts of the sites line (plugin.json siteSupport).</summary>
     internal static string SiteTextOf(PluginPackageInfo info) => info.SiteSupport switch
     {
         "full" => "Works at sites",
@@ -99,18 +117,18 @@ public sealed partial class PluginRowViewModel : ObservableObject
     /// <summary>The license as the server checked it; NotRequired for a free plugin.</summary>
     public PluginLicenseInfo License { get; }
 
-    /// <summary>The plugin is sold with a license: the License column shows its state and the buttons.</summary>
+    /// <summary>The plugin is sold with a license: the tile shows its state and the license buttons.</summary>
     public bool NeedsLicense => License.Status != LicenseStatus.NotRequired;
 
-    /// <summary>An OADM PRO plugin: the License column shows "OADM PRO".</summary>
+    /// <summary>An OADM PRO plugin.</summary>
     public bool IsPro { get; }
 
-    /// <summary>A PRO plugin while OADM PRO is not active: it stays off, the check box is locked, Activate opens Settings.</summary>
+    /// <summary>A PRO plugin while OADM PRO is not active: it stays off, the tile says why and a click explains it.</summary>
     public bool ProLocked { get; }
 
     public bool ProActive => IsPro && !ProLocked;
 
-    /// <summary>The tooltip of the OADM PRO chip.</summary>
+    /// <summary>The reason line of a locked PRO plugin.</summary>
     public string ProDetail => ProLocked ? ProLicenseTexts.NeedsPro : "OADM PRO is active.";
 
     public bool CanActivatePro => ProLocked && _owner.IsAdmin;
@@ -128,7 +146,7 @@ public sealed partial class PluginRowViewModel : ObservableObject
         _ => string.Empty,
     };
 
-    /// <summary>The detail below the status: who it is for and until when, or why it is not valid.</summary>
+    /// <summary>The tooltip of the status: who it is for and until when, or why it is not valid.</summary>
     public string LicenseDetail => License.Reason;
 
     public bool LicenseOk => License.Status == LicenseStatus.Valid;
@@ -145,36 +163,55 @@ public sealed partial class PluginRowViewModel : ObservableObject
 
     public bool CanEditLicense => NeedsLicense && _owner.IsAdmin;
 
+    /// <summary>On (the accent tile with the check) or off; while a switch runs, the state it is going to.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StateText))]
-    public partial bool IsEnabled { get; set; }
+    [NotifyPropertyChangedFor(nameof(TileTip), nameof(ShowCheck))]
+    public partial bool IsEnabled { get; private set; }
 
-    /// <summary>A turn on or off is running: the row shows a ring instead of the check box and takes no click.</summary>
+    /// <summary>A turn on or off is running: the tile shows a ring in place of its check and takes no second click.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanToggle), nameof(ShowCheck))]
     public partial bool IsBusy { get; private set; }
-
-    public string StateText => IsEnabled ? "On" : "Off";
 
     public bool CanToggle => _owner.IsAdmin && !IsBusy && !AlwaysOn && !ProLocked;
 
-    partial void OnIsEnabledChanged(bool value)
+    /// <summary>The check top right: on, and no switch running.</summary>
+    public bool ShowCheck => IsEnabled && !IsBusy;
+
+    /// <summary>"Click to turn on" or "Click to turn off"; a locked PRO plugin says why inside the tile instead.</summary>
+    public string? TileTip => ProLocked ? null : IsEnabled ? "Click to turn off" : "Click to turn on";
+
+    /// <summary>Why the last turn on or off or license removal failed: in red inside the tile, kept over a reload of the list.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    public partial string? ErrorText { get; private set; }
+
+    public bool HasError => !string.IsNullOrEmpty(ErrorText);
+
+    /// <summary>The search words, marked in the name and the description.</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<string> SearchWords { get; private set; }
+
+    /// <summary>Whether every search word occurs in the name, the description or the group (case does not matter).</summary>
+    public bool Matches(IReadOnlyList<string> words)
     {
-        if (_applying)
+        foreach (var word in words)
         {
-            return;
+            if (!Name.Contains(word, StringComparison.CurrentCultureIgnoreCase)
+                && !Description.Contains(word, StringComparison.CurrentCultureIgnoreCase)
+                && !Group.ToString().Contains(word, StringComparison.CurrentCultureIgnoreCase))
+            {
+                return false;
+            }
         }
 
-        if (IsBusy)
-        {
-            // A second click while the switch runs: ignored, the box stays at the state it is going to.
-            Set(!value);
-            return;
-        }
-
-        _ = _owner.SwitchAsync(this, value);
+        return true;
     }
 
-    partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanToggle));
+    /// <summary>A click on the tile, Space or Enter: on or off; a locked PRO plugin explains what it needs instead.</summary>
+    /// <remarks>Concurrent runs allowed, so the tile never looks disabled while a switch runs; the page ignores the click.</remarks>
+    [RelayCommand(AllowConcurrentExecutions = true)]
+    private Task ToggleAsync() => _owner.ToggleAsync(this);
 
     internal void NotifyRole()
     {
@@ -183,21 +220,65 @@ public sealed partial class PluginRowViewModel : ObservableObject
         OnPropertyChanged(nameof(CanActivatePro));
     }
 
-    internal void Set(bool enabled)
-    {
-        _applying = true;
-        IsEnabled = enabled;
-        _applying = false;
-    }
+    internal void NotifySites() => OnPropertyChanged(nameof(ShowSiteLine));
+
+    internal void Set(bool enabled) => IsEnabled = enabled;
 
     internal void SetBusy(bool busy) => IsBusy = busy;
+
+    internal void SetError(string? error) => ErrorText = error;
+
+    internal void SetWords(IReadOnlyList<string> words) => SearchWords = words;
+}
+
+/// <summary>A quick filter of the Plugins page.</summary>
+public enum PluginFilter
+{
+    All,
+    On,
+    Off,
+
+    /// <summary>The installed optional plugins (add-ons, docs/spec/add-ons.md).</summary>
+    Optional,
+}
+
+/// <summary>One quick filter pill: its name, how many tiles it shows with the current search, whether it is chosen.</summary>
+public sealed partial class PluginFilterPill : ObservableObject
+{
+    private readonly PluginsViewModel _owner;
+
+    internal PluginFilterPill(PluginsViewModel owner, PluginFilter filter, string label)
+    {
+        _owner = owner;
+        Filter = filter;
+        Label = label;
+    }
+
+    public PluginFilter Filter { get; }
+
+    public string Label { get; }
+
+    [ObservableProperty]
+    public partial int Count { get; internal set; }
+
+    [ObservableProperty]
+    public partial bool IsSelected { get; internal set; }
+
+    [RelayCommand]
+    private void Select() => _owner.SelectedFilter = Filter;
+}
+
+/// <summary>The tiles of one group under its heading, as the search and the filter leave them.</summary>
+public sealed record PluginTileGroup(PluginGroupKey Key, IReadOnlyList<PluginRowViewModel> Tiles)
+{
+    public string Title => Key.ToString();
 }
 
 /// <summary>
-/// Rail page "Plugins" (administrators only): every plugin package of the server that can be turned off, with its state
-/// and description; packages that are always on (core functionality) are not listed. Administrators turn a package on
-/// or off at once (PluginService.SetPackageEnabled). A package's rail page, context menu entries and toolbar entries follow through
-/// <see cref="PluginPackageStore.Changed"/>.
+/// Rail page "Plugins" (administrators only): every plugin package of the server that can be turned off, as tiles under
+/// the rail groups, with a search and the quick filters All, On, Off and Optional; packages that are always on (core
+/// functionality) are not listed. A click on a tile turns its package on or off at once (PluginService.SetPackageEnabled).
+/// A package's rail page, context menu entries and toolbar entries follow through <see cref="PluginPackageStore.Changed"/>.
 /// </summary>
 public sealed partial class PluginsViewModel : ObservableObject
 {
@@ -210,6 +291,9 @@ public sealed partial class PluginsViewModel : ObservableObject
     /// <summary>The packages being turned on or off, with the state they go to (kept over a rebuild of the rows).</summary>
     private readonly Dictionary<string, bool> _switching = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The last error of a package's tile (kept over a rebuild of the rows, cleared by its next click).</summary>
+    private readonly Dictionary<string, string> _errors = new(StringComparer.OrdinalIgnoreCase);
+
     public PluginsViewModel(PluginPackageStore store, ILogger<PluginsViewModel> logger, UserSession? session = null, IDialogService? dialogs = null, IClipboardService? clipboard = null,
         Devices.DeviceStore? devices = null, Plugins.AddOns.AddOnsViewModel? addOns = null)
     {
@@ -219,12 +303,21 @@ public sealed partial class PluginsViewModel : ObservableObject
         _session = session;
         _dialogs = dialogs;
         _clipboard = clipboard;
+        Filters =
+        [
+            new PluginFilterPill(this, PluginFilter.All, "All"),
+            new PluginFilterPill(this, PluginFilter.On, "On"),
+            new PluginFilterPill(this, PluginFilter.Off, "Off"),
+            new PluginFilterPill(this, PluginFilter.Optional, "Optional"),
+        ];
         store.Changed += (_, _) => Rebuild();
+        addOns?.AddOns.CollectionChanged += (_, _) => Refilter();
         if (devices is not null)
         {
             HasSites = devices.Sites.HasSites;
             devices.Sites.PropertyChanged += (_, _) => HasSites = devices.Sites.HasSites;
         }
+
         if (session is not null)
         {
             session.PropertyChanged += (_, e) =>
@@ -245,14 +338,22 @@ public sealed partial class PluginsViewModel : ObservableObject
 
     public bool IsAdmin => _session?.IsAdmin ?? true;
 
-    /// <summary>The Optional plugins card below the plugin list (docs/spec/add-ons.md "Plugins page"); null hides it.</summary>
+    /// <summary>The Optional plugins card below the tiles (docs/spec/add-ons.md "Plugins page"); null hides it.</summary>
     public Plugins.AddOns.AddOnsViewModel? AddOns { get; }
 
-    /// <summary>The server has sites: the page shows the Sites column (what works at a site), like the device grid's Site column.</summary>
+    /// <summary>The server has sites: each tile says whether its plugin works at a site, like the device grid's Site column.</summary>
     [ObservableProperty]
     public partial bool HasSites { get; private set; }
 
-    /// <summary>At least one plugin is sold with a license or is a PRO plugin: the page shows the License column.</summary>
+    partial void OnHasSitesChanged(bool value)
+    {
+        foreach (PluginRowViewModel row in Plugins)
+        {
+            row.NotifySites();
+        }
+    }
+
+    /// <summary>At least one plugin is sold with a license or is a PRO plugin.</summary>
     public bool HasLicensedPlugins => Plugins.Any(p => p.NeedsLicense || p.IsPro);
 
     /// <summary>OADM PRO is active on the server: PRO plugins can be turned on.</summary>
@@ -265,19 +366,40 @@ public sealed partial class PluginsViewModel : ObservableObject
     [RelayCommand]
     private void ActivatePro() => NavigateRequested?.Invoke(this, Oadm.Sdk.Client.HostPages.Settings);
 
+    /// <summary>Every listed package, in rail group order and by name.</summary>
     public Oadm.Sdk.Client.Collections.RangeObservableCollection<PluginRowViewModel> Plugins { get; } = [];
 
-    /// <summary>
-    /// The groups that have packages, in rail order (the page groups like the navigation rail).
-    /// Set with every rebuild, before <see cref="Plugins"/> changes.
-    /// </summary>
+    /// <summary>The groups that have packages, in rail order. Set with every rebuild, before <see cref="Plugins"/> changes.</summary>
     public IReadOnlyList<PluginGroupKey> Groups { get; private set; } = [];
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasError))]
-    public partial string? ErrorText { get; private set; }
+    /// <summary>The tiles the search and the filter leave, under their group headings (groups without one are left out).</summary>
+    public Oadm.Sdk.Client.Collections.RangeObservableCollection<PluginTileGroup> TileGroups { get; } = [];
 
-    public bool HasError => !string.IsNullOrEmpty(ErrorText);
+    /// <summary>The quick filters All, On, Off, Optional with their counts.</summary>
+    public IReadOnlyList<PluginFilterPill> Filters { get; }
+
+    /// <summary>What the search box holds: every word must occur in a tile's name, description or group.</summary>
+    [ObservableProperty]
+    public partial string? SearchText { get; set; }
+
+    partial void OnSearchTextChanged(string? value) => Refilter();
+
+    /// <summary>The chosen quick filter (All at the start).</summary>
+    [ObservableProperty]
+    public partial PluginFilter SelectedFilter { get; set; }
+
+    partial void OnSelectedFilterChanged(PluginFilter value) => Refilter();
+
+    /// <summary>The search words (<see cref="SearchText"/> split at white space).</summary>
+    public IReadOnlyList<string> Words { get; private set; } = [];
+
+    /// <summary>"12 of 22 on": the live status of the whole page, at the right end of its header.</summary>
+    [ObservableProperty]
+    public partial string CountText { get; private set; } = string.Empty;
+
+    /// <summary>The search or the filter leaves no tile (and there are plugins).</summary>
+    [ObservableProperty]
+    public partial bool NothingFound { get; private set; }
 
     public bool IsEmpty => Plugins.Count == 0;
 
@@ -296,7 +418,7 @@ public sealed partial class PluginsViewModel : ObservableObject
             return;
         }
 
-        ErrorText = null;
+        SetError(row, null);
         await _dialogs.ShowPluginLicenseAsync(new PluginLicenseViewModel(_store, row.Id, row.Name, _dialogs, _clipboard)).ConfigureAwait(true);
     }
 
@@ -314,23 +436,55 @@ public sealed partial class PluginsViewModel : ObservableObject
             return;
         }
 
+        string id = row.Id;
+        _errors.Remove(id);
+        string? error = null;
         try
         {
-            await _store.RemoveLicenseAsync(row.Id, CancellationToken.None).ConfigureAwait(true);
-            ErrorText = null;
+            await _store.RemoveLicenseAsync(id, CancellationToken.None).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
-            ErrorText = $"The license of {row.Name} could not be removed: {Message(ex)}";
+            error = $"The license could not be removed: {Message(ex)}";
         }
+
+        SetError(Current(id) ?? row, error);
     }
 
     /// <summary>The state a package is being switched to, null while no switch runs for it.</summary>
     internal bool? SwitchingTo(string id) => _switching.TryGetValue(id, out bool target) ? target : null;
 
+    /// <summary>The error a package's tile shows, null for none.</summary>
+    internal string? ErrorOf(string id) => _errors.GetValueOrDefault(id);
+
     /// <summary>
-    /// Turns a package on or off (its check box). One switch per package at a time: a click while one runs sends nothing.
-    /// The row shows a ring until the server answered; on failure the box goes back and the error shows below the list.
+    /// A click on a tile: turns its package on or off; a locked PRO plugin asks to open Settings, where OADM PRO is,
+    /// and changes nothing. A click while a switch runs does nothing.
+    /// </summary>
+    internal async Task ToggleAsync(PluginRowViewModel row)
+    {
+        if (!IsAdmin || row.IsBusy || row.AlwaysOn)
+        {
+            return;
+        }
+
+        if (row.ProLocked)
+        {
+            if (_dialogs is null
+                || await _dialogs.ConfirmAsync("OADM PRO", $"{row.Name} needs an OADM PRO license or trial. Start the trial or import a license in Settings.", "Open Settings").ConfigureAwait(true))
+            {
+                ActivatePro();
+            }
+
+            return;
+        }
+
+        await SwitchAsync(row, !row.IsEnabled).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Turns a package on or off. One switch per package at a time: a click while one runs sends nothing. The tile shows
+    /// the state it goes to with a ring until the server answered; on failure it goes back and the error shows in the tile.
     /// </summary>
     internal async Task SwitchAsync(PluginRowViewModel row, bool enabled)
     {
@@ -340,6 +494,9 @@ public sealed partial class PluginsViewModel : ObservableObject
             return;
         }
 
+        _errors.Remove(id);
+        row.SetError(null);
+        row.Set(enabled);
         row.SetBusy(true);
         string? error = null;
         try
@@ -349,19 +506,37 @@ public sealed partial class PluginsViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            error = string.Create(CultureInfo.CurrentCulture, $"{row.Name} could not be turned {(enabled ? "on" : "off")}: {Message(ex)}");
+            error = string.Create(CultureInfo.CurrentCulture, $"Could not be turned {(enabled ? "on" : "off")}: {Message(ex)}");
         }
         finally
         {
             _switching.Remove(id);
         }
 
-        ErrorText = error;
-        // The rows may have been rebuilt meanwhile: the current row of the package shows the server's state again.
-        PluginRowViewModel current = Plugins.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase)) ?? row;
+        // The rows may have been rebuilt meanwhile: the current tile of the package shows the server's state again.
+        PluginRowViewModel current = Current(id) ?? row;
         PluginPackageInfo? info = _store.Packages.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
         current.Set(info?.Enabled ?? (error is null ? enabled : !enabled));
         current.SetBusy(false);
+        SetError(current, error);
+        Refilter();
+    }
+
+    private PluginRowViewModel? Current(string id) =>
+        Plugins.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    private void SetError(PluginRowViewModel row, string? error)
+    {
+        if (error is null)
+        {
+            _errors.Remove(row.Id);
+        }
+        else
+        {
+            _errors[row.Id] = error;
+        }
+
+        row.SetError(error);
     }
 
     private void Rebuild()
@@ -377,7 +552,89 @@ public sealed partial class PluginsViewModel : ObservableObject
         Plugins.ReplaceAll(rows);
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(HasLicensedPlugins));
+        Refilter();
     }
+
+    /// <summary>
+    /// Applies the search and the filter in one pass over the rows (O(n)): the counts of the pills (with the search), the
+    /// tiles per group and the page's "x of y on".
+    /// </summary>
+    private void Refilter()
+    {
+        Words = WordsOf(SearchText);
+        var optional = AddOns is null
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : AddOns.AddOns.Select(a => a.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        int all = 0, on = 0, off = 0, opt = 0, enabled = 0;
+        var groups = new List<PluginTileGroup>();
+        List<PluginRowViewModel>? tiles = null;
+        PluginGroupKey? group = null;
+        foreach (PluginRowViewModel row in Plugins)
+        {
+            row.SetWords(Words);
+            if (row.IsEnabled)
+            {
+                enabled++;
+            }
+
+            if (!row.Matches(Words))
+            {
+                continue;
+            }
+
+            bool isOptional = optional.Contains(row.Id);
+            all++;
+            on += row.IsEnabled ? 1 : 0;
+            off += row.IsEnabled ? 0 : 1;
+            opt += isOptional ? 1 : 0;
+            bool shown = SelectedFilter switch
+            {
+                PluginFilter.On => row.IsEnabled,
+                PluginFilter.Off => !row.IsEnabled,
+                PluginFilter.Optional => isOptional,
+                _ => true,
+            };
+            if (!shown)
+            {
+                continue;
+            }
+
+            if (group != row.Group)
+            {
+                group = row.Group;
+                tiles = [];
+                groups.Add(new PluginTileGroup(group, tiles));
+            }
+
+            tiles!.Add(row);
+        }
+
+        foreach (PluginFilterPill pill in Filters)
+        {
+            pill.IsSelected = pill.Filter == SelectedFilter;
+            pill.Count = pill.Filter switch
+            {
+                PluginFilter.On => on,
+                PluginFilter.Off => off,
+                PluginFilter.Optional => opt,
+                _ => all,
+            };
+        }
+
+        TileGroups.ReplaceAll(groups);
+        CountText = Plugins.Count == 0 ? string.Empty : string.Create(CultureInfo.CurrentCulture, $"{enabled} of {Plugins.Count} on");
+        NothingFound = Plugins.Count > 0 && groups.Count == 0;
+    }
+
+    /// <summary>
+    /// The search words: the text split at white space; a word of more than 3 letters ending in "s" is searched without it,
+    /// so "plates" finds "plate" and "cards" finds "card".
+    /// </summary>
+    public static IReadOnlyList<string> WordsOf(string? search) =>
+    [
+        .. (search ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(w => w.Length > 3 && w[^1] is 's' or 'S' ? w[..^1] : w),
+    ];
 
     /// <summary>gRPC errors carry the user message in Status.Detail.</summary>
     private static string Message(Exception ex) =>

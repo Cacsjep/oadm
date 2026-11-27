@@ -3,78 +3,102 @@
              xmlns:settings="using:Oadm.Client.Settings"
              xmlns:c="using:Oadm.Client.Controls"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:lic="using:Oadm.Sdk.Licensing"
              xmlns:addons="using:Oadm.Client.Plugins.AddOns"
              x:Class="Oadm.Client.Settings.PluginsPageView"
              x:DataType="settings:PluginsViewModel">
-  <!-- Navigation page Plugins (Admin only): one row per plugin package; the check box turns it on or off at once.
-       Packages that are always on (core functionality) are not listed. Grouped like the navigation rail (code-behind
-       builds the grouped view: Servers, Automation, Security, Monitoring, ...). Below it the Optional plugins card. -->
-  <Grid RowDefinitions="Auto,*" RowSpacing="16">
-    <c:PageTitleBar Title="Plugins" Subtitle="A plugin that is off shows no page, menu entry or toolbar button." />
-    <!-- The list card is as high as its rows, at most the room the Optional plugins card leaves (then its rows scroll):
-         this grid sits at the top, so its star row gets the list's own height, never more, and the card follows right below.
-         The list stays a virtualized grid (never in an unbounded row). -->
-    <Grid Grid.Row="1" RowDefinitions="*,Auto" RowSpacing="16" VerticalAlignment="Top">
-      <Border Grid.Row="0" x:Name="PluginCard" Classes="card" MaxWidth="1400" HorizontalAlignment="Left" VerticalAlignment="Top">
-        <Grid RowDefinitions="*,Auto" RowSpacing="12">
-          <DataGrid Grid.Row="0" x:Name="PluginGrid" Classes="groups" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
-                    SelectionMode="Single" IsVisible="{Binding !IsEmpty}">
-            <DataGrid.Columns>
-              <DataGridTemplateColumn Header="On" Width="72" SortMemberPath="IsEnabled" x:DataType="settings:PluginRowViewModel">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="settings:PluginRowViewModel">
-                    <!-- While a turn on or off runs: a ring in place of the box, no second click. -->
-                    <Panel HorizontalAlignment="Center" VerticalAlignment="Center">
-                      <CheckBox IsChecked="{Binding IsEnabled}" IsEnabled="{Binding CanToggle}" IsVisible="{Binding !IsBusy}"
-                                ToolTip.Tip="{Binding StateText}" />
-                      <ui:ProgressRing Classes="checkBox" IsVisible="{Binding IsBusy}" />
-                    </Panel>
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-              <DataGridTextColumn Header="Plugin" Width="220" Binding="{Binding Name}" x:DataType="settings:PluginRowViewModel" />
-              <DataGridTextColumn Header="Description" Width="*" MinWidth="320" Binding="{Binding Description}" x:DataType="settings:PluginRowViewModel" />
-              <DataGridTemplateColumn Header="Sites" Width="160" SortMemberPath="SiteText" x:DataType="settings:PluginRowViewModel">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="settings:PluginRowViewModel">
-                    <StackPanel Margin="8,0" VerticalAlignment="Center">
-                      <TextBlock Text="{Binding SiteText}" TextWrapping="Wrap" />
-                      <TextBlock Classes="secondary small" Text="{Binding SitePortsText}" IsVisible="{Binding HasSitePorts}" />
-                    </StackPanel>
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-              <DataGridTemplateColumn Header="License" Width="300" SortMemberPath="LicenseText" x:DataType="settings:PluginRowViewModel">
-                <DataGridTemplateColumn.CellTemplate>
-                  <DataTemplate x:DataType="settings:PluginRowViewModel">
-                    <StackPanel Spacing="4" VerticalAlignment="Center">
-                      <StackPanel Orientation="Horizontal" Spacing="12" Margin="8,0" IsVisible="{Binding IsPro}" VerticalAlignment="Center">
-                        <ui:StatusChip Text="OADM PRO" IsOk="{Binding ProActive}" ToolTip.Tip="{Binding ProDetail}" />
-                        <Button Classes="link" Content="Activate" IsVisible="{Binding CanActivatePro}"
-                                Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).ActivateProCommand}" />
-                      </StackPanel>
-                      <StackPanel Orientation="Horizontal" Spacing="12" Margin="8,0" IsVisible="{Binding NeedsLicense}" VerticalAlignment="Center">
-                        <ui:StatusChip Text="{Binding LicenseText}" IsOk="{Binding LicenseOk}" IsWarning="{Binding LicenseWarning}"
-                                       IsError="{Binding LicenseError}" ToolTip.Tip="{Binding LicenseDetail}" />
-                        <Button Classes="link" Content="{Binding EnterLicenseText}" IsVisible="{Binding CanEditLicense}"
-                                Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).EnterLicenseCommand}"
-                                CommandParameter="{Binding}" />
-                        <Button Classes="link danger" Content="Remove" IsVisible="{Binding HasLicense}"
-                                IsEnabled="{Binding CanEditLicense}"
-                                Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).RemoveLicenseCommand}"
-                                CommandParameter="{Binding}" />
-                      </StackPanel>
-                    </StackPanel>
-                  </DataTemplate>
-                </DataGridTemplateColumn.CellTemplate>
-              </DataGridTemplateColumn>
-            </DataGrid.Columns>
-          </DataGrid>
-          <TextBlock Grid.Row="1" Classes="error" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" />
-        </Grid>
-      </Border>
-      <!-- As wide as the plugin list above it. -->
-      <addons:AddOnsCardView Grid.Row="1" x:Name="AddOnsCard" DataContext="{Binding AddOns}" HorizontalAlignment="Left" Width="{Binding #PluginCard.Bounds.Width}" />
+  <!-- Navigation page Plugins (Admin only, docs/spec/plugins.md "Plugins on and off"): the search and the quick filters,
+       then one tile per plugin package under the rail groups (Servers, Automation, Security, ...); one click on a tile
+       turns it on or off at once. Packages that are always on (core functionality) are not listed. Below the tiles the
+       Optional plugins card; the tiles and the card scroll together. -->
+  <Grid RowDefinitions="Auto,Auto,*" RowSpacing="16">
+    <!-- The live status of the whole page at the right end: "12 of 22 on" -->
+    <c:PageTitleBar Title="Plugins" Subtitle="A plugin that is off shows no page, menu entry or toolbar button." Status="{Binding CountText}" />
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,0,16,0" IsVisible="{Binding !IsEmpty}">
+      <ui:SearchBox x:Name="Search" Classes="wide" Text="{Binding SearchText}" Placeholder="Search plugins, for example plates, SD card, VPN" />
+      <ItemsControl Grid.Column="2" x:Name="FilterPills" ItemsSource="{Binding Filters}" VerticalAlignment="Center">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Horizontal" Spacing="6" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="settings:PluginFilterPill">
+            <Button Classes="filterPill" Classes.selected="{Binding IsSelected}" Command="{Binding SelectCommand}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                <TextBlock Classes="pillCount" Text="{Binding Count}" />
+              </StackPanel>
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
     </Grid>
+    <ScrollViewer Grid.Row="2" x:Name="PageScroll" HorizontalScrollBarVisibility="Disabled">
+      <!-- The right margin keeps the tiles clear of the scroll bar, level with the filters above (like Settings). -->
+      <StackPanel Spacing="18" Margin="0,0,16,16">
+        <ItemsControl x:Name="TileGroups" ItemsSource="{Binding TileGroups}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="18" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="settings:PluginTileGroup">
+              <StackPanel Spacing="8">
+                <TextBlock Classes="sectionTitle" Text="{Binding Title}" />
+                <ItemsControl ItemsSource="{Binding Tiles}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <ui:FlowColumns Packing="Tiles" MinColumnWidth="270" MaxColumns="12" ColumnSpacing="12" RowSpacing="12" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="settings:PluginRowViewModel">
+                      <!-- One click anywhere (Space or Enter when focused) turns it on or off; the license buttons inside
+                           take their own clicks. -->
+                      <Button Classes="pluginTile" Classes.on="{Binding IsEnabled}" Command="{Binding ToggleCommand}"
+                              ToolTip.Tip="{Binding TileTip}" AutomationProperties.Name="{Binding Name}">
+                        <StackPanel Spacing="8">
+                          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                            <Border Classes="tileIcon">
+                              <ui:OadmIcon Data="{Binding Group.IconKey, Converter={x:Static c:IconKeyConverter.Instance}}" />
+                            </Border>
+                            <c:HighlightText Grid.Column="1" Classes="tileName" Source="{Binding Name}" Words="{Binding SearchWords}" />
+                            <!-- While a turn on or off runs: a ring in place of the check, no second click. -->
+                            <Panel Grid.Column="2" VerticalAlignment="Center">
+                              <ui:OadmIcon Classes="tileCheck" Data="{StaticResource Icon.circleCheck}" IsVisible="{Binding ShowCheck}" />
+                              <ui:ProgressRing Classes="tileCheck" IsVisible="{Binding IsBusy}" />
+                            </Panel>
+                          </Grid>
+                          <c:HighlightText Classes="tileText" Source="{Binding Description}" Words="{Binding SearchWords}" />
+                          <TextBlock Classes="tileText" Text="{Binding SiteLine}" IsVisible="{Binding ShowSiteLine}" />
+                          <TextBlock Classes="tileText" Text="{x:Static lic:ProLicenseTexts.NeedsPro}" IsVisible="{Binding ProLocked}" />
+                          <!-- A plugin sold with a license: its state (the reason as tooltip) and the license buttons. -->
+                          <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding NeedsLicense}">
+                            <ui:StatusChip Text="{Binding LicenseText}" IsOk="{Binding LicenseOk}" IsWarning="{Binding LicenseWarning}"
+                                           IsError="{Binding LicenseError}" ToolTip.Tip="{Binding LicenseDetail}" />
+                            <Button Classes="link" Content="{Binding EnterLicenseText}" IsVisible="{Binding CanEditLicense}"
+                                    Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).EnterLicenseCommand}"
+                                    CommandParameter="{Binding}" />
+                            <Button Classes="link danger" Content="Remove" IsVisible="{Binding HasLicense}"
+                                    IsEnabled="{Binding CanEditLicense}"
+                                    Command="{Binding $parent[UserControl].((settings:PluginsViewModel)DataContext).RemoveLicenseCommand}"
+                                    CommandParameter="{Binding}" />
+                          </StackPanel>
+                          <TextBlock Classes="error" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" />
+                        </StackPanel>
+                      </Button>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock x:Name="NothingFound" Classes="secondary" Text="No plugin matches. Clear the search or choose All." IsVisible="{Binding NothingFound}" />
+        <addons:AddOnsCardView x:Name="AddOnsCard" DataContext="{Binding AddOns}" />
+      </StackPanel>
+    </ScrollViewer>
   </Grid>
 </UserControl>
