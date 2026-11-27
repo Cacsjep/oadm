@@ -84,7 +84,7 @@ public sealed record AlpvEvent
     }
 
     /// <summary>The event of a notification of the stream; null for another topic or a read without a car id.</summary>
-    public static AlpvEvent? Of(StreamNotification notification)
+    internal static AlpvEvent? Of(StreamNotification notification)
     {
         ArgumentNullException.ThrowIfNull(notification);
         if (KindOf(notification.Topic) is not { } kind)

@@ -9,7 +9,7 @@ namespace Oadm.Plugins.EventStream;
 /// The trigger filters of Device triggers on the shared event stream JSON (<c>plugins/Shared/EventStream</c>): one entry
 /// per topic, the value filters of its triggers joined with "or".
 /// </summary>
-public static partial class EventStreamJson
+internal static partial class EventStreamJson
 {
     /// <summary>The filter list for the triggers of one device: one entry per topic, their value filters joined with "or".</summary>
     public static string Configure(IEnumerable<TriggerDefinition> triggers) => Configure(Entries(triggers));

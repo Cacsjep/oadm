@@ -9,10 +9,10 @@ using Oadm.Sdk.Devices;
 namespace Oadm.Plugins.EventStream;
 
 /// <summary>One <c>events:notify</c> message of the WebSocket event stream.</summary>
-public sealed record StreamNotification(string Topic, DateTimeOffset? Time, IReadOnlyDictionary<string, string> Source, IReadOnlyDictionary<string, string> Data);
+internal sealed record StreamNotification(string Topic, DateTimeOffset? Time, IReadOnlyDictionary<string, string> Source, IReadOnlyDictionary<string, string> Data);
 
 /// <summary>What the device answered to a message: a notification, the reply to our filter, or something else.</summary>
-public sealed record StreamMessage(StreamNotification? Notification, bool IsConfigureReply, string? Error)
+internal sealed record StreamMessage(StreamNotification? Notification, bool IsConfigureReply, string? Error)
 {
     /// <summary>The <c>context</c> the device echoes from the request (null when the answer has none).</summary>
     public string? Context { get; init; }
@@ -26,7 +26,7 @@ public sealed record StreamMessage(StreamNotification? Notification, bool IsConf
 /// triggers and License Plate Center (<c>plugins/Shared/EventStream</c>); Device triggers adds its trigger filters in its
 /// own part of this class.
 /// </summary>
-public static partial class EventStreamJson
+internal static partial class EventStreamJson
 {
     /// <summary>
     /// The <c>events:configure</c> message with these filters (topic and an optional value filter, null = the whole topic;
@@ -115,7 +115,7 @@ public static partial class EventStreamJson
 /// the waits between reconnects (1, 2, 4, 8, then 10 s), which devices are not contacted, the user text of a failed session
 /// and the receive of one whole message.
 /// </summary>
-public static class EventStreamSocket
+internal static class EventStreamSocket
 {
     /// <summary>The API the event stream needs (<c>apidiscovery.cgi</c>).</summary>
     public const string ApiId = "event-streaming-over-websocket";
