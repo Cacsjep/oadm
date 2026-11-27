@@ -435,6 +435,9 @@ internal sealed class PlateStore(IPluginRecords records) : IPlateSource, IDispos
                 cameras = [.. _cameras.Values.Where(c => c.AllowedTags.Contains(id)).Select(c => c with { AllowedTags = [.. c.AllowedTags.Where(t => t != id)] })];
             }
 
+            // The records have no transaction over several collections: the tag goes first. Loading drops a tag that no longer
+            // exists from plates and cameras, so a failure in the writes below never leaves the tag half deleted.
+            await records.SetManyAsync(TagsCollection, [new(id.ToString("N"), null)], ct).ConfigureAwait(false);
             if (plates.Count > 0)
             {
                 await records.SetManyAsync(PlatesCollection, [.. plates.Select(p => new KeyValuePair<string, string?>(p.Text, PluginJson.Serialize(p, LicensePlatesJson.Options)))], ct).ConfigureAwait(false);
@@ -445,7 +448,6 @@ internal sealed class PlateStore(IPluginRecords records) : IPlateSource, IDispos
                 await records.SetManyAsync(CamerasCollection, [.. cameras.Select(c => new KeyValuePair<string, string?>(c.DeviceId.ToString("N"), PluginJson.Serialize(c, LicensePlatesJson.Options)))], ct).ConfigureAwait(false);
             }
 
-            await records.SetManyAsync(TagsCollection, [new(id.ToString("N"), null)], ct).ConfigureAwait(false);
             lock (_sync)
             {
                 foreach (var plate in plates)
