@@ -38,6 +38,12 @@ public static class LicensePlateTexts
     public const string NoCameraConnected = "No camera is connected.";
     public const string CameraNameTaken = "Another camera has this name.";
 
+    public static readonly string TooManyWildcards = string.Create(CultureInfo.InvariantCulture, $"OADM keeps at most {LicensePlateLimits.MaxWildcardPlates:N0} plates with *.");
+    public const string TooFewFixed = "Use at least 3 letters or digits besides *.";
+
+    /// <summary>"Matches AXIS12**": the wildcard plate that decided a read.</summary>
+    public static string Matches(string pattern) => "Matches " + pattern;
+
     public static readonly string TooManyPlates = string.Create(CultureInfo.InvariantCulture, $"OADM keeps at most {LicensePlateLimits.MaxPlates:N0} plates.");
     public static readonly string TooManyTags = string.Create(CultureInfo.InvariantCulture, $"OADM keeps at most {LicensePlateLimits.MaxTags} plate tags.");
 

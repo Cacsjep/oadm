@@ -249,7 +249,8 @@ internal static class LicensePlateTools
             r.Gap ? null : r.Name,
             r.Tags,
             r.Gap ? null : LicensePlateTexts.Direction(r.Direction),
-            r.Gap ? null : r.Confidence));
+            r.Gap ? null : r.Confidence,
+            r.Gap ? null : r.ListEntry));
         var (taken, more) = input.Page.Take(rows, Json);
         var next = (more || page.Next is not null) && taken.Count > 0 ? taken[^1].Key : null;
         return new LogAnswer(taken, next is not null, next);
@@ -264,7 +265,7 @@ internal static class LicensePlateTools
         [property: Description("Only plates with this plate tag (its name)."), MaxLength(LicensePlateLimits.MaxTagNameLength)] string? Tag = null);
 
     internal sealed record PlateRow(
-        [property: Description("The plate (letters and digits, upper case).")] string Plate,
+        [property: Description("The plate (letters and digits, upper case; * stands for exactly one letter or digit).")] string Plate,
         [property: Description("Its name.")] string Name,
         [property: Description("Its plate tags.")] IReadOnlyList<string> Tags,
         [property: Description("Allowed from (server time); null: always.")] string? AllowedFrom,
@@ -277,7 +278,7 @@ internal static class LicensePlateTools
         [property: Description("The cursor of the next page.")] string? Next);
 
     internal sealed record PlateSaveArgs(
-        [property: Description("The plate (spaces, dashes and dots are left out)."), Required, MaxLength(32)] string Plate,
+        [property: Description("The plate (spaces, dashes and dots are left out). * stands for exactly one letter or digit (AXIS12**), at least 3 letters or digits besides *, never a near match."), Required, MaxLength(32)] string Plate,
         [property: Description("The plate it changes; empty for a new plate."), MaxLength(32)] string? Original = null,
         [property: Description("Its name."), MaxLength(LicensePlateLimits.MaxNameLength)] string? Name = null,
         [property: Description("Its plate tags by name; a plate without tags is allowed nowhere."), MaxLength(LicensePlateLimits.MaxTags)] IReadOnlyList<string>? Tags = null,
@@ -350,14 +351,15 @@ internal static class LicensePlateTools
         [property: Description("When (UTC).")] string Time,
         [property: Description("The camera's device id.")] string CameraId,
         [property: Description("The camera.")] string Camera,
-        [property: Description("The plate of the list, or the text read.")] string? Plate,
+        [property: Description("The plate of the list, or the text read (always the text read for a wildcard plate).")] string? Plate,
         [property: Description("The text read when it differs from the plate.")] string? ReadAs,
         [property: Description("allowed, not_allowed, unknown, or connection_lost for a gap.")] string Result,
         [property: Description("The result with its reason.")] string? Reason,
         [property: Description("The plate's name.")] string? Name,
         [property: Description("The plate's tags at the time.")] IReadOnlyList<string> Tags,
         [property: Description("In, Out or Unknown.")] string? Direction,
-        [property: Description("Confidence, 0 to 100.")] int? Confidence);
+        [property: Description("Confidence, 0 to 100.")] int? Confidence,
+        [property: Description("The plate of the list that decided the read, as entered (AXIS12** for a wildcard plate); empty for an unknown plate.")] string? ListEntry = null);
 
     internal sealed record LogAnswer(
         [property: Description("This page, newest first.")] IReadOnlyList<LogRow> Reads,

@@ -300,6 +300,11 @@ public sealed partial class LicensePlatesPlugin
             throw new InvalidOperationException(LicensePlateTexts.TooManyPlates);
         }
 
+        if (errors.Count == 0 && PlateText.IsWildcard(plate.Text) && !PlateText.IsWildcard(old?.Text) && store.WildcardCount >= LicensePlateLimits.MaxWildcardPlates)
+        {
+            errors[PlateRules.TextField] = LicensePlateTexts.TooManyWildcards;
+        }
+
         return (plate, errors, old);
     }
 
@@ -476,6 +481,7 @@ public sealed partial class LicensePlatesPlugin
         var rows = new List<ImportRow>(parsed.Count);
         var save = new List<Plate>();
         var count = store.PlateCount;
+        var wildcards = store.WildcardCount;
         ImportRow Refused(CsvPlateRow row, string error) =>
             new(row.Line, row.Plate?.Text ?? PlateText.Normalize(row.RawPlate), row.Plate?.Name ?? string.Empty, row.TagNames, row.Plate?.AllowedFrom, row.Plate?.AllowedTo, row.Plate?.DeleteWhenEnds ?? false, ImportRowStatus.Refused, error);
 
@@ -521,6 +527,17 @@ public sealed partial class LicensePlatesPlugin
                     continue;
                 }
 
+                if (PlateText.IsWildcard(plate.Text))
+                {
+                    if (wildcards >= LicensePlateLimits.MaxWildcardPlates)
+                    {
+                        rows.Add(Refused(row, LicensePlateTexts.TooManyWildcards));
+                        continue;
+                    }
+
+                    wildcards++;
+                }
+
                 count++;
                 status = ImportRowStatus.New;
             }
@@ -560,6 +577,11 @@ public sealed partial class LicensePlatesPlugin
         if (store.PlateCount + added > LicensePlateLimits.MaxPlates)
         {
             throw new InvalidOperationException(LicensePlateTexts.TooManyPlates);
+        }
+
+        if (store.WildcardCount + state.Save.Count(p => PlateText.IsWildcard(p.Text) && store.Find(p.Text) is null) > LicensePlateLimits.MaxWildcardPlates)
+        {
+            throw new InvalidOperationException(LicensePlateTexts.TooManyWildcards);
         }
 
         if (state.Save.SelectMany(p => p.Tags).Distinct().Any(t => store.Tag(t) is null))

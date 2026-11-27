@@ -33,6 +33,7 @@ internal sealed class PlateStore(IPluginRecords records) : IPlateSource, IDispos
     private readonly Dictionary<Guid, PlateTag> _tags = [];
     private readonly Dictionary<Guid, CameraEntry> _cameras = [];
     private readonly SortedSet<(DateTime End, string Text)> _ending = [];
+    private readonly WildcardIndex _wildcards = new();
     private string[]? _sorted;
 
     /// <summary>Plates with these tags changed (the matcher's indexes follow).</summary>
@@ -50,6 +51,7 @@ internal sealed class PlateStore(IPluginRecords records) : IPlateSource, IDispos
             _tags.Clear();
             _cameras.Clear();
             _ending.Clear();
+            _wildcards.Clear();
             foreach (var json in tags.Values)
             {
                 if (PluginJson.TryParse<PlateTag>(json, options) is { Id: var id } tag && id != Guid.Empty)
@@ -99,6 +101,27 @@ internal sealed class PlateStore(IPluginRecords records) : IPlateSource, IDispos
         }
     }
 
+    /// <summary>How many wildcard plates the list has.</summary>
+    public int WildcardCount
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _wildcards.Count;
+            }
+        }
+    }
+
+    public IReadOnlyList<Plate> WildcardsFitting(string read)
+    {
+        ArgumentNullException.ThrowIfNull(read);
+        lock (_sync)
+        {
+            return [.. _wildcards.Fitting(read).Select(p => _plates[p])];
+        }
+    }
+
     public IReadOnlyCollection<string> TextsWithAnyTag(IReadOnlySet<Guid> tags)
     {
         ArgumentNullException.ThrowIfNull(tags);
@@ -107,6 +130,11 @@ internal sealed class PlateStore(IPluginRecords records) : IPlateSource, IDispos
         {
             foreach (var plate in _plates.Values)
             {
+                if (PlateText.IsWildcard(plate.Text))
+                {
+                    continue; // never a near match to a wildcard plate
+                }
+
                 foreach (var tag in plate.Tags)
                 {
                     if (tags.Contains(tag))
@@ -179,7 +207,7 @@ internal sealed class PlateStore(IPluginRecords records) : IPlateSource, IDispos
         }
 
         return term.Length == 0
-            || (prefix.Length > 0 && plate.Text.StartsWith(prefix, StringComparison.Ordinal))
+            || (prefix.Length > 0 && PlateText.Starts(plate.Text, prefix))
             || plate.Name.Contains(term, StringComparison.CurrentCultureIgnoreCase);
     }
 
@@ -255,6 +283,10 @@ internal sealed class PlateStore(IPluginRecords records) : IPlateSource, IDispos
     private void PutLocked(Plate plate)
     {
         _plates[plate.Text] = plate;
+        if (PlateText.IsWildcard(plate.Text))
+        {
+            _wildcards.Add(plate.Text);
+        }
         if (plate.DeleteWhenEnds && plate.AllowedTo is { } end)
         {
             _ending.Add((end, plate.Text));
@@ -267,6 +299,8 @@ internal sealed class PlateStore(IPluginRecords records) : IPlateSource, IDispos
         {
             return null;
         }
+
+        _wildcards.Remove(old.Text);
 
         if (old.DeleteWhenEnds && old.AllowedTo is { } end)
         {

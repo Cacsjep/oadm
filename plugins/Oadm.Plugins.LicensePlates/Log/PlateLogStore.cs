@@ -38,7 +38,7 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
     private const long HourMs = 3_600_000;
 
     private const string Columns =
-        "id, time, camera, camera_name, plate, read_as, result, reason, reason_time, name, tags, direction, area, country, confidence, view, vehicle_type, vehicle_color, vehicle_make, vehicle_model, picture, gap_until, state, vehicle_confidence";
+        "id, time, camera, camera_name, plate, read_as, result, reason, reason_time, name, tags, direction, area, country, confidence, view, vehicle_type, vehicle_color, vehicle_make, vehicle_model, picture, gap_until, state, vehicle_confidence, list_entry";
 
     private readonly string _connection;
     private readonly TimeProvider _time;
@@ -121,7 +121,7 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
               id INTEGER PRIMARY KEY, time INTEGER NOT NULL, camera TEXT NOT NULL, camera_name TEXT NOT NULL, plate TEXT NOT NULL,
               read_as TEXT, result INTEGER NOT NULL, reason INTEGER NOT NULL, reason_time TEXT, name TEXT NOT NULL, tags TEXT NOT NULL,
               direction INTEGER NOT NULL, area INTEGER, country TEXT, confidence INTEGER NOT NULL, view TEXT, vehicle_type TEXT,
-              vehicle_color TEXT, vehicle_make TEXT, vehicle_model TEXT, picture TEXT, gap_until INTEGER, state TEXT, vehicle_confidence INTEGER);
+              vehicle_color TEXT, vehicle_make TEXT, vehicle_model TEXT, picture TEXT, gap_until INTEGER, state TEXT, vehicle_confidence INTEGER, list_entry TEXT);
             CREATE INDEX IF NOT EXISTS reads_time ON reads(time);
             CREATE INDEX IF NOT EXISTS reads_plate_time ON reads(plate, time);
             CREATE INDEX IF NOT EXISTS reads_camera_time ON reads(camera, time);
@@ -150,6 +150,12 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
         if (Convert.ToInt64(await ScalarAsync(db, "SELECT COUNT(*) FROM pragma_table_info('reads') WHERE name = 'state';", ct).ConfigureAwait(false), CultureInfo.InvariantCulture) == 0)
         {
             await ExecuteAsync(db, "ALTER TABLE reads ADD COLUMN state TEXT; ALTER TABLE reads ADD COLUMN vehicle_confidence INTEGER;", ct).ConfigureAwait(false);
+        }
+
+        // The plate of the list that decided a read (a wildcard plate's pattern) came with the wildcard plates: older reads have none.
+        if (Convert.ToInt64(await ScalarAsync(db, "SELECT COUNT(*) FROM pragma_table_info('reads') WHERE name = 'list_entry';", ct).ConfigureAwait(false), CultureInfo.InvariantCulture) == 0)
+        {
+            await ExecuteAsync(db, "ALTER TABLE reads ADD COLUMN list_entry TEXT;", ct).ConfigureAwait(false);
         }
 
         var nextId = Convert.ToInt64(await ScalarAsync(db, "SELECT COALESCE(MAX(id), 0) FROM reads;", ct).ConfigureAwait(false), CultureInfo.InvariantCulture);
@@ -322,7 +328,7 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
         await using (var cmd = db.CreateCommand())
         {
             cmd.Transaction = tx;
-            cmd.CommandText = $"INSERT INTO reads({Columns}) VALUES (@id, @time, @camera, @camera_name, @plate, @read_as, @result, @reason, @reason_time, @name, @tags, @direction, @area, @country, @confidence, @view, @vehicle_type, @vehicle_color, @vehicle_make, @vehicle_model, @picture, @gap_until, @state, @vehicle_confidence);";
+            cmd.CommandText = $"INSERT INTO reads({Columns}) VALUES (@id, @time, @camera, @camera_name, @plate, @read_as, @result, @reason, @reason_time, @name, @tags, @direction, @area, @country, @confidence, @view, @vehicle_type, @vehicle_color, @vehicle_make, @vehicle_model, @picture, @gap_until, @state, @vehicle_confidence, @list_entry);";
             cmd.Parameters.AddWithValue("@id", row.Id);
             cmd.Parameters.AddWithValue("@time", ms);
             cmd.Parameters.AddWithValue("@camera", CameraKey(row.CameraId));
@@ -347,6 +353,7 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
             cmd.Parameters.AddWithValue("@gap_until", row.Until is { } until ? until.ToUnixTimeMilliseconds() : DBNull.Value);
             cmd.Parameters.AddWithValue("@state", (object?)row.State ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@vehicle_confidence", (object?)row.VehicleConfidence ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@list_entry", (object?)row.ListEntry ?? DBNull.Value);
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
 
@@ -825,6 +832,7 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
             Until = gap ? DateTimeOffset.FromUnixTimeMilliseconds(r.GetInt64(21)) : null,
             State = r.IsDBNull(22) ? null : r.GetString(22),
             VehicleConfidence = r.IsDBNull(23) ? null : r.GetInt32(23),
+            ListEntry = r.IsDBNull(24) ? null : r.GetString(24),
         };
     }
 

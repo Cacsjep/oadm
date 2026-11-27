@@ -1,3 +1,5 @@
+using Oadm.Plugins.LicensePlates.Plates;
+
 namespace Oadm.Plugins.LicensePlates.Matching;
 
 /// <summary>The plates the matcher compares with (the plate store).</summary>
@@ -8,6 +10,9 @@ internal interface IPlateSource
 
     /// <summary>The texts of the plates that have one of <paramref name="tags"/> (for building an index).</summary>
     IReadOnlyCollection<string> TextsWithAnyTag(IReadOnlySet<Guid> tags);
+
+    /// <summary>The wildcard plates (with *) a read text fits; none without wildcard plates.</summary>
+    IReadOnlyList<Plate> WildcardsFitting(string read) => [];
 }
 
 /// <summary>The decision of one read text at one camera.</summary>
@@ -23,6 +28,9 @@ internal readonly record struct MatchResult(ReadResult Result, ReadReason Reason
 
 /// <summary>
 /// Decides a read (docs/spec/license-plate-center.md "Matching"): only plates allowed at the camera at that moment count.
+/// The order (decisions 2026-11-27): a plate entered on its own read exactly, then a wildcard plate the read fits (always
+/// exactly: no deviation; of several the one with more fixed characters, on a tie allowed when any of them allows it here),
+/// then a near match.
 /// An exact match is one dictionary lookup of the plate store (Allowed, or Not allowed with the reason); a near match looks
 /// up the deletion index of the camera's allowed tag set (<see cref="DeletionIndex"/>), built once per tag set and rebuilt
 /// when a plate with one of its tags changes, and checks the few candidates; never a scan of the list per read. Equally
@@ -116,6 +124,11 @@ internal sealed class PlateMatcher
                 : new MatchResult(ReadResult.NotAllowed, ReadReason.Ended, exact, exact.AllowedTo, true);
         }
 
+        if (MatchWildcard(read, allowedTags, now) is { } wildcard)
+        {
+            return wildcard;
+        }
+
         var deviation = Deviation;
         if (deviation == 0 || allowedTags.Count == 0)
         {
@@ -165,6 +178,34 @@ internal sealed class PlateMatcher
         return tied
             ? new MatchResult(ReadResult.NotAllowed, ReadReason.SeveralPlates, null, null, false)
             : new MatchResult(ReadResult.Allowed, ReadReason.Near, best, null, false);
+    }
+
+    /// <summary>The decision by the wildcard plates the read fits; null when it fits none.</summary>
+    private MatchResult? MatchWildcard(string read, IReadOnlySet<Guid> allowedTags, DateTime now)
+    {
+        var fitting = _source.WildcardsFitting(read);
+        if (fitting.Count == 0)
+        {
+            return null;
+        }
+
+        // The most fixed characters decide; on a tie a plate that allows the read here wins, else the first in plate order.
+        var most = fitting.Max(p => PlateText.FixedCount(p.Text));
+        var best = fitting.Where(p => PlateText.FixedCount(p.Text) == most).OrderBy(p => p.Text, StringComparer.Ordinal).ToList();
+        if (best.FirstOrDefault(p => IsAllowed(p, allowedTags, now)) is { } allowed)
+        {
+            return new MatchResult(ReadResult.Allowed, ReadReason.Exact, allowed, null, true);
+        }
+
+        var plate = best[0];
+        if (!HasAllowedTag(plate, allowedTags))
+        {
+            return new MatchResult(ReadResult.NotAllowed, ReadReason.NoTagHere, plate, null, true);
+        }
+
+        return plate.AllowedFrom is { } from && now < from
+            ? new MatchResult(ReadResult.NotAllowed, ReadReason.NotYet, plate, from, true)
+            : new MatchResult(ReadResult.NotAllowed, ReadReason.Ended, plate, plate.AllowedTo, true);
     }
 
     /// <summary>Plates with one of <paramref name="tags"/> changed (added, deleted, retagged): the indexes of the sets with those tags are rebuilt.</summary>
