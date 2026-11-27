@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Oadm.Plugins.LicensePlates.Server</AssemblyName>
+    <RootNamespace>Oadm.Plugins.LicensePlates</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <!-- Folder name under artifacts/plugins/, must equal the id in plugin.json. -->
+    <OadmPluginId>oadm.license-plates</OadmPluginId>
+    <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The SDK is shared from the host: never copy it (or its dependencies) into the plugin folder. -->
+    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The log store (docs/spec/license-plate-center.md "The log store"): SQLite through Microsoft.Data.Sqlite. The server ships
+         the same version with EF Core (Oadm.Core): compiled against it, never copied into the plugin folder; the plugin load
+         context falls back to the host's copy and its native SQLite. -->
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="10.0.13" ExcludeAssets="runtime" PrivateAssets="all" />
+    <!-- The PDF report of the log: PDFsharp + MigraDoc 6 (MIT), the version of the Logs page export and Snapshot report. -->
+    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" PrivateAssets="all" />
+    <!-- Transitive System.Security.Cryptography.Pkcs pinned to the patched version (as in Snapshot report). -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Roboto (Apache-2.0) of the shared LogPdfFonts: the files of the Snapshot report plugin, under the names the server's
+         Logs page export uses, so the linked font resolver finds them. -->
+    <EmbeddedResource Include="..\Oadm.Plugins.SnapshotReport\Fonts\*.ttf" Link="Log\Fonts\%(Filename)%(Extension)"
+                      LogicalName="Oadm.Server.Logging.Export.Fonts.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The call without a user (the host itself, tests). -->
+    <Compile Include="..\Shared\ContextCall.cs" Link="Common\ContextCall.cs" />
+    <!-- The permanent event connection, shared with Device triggers. -->
+    <Compile Include="..\Shared\EventStream\*.cs" LinkBase="Common\EventStream" />
+    <!-- The application list of the Applications tasks: installed, version, running, license. -->
+    <Compile Include="..\Oadm.Plugins.Acap\ApplicationApiClient.cs" Link="Acap\ApplicationApiClient.cs" />
+    <Compile Include="..\Oadm.Plugins.Acap\Shared\*.cs" Link="Acap\%(Filename)%(Extension)" />
+    <!-- The Logs page export: its table, CSV, the user's clock and the PDF fonts; the CSV writer and reader of OADM. -->
+    <Compile Include="..\..\src\Oadm.Server\Logging\Export\LogTable.cs" Link="Log\Export\LogTable.cs" />
+    <Compile Include="..\..\src\Oadm.Server\Logging\Export\LogPdfFonts.cs" Link="Log\Export\LogPdfFonts.cs" />
+    <Compile Include="..\..\src\Oadm.Contracts\Text\CsvWriter.cs" Link="Common\CsvWriter.cs" />
+    <Compile Include="..\..\src\Oadm.Client\Infrastructure\Csv.cs" Link="Common\Csv.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Oadm.Plugins.EventStream" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Oadm.Plugins.LicensePlates.Tests" />
+    <InternalsVisibleTo Include="Oadm.Plugins.LicensePlates.Client" />
+  </ItemGroup>
+
+  <!-- Development deployment: copy the output to artifacts/plugins/oadm.license-plates/.
+       The client part (Oadm.Plugins.LicensePlates.Client) deploys into the same folder. -->
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
+    <ItemGroup>
+      <_OadmPluginFiles Include="$(OutDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OadmPluginFiles)" DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Message Importance="normal" Text="OADM plugin $(OadmPluginId) deployed to $(OadmPluginOutputDir)" />
+  </Target>
+
+</Project>

@@ -1,0 +1,9 @@
+{
+  "id": "oadm.license-plates",
+  "version": "0.1.0",
+  "minSdkVersion": "0.15.0",
+  "displayName": "License Plate Center",
+  "description": "One plate list for every camera with License Plate Verifier.",
+  "enabledByDefault": false,
+  "siteSupport": "full"
+}
