@@ -14,16 +14,21 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace Oadm.Sdk.Client.Controls;
 
 /// <summary>One column of a grid in the column chooser (SDK 0.17.0; the device grid, the Log of License Plate Center).</summary>
+/// <param name="key">The column's key: the <c>Tag</c> of its <see cref="DataGridColumn"/>.</param>
+/// <param name="header">The column's name in the chooser.</param>
+/// <param name="canHide">False for a column that always shows.</param>
 public sealed partial class GridColumnOption(string key, string header, bool canHide = true) : ObservableObject
 {
     /// <summary>The column's key: the <c>Tag</c> of its <see cref="DataGridColumn"/> and the saved layout.</summary>
     public string Key { get; } = key;
 
+    /// <summary>The column's name in the chooser.</summary>
     public string Header { get; } = header;
 
     /// <summary>False for a column that always shows (the device grid's icon); the chooser leaves it out.</summary>
     public bool CanHide { get; } = canHide;
 
+    /// <summary>The grid shows the column (the chooser's check box).</summary>
     [ObservableProperty] public partial bool IsVisible { get; set; } = true;
 
     /// <summary>The chooser offers the column (false: greyed with <see cref="UnavailableReason"/>, e.g. compliance is off).</summary>
@@ -40,9 +45,17 @@ public sealed partial class GridColumnOption(string key, string header, bool can
 }
 
 /// <summary>The saved state of one column: what <see cref="GridColumnLayout"/> loads and saves.</summary>
+/// <param name="Key">The column's key.</param>
+/// <param name="IsVisible">Whether the grid shows it.</param>
+/// <param name="Width">Its width in pixels, 0 for the view's width; applied as a star weight.</param>
+/// <param name="DisplayIndex">Its place in the user's order, 0 first.</param>
 public sealed record GridColumnState(string Key, bool IsVisible, double Width, int DisplayIndex);
 
 /// <summary>A column of <see cref="GridColumnLayout"/>: its key, header, whether it can be hidden and whether it shows by default.</summary>
+/// <param name="Key">The column's key: the <c>Tag</c> of its <see cref="DataGridColumn"/>.</param>
+/// <param name="Header">The column's name in the chooser.</param>
+/// <param name="CanHide">False for a column that always shows.</param>
+/// <param name="IsDefault">Whether it shows before the user chose.</param>
 public sealed record GridColumnDefinition(string Key, string Header, bool CanHide = true, bool IsDefault = true);
 
 /// <summary>
@@ -99,6 +112,7 @@ public sealed class GridColumnLayout
     /// <summary>The keys of the shown columns in the user's order (an export takes these).</summary>
     public IReadOnlyList<string> VisibleKeys => [.. Columns.Where(c => c.IsVisible).OrderBy(c => c.DisplayIndex).Select(c => c.Key)];
 
+    /// <summary>The column with <paramref name="key"/>; null when there is none.</summary>
     public GridColumnOption? Find(string key) => Columns.FirstOrDefault(c => c.Key == key);
 
     /// <summary>Called by the view after the user reordered or resized columns.</summary>
@@ -141,6 +155,7 @@ public sealed class GridColumnLayout
         Save();
     }
 
+    /// <summary>Keeps the current state through the layout's <c>save</c>.</summary>
     public void Save() => _save([.. Columns.Select(c => new GridColumnState(c.Key, c.IsVisible, c.Width, c.DisplayIndex))]);
 
     private void NormalizeOrder()
@@ -212,6 +227,7 @@ public sealed class GridColumnBinder : IDisposable
         }
     }
 
+    /// <summary>Stops following the grid and the layout (the grid keeps its columns as they are).</summary>
     public void Dispose()
     {
         if (_disposed)
@@ -297,7 +313,10 @@ public sealed class GridColumnBinder : IDisposable
 /// </summary>
 public sealed class ColumnChooserButton : Button
 {
+    /// <summary>The button's tooltip.</summary>
     public const string TipText = "Choose columns";
+
+    /// <summary>The title above the check boxes.</summary>
     public const string ListTitle = "Visible columns";
 
     public static readonly StyledProperty<IEnumerable<GridColumnOption>?> ColumnsProperty =

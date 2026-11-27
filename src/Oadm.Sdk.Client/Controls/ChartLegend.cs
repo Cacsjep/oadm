@@ -16,8 +16,10 @@ public sealed partial class ChartLegendItem(string key, string name, ChartColor 
     /// <summary>The id of the line (a camera's id).</summary>
     public string Key { get; } = key;
 
+    /// <summary>The line's name in the legend ("Total", a camera).</summary>
     public string Name { get; } = name;
 
+    /// <summary>The line's colour role; the chart draws the line in it.</summary>
     public ChartColor Color { get; } = color;
 
     /// <summary>A short number right of the name ("1,204"); null: none.</summary>

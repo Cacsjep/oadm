@@ -39,12 +39,16 @@ public sealed partial class FilterKind : ObservableObject
         IsSet = isSet();
     }
 
+    /// <summary>The entry of the Filter menu ("Country").</summary>
     public string Name { get; }
 
+    /// <summary>What the chip's flyout shows: a view model the page gives a DataTemplate.</summary>
     public object Editor { get; }
 
+    /// <summary>The chip's text ("Country: Austria"), kept up to date by <see cref="Refresh"/>.</summary>
     [ObservableProperty] public partial string Text { get; private set; }
 
+    /// <summary>Whether the filter narrows the list now; a set filter shows its chip.</summary>
     [ObservableProperty] public partial bool IsSet { get; private set; }
 
     /// <summary>The page asks to close the chip's editor (a choice that applies at once).</summary>
@@ -60,6 +64,7 @@ public sealed partial class FilterKind : ObservableObject
         IsSet = _isSet();
     }
 
+    /// <summary>Closes the chip's editor, e.g. after a choice that applies at once.</summary>
     public void RequestClose() => CloseRequested?.Invoke(this, EventArgs.Empty);
 
     internal void RaiseOpening() => Opening?.Invoke(this, EventArgs.Empty);
@@ -129,6 +134,7 @@ public sealed partial class FilterSet : ObservableObject
     /// <summary>A chip's editor is to open (after Add); the bar opens it.</summary>
     public event EventHandler<FilterKind>? OpenRequested;
 
+    /// <summary>Shows the chip of <paramref name="kind"/> (the Filter menu's entry) and asks to open its editor.</summary>
     public void Add(FilterKind? kind)
     {
         if (kind is null)
@@ -145,6 +151,7 @@ public sealed partial class FilterSet : ObservableObject
         OpenRequested?.Invoke(this, kind);
     }
 
+    /// <summary>Removes the chip of <paramref name="kind"/> and sets its filter back to everything.</summary>
     public void Remove(FilterKind? kind)
     {
         if (kind is null)
@@ -208,6 +215,7 @@ public sealed partial class FilterSet : ObservableObject
 /// <summary>The command button <b>Filter</b> (filter icon) of a toolbar: a menu of the kinds of a <see cref="FilterSet"/> (SDK 0.17.0).</summary>
 public sealed class FilterButton : ToolbarButton
 {
+    /// <summary>The button's text.</summary>
     public const string ButtonText = "Filter";
 
     public static readonly StyledProperty<FilterSet?> FiltersProperty =
@@ -222,6 +230,7 @@ public sealed class FilterButton : ToolbarButton
         Flyout = _menu;
     }
 
+    /// <summary>The filters of the list: their kinds and the chips shown.</summary>
     public FilterSet? Filters
     {
         get => GetValue(FiltersProperty);
@@ -252,7 +261,10 @@ public sealed class FilterButton : ToolbarButton
 /// </summary>
 public sealed class FilterBar : WrapPanel
 {
+    /// <summary>The text of the button that removes every chip.</summary>
     public const string ClearText = "Clear filters";
+
+    /// <summary>The tooltip of a chip's x.</summary>
     public const string RemoveTip = "Remove filter";
 
     public static readonly StyledProperty<FilterSet?> FiltersProperty =
@@ -270,6 +282,7 @@ public sealed class FilterBar : WrapPanel
         Children.Add(_clear);
     }
 
+    /// <summary>The filters of the list: their kinds and the chips shown.</summary>
     public FilterSet? Filters
     {
         get => GetValue(FiltersProperty);
@@ -381,6 +394,7 @@ public sealed class FilterChipView : Border
         Child = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Children = { _text, remove } };
     }
 
+    /// <summary>The filter this chip shows.</summary>
     public FilterKind Kind { get; }
 
     /// <summary>The chip's editor (tests and the bar).</summary>
