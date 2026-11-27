@@ -32,7 +32,7 @@ Settings dialog is the shared `ui:ServerFolderPicker`.
 | `Matching/` | `PlateMatcher` (exact: one dictionary lookup; near: `DeletionIndex` per camera tag set), `EditDistance` |
 | `Reads/` | `AlpvEvent` (ALPV's fields), `ReadAggregator` (one read per car and camera, on a `TimeProvider`) |
 | `Cameras/` | `CameraRuntime`: one event WebSocket per camera, ALPV checks, status, gaps |
-| `Alpv/` | `AlpvClient` (every ALPV call), `AlpvConfig` (the configuration, secrets dropped while parsed) |
+| `Alpv/` | `AlpvClient` (every ALPV call, also the make and model lists), `AlpvConfig` (the configuration, secrets dropped while parsed), `AlpvLists` with `alpv-lists-3.1.7.json` (ALPV's regions, countries, states, vehicle types and colours, embedded) |
 | `Log/` | `PlateLogStore` (SQLite), `PlateLog` (folder, problems, hourly cleanup), `PlateLogExport` (CSV, PDF) |
 | `Events/` | The rule events and the problem reporter |
 | `Tasks/` | The page tasks Set up License Plate Verifier and Use recommended image settings, `SetupRules` |
@@ -124,6 +124,8 @@ Center, **log** = View plate log, **export** = Export plate log, **plates** = Ma
 | `saveSetup` | `SaveSetupRequest` (device, `SetupPayload`, allowed tags) -> `TasksReply` | cameras |
 | `copySettings` | `CopySettingsRequest` (source, targets, areas) -> `TasksReply` | cameras |
 | `useRecommendedImageSettings` | `DevicesRequest` -> `TasksReply` | cameras |
+| `alpvLists` | none -> `AlpvLists` (regions, countries, states, vehicle types and colours of ALPV 3.1.7; `CountriesOf`, `StatesOf`) | show |
+| `vehicleMakes`, `vehicleModels` | `VehicleNamesRequest` (cameras, make) -> `VehicleNamesReply` (names, or the problem) | log |
 | `settings` | none -> `LicensePlateSettings` | Admin |
 | `saveSettings` | `LicensePlateSettings` -> `SaveSettingsReply` (settings, or errors by field) | Admin |
 

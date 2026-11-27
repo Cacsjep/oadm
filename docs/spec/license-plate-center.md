@@ -90,7 +90,9 @@ Checked on the test camera; the VAPIX documentation and the device disagree in p
 - **Configuration values read on the camera** (ALPV 3.1.7): areas `roi`, `roitwo`, `active_roi`, `direction.angle`,
   `direction2.angle` (0 to 360000); `plate.plate_min_size`, `plate.plate_max_size` (plate width in pixels, 50 and
   300), `plate_min_size_symb`, `plate_max_size_symb` (number of characters, 4 and 10), `plate.threshold` (confidence
-  threshold, 0.25), `regional_settings`, `CountryPriority` (camera location, `AUT`), `bw_ldist` (ALPV's own character
+  threshold, 0.25), `lprUseCase` (the region, `5` Europe; checked in ALPV's page code), `CountryPriority` (camera location,
+  `AUT`; `0` none), `StatePriority` (state, empty none), `regional_settings` (`metric`, the unit system, not used by OADM),
+  `bw_ldist` (ALPV's own character
   deviation, not used by OADM), `ttl` (2000), `timeToReliable` (1000); image settings `camera.wdr`, `contrast`,
   `localcontrast`, `tonemapping`, `maxgain`, `maxexposuretime`, the same under `camera.recommended`, and
   `camera.isparamsoptimal`.
@@ -114,6 +116,23 @@ Checked on the test camera; the VAPIX documentation and the device disagree in p
   The task reads the five parameters before, calls ALPV, reads them back and logs old and new values.
 - ALPV has no version or discovery call. The fields differ between 3.0.13 and 3.1.7 (3.1.7 adds `night_mode`,
   `sensitivity` and others), which is why rule 6 exists.
+
+### ALPV's lists
+
+ALPV's page has its lists built in; the configuration holds only the codes. OADM ships the lists of ALPV 3.1.7
+(`Alpv/alpv-lists-3.1.7.json` of the server part, read from ALPV's page on the test camera, 2026-11-27) and hands them to
+the client part (`alpvLists`); the client keeps no copy.
+
+- **Regions** (`lprUseCase`): name and number (Europe 5, North America 21, USA 16, ...).
+- **Countries** (`CountryPriority`, the `country` of the events): name, code (alpha-3, or two letters where ALPV uses them:
+  US, CA, MX, PY) and country groups. A region offers the countries with one of its groups (`regionCountryGroups`; Europe
+  5 = EU and CIS). "0" is ALPV's "Select" (none).
+- **States** (`StatePriority`): only for the regions 16, 17, 19 and 21, the states of the chosen country. The list of 3.1.7
+  holds the states of Mexico only.
+- **Vehicle types and colours**: ALPV's values ("CAR", "Gray") with OADM's names ("Car"); the log compares without case.
+- **Makes and models** are not in the page: `GET /local/fflprapp/api.cgi?api=listbrands` and `api=listmodels&brand=<make>`
+  (read only), read by the server on demand from a connected camera of the user's camera choice (else any connected camera
+  the user sees), kept per ALPV version; the page never waits for them.
 
 ## Plates
 
@@ -208,7 +227,8 @@ Live, newest first, virtualized, paged from the server.
     icon), Direction, Confidence; "Page X of Y". Pictures make the file large: without pictures when more than 2,000
     rows.
 - Filter row, like ALPV's Search: time (Last hour, Last 24 hours, Last 7 days, or From and To), result, tags, area,
-  direction, country, vehicle (view, type, colour, make, model), **Clear filters**.
+  direction, country, vehicle (view, type, colour, make, model), **Clear filters**. Country, vehicle type and colour are
+  selects of ALPV's lists (see "ALPV's lists"); make and model are selects of what a connected camera lists.
 - Columns: Time, Camera, Picture (the plate crop, loaded only for visible rows), **Plate**, Name, Tags, **Result**,
   Direction, **Confidence**.
   - **Plate** is one column: the plate of the list, or the text the camera read when no plate matched. A read that
@@ -257,8 +277,11 @@ A dialog with several sections; Save starts the task "Set up License Plate Verif
   and changed on the picture with the shared picture controls of the vision plugins (`plugins/Shared/Vision.Client`);
   each area has an arrow for the driving direction that counts as In, turned on the picture. Area 2 can be added and
   removed.
-- **Recognition**: Region, Camera location, Plate width in pixels (a range), Number of characters (a range),
-  Confidence threshold. The choices and ranges come from what the camera returned.
+- **Recognition**: Region, Camera location, State (only for the regions with states), Plate width in pixels (a range),
+  Number of characters (a range), Confidence threshold. Region, Camera location and State are selects of ALPV's lists:
+  the locations of the chosen region, the states of the chosen location; a new region clears a location or state it does
+  not offer. A value the camera has that the lists do not know shows as its code and stays until the user picks another.
+  Only the fields the camera returned show; the ranges come from what it returned.
 - **Plates**: the allowed tags of this camera.
 - **Events**: whether New, Update and Lost are on (Save turns them on), and the last read.
 - Corners are stored as ALPV keeps them (0 to 1000 relative to the picture), so the drawing is independent of the
@@ -365,8 +388,9 @@ Details the spec left open, decided while building the page; none changes a rule
 - **Log**: the camera choice is the shared page choice (default All cameras of the plugin, kept on this computer) and is
   shared with Stats. The time filter is the shared date range button of the Logs page (Last hour, Today, Last 24 hours,
   Last 7 days, All, Custom with From and To). Result and Tags are check-box selects; Area, Direction and the vehicle's View
-  are single choices; Country and the vehicle's Type, Colour, Make and Model are typed (one read 300 ms after the last
-  key); the vehicle fields sit in the flyout of a Vehicle button. Pages of 200 rows; the next older page is read when a row
+  are single choices; Country (type to jump to a name), the vehicle's Type, Colour, Make and Model are selects; the vehicle
+  fields sit in the flyout of a Vehicle button, whose first opening reads the makes, a make its models; the search reads
+  300 ms after the last key. Pages of 200 rows; the next older page is read when a row
   20 from the end shows; newer rows on every `reads` event of a shown camera; crops read four at a time.
 - **Log columns**: a gap row shows the warning icon in Plate and "Connection lost from 13:58 to 14:06" in Name. The deviation
   triangle and the ended triangle of Plates are the theme's warning icon left of the text. Result's icons: the OK check,
@@ -405,8 +429,6 @@ Details the spec left open, decided while building the page; none changes a rule
   documented).
 - Add cameras offers "only devices with ALPV installed": the host's device picker cannot know without reading every
   device; until a cached application list exists, every camera can be added and shows "ALPV is not installed".
-- The choices of Region and Camera location: ALPV's configuration returns the values, not the lists; the server checks the
-  form only (Region letters, digits, `_` and `-`; Camera location alpha-3 or empty).
 - The event topics (`tnsaxis:CameraApplicationPlatform/ALPV.New` and the others) and the WebSocket messages of ALPV are not
   recorded yet: the read checks used GET only.
 - The Export menu says CSV and PDF (the shared Export button of the Logs page), not "PDF report" and "CSV" as decided on
