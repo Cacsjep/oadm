@@ -75,10 +75,12 @@ public sealed class LogStoreTests : IAsyncLifetime
         Assert.Equal(5, last.Rows.Count);
         Assert.Null(last.Next);
 
-        // The live list: what is newer than the newest row shown.
-        await AddAsync(Row(T(1), "NEW1"), Row(T(2), "NEW2"));
-        var newer = await _store.PageAsync(new LogPageRequest { After = new LogCursor(first.Rows[0].Time.ToUnixTimeMilliseconds(), first.Rows[0].Id) }, LogScope.All, CancellationToken.None);
-        Assert.Equal(["NEW2", "NEW1"], newer.Rows.Select(r => r.Plate));
+        // The live list: what was stored after the highest id shown, whatever its time (a read that waited for its best read,
+        // a gap row that begins before the reads shown).
+        var shown = first.Rows.Concat(second.Rows).Concat(last.Rows).Max(r => r.Id);
+        await AddAsync(Row(T(1), "NEW1"), Row(T(2), "NEW2"), Row(T(-3), "LATE"));
+        var newer = await _store.PageAsync(new LogPageRequest { After = new LogCursor(0, shown) }, LogScope.All, CancellationToken.None);
+        Assert.Equal(["NEW2", "NEW1", "LATE"], newer.Rows.Select(r => r.Plate));
     }
 
     [Fact]

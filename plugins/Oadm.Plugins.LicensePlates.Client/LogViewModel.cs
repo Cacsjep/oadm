@@ -186,6 +186,7 @@ public sealed partial class LogViewModel : ObservableObject
 
     private readonly LicensePlatesViewModel _page;
     private readonly HashSet<long> _ids = [];
+    private long _maxId;
     private readonly Queue<LogRow> _pictureQueue = new();
     private int _picturesRunning;
     private LogCursor? _next;
@@ -832,7 +833,7 @@ public sealed partial class LogViewModel : ObservableObject
                     return;
                 }
 
-                var rows = page.Rows.Where(r => _ids.Add(r.Id)).Select(Row).ToList();
+                var rows = page.Rows.Where(r => Seen(r.Id)).Select(Row).ToList();
                 Rows.AddRange(rows);
                 _next = page.Next;
             }).ConfigureAwait(true);
@@ -861,7 +862,9 @@ public sealed partial class LogViewModel : ObservableObject
                     continue;
                 }
 
-                var newest = Rows[0].Cursor;
+                // The rows stored after the newest id seen: also a read that waited for its best read or a gap row, whose
+                // time lies before reads shown already.
+                var newest = new LogCursor(0, _maxId);
                 var error = await GuardedRun.RunAsync(async () =>
                 {
                     var page = await _page.Client.CallAsync<LogPage>(LicensePlatesMethods.Log,
@@ -878,10 +881,10 @@ public sealed partial class LogViewModel : ObservableObject
                         return;
                     }
 
-                    var rows = page.Rows.Where(r => _ids.Add(r.Id)).Select(Row).ToList();
+                    var rows = page.Rows.Where(r => Seen(r.Id)).Select(Row).ToList();
                     if (rows.Count > 0)
                     {
-                        Rows.InsertRange(0, rows);
+                        Merge(rows);
                         OnPropertyChanged(nameof(ShowEmpty));
                     }
                 }).ConfigureAwait(true);
@@ -898,6 +901,31 @@ public sealed partial class LogViewModel : ObservableObject
         }
     }
 
+    /// <summary>Notes a row's id; false when the list has it already. Keeps the highest id for the live reads.</summary>
+    private bool Seen(long id)
+    {
+        _maxId = Math.Max(_maxId, id);
+        return _ids.Add(id);
+    }
+
+    /// <summary>
+    /// New rows into the list at their time (newest first): in front in one step when they are all newer than the first row,
+    /// else the whole list once in time order (one reset), so a late read and a gap row stand where their time is.
+    /// </summary>
+    internal void Merge(IReadOnlyList<LogRow> rows)
+    {
+        var sorted = rows.OrderByDescending(r => r.Read.Time).ThenByDescending(r => r.Id).ToList();
+        if (Rows.Count == 0 || IsBefore(Rows[0], sorted[^1]))
+        {
+            Rows.InsertRange(0, sorted);
+            return;
+        }
+
+        Rows.ReplaceAll([.. Rows.Concat(sorted).OrderByDescending(r => r.Read.Time).ThenByDescending(r => r.Id)]);
+
+        static bool IsBefore(LogRow shown, LogRow added) => shown.Read.Time < added.Read.Time || (shown.Read.Time == added.Read.Time && shown.Id < added.Id);
+    }
+
     private async Task LoadStatusAsync()
     {
         _statusRead = _page.Time.GetUtcNow();
@@ -912,11 +940,12 @@ public sealed partial class LogViewModel : ObservableObject
     private void Set(IReadOnlyList<PlateRead> reads, LogCursor? next)
     {
         _ids.Clear();
+        _maxId = 0;
         _pictureQueue.Clear();
         var rows = new List<LogRow>(reads.Count);
         foreach (var read in reads)
         {
-            if (_ids.Add(read.Id))
+            if (Seen(read.Id))
             {
                 rows.Add(Row(read));
             }

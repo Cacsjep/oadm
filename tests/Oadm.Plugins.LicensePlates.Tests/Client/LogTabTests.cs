@@ -169,6 +169,34 @@ public sealed class LogTabTests
     }
 
     [Fact]
+    public async Task A_read_decided_later_and_a_gap_row_appear_live_at_their_time()
+    {
+        var reads = Samples.Reads().ToList();
+        var ctx = Samples.Context(reads);
+        var (page, _, _) = await Samples.OpenAsync(ctx);
+        var log = page.Log;
+        var first = log.Rows[0].Read.Time; // 14:04:14
+
+        // A known plate at 14:04:20 is shown at once.
+        reads.Insert(0, Samples.Read(141, 0, 1, "W99887Z", ReadResult.Allowed, 96) with { Time = first.AddSeconds(6) });
+        page.OnEvent(LicensePlatesMethods.ReadsTopic, Samples.Serialize(new[] { Samples.CameraId(1) }));
+        await log.LoadTask;
+        Assert.Equal(141, log.Rows[0].Id);
+
+        // Then an unknown plate read at 14:04:16 (it waited for its best read) and a gap that began at 13:58 are stored.
+        reads.Insert(0, Samples.Read(142, 0, 2, "ZX123", ReadResult.Unknown, 70) with { Time = first.AddSeconds(2) });
+        reads.Insert(0, new PlateRead { Id = 143, Time = first.AddMinutes(-6), CameraId = Samples.CameraId(3), Camera = "sued-entry", Gap = true, Until = first.AddMinutes(-1) });
+        page.OnEvent(LicensePlatesMethods.ReadsTopic, Samples.Serialize(new[] { Samples.CameraId(2) }));
+        await log.LoadTask;
+
+        Assert.Equal(141, ctx.LastPayload<LogPageRequest>(LicensePlatesMethods.Log).After!.Id); // the rows stored after the newest id
+        Assert.Equal([141, 142, 140], log.Rows.Take(3).Select(r => r.Id));
+        var gap = log.Rows.ToList().FindIndex(r => r.Id == 143);
+        Assert.True(gap > 0 && log.Rows[gap - 1].Read.Time >= log.Rows[gap].Read.Time && log.Rows[gap + 1].Read.Time <= log.Rows[gap].Read.Time);
+        Assert.Equal(Samples.Reads().Count + 3, log.Rows.Count);
+    }
+
+    [Fact]
     public async Task Add_to_plates_is_for_one_selected_unknown_plate_and_opens_the_editor_with_it()
     {
         var (page, ctx, dialogs) = await Samples.OpenAsync();

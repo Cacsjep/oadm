@@ -226,7 +226,9 @@ of 42 cameras connected". Tabs: **Log**, **Plates**, **Cameras**, **Stats**. No 
 
 ### Log
 
-Live, newest first, virtualized, paged from the server.
+Live, newest first, virtualized, paged from the server. The live rows are those stored after the highest read id shown,
+whatever their time (a read that waited for its best read, a gap row that began before reads shown), each put in at its
+time; older pages go by time.
 
 - Toolbar: the device choice (the cameras of the page, default all cameras of the plugin), **Pause** (the list stops
   moving, reads are still stored), **Add to plates** (for a selected Unknown plate: the Add plate dialog with the

@@ -746,8 +746,9 @@ public sealed record LogQuery
 public sealed record LogCursor(long TimeMs, long Id);
 
 /// <summary>
-/// A page of the log: <see cref="Before"/> gives the older rows after it, <see cref="After"/> the rows newer than it (the
-/// live list; newest first, at most <see cref="Limit"/>); neither: the newest rows.
+/// A page of the log: <see cref="Before"/> gives the older rows after it (by time); <see cref="After"/> the rows stored after
+/// the read with its id, whatever their time (the live list: a read that waited for its best read and a gap row carry an
+/// earlier time than reads stored before them; newest first, at most <see cref="Limit"/>); neither: the newest rows.
 /// </summary>
 public sealed record LogPageRequest
 {

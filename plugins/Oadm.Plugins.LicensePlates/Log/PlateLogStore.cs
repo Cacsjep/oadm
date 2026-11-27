@@ -749,8 +749,8 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
 
         if (after is not null)
         {
-            where.Add("(time > @atime OR (time = @atime AND id > @aid))");
-            cmd.Parameters.AddWithValue("@atime", after.TimeMs);
+            // Stored later (ids grow with every stored row), whatever the read's time.
+            where.Add("id > @aid");
             cmd.Parameters.AddWithValue("@aid", after.Id);
         }
 
