@@ -198,7 +198,7 @@ public sealed class MatchingTests
     [Theory]
     [InlineData("A", "A plate has 2 to 12 characters.")]
     [InlineData("ABCDEFGHIJKLM", "A plate has 2 to 12 characters.")]
-    [InlineData("AB/12", "Use only letters and digits.")]
+    [InlineData("AB/12", "Use only letters, digits and *.")]
     [InlineData("", "Enter the plate.")]
     public void A_plate_has_2_to_12_letters_and_digits(string text, string error) =>
         Assert.Equal(error, PlateText.Problem(PlateText.Normalize(text)));

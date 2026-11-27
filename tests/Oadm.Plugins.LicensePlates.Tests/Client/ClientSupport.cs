@@ -495,6 +495,8 @@ internal static class Samples
         new() { Text = "GU3310M", Name = "Paketdienst", Tags = [Delivery] },
         new() { Text = "WU4040K", Name = "Clara Wagner", Tags = [GarageSued, Visitors] },
         new() { Text = "KO1212T", Name = "Thomas Leitner", Tags = [] },
+        new() { Text = "AXIS12**", Name = "Company cars", Tags = [Staff, GarageNord] },
+        new() { Text = "GU7**AB", Name = "Delivery vans", Tags = [Delivery] },
     ];
 
     public static PlateRead Read(long id, int minutesAgo, int camera, string plate, ReadResult result, int confidence, string? name = null, string[]? tags = null,
@@ -521,6 +523,7 @@ internal static class Samples
         VehicleModel = (id % 3) switch { 0 => "Golf", 1 => "Octavia", _ => "X3" },
         View = id % 2 == 0 ? "rear" : "front",
         HasPicture = true,
+        ListEntry = result == ReadResult.Unknown ? null : plate,
     };
 
     /// <summary>The newest reads first: every result, two low confidences, one deviated read, a gap.</summary>
@@ -531,7 +534,7 @@ internal static class Samples
         Read(138, 2, 1, "BN417HA", ReadResult.Allowed, 81, "Max Steiner", ["Garage Nord"], ReadReason.Near, readAs: "BN4I7HA"),
         Read(137, 4, 3, "WB815XA", ReadResult.Unknown, 72),
         Read(136, 5, 1, "KU5521C", ReadResult.NotAllowed, 92, "Visitor Müller", ["Visitors"], ReadReason.Ended, reasonTime: new DateTime(2026, 11, 26, 18, 0, 0)),
-        Read(135, 7, 3, "L8820BB", ReadResult.Allowed, 99, "Lukas Berger", ["Garage Süd"]),
+        Read(135, 7, 3, "AXIS1234", ReadResult.Allowed, 99, "Company cars", ["Staff", "Garage Nord"]) with { ListEntry = "AXIS12**" }, // a wildcard plate
         Read(134, 9, 2, "S1234K", ReadResult.Allowed, 88, "Sabine Koller", ["Garage Nord", "Garage Süd", "Staff"], direction: PlateDirection.Out),
         Read(133, 12, 4, "GU3310M", ReadResult.NotAllowed, 90, "Paketdienst", ["Delivery"]),
         Read(132, 14, 1, "ZZ71", ReadResult.Unknown, 54, direction: PlateDirection.Unknown),
@@ -730,7 +733,7 @@ internal static class Samples
         new(4, "S7788P", "Peter Lang", ["Garage Süd"], null, null, false, ImportRowStatus.New, null),
         new(5, "W12", "Short", [], null, null, false, ImportRowStatus.Refused, "A plate has 2 to 12 characters."),
         new(6, "L5544MM", "Maria Moser", ["Visitors"], null, new DateTime(2026, 12, 6, 20, 0, 0), true, ImportRowStatus.New, null),
-        new(7, "KÄ12", "Umlaut", [], null, null, false, ImportRowStatus.Refused, "Use only letters and digits."),
+        new(7, "KÄ12", "Umlaut", [], null, null, false, ImportRowStatus.Refused, "Use only letters, digits and *."),
         new(8, "L8820BB", "Lukas Berger", ["Garage Süd", "Staff"], null, null, false, ImportRowStatus.Changed, null),
     ];
 

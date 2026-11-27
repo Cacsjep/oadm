@@ -61,6 +61,40 @@ public sealed class PerfTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void Matching_with_1000_wildcard_plates_among_100000_plates_stays_a_lookup()
+    {
+        var plates = Enumerable.Range(0, LicensePlateLimits.MaxPlates).Select(i => new Plate { Text = PlateOf(i), Tags = [Tag] })
+            .Concat(Enumerable.Range(0, LicensePlateLimits.MaxWildcardPlates).Select(i => new Plate
+            {
+                // Several shapes of several lengths, like company fleets: "FA0001**", "G*1234*", "HB12***9".
+                Text = (i % 3) switch
+                {
+                    0 => "F" + (char)('A' + (i % 26)) + i.ToString("D4", CultureInfo.InvariantCulture) + "**",
+                    1 => "G*" + i.ToString("D4", CultureInfo.InvariantCulture) + "*",
+                    _ => "H" + (char)('A' + (i % 26)) + (i % 100).ToString("D2", CultureInfo.InvariantCulture) + "***" + (i % 10).ToString(CultureInfo.InvariantCulture),
+                },
+                Tags = [Tag],
+            }))
+            .DistinctBy(p => p.Text)
+            .ToArray();
+        var matcher = new PlateMatcher(new WildcardTests.Source(plates)) { Deviation = 1, RebuildInline = true };
+        var tags = new HashSet<Guid> { Tag };
+        var now = new DateTime(2026, 11, 27, 12, 0, 0);
+        Assert.Equal("FB0001**", matcher.Match("FB0001XY", tags, now).Plate!.Text);
+
+        var reads = Stopwatch.StartNew();
+        for (var i = 0; i < 10_000; i++)
+        {
+            matcher.Match("F" + (char)('A' + (i % 26)) + (i % 1000).ToString("D4", CultureInfo.InvariantCulture) + "QZ", tags, now);
+            matcher.Match("X" + i.ToString("D7", CultureInfo.InvariantCulture), tags, now);
+        }
+
+        reads.Stop();
+        output.WriteLine($"1,000 wildcard and 100,000 plates: 20,000 reads {reads.ElapsedMilliseconds} ms");
+        Assert.True(reads.Elapsed < TimeSpan.FromSeconds(5), $"20,000 reads {reads.ElapsedMilliseconds} ms");
+    }
+
+    [Fact]
     public async Task The_cameras_tab_with_1000_cameras_among_the_device_limit()
     {
         await using var rig = await Rig.StartAsync(cameras: 0, setup: ctx =>

@@ -205,6 +205,44 @@ public sealed class PluginTests
     }
 
     [Fact]
+    public async Task A_read_a_wildcard_plate_decides_logs_the_car_and_names_the_pattern()
+    {
+        await using var rig = await Rig.StartAsync();
+        var staff = await rig.TagAsync("Staff");
+        await rig.CallAsync(LicensePlatesMethods.SavePlate, new SavePlateRequest(new Plate { Text = "axis 12**", Name = "Company cars", Tags = [staff.Id] }));
+        var camera = rig.Camera(0);
+        await rig.CallAsync(LicensePlatesMethods.AddCameras, new DevicesRequest([rig.Id(0)]));
+        await rig.CallAsync(LicensePlatesMethods.SetAllowedTags, new AllowedTagsRequest([rig.Id(0)], Set: [staff.Id]));
+        await Eventually.TrueAsync(() => camera.IsConnected && rig.Plugin.Runtime!.StateOf(rig.Id(0)).Status == CameraStatus.Connected, "the camera is connected");
+
+        await camera.SendAsync(Fixture.Notify("New", "1", "AXIS1234", 0.91));
+
+        await Eventually.TrueAsync(() => rig.Publisher.Published.Any(e => e.TypeId == LicensePlatesInfo.PlateAllowedType), "Plate allowed fires");
+        var allowed = rig.Publisher.Published.Single(e => e.TypeId == LicensePlatesInfo.PlateAllowedType);
+        Assert.Equal(("AXIS1234", "AXIS12**", "", "Company cars", "Staff"),
+            (allowed.Data["plate"], allowed.Data["listEntry"], allowed.Data["readAs"], allowed.Data["name"], allowed.Data["tags"]));
+        await Eventually.TrueAsync(() => rig.Plugin.Log!.Store!.Written == 1, "the read is stored");
+        var read = Assert.Single((await rig.CallAsync<LogPage>(LicensePlatesMethods.Log, new LogPageRequest())).Rows);
+        Assert.Equal(("AXIS1234", "AXIS12**", (string?)null, ReadResult.Allowed), (read.Plate, read.ListEntry, read.ReadAs, read.Result));
+    }
+
+    [Fact]
+    public async Task The_list_keeps_at_most_1000_wildcard_plates()
+    {
+        await using var rig = await Rig.StartAsync(cameras: 0);
+        await rig.Plugin.Store!.WritePlatesAsync(
+            [.. Enumerable.Range(0, LicensePlateLimits.MaxWildcardPlates).Select(i => new Plate { Text = "FL" + i.ToString("D4", System.Globalization.CultureInfo.InvariantCulture) + "**" })], [], CancellationToken.None);
+        Assert.Equal(LicensePlateLimits.MaxWildcardPlates, rig.Plugin.Store.WildcardCount);
+
+        var refused = await rig.CallAsync<SavePlateReply>(LicensePlatesMethods.SavePlate, new SavePlateRequest(new Plate { Text = "ZZ99**" }));
+        Assert.Equal(LicensePlateTexts.TooManyWildcards, refused.Errors!["text"]);
+        var plain = await rig.CallAsync<SavePlateReply>(LicensePlatesMethods.SavePlate, new SavePlateRequest(new Plate { Text = "ZZ9999" }));
+        Assert.Null(plain.Errors); // plates on their own still go in
+        var changed = await rig.CallAsync<SavePlateReply>(LicensePlatesMethods.SavePlate, new SavePlateRequest(new Plate { Text = "FL0001**", Name = "Fleet" }, "FL0001**"));
+        Assert.Null(changed.Errors); // a wildcard plate changed is no new one
+    }
+
+    [Fact]
     public void The_audit_text_of_a_sweep_counts_the_plates()
     {
         Assert.Equal("Deleted 1 plate whose time ended", LicensePlatesPlugin.EndedAuditDetail(1));
