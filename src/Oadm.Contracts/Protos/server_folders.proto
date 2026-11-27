@@ -1,0 +1,46 @@
+syntax = "proto3";
+package oadm.v1;
+option csharp_namespace = "Oadm.Contracts.V1";
+
+// The folders of the server's computer for the client's server folder picker (docs/spec/grpc.md, docs/spec/security.md
+// "Folders a plugin writes to"): names and full paths only, never files or their contents. Administrator only; Create is
+// audited.
+service ServerFolderService {
+  // The subfolders of `path` (empty: the drives / top folders), sorted by name, at most 2,000 (`more`), hidden, system and
+  // unreadable ones left out; `problem` is the check of `path` itself. INVALID_ARGUMENT not a full path, NOT_FOUND,
+  // FAILED_PRECONDITION the server cannot open it.
+  rpc List (ServerFolderRequest) returns (ServerFolderList);
+  // A new folder `name` in `path`; as the installed service only administrators / root can change it. INVALID_ARGUMENT
+  // path or name, NOT_FOUND parent, ALREADY_EXISTS, FAILED_PRECONDITION the server cannot create it.
+  rpc Create (CreateServerFolderRequest) returns (ServerFolder);
+  // Whether a plugin may keep its data in `path`: `problem` empty when it may.
+  rpc Check (ServerFolderRequest) returns (ServerFolderCheck);
+}
+
+message ServerFolderRequest {
+  string path = 1;
+}
+
+message CreateServerFolderRequest {
+  string path = 1;   // the parent
+  string name = 2;
+}
+
+message ServerFolder {
+  string name = 1;   // "Plates"; a drive: "C:" or its label "Data (D:)"
+  string path = 2;   // the full path
+  bool is_root = 3;  // a drive or top folder of the list of roots
+}
+
+message ServerFolderList {
+  string path = 1;                 // the listed folder, normalized; empty for the roots
+  string parent = 2;               // its parent; empty at a root and for the roots
+  repeated ServerFolder folders = 3;
+  bool more = 4;                   // more than 2,000 subfolders: the first 2,000 by name
+  string problem = 5;              // the check of `path` (Check); empty when a plugin may use it
+}
+
+message ServerFolderCheck {
+  string path = 1;                 // normalized
+  string problem = 2;
+}

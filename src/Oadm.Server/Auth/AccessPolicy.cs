@@ -249,6 +249,10 @@ public static class AccessPolicy
         ["/oadm.v1.LicenseService/RemoveLicense"] = AccessRule.Admin,
         ["/oadm.v1.LicenseService/StartTrial"] = AccessRule.Admin,
         ["/oadm.v1.SupportService/CreateReport"] = AccessRule.Admin,
+        // The server folder picker (docs/spec/security.md "Folders a plugin writes to"): names only, Create audited.
+        ["/oadm.v1.ServerFolderService/List"] = AccessRule.Admin,
+        ["/oadm.v1.ServerFolderService/Create"] = AccessRule.Admin,
+        ["/oadm.v1.ServerFolderService/Check"] = AccessRule.Admin,
 
         ["/oadm.v1.BackupService/GetState"] = AccessRule.Admin,
         ["/oadm.v1.BackupService/SetSchedule"] = AccessRule.Admin,

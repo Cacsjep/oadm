@@ -67,6 +67,7 @@ public static class AuditActions
     public const string ProLicenseRemoved = "Removed license";
     public const string ProTrialStarted = "Started trial";
     public const string SupportReportCreated = "Created support report";
+    public const string ServerFolderCreated = "Created folder on the server";
     public const string VulnerabilityListUpdated = "Updated vulnerability list";
     public const string MyAxisSignedIn = "Signed in to MyAxis";
     public const string MyAxisSignedOut = "Signed out of MyAxis";

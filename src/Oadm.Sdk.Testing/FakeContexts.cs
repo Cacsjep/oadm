@@ -375,6 +375,12 @@ public sealed class FakeCoreContext : ICorePluginContext, IDeviceRepository, IVa
     public IUserCalls? UserCalls { get; set; }
 
     /// <summary>
+    /// The checks of a server folder the plugin writes to (<see cref="ICorePluginContext.FolderCheck"/>, SDK 0.17.0); null by
+    /// default, like an older host. Tests set their own (<c>new FakeCoreContext { FolderCheck = new MyCheck() }</c>).
+    /// </summary>
+    public IServerFolderCheck? FolderCheck { get; set; }
+
+    /// <summary>
     /// The event rules the plugin publishes to; null (the default) like a host without event rules. Set a
     /// <see cref="FakeEventPublisher"/> (<c>new FakeCoreContext { EventPublisher = new FakeEventPublisher() }</c>).
     /// </summary>
