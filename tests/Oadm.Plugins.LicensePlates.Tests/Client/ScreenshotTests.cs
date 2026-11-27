@@ -54,7 +54,6 @@ public sealed class ScreenshotTests
         {
             var (page, view, window, _) = await ShowPageAsync();
             page.Log.Range.Choose(DateRangePreset.Last24Hours);
-            page.Log.SelectedArea = LogViewModel.AreaChoices[1];
             page.Log.SelectedCountry = page.Log.CountryChoices.Single(c => c.Value == "AUT");
             await page.Log.LoadTask;
             Headless.Pump();
@@ -67,7 +66,10 @@ public sealed class ScreenshotTests
             Assert.Contains(grid.GetVisualDescendants().OfType<OadmIcon>(), c => c.Name == "DeviationIcon" && c.IsEffectivelyVisible);
             Assert.Single(VisibleTexts(window, "2 of 11 cameras connected"));
             Assert.Single(VisibleTexts(window, PageTexts.Subtitle));
-            Assert.True(view.FindControl<LogView>("LogPage")!.FindControl<ToolbarButton>("ClearFiltersButton")!.IsEffectivelyEnabled);
+            var bar = view.FindControl<LogView>("LogPage")!.FindControl<FilterBar>("FilterRow")!;
+            Assert.True(bar.IsEffectivelyVisible);
+            Assert.Equal(["Last 24 hours", "Country: Austria"], page.Log.Filters.Shown.Select(k => k.Text)); // two chips
+            Assert.True(bar.ClearButton.IsEffectivelyEnabled);
             var confidences = grid.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible && t.Text is "72" or "54").ToList();
             Assert.Contains(confidences, t => t.Text == "72" && t.Classes.Contains("warning"));
             Assert.Contains(confidences, t => t.Text == "54" && t.Classes.Contains("error"));
@@ -79,6 +81,24 @@ public sealed class ScreenshotTests
             Headless.Pump();
             Headless.Capture(window, $"log-export-menu-{Suffix}.png");
             export.Flyout.Hide();
+            Headless.Pump();
+
+            // The Filter menu: the kinds of filter.
+            var filter = view.FindControl<LogView>("LogPage")!.FindControl<FilterButton>("FilterButton")!;
+            Assert.Equal(7, filter.Entries.Count);
+            filter.Flyout!.ShowAt(filter);
+            Headless.Pump();
+            Headless.Capture(window, $"log-filter-menu-{Suffix}.png");
+            filter.Flyout.Hide();
+            Headless.Pump();
+
+            // The Country chip's editor open.
+            var chip = bar.ChipOf(page.Log.Filters.Kinds.Single(k => k.Name == PageTexts.Country))!;
+            chip.Open();
+            Headless.Pump();
+            Assert.True(chip.Editor.IsOpen);
+            Headless.Capture(window, $"log-filter-editor-{Suffix}.png");
+            chip.Editor.Hide();
             Close(page, window);
             return true;
         }, CancellationToken.None);
@@ -187,6 +207,10 @@ public sealed class ScreenshotTests
             Assert.Contains("danger", cameras.FindControl<ToolbarButton>("RemoveButton")!.Classes);
             Assert.Single(VisibleTexts(window, "Connection lost since 13:58"));
             Assert.Single(VisibleTexts(window, "Site offline: Site B"));
+            cameras.Grid.SelectedItem = page.Cameras.Rows[0]; // a selected camera: its buttons are on
+            Headless.Pump();
+            Assert.True(cameras.FindControl<ToolbarButton>("SetUpButton")!.IsEffectivelyEnabled);
+            Assert.True(cameras.FindControl<ToolbarButton>("RemoveButton")!.IsEffectivelyEnabled);
             Headless.Capture(window, $"cameras-{Suffix}.png");
 
             // The rich tooltip of the camera whose image settings differ, as when the mouse rests on its cell.
