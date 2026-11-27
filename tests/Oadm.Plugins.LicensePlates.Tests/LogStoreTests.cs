@@ -102,7 +102,7 @@ public sealed class LogStoreTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task The_search_is_the_start_of_the_plate_or_a_name_inside_the_time()
+    public async Task The_search_is_the_start_of_the_plate_or_the_plates_its_name_found_inside_the_time()
     {
         await AddAsync(
             Row(T(-300), "W12345A", name: "Anna Gruber"),
@@ -113,9 +113,10 @@ public sealed class LogStoreTests : IAsyncLifetime
 
         Assert.Equal(["W12999B", "W12345A"], await Plates(new LogQuery { Search = "w-12" }));
         Assert.Empty(await Plates(new LogQuery { Search = "12345" })); // from the start only
-        Assert.Equal(["W12345A"], await Plates(new LogQuery { Search = "gruber" }));
-        Assert.Empty(await Plates(new LogQuery { Search = "gruber", From = T(-60) }));
-        Assert.Equal(["K12345"], await Plates(new LogQuery { Search = "100%" }));
+        Assert.Empty(await Plates(new LogQuery { Search = "gruber" })); // never a scan of the stored names
+        Assert.Equal(["W12345A"], await Plates(new LogQuery { Search = "gruber", NamedPlates = ["W12345A"] })); // the plate list found it
+        Assert.Empty(await Plates(new LogQuery { Search = "gruber", NamedPlates = ["W12345A"], From = T(-60) }));
+        Assert.Equal(["K12345"], await Plates(new LogQuery { Search = "100%", NamedPlates = ["K12345"] }));
     }
 
     [Fact]

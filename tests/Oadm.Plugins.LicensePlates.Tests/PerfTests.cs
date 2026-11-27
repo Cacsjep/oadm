@@ -80,7 +80,7 @@ public sealed class PerfTests(ITestOutputHelper output)
         var matcher = new PlateMatcher(new WildcardTests.Source(plates)) { Deviation = 1, RebuildInline = true };
         var tags = new HashSet<Guid> { Tag };
         var now = new DateTime(2026, 11, 27, 12, 0, 0);
-        Assert.Equal("FB0001**", matcher.Match("FB0001XY", tags, now).Plate!.Text);
+        Assert.Equal("FA0000**", matcher.Match("FA0000XY", tags, now).Plate?.Text); // i = 0 takes the first shape
 
         var reads = Stopwatch.StartNew();
         for (var i = 0; i < 10_000; i++)
@@ -136,26 +136,25 @@ public sealed class PerfTests(ITestOutputHelper output)
             var start = time.GetUtcNow().AddDays(-30);
             var fill = Stopwatch.StartNew();
             const int Total = 10_000_000;
-            for (var i = 0; i < Total; i++)
+            IEnumerable<PlateRead> Rows()
             {
-                store.Insert(new LogInsert(new PlateRead
+                for (var i = 0; i < Total; i++)
                 {
-                    Id = store.NextId(),
-                    Time = start.AddMilliseconds(i * 259.2),
-                    CameraId = cameras[i % cameras.Length],
-                    Camera = "camera",
-                    Plate = PlateOf(i % 400_000),
-                    Result = (ReadResult)(i % 3),
-                    Name = "Name " + (i % 1000).ToString(CultureInfo.InvariantCulture),
-                    Confidence = 50 + (i % 50),
-                }, null));
-                if (i % 100_000 == 0)
-                {
-                    await store.FlushAsync();
+                    yield return new PlateRead
+                    {
+                        Id = store.NextId(),
+                        Time = start.AddMilliseconds(i * 259.2),
+                        CameraId = cameras[i % cameras.Length],
+                        Camera = "camera",
+                        Plate = PlateOf(i % 400_000),
+                        Result = (ReadResult)(i % 3),
+                        Name = "Name " + (i % 1000).ToString(CultureInfo.InvariantCulture),
+                        Confidence = 50 + (i % 50),
+                    };
                 }
             }
 
-            await store.FlushAsync();
+            await store.BulkFillAsync(Rows(), n => { if (n % 1_000_000 == 0) { output.WriteLine($"filled {n:N0} in {fill.Elapsed.TotalSeconds:0} s"); Console.WriteLine($"filled {n:N0} in {fill.Elapsed.TotalSeconds:0} s"); } }, CancellationToken.None);
             fill.Stop();
 
             var search = Stopwatch.StartNew();
@@ -164,6 +163,11 @@ public sealed class PerfTests(ITestOutputHelper output)
             var prefix = Stopwatch.StartNew();
             var prefixed = await store.PageAsync(new LogPageRequest { Query = new LogQuery { Search = "W01234" }, Limit = 200 }, LogScope.All, CancellationToken.None);
             prefix.Stop();
+
+            // A search by name: the plates of the list with the name (here 1,000 of them), each through the plate index.
+            var named = Stopwatch.StartNew();
+            var byName = await store.PageAsync(new LogPageRequest { Query = new LogQuery { Search = "Fleet", NamedPlates = [.. Enumerable.Range(0, LicensePlateLimits.MaxNamedPlates).Select(i => PlateOf(i * 397))] }, Limit = 200 }, LogScope.All, CancellationToken.None);
+            named.Stop();
             var stats = Stopwatch.StartNew();
             await store.StatsAsync(new StatsRequest { From = time.GetUtcNow().AddDays(-30), To = time.GetUtcNow() }, LogScope.All, _ => "camera", CancellationToken.None);
             stats.Stop();
@@ -173,9 +177,11 @@ public sealed class PerfTests(ITestOutputHelper output)
             var pdf = PlateLogExport.Pdf(rows, new PlateExportHead([], "server", "admin", time.GetUtcNow(), Total), LogExportClock.Of("UTC", 0), _ => null, CancellationToken.None);
             export.Stop();
 
-            output.WriteLine($"fill {Total:N0}: {fill.Elapsed.TotalSeconds:0} s, plate {search.ElapsedMilliseconds} ms, prefix {prefix.ElapsedMilliseconds} ms, stats 30 days {stats.ElapsedMilliseconds} ms, export 10,000 (CSV {csv.Length:N0} B, PDF {pdf.Length:N0} B) {export.ElapsedMilliseconds} ms, size {store.UsedBytes / 1_048_576:N0} MB");
+            output.WriteLine($"fill {Total:N0}: {fill.Elapsed.TotalSeconds:0} s, plate {search.ElapsedMilliseconds} ms, prefix {prefix.ElapsedMilliseconds} ms, 1,000 named plates {named.ElapsedMilliseconds} ms, stats 30 days {stats.ElapsedMilliseconds} ms, export 10,000 (CSV {csv.Length:N0} B, PDF {pdf.Length:N0} B) {export.ElapsedMilliseconds} ms, size {store.UsedBytes / 1_048_576:N0} MB");
             Assert.NotEmpty(page.Rows);
             Assert.NotEmpty(prefixed.Rows);
+            Assert.Equal(200, byName.Rows.Count);
+            Assert.True(named.Elapsed < TimeSpan.FromSeconds(1), $"name search {named.ElapsedMilliseconds} ms");
             Assert.True(search.Elapsed < TimeSpan.FromMilliseconds(100), $"plate search {search.ElapsedMilliseconds} ms");
             Assert.True(prefix.Elapsed < TimeSpan.FromMilliseconds(100), $"prefix search {prefix.ElapsedMilliseconds} ms");
             Assert.True(stats.Elapsed < TimeSpan.FromSeconds(5), $"stats {stats.ElapsedMilliseconds} ms");

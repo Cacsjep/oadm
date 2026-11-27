@@ -227,6 +227,46 @@ public sealed class PluginTests
     }
 
     [Fact]
+    public async Task The_log_search_by_name_finds_the_reads_of_the_plates_with_that_name_now()
+    {
+        await using var rig = await Rig.StartAsync(cameras: 0);
+        await rig.Plugin.Store!.WritePlatesAsync(
+        [
+            new Plate { Text = "W12345A", Name = "Anna Gruber" },
+            new Plate { Text = "AXIS12**", Name = "Gruber fleet" },
+            new Plate { Text = "K99", Name = "Ben" },
+        ], [], CancellationToken.None);
+        var store = rig.Plugin.Log!.Store!;
+        PlateRead Row(string plate, string? entry, string storedName) => new()
+        {
+            Id = store.NextId(), Time = rig.Time.GetUtcNow().AddMinutes(-1), CameraId = Guid.NewGuid(), Camera = "gate", Plate = plate,
+            ListEntry = entry, Name = storedName, Result = ReadResult.Allowed,
+        };
+        store.Insert(new Log.LogInsert(Row("W12345A", "W12345A", "Anna Huber"), null)); // the name at the time of the read
+        store.Insert(new Log.LogInsert(Row("AXIS1234", "AXIS12**", "Gruber fleet"), null));
+        store.Insert(new Log.LogInsert(Row("K99", "K99", "Gruber old"), null)); // a stored name never counts
+        await store.FlushAsync();
+
+        var page = await rig.CallAsync<LogPage>(LicensePlatesMethods.Log, new LogPageRequest { Query = new LogQuery { Search = "gruber" } });
+        Assert.Equal(["AXIS1234", "W12345A"], page.Rows.Select(r => r.Plate).Order());
+        Assert.Equal("Anna Huber", page.Rows.Single(r => r.Plate == "W12345A").Name); // the row keeps its stored name
+        Assert.False(page.TooManyNames);
+        Assert.Equal(2, await rig.CallAsync<CountReply>(LicensePlatesMethods.LogCount, new LogQuery { Search = "gruber" }) is { } count ? count.Count : -1);
+    }
+
+    [Fact]
+    public async Task More_than_1000_plates_with_the_name_say_so()
+    {
+        await using var rig = await Rig.StartAsync(cameras: 0);
+        await rig.Plugin.Store!.WritePlatesAsync(
+            [.. Enumerable.Range(0, LicensePlateLimits.MaxNamedPlates + 1).Select(i => new Plate { Text = "F" + i.ToString("D5", System.Globalization.CultureInfo.InvariantCulture), Name = "Fleet car" })], [], CancellationToken.None);
+
+        var page = await rig.CallAsync<LogPage>(LicensePlatesMethods.Log, new LogPageRequest { Query = new LogQuery { Search = "fleet" } });
+        Assert.True(page.TooManyNames);
+        Assert.Equal("More than 1,000 names match. Type more.", LicensePlateTexts.TooManyNames);
+    }
+
+    [Fact]
     public async Task The_list_keeps_at_most_1000_wildcard_plates()
     {
         await using var rig = await Rig.StartAsync(cameras: 0);
@@ -417,6 +457,10 @@ public sealed class PluginTests
     {
         await using var rig = await Rig.StartAsync(cameras: 2);
         await rig.CallAsync(LicensePlatesMethods.AddCameras, new DevicesRequest([rig.Id(0), rig.Id(1)]));
+        // Adding starts each camera's check and connection in the background: the canary's snapshots begin only after both
+        // finished their first reads (connected), so none of them lands between its snapshots.
+        await Eventually.TrueAsync(() => Enumerable.Range(0, 2).All(i => rig.Camera(i).IsConnected
+            && rig.Plugin.Runtime!.StateOf(rig.Id(i)) is { Status: CameraStatus.Connected, Checked: not null }), "both cameras checked and connected");
         var inside = rig.Ctx.DeviceList[0];
         var outside = rig.Ctx.DeviceList[1];
 

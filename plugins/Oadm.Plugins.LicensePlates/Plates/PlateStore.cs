@@ -211,6 +211,40 @@ internal sealed class PlateStore(IPluginRecords records) : IPlateSource, IDispos
             || plate.Name.Contains(term, StringComparison.CurrentCultureIgnoreCase);
     }
 
+    /// <summary>
+    /// The plates whose name holds every word of <paramref name="search"/> (any case), at most <paramref name="max"/>, in
+    /// plate order; <c>TooMany</c> when there are more. In memory, one pass over the list, no log involved.
+    /// </summary>
+    public (IReadOnlyList<string> Texts, bool TooMany) PlatesNamed(string? search, int max)
+    {
+        var words = (search ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0)
+        {
+            return ([], false);
+        }
+
+        var found = new List<string>();
+        lock (_sync)
+        {
+            _sorted ??= [.. _plates.Keys.Order(StringComparer.Ordinal)];
+            foreach (var text in _sorted)
+            {
+                var name = _plates[text].Name;
+                if (name.Length > 0 && words.All(w => name.Contains(w, StringComparison.CurrentCultureIgnoreCase)))
+                {
+                    if (found.Count == max)
+                    {
+                        return (found, true);
+                    }
+
+                    found.Add(text);
+                }
+            }
+        }
+
+        return (found, false);
+    }
+
     /// <summary>Every plate (export, the import's comparison).</summary>
     public IReadOnlyList<Plate> AllPlates()
     {

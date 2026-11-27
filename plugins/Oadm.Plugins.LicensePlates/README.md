@@ -64,6 +64,9 @@ its native SQLite. PDFsharp is the plugin's own copy, as in Snapshot report.
   lookup and before the near match, never with a deviation; more fixed characters win, a tie allows when any allows. They
   are left out of the deletion index. At most 1,000. The read keeps the camera's text as `Plate` and the pattern as
   `ListEntry` (log column `list_entry`, added once to older stores; event field `listEntry`).
+- **Log search by name**: `Named` resolves the search through the plate list (`PlateStore.PlatesNamed`, at most 1,000, else
+  `LogPage.TooManyNames`) into `LogQuery.NamedPlates`; the store unions the plate prefix with `plate IN (...)` and, for
+  wildcard plates, `list_entry IN (...)`, each on its index. `BulkFillAsync` fills a log fast for the 10-million Perf test.
 - **Reads**: the read's time is ALPV's `capture_timestamp`. A Lost of a car never seen with a text is a read of its own.
 - **Log store**: `<folder>/plate-log.db` (WAL, `auto_vacuum=INCREMENTAL`), crops in `<folder>/pictures/<yyyy-MM-dd>/<id>.jpg`
   (the server's day; only JPEG, at most 512 KB, never converted). Writes: one writer, up to 2,000 rows per transaction.
