@@ -216,24 +216,33 @@ Live, newest first, virtualized, paged from the server.
   plate filled in), **Export** (a menu: **PDF report**, **CSV**); right: search by plate or name.
 - **Export** (decision 2026-11-27) writes exactly the rows the filters and the search show, newest first, at most
   **10,000** (`LicensePlateLimits.MaxExportRows`); with more it says "The newest 10,000 of 48,213 reads" in the file's
-  head and in the save notice. Made on the server from the log store, streamed to the client's save dialog, one
+  head. After a saved export the page shows no status line, only an error (decision 2026-11-27). Made on the server from the log store, streamed to the client's save dialog, one
   audit entry "Exported plate log" each, only reads of the caller's device group.
-  - **CSV**: UTF-8 with BOM, the grid's columns plus Read as, Area, Country, Vehicle and "Time (ISO 8601)", times in
-    the user's time zone.
+  - Both files have the columns the user chose on the Log in their order (decision 2026-11-27); times with the date
+    ("27 Nov 2026 14:04:14") in the user's time zone.
+  - **CSV**: UTF-8 with BOM, the chosen columns without Picture.
   - **PDF report**: the look of the Logs page export (PDFsharp + MigraDoc, A4 landscape, Roboto embedded through the
     shared `LogPdfFonts`, never a system font); the head with the filters, the time range, the server name, who
-    exported it when and the counts by result; the table with the plate crop when the log kept it (small, only in
-    the PDF), Time, Camera, Plate (with "read as" below when it differs), Name, Tags, Result (the word, not only the
-    icon), Direction, Confidence; "Page X of Y". Pictures make the file large: without pictures when more than 2,000
-    rows.
+    exported it when and the counts by result; the table of the chosen columns with the plate crop when the log kept
+    it (small, only in the PDF), Plate with "read as" below when it differs and Read as is not chosen, Result as the
+    word; "Page X of Y". Picture is left out when there are more than 2,000 rows or more than 11 other columns (A4
+    landscape has no room), and the head says so ("Without pictures: more than 2,000 reads.", "Without pictures: too
+    many columns.").
 - Filters, like ALPV's Search, behind the command button **Filter** of the toolbar (decision 2026-11-27): its menu lists
   time (Last hour, Last 24 hours, Last 7 days, or From and To), result, tags, area, direction, country, vehicle (view,
   type, colour, make, model). A chosen kind becomes a chip ("Country: Austria", "Last 24 hours") in one row below the
   toolbar, which exists only while a filter is set; a chip's text opens its editor in a flyout, its x removes it,
   **Clear filters** ends the row. No row with every filter. Country, vehicle type and colour are
   selects of ALPV's lists (see "ALPV's lists"); make and model are selects of what a connected camera lists.
-- Columns: Time, Camera, Picture (the plate crop, loaded only for visible rows), **Plate**, Name, Tags, **Result**,
-  Direction, **Confidence**.
+- Columns (decision 2026-11-27): the user chooses them like on the device grid, with the shared column chooser (the
+  icon-only button "Choose columns" left of the search; headers dragged to reorder); kept per user on this computer
+  like the device grid's. Available: Time, Camera, Picture (the plate crop, loaded only for visible rows), **Plate**,
+  Read as, Name, Tags, **Result**, Direction, Area, Country, State, Vehicle type, Vehicle colour, Vehicle make, Vehicle
+  model, View (Front, Rear), **Confidence**. Shown by default: Time, Camera, Picture, Plate, Name, Tags, Result,
+  Direction, Confidence.
+  - **Time** has the date on every row: "27 Nov 2026 14:04:14", this computer's zone (no group header per day: a row
+    stays readable alone, in a selection and in the files).
+  - **Camera** is the camera's name in the plugin when the read was stored.
   - **Plate** is one column: the plate of the list, or the text the camera read when no plate matched. A read that
     matched with a deviation shows a warning triangle left of it; its tooltip says "Read as BN4I7HA".
   - **Result** is only the status icon (check green, no entry red, question mark grey); the tooltip names it and the
@@ -261,7 +270,12 @@ offered). Nothing is read from a camera before that.
 - Toolbar: **Add cameras**, **Set up**, **Allowed tags** (the selected cameras: which plate tags are allowed there),
   **Copy settings** (the reading setup of one camera to others, see below), **Use recommended image settings**,
   **Settings**, **Remove** (red; the camera leaves the plugin, nothing on the camera changes); right: search.
-- Columns: Camera, Address, Site, ALPV (version), **Status**, **Allowed tags**, **Image settings**. No last read and
+- Columns: **Name**, Address, Site, ALPV (version), **Status**, **Allowed tags**, **Image settings**.
+- **Name** (decision 2026-11-27): each camera has its own name in the plugin, by default the device's name in OADM (host
+  name, else address). Changed in Set up (the first field): required, at most 64 characters, unique among the plugin's
+  cameras (any case; "Another camera has this name."). Kept with the camera in the plugin's records (part of the
+  backup), audited ("Renamed a camera", Set up cameras), never renames the device in OADM. The Log, Stats, the events'
+  Camera field, the exports and the MCP tools use it. No last read and
   no reads today column: that is the Stats tab (decision 2026-11-27).
 - **Status** (`ui:StatusChip`): Connected, Connection lost (with the time), Events are off in ALPV, ALPV is stopped,
   ALPV is not installed, ALPV has no license, ALPV 3 is needed, ALPV reads another sensor, Site offline.
@@ -274,19 +288,24 @@ offered). Nothing is read from a camera before that.
 
 ### Set up (a camera)
 
-A dialog with several sections; Save starts the task "Set up License Plate Verifier" for the camera.
+A dialog with several sections, a fixed size like every dialog of the plugin (decision 2026-11-27: `CanResize` false;
+Set up, Copy settings, Settings, Plate editor, Import, Tags). Save first saves a changed **Name** (a refusal shows below
+the field and nothing else is saved), then starts the task "Set up License Plate Verifier" for the camera.
 
 - The live picture (the host's live video, first sensor) with the two **areas**: polygons of 3 to 8 corners, drawn
   and changed on the picture with the shared picture controls of the vision plugins (`plugins/Shared/Vision.Client`);
   each area has an arrow for the driving direction that counts as In, turned on the picture. Area 2 can be added and
   removed.
+- **Name**: the camera's name in the plugin (see Cameras).
 - **Recognition**: Region, Camera location, State (only for the regions with states), Plate width in pixels (a range),
-  Number of characters (a range), Confidence threshold. Region, Camera location and State are selects of ALPV's lists:
+  Number of characters (a range), Confidence threshold (the shared number with a slider, 20 to 100 %, steps of 5;
+  ALPV keeps 0.2 to 1.0: 0.25 shows as 25 %; "Choose 20 to 100 %." below it). Region, Camera location and State are selects of ALPV's lists:
   the locations of the chosen region, the states of the chosen location; a new region clears a location or state it does
   not offer. A value the camera has that the lists do not know shows as its code and stays until the user picks another.
   Only the fields the camera returned show; the ranges come from what it returned.
 - **Plates**: the allowed tags of this camera.
-- **Events**: whether New, Update and Lost are on (Save turns them on), and the last read.
+- No Events section (decision 2026-11-27): Save turns New, Update and Lost on without saying so; the Cameras tab's
+  Status still says "Events are off in ALPV".
 - Corners are stored as ALPV keeps them (0 to 1000 relative to the picture), so the drawing is independent of the
   stream resolution.
 - Footer: a link to ALPV's own page for barrier, relay and storage (Web View), Cancel, Save.
@@ -296,17 +315,29 @@ when asked, since they belong to the picture of one camera.
 
 ### Stats
 
-For the chosen cameras and time (Today, Last 7 days, Last 30 days), from the log:
+Built like the dashboard installers know from their plate systems (decisions 2026-11-27). Toolbar: the camera choice and
+the time (Today, Last 24 hours, Last 7 days, Last 30 days), Refresh.
 
-- Reads in total and by result (Allowed, Not allowed, Unknown plate), and the **Average confidence** (a whole number, the
-  Log's colours: below 75 warning, below 60 error).
-- Reads per hour (a chart) and **Confidence** (a chart of the reads below 60, 60 to 74, 75 to 89, 90 and above, with count
-  and share; the two low bands in the error and warning colours).
-- Per camera: reads, share Allowed, average confidence (coloured like the total), shares below 60 and below 75, last
-  read. Sorted by any column.
+- Four cards for the chosen cameras, whatever the time: **Last hour**, **Last 24 hours**, **Last 7 days**, **Total**
+  (all the log holds); each a count with the bar chart icon, compact ("4,812", "49.6k", "123k", "4.4M"). Allowed, Not
+  allowed and Unknown plate of the chosen time are one line above the reads chart ("Allowed 1,204 · Not allowed 86 ·
+  Unknown plate 211 · Average confidence 86 %"), not cards.
+- **Plate confidence per camera**: one bar per camera (by name), its average plate confidence of the chosen time, 0 to
+  100 %; the accent colour, below 75 the warning and below 60 the error colour (the Log's); the camera names turned
+  below the bars; the tooltip names the camera, the average and the reads. With more cameras than fit the bars keep
+  their width and scroll sideways (up to 1,000; only the bars in view are drawn).
+- **Vehicle confidence per camera**: the same for ALPV's `vehicleConfidence`; a camera that sends none (no vehicle
+  detection) has no bar, not 0; "No camera sends a vehicle confidence." when none does.
+- **Reads over time** and **Confidence over time** (0 to 100 %): a line chart each, by the hour for Today and Last 24
+  hours, by the day (from midnight in the user's zone) for Last 7 and 30 days; a **Total** line in the text colour and a
+  line per camera in the tag colours (eight, then again). Beside each chart a legend (the shared `ChartLegend`): Total,
+  then the cameras busiest first with their reads; a click shows or hides a line in both charts. Total and the 10
+  busiest cameras show at first; a camera's choice stays across a reload. A step without reads has no confidence (a gap).
 
-No directions and no most read plates (decision 2026-11-27). Counted on the server from the log's hourly counts, never in
-the client; the MCP stats tool returns the same numbers.
+No reads per hour of the day, no confidence bands and no per camera table: the charts carry reads and confidence per
+camera and over time (decision 2026-11-27; the share Allowed, the shares below 60 and 75 and the last read per camera are
+no longer shown). No directions and no most read plates. Counted on the server from the log's hourly counts, never in
+the client; the MCP stats tool (`ByDay`, `TimeZone`) returns the same series.
 
 ### Settings (dialog, Administrators)
 
@@ -319,8 +350,8 @@ the client; the MCP stats tool returns the same numbers.
 ## The log store
 
 - A SQLite database of the plugin in the log folder (WAL), one row per read: time, camera, plate (the list's or the
-  read text), read as, result and reason, name and tags at the time of the read, direction, area, country, confidence,
-  vehicle values, picture file. Indexes on time, on plate and time, on camera and time, on result and time.
+  read text), read as, result and reason, the camera's name, name and tags at the time of the read, direction, area,
+  country, state (`regionCode`), confidence, vehicle values and the vehicle confidence (null without one), picture file. Indexes on time, on plate and time, on camera and time, on result and time.
 - Search by plate is from the start of the plate and uses the index; it must stay under 100 ms at 10 million reads
   (`Perf` test). Search by name runs inside the chosen time.
 - Plate pictures are JPEG files in a folder per day next to the database, never in the database.
@@ -370,8 +401,11 @@ Details the spec left open, decided while building; none changes a rule above.
 - **Exact matches** are one lookup in the plate list, then the tag and date check (O(1)); the near-match index is per
   camera tag set as above. With 2, the plate of the list decides whether a plate is shorter than 6 characters.
 - **Stats** come from the hourly count table of the log store, written with every read (per hour, camera, result and
-  direction: reads, confidence sum, the reads below 60, 60 to 74 and 75 to 89, the last read), never from a scan of the
-  reads. The daily plate counts of the first build (only the top lists used them) are dropped from older stores.
+  direction: reads, confidence sum, the reads below 60, 60 to 74 and 75 to 89, the last read, the vehicle confidence sum
+  and the reads with one), never from a scan of the reads. Days are the hours grouped by midnight of the caller's zone (no
+  table of days: a day depends on the zone); the cards Last hour, 24 hours and 7 days are the whole hours of the counts
+  plus the reads of the first, partial hour (exact). Stores of an older build get the new columns once; their hours have
+  no vehicle confidence. The daily plate counts of the first build (only the top lists used them) are dropped from older stores.
 - **The log folder**: none until an Administrator chooses one (nothing is stored before, events fire); a folder inside the
   plugins' data of OADM (`plugin-data`, part of every backup) is refused, so is one OADM cannot write; then every save with
   a folder runs the host's folder checks of `security.md` "Folders a plugin writes to" (`ICorePluginContext.FolderCheck`,
@@ -403,8 +437,11 @@ Details the spec left open, decided while building the page; none changes a rule
 - **Log columns**: a gap row shows the warning icon in Plate and "Connection lost from 13:58 to 14:06" in Name. The deviation
   triangle and the ended triangle of Plates are the theme's warning icon left of the text. Result's icons: the OK check,
   the error colour with the no-entry icon, the neutral question mark.
-- **Export** is the shared Export button of the Logs page (its menu: CSV, PDF); the save notice "Saved: The newest
-  10,000 of 48,213 reads" (the count from `logCount`) or "Saved: 1,204 reads". Times in this computer's time zone.
+- **Export** is the shared Export button of the Logs page (its menu: CSV, PDF); no notice after a saved file, only an
+  error. The request carries the chosen columns in their order (`LogExportRequest.Columns`, `LogColumns` keys; unknown
+  keys dropped, none: the defaults). Times in this computer's time zone.
+- **Columns** of the Log are the shared `GridColumnLayout` of the device grid (extracted into the client SDK with
+  `GridColumnBinder` and `ColumnChooserButton`), kept under the local setting `logColumns`; Picture keeps its width.
 - **Plates** are read in pages of 5,000 (the first shows at once) and searched and filtered in memory: the plate from its
   start with spaces, dashes and dots ignored, or the name; the tag filter "All tags" or one tag. Ended means Allowed to
   before this computer's clock (the server's zone is not known to the client). A day without a time is 00:00 for Allowed
@@ -421,9 +458,13 @@ Details the spec left open, decided while building the page; none changes a rule
   direction is degrees clockwise from up (0 up, 180 down), ALPV's `angle` divided by 1000. Area 1 is the accent colour,
   area 2 teal; a new area 2 takes ALPV's inactive area 2 or a box in the right half. Save sends the areas only when they
   changed, only the changed Recognition values, the allowed tags only when changed.
-- **Stats**: "Reads per hour" is a bar per hour of the day (00 to 23, this computer's zone); over 7 or 30 days each bar is
-  the sum of that hour over the days. The counts are stat cards; Per camera is a grid. The confidence bands 60 to 74 and 75
-  to 89 are counted in the hourly counts from this build on; hours stored before count as 90 and above.
+- **Stats**: the cards are `ui:StatCard` with `IconKey` barChart; the bars are the shared `BarChart` with `MinSlotWidth`
+  28 and turned labels, sorted by camera name; the lines are the shared `LineChart` with `Start` and the shared
+  `ChartLegend` (one legend list, the same items for both charts). Last 7 and 30 days start at midnight 6 and 29 days
+  ago. The reply grows with the cameras (at most 1,000, a value per step each), never with the reads.
+- **Plate crops**: the magenta line at the right edge of some crops (W19925L, BN805RT, read on .48 from the LPV
+  Simulator) is in the JPEG ALPV sends: the last pixel column of every stored crop checked is about RGB 255, 123, 255;
+  OADM shows the picture as it is.
 - **Selection**: a grid that gets new rows (after Remove, a reload, a filter) keeps the selection it shows itself and hands
   it to the page; the page never puts back a selection the grid no longer shows (the toolbar stayed off after Remove).
 - **Settings**: the folder is optional (without one nothing is stored); the number limits of the dialog are Wait 1 to 10 s,
