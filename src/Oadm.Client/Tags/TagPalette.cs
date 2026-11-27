@@ -17,22 +17,10 @@ public static class TagPalette
         [TagColor.Blue, TagColor.Green, TagColor.Teal, TagColor.Amber, TagColor.Orange, TagColor.Red, TagColor.Pink, TagColor.Violet];
 
     /// <summary>"Blue"; "No color" for a tag without a definition.</summary>
-    public static string Name(TagColor color) => color switch
-    {
-        TagColor.Blue => "Blue",
-        TagColor.Green => "Green",
-        TagColor.Teal => "Teal",
-        TagColor.Amber => "Amber",
-        TagColor.Orange => "Orange",
-        TagColor.Red => "Red",
-        TagColor.Pink => "Pink",
-        TagColor.Violet => "Violet",
-        _ => "No color",
-    };
+    public static string Name(TagColor color) => Oadm.Sdk.Client.Controls.TagColors.Name((int)color);
 
     /// <summary>Theme resource of a color: "Oadm.Tag.BlueBrush"; undefined tags use "Oadm.Tag.NeutralBrush".</summary>
-    public static string ResourceKey(TagColor color) =>
-        color == TagColor.Unspecified || !Colors.Contains(color) ? "Oadm.Tag.NeutralBrush" : $"Oadm.Tag.{Name(color)}Brush";
+    public static string ResourceKey(TagColor color) => Oadm.Sdk.Client.Controls.TagColors.ResourceKey((int)color);
 
     /// <summary>The color a new tag gets by default: the palette in order, by the number of tags there are.</summary>
     public static TagColor Next(int existingTags) => Colors[Math.Max(0, existingTags) % Colors.Count];
@@ -42,6 +30,21 @@ public static class TagPalette
         Application.Current is { } app && app.TryGetResource(ResourceKey(color), app.ActualThemeVariant, out object? value) && value is IBrush brush
             ? brush
             : null;
+}
+
+/// <summary>
+/// Binds a <see cref="TagColor"/> to the colour number of the shared <see cref="Oadm.Sdk.Client.Controls.TagColorPicker"/> and
+/// back (the numbers are the same: 1 Blue to 8 Violet).
+/// </summary>
+public sealed class TagColorNumberConverter : IValueConverter
+{
+    public static TagColorNumberConverter Instance { get; } = new();
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is TagColor color ? (int)color : 1;
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is int number && TagPalette.Colors.Contains((TagColor)number) ? (TagColor)number : TagColor.Blue;
 }
 
 /// <summary>Binds a <see cref="TagColor"/> to its theme brush (chip text, dots, group headers).</summary>

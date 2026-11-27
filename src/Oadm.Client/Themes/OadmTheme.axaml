@@ -29,13 +29,6 @@
       </ControlTemplate>
     </Setter>
   </Style>
-  <Style Selector="DataGridCell c|TagChipList">
-    <Setter Property="Margin" Value="10,0" />
-    <Setter Property="VerticalAlignment" Value="Center" />
-  </Style>
-  <Style Selector="c|TagColorPicker">
-    <Setter Property="Spacing" Value="6" />
-  </Style>
 
   <!-- The Settings page (docs/spec/settings-backup.md "Settings page"): a column of groups, a group a heading with its rows
        4 px apart, a row an icon, title and hint left and its control right -->

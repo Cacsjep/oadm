@@ -168,7 +168,7 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   Settings page and for On / Off of a whole feature in a dialog, there in a `ui:FormField` whose error shows why On was
   refused (Provisioning management, `Command` with a one-way `IsChecked`). No bare `ToggleSwitch`.
 - All colors in `src/Oadm.Theme/Colors.Dark.axaml` / `Colors.Light.axaml`, brushes and sizes in `src/Oadm.Theme/OadmTheme.axaml`
-  (the client's `Themes/OadmTheme.axaml` includes it plus the client-only styles: tag groups, `TagChipList`, `TagColorPicker`); no
+  (the client's `Themes/OadmTheme.axaml` includes it plus the client-only styles: tag groups); no
   hard-coded colors in views or code (a new color gets a key in both files). Exceptions: the splash glow gradient and the
   Fluent palettes in `OadmTheme.axaml` (accent based, the same in both), fallbacks in code when a key cannot be found.
 
@@ -244,6 +244,11 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   path as tooltip; double click or Enter opens) with `LoadingOverlay` "Reading folders" while it reads, "No folders here.
   Create one with New folder." when empty, a line when the list was cut at 2,000; footer Cancel and the primary Choose for
   the open folder, off with the reason as tooltip until it passes the check.
+- `TagChipRow`, `TagChips`, `TagColorPicker`, `TagColors`: tags look the same everywhere. `TagChipRow` lays out tags on one
+  line (`Border.tagChip`, "+N" for what does not fit, every name in the tooltip): the device grid's `TagChipList` and
+  `TagChips` (plain `TagChip` name and colour: License Plate Center's plate tags). `TagColorPicker` (the eight colours as
+  swatches, 1 Blue to 8 Violet like the device tags): the device tags dialog and the plate tags. `TagColors`: the names,
+  theme brushes and `BrushConverter` of the eight colours.
 - `ProgressRow` (progress bar + status text), `ProgressRing` (an indeterminate ring where something loads without a known
   progress: a live picture that connects, Sites; class `checkBox`: small, in place of a check box while its change runs,
   Plugins page), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden,
@@ -404,7 +409,7 @@ page's `SettingsList` (the column of groups with the search: `Filter`, `HasMatch
 rows 4 px apart), `SettingsCard` (one setting as a row: `Icon`, `Title`, `Hint`, the control, `IsShown`; the 20 px icon in
 the accent, inside an expander 16 px in the icon colour), `SettingsExpander` (a row with a chevron and rows below it:
 `HeaderContent`, `IsExpanded`, `IsShown`; opens by itself on a validation error inside and while the search finds a row
-in it) and `UnitBadge` (the unit inside a number field, `NumericUpDown.InnerRightContent`; accent, white text), `TagChipList` (the tags of a device as chips), `TagColorPicker` (the color of a tag, the tags dialog), `LiveViewPanel` (the live view beside the device grid),
+in it) and `UnitBadge` (the unit inside a number field, `NumericUpDown.InnerRightContent`; accent, white text), `TagChipList` (the tags of a device as chips, on the shared `TagChipRow`), `LiveViewPanel` (the live view beside the device grid),
 `FirstPasswordChoiceBox` (the credential choice with its eye right of a first password's fields: the add page's Set
 password editor and the context menu's Set password),
 `SplashLogo` (the animated logo of the start splash), `GridSelection` (a grid's multi-item selection to its view model in
