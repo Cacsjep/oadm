@@ -441,6 +441,24 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   `addons/<id>` held something loose, or only a loose waiting update (`addons/.update-<id>`, never swapped in).
   Something loose elsewhere, `plugins/` included, changes nothing for them. Details: `docs/spec/add-ons.md` "Server",
   Loose folders.
+- **Folders a plugin writes to** (SDK 0.17.0): a folder an administrator chooses for a plugin's data (License Plate
+  Center's log) with the client's server folder picker (`ui:ServerFolderPicker`, gRPC `ServerFolderService`,
+  Administrator only, `docs/spec/grpc.md`). The client may run on another computer, so it never uses the local folder
+  dialog. The service lists folder names and paths only, never files; hidden, system and unreadable folders are left out;
+  paths must be full, without "." or ".." parts, control characters or device paths (`\\?\`, `\\.\`), at most 1,024
+  characters (`ServerFolderBrowser.Normalize`). One check for the picker and the plugin's server part
+  (`ServerFolderBrowser`, `ICorePluginContext.FolderCheck`), texts in `ServerFolderTexts`, in this order: the folder
+  exists; not a drive or the top folder; not OADM's program folder, its data folder itself, its `plugins` or `addons`
+  (a folder below `plugin-data` is fine); not a system folder (Windows, Program Files and everything below them,
+  ProgramData itself; on Linux and macOS /bin, /boot, /dev, /etc, /lib*, /proc, /run, /sbin, /sys, /usr, /System,
+  /Applications, /Library, /private/etc and below, /home, /var, /var/lib, /opt, /mnt, /media, /srv, /root, /Users,
+  /Volumes themselves); the server can write it (a probe file created and deleted at once); as the installed service
+  only administrators / root can change the folder itself (`IFolderPermissions.FindOwnProblemAsync`, the folder only, not
+  what is below it: a log folder can hold millions of files). New folder makes a folder in the listed one (not in a system
+  or OADM folder; one name rule on every system: no `\ / : * ? " < > |` or control characters, no leading dot, no trailing
+  dot or space, not a reserved Windows device name, at most 255 characters); as the installed service it is fixed to
+  admin-only at once (`IFolderPermissions.FixAsync`, not readable by users), so a loose drive still gets a good folder.
+  Audited: "Created folder on the server" (the path); listing and checks are not. Tests: `ServerFolderTests`.
 
 ## Optional plugins: trust
 

@@ -57,6 +57,7 @@ plugin that throws on start is marked as failed; the others keep running.
 | `Jobs` | `IPluginJobs`: work a method starts for its user (reports, scans, monitors), owned by that user, see [Device groups](../device-groups/#jobs) |
 | `DeviceScopes` | `IDeviceScopes`: the devices of a device group, for objects kept per group (dashboards, views) |
 | `ProtectedTags` | `IProtectedTags`: tags only users with all devices may add to or remove from devices; null on older hosts, then treat no tag as safe. See [Host services](../host-services/#protected-tags) |
+| `FolderCheck` | SDK 0.17.0, `IServerFolderCheck`: whether a folder on the server an administrator chose may hold your data, see [A folder on the server](#a-folder-on-the-server) |
 
 Every member after `Logger` except `System` may be null on an older host or where it does not apply. Check before you
 use it.
@@ -262,6 +263,36 @@ var plain = ctx.Secrets!.Unprotect(stored, "acme.mail:smtp");
 ```
 
 Never send a stored password back to the page. Show that one is set, and keep it when the page sends an empty field.
+
+### A folder on the server
+
+A setting such as "Folder on the server" (a log the plugin writes) is a folder of the server's computer. The client may
+run on another computer, so never use the local folder dialog. Put `ui:ServerFolderPicker` (SDK 0.17.0) in the settings
+form and give it `ctx.ServerFolders` (`IServerFolders`, administrators only: offer the setting while `ctx.IsAdministrator`):
+
+```xml
+<ui:FormField Classes="wide" Label="Folder on the server">
+  <ui:ServerFolderPicker Path="{Binding LogFolder}" Folders="{Binding ServerFolders}"
+                         Problem="{Binding FolderProblem, Mode=OneWayToSource}" />
+</ui:FormField>
+```
+
+"Choose folder" opens the server's folders (Up, Drives, New folder; Choose only for a folder that passes the checks).
+Your rule on `LogFolder` shows below the text box like on any input; without one the field shows the server's check of a
+typed path (`Problem`), so keep Save off while `FolderProblem` is set. Without the picker:
+`ServerFolderWindow.ShowAsync(owner, ctx.ServerFolders, startPath, heading)` returns the chosen path or null.
+
+The server part checks again when the page saves, with the same rules (a full path that exists; not a drive, a system
+folder or OADM's own; the server can write it; as the installed service only administrators can change it):
+
+```csharp
+if (ctx.FolderCheck is { } folders && await folders.CheckAsync(request.LogFolder, ct) is { } problem)
+{
+    throw new ArgumentException(problem); // the page shows it below the field
+}
+```
+
+The texts are `ServerFolderTexts`. In tests: `FakeCoreContext.FolderCheck = new FakeServerFolderCheck().Refuse(path, ServerFolderTexts.CannotWrite)`.
 
 ## Tasks from a page
 

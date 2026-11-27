@@ -361,7 +361,7 @@ public sealed partial class ServerFolderBrowser(
         }
     }
 
-    /// <summary>A drive or the top folder (C:\, /, \server\share): it has no parent.</summary>
+    /// <summary>A drive or the top folder (C:\, /, \\server\share): it has no parent.</summary>
     private static bool IsRootPath(string path) => Path.GetDirectoryName(path) is null;
 
     private static bool IsSame(string path, string folder) =>
