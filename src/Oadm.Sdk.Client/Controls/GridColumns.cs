@@ -13,7 +13,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace Oadm.Sdk.Client.Controls;
 
-/// <summary>One column of a grid in the column chooser (SDK 0.18.0; the device grid, the Log of License Plate Center).</summary>
+/// <summary>One column of a grid in the column chooser (SDK 0.17.0; the device grid, the Log of License Plate Center).</summary>
 public sealed partial class GridColumnOption(string key, string header, bool canHide = true) : ObservableObject
 {
     /// <summary>The column's key: the <c>Tag</c> of its <see cref="DataGridColumn"/> and the saved layout.</summary>
@@ -46,7 +46,7 @@ public sealed record GridColumnState(string Key, bool IsVisible, double Width, i
 public sealed record GridColumnDefinition(string Key, string Header, bool CanHide = true, bool IsDefault = true);
 
 /// <summary>
-/// The columns of a grid the user chooses (SDK 0.18.0): which show, their order and widths, kept per user through
+/// The columns of a grid the user chooses (SDK 0.17.0): which show, their order and widths, kept per user through
 /// <c>load</c> and <c>save</c> (the device grid: the client's settings; a plugin page: <c>Get/SetLocalSetting</c>). Bind
 /// a <see cref="DataGrid"/> with <see cref="GridColumnBinder.Attach"/> (columns matched by their <c>Tag</c>) and offer
 /// <see cref="Choosable"/> with a <see cref="ColumnChooserButton"/>. View model side, testable without Avalonia.
@@ -154,7 +154,7 @@ public sealed class GridColumnLayout
 }
 
 /// <summary>
-/// The view glue of a <see cref="GridColumnLayout"/> (SDK 0.18.0): applies the saved visibility, order and widths to a
+/// The view glue of a <see cref="GridColumnLayout"/> (SDK 0.17.0): applies the saved visibility, order and widths to a
 /// <see cref="DataGrid"/> (columns matched by their <c>Tag</c>; saved widths as star weights, so the grid keeps filling its
 /// width) and captures the user's reorder and resize.
 /// </summary>
@@ -292,7 +292,7 @@ public sealed class GridColumnBinder : IDisposable
 }
 
 /// <summary>
-/// The "Choose columns" button of a grid's toolbar (SDK 0.18.0): an icon-only command button with the columns icon and a
+/// The "Choose columns" button of a grid's toolbar (SDK 0.17.0): an icon-only command button with the columns icon and a
 /// flyout "Visible columns" with a check box per <see cref="GridColumnOption"/> of <see cref="Columns"/>.
 /// </summary>
 public sealed class ColumnChooserButton : Button

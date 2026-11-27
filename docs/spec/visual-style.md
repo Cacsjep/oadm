@@ -244,6 +244,12 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   path as tooltip; double click or Enter opens) with `LoadingOverlay` "Reading folders" while it reads, "No folders here.
   Create one with New folder." when empty, a line when the list was cut at 2,000; footer Cancel and the primary Choose for
   the open folder, off with the reason as tooltip until it passes the check.
+- `ColumnChooserButton`, `GridColumnLayout`, `GridColumnBinder`, `GridColumnOption`: the columns of a grid the user
+  chooses (the device grid, Compliance, License Plate Center's log). The icon-only button "Choose columns" (columns icon)
+  left of the search opens "Visible columns" with a check box per column; the user drags headers to reorder. The layout
+  keeps visibility, order and widths per user through the page's own store (the device grid: the client settings; a
+  plugin page: `Get/SetLocalSetting`); `GridColumnBinder` applies it to a `DataGrid` (columns matched by `Tag`, widths as
+  star weights) and captures reorder and resize; `VisibleKeys` gives an export the chosen columns in their order.
 - `FilterButton`, `FilterBar`, `FilterSet`, `FilterKind`: the filters of a list as chips (decision 2026-11-27, License Plate
   Center's log): the command button **Filter** (filter icon) in the toolbar lists the kinds; a chosen kind becomes a chip
   (`Border.chatChip` with class `filterChip`: the text, which opens the kind's editor in a flyout, and an x "Remove
@@ -312,16 +318,25 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   the pulse diagrams of the event rule limits.
 - `StatCard`: every monitoring count card. Status icon + title, large count, small detail line; `IsOk` / `IsWarning` /
   `IsError` color icon and count, set only while the count needs attention; a card that filters a list sits in
-  `Button.statCardButton`, the chosen one with `selected`.
-- `LineChart` and `BarChart`: every graph (Load test page), drawn without a chart library.
+  `Button.statCardButton`, the chosen one with `selected`. `IconKey` gives a card without a status its own icon (the bar
+  chart of License Plate Center's Stats).
+- `LineChart` and `BarChart`: every graph (Load test page, License Plate Center's Stats), drawn without a chart library.
   - `LineChart`: values over time (`ChartSeries`, NaN = gap), value axis with round steps and `Unit`, time axis from
     `Step` (0:00, 2:30), optional dashed red `Threshold`, `Bands` name the phases above the plot with a thin line at
     every phase start (labels left to right, one that would touch the one before left out), a legend for 2 to 8 lines. Hover: a vertical line, dots and a popup with the time and each value (the 8 highest
     and "N more" when there are more lines). Points are reduced to the pixel columns (lowest and highest per column), so
-    200 lines of 300 values or one line of an hour stay fast.
+    200 lines of 300 values or one line of an hour stay fast. With `Start` the time axis says clock times ("14:00") or,
+    with a step of a day, days ("27 Nov"); `ShowLegend` false when a `ChartLegend` sits beside it.
   - `BarChart`: a few named values (`ChartBar`, the ramp steps), labels under the bars (thinned out when they would
-    touch), value axis and `Threshold`; hover shows the bar's value.
-  - Colours by role (`ChartColor`: accent, teal, ok, warning, error, neutral) from the theme brushes, grid lines the faint
+    touch), value axis and `Threshold`; hover shows the bar's value and its `Details`. With `MinSlotWidth` many bars (a
+    bar per camera, up to 1,000) keep their width and scroll sideways under the fixed value axis (drag, Shift + wheel,
+    a thin track below); only the bars in view are drawn. `RotateLabels` turns the labels up to the right, each under
+    its bar, long names end with an ellipsis. A bar without a value (NaN) has no bar but keeps its label.
+  - `ChartLegend` (`ChartLegendItem`: name, colour, a number, `IsShown`): the legend of a line chart with many lines, a
+    virtualized list beside the chart with a check box per line; the page builds the series from the shown items
+    (License Plate Center: Total and the 10 busiest cameras shown at first).
+  - Colours by role (`ChartColor`: accent, teal, ok, warning, error, neutral, `Strong` the text colour for a Total line,
+    `Palette1` to `Palette8` the tag colours for a line per camera, `ChartPalette.Of(i)`) from the theme brushes, grid lines the faint
     border, labels secondary text, `EmptyText` in the middle without values; a screen reader hears the automation name or
     a summary of the last values.
 - `DevicePickerWindow` + `DevicePickerViewModel`: every "choose devices" dialog.
