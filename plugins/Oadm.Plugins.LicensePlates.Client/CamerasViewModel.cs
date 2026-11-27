@@ -422,14 +422,15 @@ public sealed partial class CamerasViewModel : ObservableObject
     private void ApplyFilter()
     {
         var text = SearchText.Trim();
-        var selected = Selected;
         Rows.ReplaceAll(text.Length == 0
             ? _all
             : [.. _all.Where(r => r.Camera.Contains(text, StringComparison.OrdinalIgnoreCase)
                 || r.Address.Contains(text, StringComparison.OrdinalIgnoreCase)
                 || r.Site.Contains(text, StringComparison.OrdinalIgnoreCase))]);
+        // The grid raised its own selection while the rows were replaced (it may move it to another row): keep that, only
+        // without rows that are gone. Never the selection from before, which the grid no longer shows.
         var shown = Rows.ToHashSet();
-        Selected = [.. selected.Where(shown.Contains)];
+        Selected = [.. Selected.Where(shown.Contains)];
         OnPropertyChanged(nameof(ShowNoMatch));
         RaiseCommands();
     }

@@ -858,7 +858,8 @@ public sealed partial class LogViewModel : ObservableObject
 
         Rows.ReplaceAll(rows);
         _next = next;
-        SetSelection([]);
+        var shown = rows.ToHashSet();
+        SetSelection(Selected.Where(shown.Contains)); // what the grid shows selected after the new rows, never the old ones
         OnPropertyChanged(nameof(ShowEmpty));
         OnPropertyChanged(nameof(EmptyText));
     }
