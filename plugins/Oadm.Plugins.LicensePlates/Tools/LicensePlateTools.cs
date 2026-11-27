@@ -67,7 +67,7 @@ internal static class LicensePlateTools
             LicensePlatesMethods.Log,
             async (plugin, caller, input, ct) => await LogOf(plugin, caller, input, ct).ConfigureAwait(false))
         .Read<StatsArgs, StatsReply>(
-            new PluginTool("stats", "License plate statistics", "Reads by result and direction, per hour and per camera, and the most read plates, for at most 31 days."),
+            new PluginTool("stats", "License plate statistics", "Reads by result, the average confidence and the reads in its bands (below 60, 60 to 74, 75 to 89, 90 and above), per hour and per camera, for at most 31 days."),
             LicensePlatesMethods.Stats,
             async (plugin, caller, input, ct) => await plugin.StatsAsync(caller, new StatsRequest
             {

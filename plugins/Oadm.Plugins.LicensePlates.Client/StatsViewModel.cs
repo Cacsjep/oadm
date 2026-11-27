@@ -23,9 +23,6 @@ public sealed record StatsRangeChoice(StatsRange Range, string Name)
     public override string ToString() => Name;
 }
 
-/// <summary>One direction's reads by result.</summary>
-public sealed record DirectionStatsRow(string Direction, string Reads, string Allowed, string NotAllowed, string Unknown, int SortReads);
-
 /// <summary>One camera's row of the Stats tab (sorted by any column).</summary>
 public sealed record CameraStatsRow(CameraStats Stats, string LastReadText)
 {
@@ -47,16 +44,22 @@ public sealed record CameraStatsRow(CameraStats Stats, string LastReadText)
 
     public string LowText => PageTexts.Percent(Stats.LowShare);
 
+    public double Below75Share => Stats.Below75Share;
+
+    public string Below75Text => PageTexts.Percent(Stats.Below75Share);
+
+    /// <summary>The average below 75: the warning colour; below 60: the error colour (the Log's thresholds).</summary>
+    public bool IsLowConfidence => Stats.AverageConfidence is >= ConfidenceLevels.Error and < ConfidenceLevels.Warning;
+
+    public bool IsVeryLowConfidence => Stats.AverageConfidence < ConfidenceLevels.Error;
+
     public DateTimeOffset LastReadSortKey => Stats.LastRead ?? DateTimeOffset.MinValue;
 }
 
-/// <summary>One of the 10 most read plates.</summary>
-public sealed record PlateCountRow(int Rank, string Plate, string Reads);
-
 /// <summary>
 /// The Stats tab (docs/spec/license-plate-center.md "Stats"): for the page's camera choice and Today, Last 7 days or Last 30
-/// days, counted on the server from the log's count tables: the reads by result and by direction, the reads per hour of the
-/// day (one bar per hour; over several days the sum of each hour), the cameras, and the 10 most read plates and unknown plates.
+/// days, counted on the server from the log's count tables: the reads by result, the reads per hour of the
+/// day (one bar per hour; over several days the sum of each hour) and the cameras.
 /// </summary>
 public sealed partial class StatsViewModel : ObservableObject
 {
@@ -97,15 +100,19 @@ public sealed partial class StatsViewModel : ObservableObject
 
     [ObservableProperty] public partial bool HasNotAllowed { get; private set; }
 
+    /// <summary>The average confidence of every read, a whole number 0 to 100.</summary>
+    [ObservableProperty] public partial string AverageConfidenceText { get; private set; } = "0";
+
+    [ObservableProperty] public partial bool IsConfidenceWarning { get; private set; }
+
+    [ObservableProperty] public partial bool IsConfidenceError { get; private set; }
+
+    /// <summary>The reads in the four confidence bands ("Below 60 · 4 %"), the two low ones in the error and warning colours.</summary>
+    [ObservableProperty] public partial IReadOnlyList<ChartBar> ConfidenceBars { get; private set; } = [];
+
     [ObservableProperty] public partial IReadOnlyList<ChartBar> HourBars { get; private set; } = [];
 
-    public RangeObservableCollection<DirectionStatsRow> Directions { get; } = [];
-
     public RangeObservableCollection<CameraStatsRow> PerCamera { get; } = [];
-
-    public RangeObservableCollection<PlateCountRow> TopPlates { get; } = [];
-
-    public RangeObservableCollection<PlateCountRow> TopUnknown { get; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmpty))]
@@ -206,14 +213,14 @@ public sealed partial class StatsViewModel : ObservableObject
         NotAllowedText = N(results.NotAllowed);
         UnknownText = N(results.Unknown);
         HasNotAllowed = results.NotAllowed > 0;
+        var average = reply?.AverageConfidence ?? 0;
+        AverageConfidenceText = Math.Round(average).ToString("0", CultureInfo.CurrentCulture);
+        IsConfidenceError = results.Total > 0 && average < ConfidenceLevels.Error;
+        IsConfidenceWarning = results.Total > 0 && average is >= ConfidenceLevels.Error and < ConfidenceLevels.Warning;
+        ConfidenceBars = Bands(reply?.Confidence);
         HasReads = results.Total > 0;
-        Directions.ReplaceAll([.. (reply?.ByDirection ?? [])
-            .OrderBy(d => d.Direction switch { PlateDirection.In => 0, PlateDirection.Out => 1, _ => 2 })
-            .Select(d => new DirectionStatsRow(LicensePlateTexts.Direction(d.Direction), N(d.Counts.Total), N(d.Counts.Allowed), N(d.Counts.NotAllowed), N(d.Counts.Unknown), d.Counts.Total))]);
         HourBars = Hours(reply?.PerHour ?? []);
         PerCamera.ReplaceAll([.. (reply?.PerCamera ?? []).OrderByDescending(c => c.Reads).Select(c => new CameraStatsRow(c, LastRead(c.LastRead)))]);
-        TopPlates.ReplaceAll(Top(reply?.TopPlates));
-        TopUnknown.ReplaceAll(Top(reply?.TopUnknown));
     }
 
     /// <summary>24 bars "00" to "23": the reads of each hour of the day in this computer's zone.</summary>
@@ -245,8 +252,23 @@ public sealed partial class StatsViewModel : ObservableObject
         return local.ToString(local.Date == today ? "HH:mm" : "d MMM HH:mm", CultureInfo.CurrentCulture);
     }
 
-    private static IReadOnlyList<PlateCountRow> Top(IReadOnlyList<PlateCount>? plates) =>
-        [.. (plates ?? []).Take(10).Select((p, i) => new PlateCountRow(i + 1, p.Plate, N(p.Reads)))];
+    /// <summary>Four bars: below 60 (error), 60 to 74 (warning), 75 to 89 and 90 and above; the label says the share.</summary>
+    private static IReadOnlyList<ChartBar> Bands(ConfidenceBands? bands)
+    {
+        if (bands is not { Total: > 0 } b)
+        {
+            return [];
+        }
+
+        string Label(string name, int count) => name + " · " + PageTexts.Percent((double)count / b.Total);
+        return
+        [
+            new ChartBar(Label(PageTexts.ShareLow, b.Below60), b.Below60, ChartColor.Error),
+            new ChartBar(Label(PageTexts.From60To74, b.From60To74), b.From60To74, ChartColor.Warning),
+            new ChartBar(Label(PageTexts.From75To89, b.From75To89), b.From75To89),
+            new ChartBar(Label(PageTexts.From90, b.From90), b.From90),
+        ];
+    }
 
     private static string N(int value) => value.ToString("N0", CultureInfo.CurrentCulture);
 }

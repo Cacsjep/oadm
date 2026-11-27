@@ -179,14 +179,16 @@ public static class PageTexts
     public const string Last7Days = "Last 7 days";
     public const string Last30Days = "Last 30 days";
     public const string ReadsPerHour = "Reads per hour";
-    public const string ByDirection = "By direction";
     public const string PerCamera = "Per camera";
-    public const string TopPlates = "Most read plates";
-    public const string TopUnknown = "Most read unknown plates";
     public const string Total = "Reads";
     public const string ShareAllowed = "Allowed";
     public const string AverageConfidence = "Average confidence";
     public const string ShareLow = "Below 60";
+    public const string ShareBelow75 = "Below 75";
+    public const string From60To74 = "60 to 74";
+    public const string From75To89 = "75 to 89";
+    public const string From90 = "90 and above";
+    public const string ConfidenceChart = "Confidence";
     public const string ReadingStats = "Reading the stats";
     public const string NoStats = "No reads in this time.";
 

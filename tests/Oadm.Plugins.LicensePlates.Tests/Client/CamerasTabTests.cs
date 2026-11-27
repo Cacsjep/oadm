@@ -275,7 +275,7 @@ public sealed class CamerasTabTests
     }
 
     [Fact]
-    public async Task Stats_count_by_result_and_direction_and_draw_the_hours_of_the_day()
+    public async Task Stats_count_by_result_draw_the_hours_of_the_day_and_list_the_cameras()
     {
         var (page, ctx, _) = await Samples.OpenAsync();
         page.Show(page.StatsTab);
@@ -285,14 +285,20 @@ public sealed class CamerasTabTests
         Assert.Equal("1,501", stats.TotalText);
         Assert.Equal("1,204", stats.AllowedText);
         Assert.True(stats.HasNotAllowed);
-        Assert.Equal(["In", "Out", "Unknown"], stats.Directions.Select(d => d.Direction));
         Assert.Equal(24, stats.HourBars.Count);
         Assert.Equal("08", stats.HourBars[8].Label);
         Assert.Equal(246, stats.HourBars[8].Value);
         Assert.Equal(4, stats.PerCamera.Count);
         Assert.Equal("86 %", stats.PerCamera[0].AllowedText);
-        Assert.Equal(10, stats.TopPlates.Count);
-        Assert.Equal(10, stats.TopUnknown.Count);
+        Assert.Equal("86", stats.AverageConfidenceText);
+        Assert.False(stats.IsConfidenceWarning || stats.IsConfidenceError);
+        Assert.Equal(["Below 60 · 5 %", "60 to 74 · 9 %", "75 to 89 · 27 %", "90 and above · 59 %"], stats.ConfidenceBars.Select(b => b.Label));
+        Assert.Equal([70d, 133, 412, 886], stats.ConfidenceBars.Select(b => b.Value));
+        Assert.Equal([Oadm.Sdk.Client.Controls.ChartColor.Error, Oadm.Sdk.Client.Controls.ChartColor.Warning], stats.ConfidenceBars.Take(2).Select(b => b.Color));
+        Assert.Equal("27 %", stats.PerCamera[2].Below75Text);
+        Assert.False(stats.PerCamera[2].IsLowConfidence || stats.PerCamera[2].IsVeryLowConfidence); // 78.2
+        Assert.True(new CameraStatsRow(stats.PerCamera[2].Stats with { AverageConfidence = 71.5 }, string.Empty).IsLowConfidence);
+        Assert.True(stats.PerCamera[3].IsVeryLowConfidence); // 58.5
 
         stats.SelectedRange = StatsViewModel.RangeChoices[2];
         await stats.LoadTask;

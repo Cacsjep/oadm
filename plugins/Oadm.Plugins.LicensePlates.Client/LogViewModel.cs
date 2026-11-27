@@ -22,10 +22,10 @@ public sealed record FilterChoice<T>(T? Value, string Name)
 public sealed partial class LogRow : ObservableObject
 {
     /// <summary>Below this Confidence the number is in the warning colour.</summary>
-    public const int WarningBelow = 75;
+    public const int WarningBelow = ConfidenceLevels.Warning;
 
     /// <summary>Below this Confidence the number is in the error colour.</summary>
-    public const int ErrorBelow = 60;
+    public const int ErrorBelow = ConfidenceLevels.Error;
 
     internal LogRow(PlateRead read, PlateTagStore tags, TimeProvider time)
     {

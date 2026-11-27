@@ -261,7 +261,7 @@ public sealed partial class LicensePlatesPlugin
 
         if (Running.Log.Store is not { } store)
         {
-            return new StatsReply(new ResultCounts(0, 0, 0), [], [], [], [], []);
+            return new StatsReply(new ResultCounts(0, 0, 0), [], [], 0, new ConfidenceBands(0, 0, 0, 0));
         }
 
         return await store.StatsAsync(request, await LogScopeAsync(caller, ct).ConfigureAwait(false), id => _names.GetValueOrDefault(id) ?? id.ToString("D"), ct).ConfigureAwait(false);

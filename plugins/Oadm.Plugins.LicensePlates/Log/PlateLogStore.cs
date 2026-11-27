@@ -36,7 +36,6 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
     public const string PicturesFolder = "pictures";
     private const int MaxPictureBytes = 512 * 1024;
     private const long HourMs = 3_600_000;
-    private const long DayMs = 86_400_000;
 
     private const string Columns =
         "id, time, camera, camera_name, plate, read_as, result, reason, reason_time, name, tags, direction, area, country, confidence, view, vehicle_type, vehicle_color, vehicle_make, vehicle_model, picture, gap_until";
@@ -129,12 +128,18 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
             CREATE INDEX IF NOT EXISTS reads_result_time ON reads(result, time);
             CREATE TABLE IF NOT EXISTS hourly(
               hour INTEGER NOT NULL, camera TEXT NOT NULL, result INTEGER NOT NULL, direction INTEGER NOT NULL, reads INTEGER NOT NULL,
-              confidence INTEGER NOT NULL, low INTEGER NOT NULL, last INTEGER NOT NULL, PRIMARY KEY(hour, camera, result, direction)) WITHOUT ROWID;
-            CREATE TABLE IF NOT EXISTS daily_plates(
-              day INTEGER NOT NULL, camera TEXT NOT NULL, plate TEXT NOT NULL, result INTEGER NOT NULL, reads INTEGER NOT NULL,
-              PRIMARY KEY(day, camera, plate, result)) WITHOUT ROWID;
+              confidence INTEGER NOT NULL, low INTEGER NOT NULL, last INTEGER NOT NULL, mid INTEGER NOT NULL DEFAULT 0, good INTEGER NOT NULL DEFAULT 0,
+              PRIMARY KEY(hour, camera, result, direction)) WITHOUT ROWID;
+            DROP TABLE IF EXISTS daily_plates;
             CREATE TABLE IF NOT EXISTS picture_days(day TEXT PRIMARY KEY, bytes INTEGER NOT NULL) WITHOUT ROWID;
             """, ct).ConfigureAwait(false);
+        // The confidence bands 60 to 74 (mid) and 75 to 89 (good) came after the first stores: added once; the hours before count
+        // as 90 and above.
+        if (Convert.ToInt64(await ScalarAsync(db, "SELECT COUNT(*) FROM pragma_table_info('hourly') WHERE name = 'mid';", ct).ConfigureAwait(false), CultureInfo.InvariantCulture) == 0)
+        {
+            await ExecuteAsync(db, "ALTER TABLE hourly ADD COLUMN mid INTEGER NOT NULL DEFAULT 0; ALTER TABLE hourly ADD COLUMN good INTEGER NOT NULL DEFAULT 0;", ct).ConfigureAwait(false);
+        }
+
         var nextId = Convert.ToInt64(await ScalarAsync(db, "SELECT COALESCE(MAX(id), 0) FROM reads;", ct).ConfigureAwait(false), CultureInfo.InvariantCulture);
         var pictures = Convert.ToInt64(await ScalarAsync(db, "SELECT COALESCE(SUM(bytes), 0) FROM picture_days;", ct).ConfigureAwait(false), CultureInfo.InvariantCulture);
         return new PlateLogStore(folder, time, logger ?? NullLogger.Instance, nextId, pictures);
@@ -333,7 +338,7 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
 
         if (!row.Gap)
         {
-            await CountAsync(db, tx, ms, row.CameraId, row.Result, row.Direction, row.Confidence, row.Plate, zone, +1).ConfigureAwait(false);
+            await CountAsync(db, tx, ms, row.CameraId, row.Result, row.Direction, row.Confidence, +1).ConfigureAwait(false);
         }
     }
 
@@ -393,19 +398,20 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
 
         if (newDirection != direction)
         {
-            await CountAsync(db, tx, ms, camera, result, direction, confidence, plate, zone, -1, plates: false).ConfigureAwait(false);
-            await CountAsync(db, tx, ms, camera, result, newDirection, confidence, plate, zone, +1, plates: false).ConfigureAwait(false);
+            await CountAsync(db, tx, ms, camera, result, direction, confidence, -1).ConfigureAwait(false);
+            await CountAsync(db, tx, ms, camera, result, newDirection, confidence, +1).ConfigureAwait(false);
         }
     }
 
-    private static async Task CountAsync(SqliteConnection db, SqliteTransaction tx, long ms, Guid camera, ReadResult result, PlateDirection direction, int confidence, string plate, TimeZoneInfo zone, int delta, bool plates = true)
+    private static async Task CountAsync(SqliteConnection db, SqliteTransaction tx, long ms, Guid camera, ReadResult result, PlateDirection direction, int confidence, int delta)
     {
         await using (var cmd = db.CreateCommand())
         {
             cmd.Transaction = tx;
             cmd.CommandText = """
-                INSERT INTO hourly(hour, camera, result, direction, reads, confidence, low, last) VALUES (@hour, @camera, @result, @direction, @delta, @confidence, @low, @time)
-                ON CONFLICT(hour, camera, result, direction) DO UPDATE SET reads = reads + @delta, confidence = confidence + @confidence, low = low + @low, last = MAX(last, @time);
+                INSERT INTO hourly(hour, camera, result, direction, reads, confidence, low, last, mid, good) VALUES (@hour, @camera, @result, @direction, @delta, @confidence, @low, @time, @mid, @good)
+                ON CONFLICT(hour, camera, result, direction) DO UPDATE SET reads = reads + @delta, confidence = confidence + @confidence, low = low + @low, last = MAX(last, @time),
+                  mid = mid + @mid, good = good + @good;
                 """;
             cmd.Parameters.AddWithValue("@hour", ms / HourMs);
             cmd.Parameters.AddWithValue("@camera", CameraKey(camera));
@@ -413,38 +419,13 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
             cmd.Parameters.AddWithValue("@direction", (int)direction);
             cmd.Parameters.AddWithValue("@delta", delta);
             cmd.Parameters.AddWithValue("@confidence", delta * confidence);
-            cmd.Parameters.AddWithValue("@low", confidence < 60 ? delta : 0);
+            cmd.Parameters.AddWithValue("@low", confidence < ConfidenceLevels.Error ? delta : 0);
+            cmd.Parameters.AddWithValue("@mid", confidence is >= ConfidenceLevels.Error and < ConfidenceLevels.Warning ? delta : 0);
+            cmd.Parameters.AddWithValue("@good", confidence is >= ConfidenceLevels.Warning and < ConfidenceLevels.High ? delta : 0);
             cmd.Parameters.AddWithValue("@time", ms);
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
 
-        if (!plates)
-        {
-            return;
-        }
-
-        await using (var cmd = db.CreateCommand())
-        {
-            cmd.Transaction = tx;
-            cmd.CommandText = """
-                INSERT INTO daily_plates(day, camera, plate, result, reads) VALUES (@day, @camera, @plate, @result, @delta)
-                ON CONFLICT(day, camera, plate, result) DO UPDATE SET reads = reads + @delta;
-                """;
-            cmd.Parameters.AddWithValue("@day", DayOf(ms, zone));
-            cmd.Parameters.AddWithValue("@camera", CameraKey(camera));
-            cmd.Parameters.AddWithValue("@plate", plate);
-            cmd.Parameters.AddWithValue("@result", (int)result);
-            cmd.Parameters.AddWithValue("@delta", delta);
-            await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-    }
-
-    /// <summary>The server's local day number of a time (days since 1970 in the server's zone).</summary>
-    internal static long DayOf(long ms, TimeZoneInfo zone)
-    {
-        var at = DateTimeOffset.FromUnixTimeMilliseconds(ms);
-        var offset = zone.GetUtcOffset(at);
-        return (long)Math.Floor((ms + offset.TotalMilliseconds) / DayMs);
     }
 
     private async Task<string?> SavePictureAsync(SqliteConnection db, SqliteTransaction tx, long id, DateTimeOffset time, byte[] picture, TimeZoneInfo zone)
@@ -584,9 +565,8 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
 
         await using (var counts = db.CreateCommand())
         {
-            counts.CommandText = "DELETE FROM hourly WHERE hour < @hour; DELETE FROM daily_plates WHERE day < @day; DELETE FROM picture_days WHERE bytes <= 0;";
+            counts.CommandText = "DELETE FROM hourly WHERE hour < @hour; DELETE FROM picture_days WHERE bytes <= 0;";
             counts.Parameters.AddWithValue("@hour", before / HourMs);
-            counts.Parameters.AddWithValue("@day", DayOf(before, _time.LocalTimeZone));
             await counts.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
     }
@@ -894,7 +874,7 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
         return " AND camera IN (SELECT value FROM json_each(@cameras))";
     }
 
-    /// <summary>The Stats tab from the hourly and daily counts (whole hours; the plates by whole days of the server's zone).</summary>
+    /// <summary>The Stats tab from the hourly counts (whole hours): the totals by result, the confidence (average and bands), the reads per hour and per camera.</summary>
     public async Task<StatsReply> StatsAsync(StatsRequest request, LogScope scope, Func<Guid, string> cameraName, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -906,7 +886,7 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
             cameras = cameras is null ? chosen : [.. chosen.Where(cameras.Contains)];
         }
 
-        var empty = new StatsReply(new ResultCounts(0, 0, 0), [], [], [], [], []);
+        var empty = new StatsReply(new ResultCounts(0, 0, 0), [], [], 0, new ConfidenceBands(0, 0, 0, 0));
         if (cameras is { Count: 0 })
         {
             return empty;
@@ -918,10 +898,10 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
 
         var byResultDirection = new Dictionary<(int Result, int Direction), int>();
         var perHour = new SortedDictionary<long, int>();
-        var perCamera = new Dictionary<string, (int Reads, int Allowed, long Confidence, int Low, long Last)>(StringComparer.Ordinal);
+        var perCamera = new Dictionary<string, (int Reads, int Allowed, long Confidence, int Low, long Last, int Mid, int Good)>(StringComparer.Ordinal);
         await using (var cmd = db.CreateCommand())
         {
-            cmd.CommandText = "SELECT hour, camera, result, direction, reads, confidence, low, last FROM hourly WHERE hour >= @from AND hour < @to" + CameraCondition(cameras, cmd) + ";";
+            cmd.CommandText = "SELECT hour, camera, result, direction, reads, confidence, low, last, mid, good FROM hourly WHERE hour >= @from AND hour < @to" + CameraCondition(cameras, cmd) + ";";
             cmd.Parameters.AddWithValue("@from", fromMs / HourMs);
             cmd.Parameters.AddWithValue("@to", (toMs + HourMs - 1) / HourMs);
             await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -940,7 +920,8 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
                 byResultDirection[(result, direction)] = byResultDirection.GetValueOrDefault((result, direction)) + reads;
                 perHour[hour] = perHour.GetValueOrDefault(hour) + reads;
                 var c = perCamera.GetValueOrDefault(camera);
-                perCamera[camera] = (c.Reads + reads, c.Allowed + (result == (int)ReadResult.Allowed ? reads : 0), c.Confidence + reader.GetInt64(5), c.Low + reader.GetInt32(6), Math.Max(c.Last, reader.GetInt64(7)));
+                perCamera[camera] = (c.Reads + reads, c.Allowed + (result == (int)ReadResult.Allowed ? reads : 0), c.Confidence + reader.GetInt64(5), c.Low + reader.GetInt32(6),
+                    Math.Max(c.Last, reader.GetInt64(7)), c.Mid + reader.GetInt32(8), c.Good + reader.GetInt32(9));
             }
         }
 
@@ -949,37 +930,21 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
             byResultDirection.Where(e => e.Key.Result == 1 && pick(e.Key)).Sum(e => e.Value),
             byResultDirection.Where(e => e.Key.Result == 2 && pick(e.Key)).Sum(e => e.Value));
 
-        var zone = _time.LocalTimeZone;
-        async Task<IReadOnlyList<PlateCount>> TopAsync(bool unknownOnly)
-        {
-            await using var cmd = db.CreateCommand();
-            cmd.CommandText = "SELECT plate, SUM(reads) AS n FROM daily_plates WHERE day >= @from AND day <= @to" + (unknownOnly ? " AND result = 2" : string.Empty)
-                + CameraCondition(cameras, cmd) + " GROUP BY plate HAVING n > 0 ORDER BY n DESC, plate LIMIT 10;";
-            cmd.Parameters.AddWithValue("@from", DayOf(fromMs, zone));
-            cmd.Parameters.AddWithValue("@to", DayOf(Math.Max(fromMs, toMs - 1), zone));
-            var top = new List<PlateCount>();
-            await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
-            while (await reader.ReadAsync(ct).ConfigureAwait(false))
-            {
-                top.Add(new PlateCount(reader.GetString(0), reader.GetInt32(1)));
-            }
-
-            return top;
-        }
-
+        var all = perCamera.Values;
+        var total = all.Sum(v => v.Reads);
+        var bands = new ConfidenceBands(all.Sum(v => v.Low), all.Sum(v => v.Mid), all.Sum(v => v.Good), total - all.Sum(v => v.Low + v.Mid + v.Good));
         return new StatsReply(
             Counts(_ => true),
-            [.. new[] { PlateDirection.In, PlateDirection.Out, PlateDirection.Unknown }.Select(d => new DirectionCounts(d, Counts(k => k.Direction == (int)d)))],
             [.. perHour.Select(h => new HourCount(DateTimeOffset.FromUnixTimeMilliseconds(h.Key * HourMs), h.Value))],
             [.. perCamera.Select(c =>
             {
                 var id = Guid.TryParse(c.Key, out var g) ? g : Guid.Empty;
                 var v = c.Value;
                 return new CameraStats(id, cameraName(id), v.Reads, Share(v.Allowed, v.Reads), v.Reads == 0 ? 0 : Math.Round((double)v.Confidence / v.Reads, 1), Share(v.Low, v.Reads),
-                    v.Last > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(v.Last) : null);
+                    v.Last > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(v.Last) : null, Share(v.Low + v.Mid, v.Reads));
             }).OrderByDescending(c => c.Reads)],
-            await TopAsync(unknownOnly: false).ConfigureAwait(false),
-            await TopAsync(unknownOnly: true).ConfigureAwait(false));
+            total == 0 ? 0 : Math.Round((double)all.Sum(v => v.Confidence) / total, 1),
+            bands);
     }
 
     private static double Share(int part, int whole) => whole == 0 ? 0 : Math.Round((double)part / whole, 4);

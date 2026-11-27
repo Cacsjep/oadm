@@ -542,20 +542,15 @@ internal static class Samples
 
     public static StatsReply Stats() => new(
         new ResultCounts(1_204, 86, 211),
-        [
-            new(PlateDirection.In, new ResultCounts(640, 51, 120)),
-            new(PlateDirection.Out, new ResultCounts(552, 30, 77)),
-            new(PlateDirection.Unknown, new ResultCounts(12, 5, 14)),
-        ],
         [.. Enumerable.Range(0, 15).Select(h => new HourCount(new DateTimeOffset(Now.Date, Now.Offset).AddHours(h), h switch { < 6 => h * 3, 7 or 8 => 190 + (h * 7), 16 or 17 => 150, _ => 40 + (h * 5) }))],
         [
-            new(CameraId(1), "nord-entry", 512, 0.86, 91.4, 0.03, Now.AddMinutes(-1)),
-            new(CameraId(2), "nord-exit", 488, 0.82, 89.9, 0.05, Now.AddMinutes(-2)),
-            new(CameraId(3), "sued-entry", 301, 0.74, 78.2, 0.12, Now.AddMinutes(-4)),
-            new(CameraId(4), "sued-exit", 200, 0.69, 71.5, 0.21, Now.AddHours(-3)),
+            new(CameraId(1), "nord-entry", 512, 0.86, 91.4, 0.03, Now.AddMinutes(-1), 0.06),
+            new(CameraId(2), "nord-exit", 488, 0.82, 89.9, 0.05, Now.AddMinutes(-2), 0.09),
+            new(CameraId(3), "sued-entry", 301, 0.74, 78.2, 0.12, Now.AddMinutes(-4), 0.27),
+            new(CameraId(4), "sued-exit", 200, 0.69, 58.5, 0.41, Now.AddHours(-3), 0.62),
         ],
-        [.. new[] { "W12345A", "S1234K", "G4711XY", "L8820BB", "W99887Z", "WU4040K", "BN417HA", "GU3310M", "KO1212T", "KU5521C" }.Select((p, i) => new PlateCount(p, 48 - (i * 4)))],
-        [.. new[] { "WB815XA", "SL3021R", "LL5522D", "ZZ71", "G1234AB", "W5544T", "K2210P", "S9087L", "B1123X", "N4455R" }.Select((p, i) => new PlateCount(p, 9 - (i / 2)))]);
+        86.4,
+        new ConfidenceBands(70, 133, 412, 886));
 
     public static SetupRead Setup(bool rotated = false) => new()
     {

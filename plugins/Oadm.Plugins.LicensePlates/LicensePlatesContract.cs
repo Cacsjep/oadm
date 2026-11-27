@@ -781,21 +781,34 @@ public sealed record ResultCounts(int Allowed, int NotAllowed, int Unknown)
     public int Total => Allowed + NotAllowed + Unknown;
 }
 
-public sealed record DirectionCounts(PlateDirection Direction, ResultCounts Counts);
-
 public sealed record HourCount(DateTimeOffset Hour, int Reads);
 
-public sealed record CameraStats(Guid CameraId, string Camera, int Reads, double AllowedShare, double AverageConfidence, double LowShare, DateTimeOffset? LastRead);
+/// <summary>The confidence bands of the Log and the Stats: below <see cref="Error"/> the error colour, below <see cref="Warning"/> the warning colour.</summary>
+public static class ConfidenceLevels
+{
+    public const int Error = 60;
+    public const int Warning = 75;
 
-public sealed record PlateCount(string Plate, int Reads);
+    /// <summary>The lower edge of the best band.</summary>
+    public const int High = 90;
+}
 
+/// <summary>The reads in the four confidence bands: below 60, 60 to 74, 75 to 89, 90 and above.</summary>
+public sealed record ConfidenceBands(int Below60, int From60To74, int From75To89, int From90)
+{
+    public int Total => Below60 + From60To74 + From75To89 + From90;
+}
+
+/// <summary>A camera of the Stats: its reads, the share Allowed, the average confidence and the shares below 60 and below 75.</summary>
+public sealed record CameraStats(Guid CameraId, string Camera, int Reads, double AllowedShare, double AverageConfidence, double LowShare, DateTimeOffset? LastRead, double Below75Share = 0);
+
+/// <summary>The Stats tab: the reads by result, the average confidence and its bands over all chosen cameras, per hour and per camera.</summary>
 public sealed record StatsReply(
     ResultCounts Results,
-    IReadOnlyList<DirectionCounts> ByDirection,
     IReadOnlyList<HourCount> PerHour,
     IReadOnlyList<CameraStats> PerCamera,
-    IReadOnlyList<PlateCount> TopPlates,
-    IReadOnlyList<PlateCount> TopUnknown);
+    double AverageConfidence = 0,
+    ConfidenceBands? Confidence = null);
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Settings

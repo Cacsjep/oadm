@@ -158,8 +158,7 @@ public sealed class LogStoreTests : IAsyncLifetime
         Assert.Equal(PlateDirection.Out, read.Direction);
         Assert.True(read.HasPicture);
         var stats = await _store.StatsAsync(new StatsRequest { From = T(-60), To = T(60) }, LogScope.All, _ => "gate-a", CancellationToken.None);
-        Assert.Equal(1, Assert.Single(stats.ByDirection, d => d.Direction == PlateDirection.Out).Counts.Total);
-        Assert.Equal(0, Assert.Single(stats.ByDirection, d => d.Direction == PlateDirection.Unknown).Counts.Total);
+        Assert.Equal(1, stats.Results.Total); // the new direction moves the count, never doubles it
     }
 
     [Fact]
@@ -198,26 +197,28 @@ public sealed class LogStoreTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Stats_count_by_result_direction_hour_camera_and_plate()
+    public async Task Stats_count_by_result_confidence_hour_and_camera()
     {
         await AddAsync(
             Row(T(-5), "W1"),
             Row(T(-4), "W1", confidence: 50),
-            Row(T(-3), "K9", ReadResult.Unknown, camera: CameraB, direction: PlateDirection.Out),
-            Row(T(-2), "K9", ReadResult.Unknown, camera: CameraB),
-            Row(T(-1), "W2", ReadResult.NotAllowed));
+            Row(T(-3), "K9", ReadResult.Unknown, camera: CameraB, direction: PlateDirection.Out, confidence: 74),
+            Row(T(-2), "K9", ReadResult.Unknown, camera: CameraB, confidence: 75),
+            Row(T(-1), "W2", ReadResult.NotAllowed, confidence: 60));
 
         var stats = await _store.StatsAsync(new StatsRequest { From = T(-60), To = T(60) }, LogScope.All, id => id == CameraA ? "gate-a" : "gate-b", CancellationToken.None);
 
         Assert.Equal(new ResultCounts(2, 1, 2), stats.Results);
-        Assert.Equal(1, Assert.Single(stats.ByDirection, d => d.Direction == PlateDirection.Out).Counts.Unknown);
         Assert.Equal(5, stats.PerHour.Sum(h => h.Reads));
         var a = Assert.Single(stats.PerCamera, c => c.CameraId == CameraA);
         Assert.Equal((3, "gate-a"), (a.Reads, a.Camera));
         Assert.Equal(0.6667, a.AllowedShare, 3);
         Assert.Equal(0.3333, a.LowShare, 3);
-        Assert.Equal(new PlateCount("K9", 2), stats.TopUnknown.Single());
-        Assert.Equal(["K9", "W1", "W2"], stats.TopPlates.Select(p => p.Plate));
+        Assert.Equal(0.6667, a.Below75Share, 3); // 50 and 60
+        var b = Assert.Single(stats.PerCamera, c => c.CameraId == CameraB);
+        Assert.Equal(0.5, b.Below75Share, 3); // 74
+        Assert.Equal(new ConfidenceBands(1, 2, 1, 1), stats.Confidence); // 50 | 60, 74 | 75 | 90
+        Assert.Equal(69.8, stats.AverageConfidence, 1); // (90 + 50 + 74 + 75 + 60) / 5
     }
 
     [Fact]
