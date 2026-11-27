@@ -421,6 +421,21 @@ public interface IOadmApi
     /// </summary>
     Task<Oadm.Sdk.Plugins.PluginDownload> CreateSupportReportAsync(CancellationToken ct) => throw new NotSupportedException("This connection has no support report.");
 
+    /// <summary>
+    /// ServerFolderService (Administrator only; the server folder picker, docs/spec/security.md "Folders a plugin writes to"):
+    /// the subfolders of a folder on the server (empty path: the drives / top folders) with the check of the folder itself.
+    /// </summary>
+    Task<ServerFolderList> ListServerFoldersAsync(string path, CancellationToken ct) => throw new NotSupportedException(NoServerFolders);
+
+    /// <summary>A new folder <paramref name="name"/> in <paramref name="path"/> on the server (audited).</summary>
+    Task<ServerFolder> CreateServerFolderAsync(string path, string name, CancellationToken ct) => throw new NotSupportedException(NoServerFolders);
+
+    /// <summary>Whether a plugin may keep its data in <paramref name="path"/> on the server (empty problem: yes).</summary>
+    Task<ServerFolderCheck> CheckServerFolderAsync(string path, CancellationToken ct) => throw new NotSupportedException(NoServerFolders);
+
+    /// <summary>The refusal of a connection without the server's folders.</summary>
+    const string NoServerFolders = "This server cannot show its folders. Update the server.";
+
     // MyAxisService (docs/spec/myaxis.md): every logged-in user, always the caller's own sign-in. Default: a server
     // without it (the title bar hides the button on UNIMPLEMENTED).
     Task<MyAxisStateReply> GetMyAxisAsync(CancellationToken ct) => throw new Grpc.Core.RpcException(new Grpc.Core.Status(Grpc.Core.StatusCode.Unimplemented, "This connection has no MyAxis sign-in."));

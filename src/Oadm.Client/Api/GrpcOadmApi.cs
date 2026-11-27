@@ -785,6 +785,15 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
     public async Task<AssistantTestReply> TestAssistantAsync(AssistantSettings settings, CancellationToken ct) =>
         await C.Assistant.TestAsync(settings, cancellationToken: ct);
 
+    public async Task<ServerFolderList> ListServerFoldersAsync(string path, CancellationToken ct) =>
+        await C.ServerFolders.ListAsync(new ServerFolderRequest { Path = path }, cancellationToken: ct);
+
+    public async Task<ServerFolder> CreateServerFolderAsync(string path, string name, CancellationToken ct) =>
+        await C.ServerFolders.CreateAsync(new CreateServerFolderRequest { Path = path, Name = name }, cancellationToken: ct);
+
+    public async Task<ServerFolderCheck> CheckServerFolderAsync(string path, CancellationToken ct) =>
+        await C.ServerFolders.CheckAsync(new ServerFolderRequest { Path = path }, cancellationToken: ct);
+
     public Task<Oadm.Sdk.Plugins.PluginDownload> CreateSupportReportAsync(CancellationToken ct) =>
         OpenDownloadAsync(C.Support.CreateReport(new Empty(), cancellationToken: CancellationToken.None), ct);
 
@@ -943,6 +952,7 @@ public sealed class GrpcOadmApi : IOadmApi, IDisposable
         public LicenseService.LicenseServiceClient License { get; } = new(channel);
         public MyAxisService.MyAxisServiceClient MyAxis { get; } = new(channel);
         public SupportService.SupportServiceClient Support { get; } = new(channel);
+        public ServerFolderService.ServerFolderServiceClient ServerFolders { get; } = new(channel);
         public SiteService.SiteServiceClient Sites { get; } = new(channel);
         public UpdateService.UpdateServiceClient Update { get; } = new(channel);
         public McpService.McpServiceClient Mcp { get; } = new(channel);
