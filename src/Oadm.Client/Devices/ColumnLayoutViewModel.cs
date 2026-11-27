@@ -1,31 +1,10 @@
 using System.Collections.ObjectModel;
 
-using CommunityToolkit.Mvvm.ComponentModel;
-
 using Oadm.Client.Infrastructure;
+using Oadm.Sdk.Client.Controls;
 using Oadm.Sdk.Devices;
 
 namespace Oadm.Client.Devices;
-
-public sealed partial class ColumnOptionViewModel(string key, string header, bool canHide) : ObservableObject
-{
-    public string Key { get; } = key;
-    public string Header { get; } = header;
-    public bool CanHide { get; } = canHide;
-
-    [ObservableProperty] public partial bool IsVisible { get; set; } = true;
-
-    /// <summary>The chooser offers the column (false: greyed with <see cref="UnavailableReason"/>, e.g. compliance is off).</summary>
-    [ObservableProperty] public partial bool IsAvailable { get; set; } = true;
-
-    /// <summary>Why the column cannot be turned on now (the chooser's tooltip).</summary>
-    [ObservableProperty] public partial string? UnavailableReason { get; set; }
-
-    /// <summary>Pixel width, 0 = default from the view.</summary>
-    public double Width { get; set; }
-
-    public int DisplayIndex { get; set; }
-}
 
 /// <summary>Device grid columns (spec order), visibility for the column chooser, persisted order and widths.</summary>
 public sealed class ColumnLayoutViewModel
@@ -80,32 +59,24 @@ public sealed class ColumnLayoutViewModel
     ];
 
     private readonly IClientSettingsStore _settings;
+    private readonly GridColumnLayout _layout;
 
     public ColumnLayoutViewModel(IClientSettingsStore settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
         _settings = settings;
-        Dictionary<string, ColumnLayoutEntry> saved = settings.Current.DeviceColumns
-            .Where(c => !string.IsNullOrEmpty(c.Key))
-            .GroupBy(c => c.Key)
-            .ToDictionary(g => g.Key, g => g.First());
-        for (int i = 0; i < DefaultColumns.Count; i++)
-        {
-            (string key, string header) = DefaultColumns[i];
-            var option = new ColumnOptionViewModel(key, header, key != IconKey) { DisplayIndex = i, IsVisible = DefaultVisible(key) };
-            if (saved.TryGetValue(key, out ColumnLayoutEntry? entry))
+        _layout = new GridColumnLayout(
+            [.. DefaultColumns.Select(c => new GridColumnDefinition(c.Key, c.Header, c.Key != IconKey, DefaultVisible(c.Key)))],
+            [.. settings.Current.DeviceColumns.Where(c => !string.IsNullOrEmpty(c.Key)).Select(c => new GridColumnState(c.Key, c.IsVisible, c.Width, c.DisplayIndex))],
+            state =>
             {
-                option.IsVisible = entry.IsVisible || !option.CanHide;
-                option.Width = entry.Width;
-                option.DisplayIndex = entry.DisplayIndex;
-            }
-
-            option.PropertyChanged += (_, _) => Save();
-            Columns.Add(option);
-        }
-
-        NormalizeOrder();
+                _settings.Current.DeviceColumns = [.. state.Select(c => new ColumnLayoutEntry { Key = c.Key, IsVisible = c.IsVisible, Width = c.Width, DisplayIndex = c.DisplayIndex })];
+                _settings.Save();
+            });
     }
+
+    /// <summary>The shared layout (the binder and the chooser take it).</summary>
+    public GridColumnLayout Layout => _layout;
 
     /// <summary>Group mode of the device grid (a group per tag), persisted with the layout.</summary>
     public bool GroupByTag
@@ -141,67 +112,18 @@ public sealed class ColumnLayoutViewModel
         }
     }
 
-    /// <summary>All columns in spec order; <see cref="ColumnOptionViewModel.DisplayIndex"/> holds the user order.</summary>
-    public ObservableCollection<ColumnOptionViewModel> Columns { get; } = [];
+    /// <summary>All columns in spec order; <see cref="GridColumnOption.DisplayIndex"/> holds the user order.</summary>
+    public ObservableCollection<GridColumnOption> Columns => _layout.Columns;
 
     /// <summary>Columns the user may hide, for the column chooser.</summary>
-    public IEnumerable<ColumnOptionViewModel> Choosable => Columns.Where(c => c.CanHide);
+    public IEnumerable<GridColumnOption> Choosable => _layout.Choosable;
 
-    public ColumnOptionViewModel? Find(string key) => Columns.FirstOrDefault(c => c.Key == key);
+    public GridColumnOption? Find(string key) => _layout.Find(key);
 
     /// <summary>Called by the view after the user reordered or resized columns.</summary>
-    public void Capture(IEnumerable<(string Key, int DisplayIndex, double Width)> state)
-    {
-        ArgumentNullException.ThrowIfNull(state);
-        bool changed = false;
-        foreach ((string key, int index, double width) in state)
-        {
-            ColumnOptionViewModel? option = Find(key);
-            if (option is null)
-            {
-                continue;
-            }
+    public void Capture(IEnumerable<(string Key, int DisplayIndex, double Width)> state) => _layout.Capture(state);
 
-            if (option.DisplayIndex != index || Math.Abs(option.Width - width) > 0.5)
-            {
-                option.DisplayIndex = index;
-                option.Width = width;
-                changed = true;
-            }
-        }
+    public void ResetToDefault() => _layout.ResetToDefault();
 
-        if (changed)
-        {
-            Save();
-        }
-    }
-
-    public void ResetToDefault()
-    {
-        for (int i = 0; i < Columns.Count; i++)
-        {
-            Columns[i].DisplayIndex = i;
-            Columns[i].Width = 0;
-            Columns[i].IsVisible = DefaultVisible(Columns[i].Key);
-        }
-
-        Save();
-    }
-
-    public void Save()
-    {
-        _settings.Current.DeviceColumns = Columns
-            .Select(c => new ColumnLayoutEntry { Key = c.Key, IsVisible = c.IsVisible, Width = c.Width, DisplayIndex = c.DisplayIndex })
-            .ToList();
-        _settings.Save();
-    }
-
-    private void NormalizeOrder()
-    {
-        List<ColumnOptionViewModel> ordered = Columns.OrderBy(c => c.DisplayIndex).ThenBy(c => Columns.IndexOf(c)).ToList();
-        for (int i = 0; i < ordered.Count; i++)
-        {
-            ordered[i].DisplayIndex = i;
-        }
-    }
+    public void Save() => _layout.Save();
 }

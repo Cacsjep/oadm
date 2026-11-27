@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 using NSubstitute;
 
+using Oadm.Sdk.Client.Controls;
 using Oadm.Client.Api;
 using Oadm.Client.Devices;
 using Oadm.Client.Devices.Toolbar;
@@ -171,7 +172,7 @@ public sealed class LogoutLoginTests
         {
             using var f = new DevicesFixture();
             ToolbarContext context = f.Devices.ToolbarContext;
-            ColumnOptionViewModel option = f.Devices.Columns.Find("model")!;
+            GridColumnOption option = f.Devices.Columns.Find("model")!;
             Assert.True(option.IsVisible);
 
             var view = new DevicesView { DataContext = f.Devices };
