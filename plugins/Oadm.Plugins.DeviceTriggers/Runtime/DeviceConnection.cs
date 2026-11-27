@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text;
 
@@ -7,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Oadm.Plugins.DeviceTriggers.Device;
+using Oadm.Plugins.EventStream;
 using Oadm.Sdk.Devices;
 using Oadm.Sdk.Plugins;
 using Oadm.Sdk.Vapix;
@@ -24,8 +24,6 @@ namespace Oadm.Plugins.DeviceTriggers.Runtime;
 /// </summary>
 internal sealed partial class DeviceConnection : IAsyncDisposable
 {
-    private const int MaxMessageBytes = 1024 * 1024;
-
     private readonly Guid _deviceId;
     private readonly TriggerRuntime _runtime;
     private readonly ICorePluginContext _ctx;
@@ -72,26 +70,14 @@ internal sealed partial class DeviceConnection : IAsyncDisposable
         _stop.Dispose();
     }
 
-    /// <summary>The refusal text for a device status, or null when OADM may connect.</summary>
     /// <summary>
-    /// Devices not contacted: the refused statuses, and devices the status poll found not answering (in an outage no
-    /// connection attempts; the device connects again once a poll sees it Ok).
+    /// Devices not contacted: the refused statuses, and devices the status poll found not answering (the shared rule of
+    /// <see cref="EventStreamSocket.RefusalFor(IDeviceInfo)"/>).
     /// </summary>
-    internal static string? RefusalFor(DeviceStatus status) => DeviceMessages.Refusal(status, refuseUnreachable: true);
+    internal static string? RefusalFor(IDeviceInfo device) => EventStreamSocket.RefusalFor(device);
 
-    /// <summary>Why <paramref name="device"/> is not contacted ("Site offline: Building B" while its site is offline).</summary>
-    internal static string? RefusalFor(IDeviceInfo device) => DeviceMessages.Refusal(device, refuseUnreachable: true);
-
-    /// <summary>A short user text for a failed session.</summary>
-    internal static string Describe(Exception ex, TimeSpan timeout) => ex switch
-    {
-        UnauthorizedAccessException { Message: DeviceMessages.Forbidden } => DeviceMessages.Forbidden,
-        UnauthorizedAccessException => DeviceMessages.Unauthorized,
-        TaskCanceledException or TimeoutException => DeviceMessages.Timeout(timeout),
-        HttpRequestException http => DeviceMessages.Unreachable(http.InnerException?.Message ?? http.Message),
-        WebSocketException => "The connection to the device broke",
-        _ => ex.Message,
-    };
+    /// <summary>A short user text for a failed session (<see cref="EventStreamSocket.Describe"/>).</summary>
+    internal static string Describe(Exception ex, TimeSpan timeout) => EventStreamSocket.Describe(ex, timeout);
 
     private TaskCompletionSource ResetSignal()
     {
@@ -297,7 +283,7 @@ internal sealed partial class DeviceConnection : IAsyncDisposable
                     return;
                 }
 
-                receive ??= ReceiveTextAsync(socket, ct);
+                receive ??= EventStreamSocket.ReceiveTextAsync(socket, ct);
                 var now = _time.GetUtcNow();
                 var due = reportDue is { } r && r < nextRecheck ? r : nextRecheck;
                 using var delayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -424,32 +410,6 @@ internal sealed partial class DeviceConnection : IAsyncDisposable
 
     private async Task<HashSet<string>> ReadOfferedAsync(IVapixClient vapix, CancellationToken ct) =>
         [.. (await EventDeclarations.ReadAsync(vapix, _options.RequestTimeout, ct).ConfigureAwait(false)).Select(e => e.Topic)];
-
-    /// <summary>One whole text message, null when the device closed the connection.</summary>
-    internal static async Task<string?> ReceiveTextAsync(WebSocket socket, CancellationToken ct)
-    {
-        var buffer = new byte[16 * 1024];
-        using var message = new MemoryStream();
-        while (true)
-        {
-            var result = await socket.ReceiveAsync(buffer, ct).ConfigureAwait(false);
-            if (result.MessageType == WebSocketMessageType.Close)
-            {
-                return null;
-            }
-
-            message.Write(buffer, 0, result.Count);
-            if (message.Length > MaxMessageBytes)
-            {
-                throw new InvalidOperationException("The device sent a message larger than 1 MB.");
-            }
-
-            if (result.EndOfMessage)
-            {
-                return Encoding.UTF8.GetString(message.GetBuffer(), 0, (int)message.Length);
-            }
-        }
-    }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Device triggers: event stream of device {DeviceId} connected")]
     private static partial void LogConnected(ILogger logger, Guid deviceId);

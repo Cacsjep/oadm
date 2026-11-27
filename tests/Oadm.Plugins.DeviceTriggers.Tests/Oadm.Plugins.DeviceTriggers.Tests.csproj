@@ -33,6 +33,7 @@
 
   <ItemGroup>
     <Using Include="Oadm.Plugins.DeviceEvents" />
+    <Using Include="Oadm.Plugins.EventStream" />
   </ItemGroup>
 
   <ItemGroup>

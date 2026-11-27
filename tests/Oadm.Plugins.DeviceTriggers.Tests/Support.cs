@@ -431,7 +431,7 @@ internal sealed class FakeCamera(FakeCameras? owner = null) : IVapixClient
             {
                 while (true)
                 {
-                    var text = await DeviceConnection.ReceiveTextAsync(socket, CancellationToken.None);
+                    var text = await EventStreamSocket.ReceiveTextAsync(socket, CancellationToken.None);
                     if (text is null)
                     {
                         return;

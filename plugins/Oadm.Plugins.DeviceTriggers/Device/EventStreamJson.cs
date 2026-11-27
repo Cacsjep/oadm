@@ -1,35 +1,15 @@
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 
-namespace Oadm.Plugins.DeviceTriggers.Device;
+using Oadm.Plugins.DeviceTriggers;
+using Oadm.Plugins.DeviceTriggers.Device;
 
-/// <summary>One <c>events:notify</c> message of the WebSocket event stream.</summary>
-public sealed record StreamNotification(string Topic, DateTimeOffset? Time, IReadOnlyDictionary<string, string> Source, IReadOnlyDictionary<string, string> Data);
+namespace Oadm.Plugins.EventStream;
 
 /// <summary>
-/// One entry of the filter list: a topic, its value filter (null = the whole topic) and the triggers it serves.
-/// <see cref="Key"/> tells entries apart when the device refuses one.
+/// The trigger filters of Device triggers on the shared event stream JSON (<c>plugins/Shared/EventStream</c>): one entry
+/// per topic, the value filters of its triggers joined with "or".
 /// </summary>
-public sealed record FilterEntry(string Topic, string? ContentFilter, IReadOnlyList<TriggerDefinition> Triggers)
-{
-    public string Key => Topic + "\n" + ContentFilter;
-}
-
-/// <summary>What the device answered to a message: a notification, the reply to our filter, or something else.</summary>
-public sealed record StreamMessage(StreamNotification? Notification, bool IsConfigureReply, string? Error)
-{
-    /// <summary>The <c>context</c> the device echoes from the request (null when the answer has none).</summary>
-    public string? Context { get; init; }
-}
-
-/// <summary>
-/// The JSON of the WebSocket event stream (verified on AXIS OS 12.11, 2026-10-10): one <c>events:configure</c> sets the
-/// filter list (a new one replaces it; an event that matches two filters arrives twice, so OADM sends one filter per
-/// topic); the device answers <c>data: {}</c> or <c>error</c> (2104 "Could not use supplied event filter") and then
-/// sends the current state of every matching on/off event, followed by <c>events:notify</c> per event.
-/// </summary>
-public static class EventStreamJson
+public static partial class EventStreamJson
 {
     /// <summary>The filter list for the triggers of one device: one entry per topic, their value filters joined with "or".</summary>
     public static string Configure(IEnumerable<TriggerDefinition> triggers) => Configure(Entries(triggers));
@@ -61,25 +41,7 @@ public static class EventStreamJson
     public static string Configure(IEnumerable<FilterEntry> entries, string context = "oadm")
     {
         ArgumentNullException.ThrowIfNull(entries);
-        var filters = new JsonArray();
-        foreach (var e in entries)
-        {
-            var entry = new JsonObject { ["topicFilter"] = e.Topic };
-            if (e.ContentFilter is not null)
-            {
-                entry["contentFilter"] = e.ContentFilter;
-            }
-
-            filters.Add(entry);
-        }
-
-        return new JsonObject
-        {
-            ["apiVersion"] = "1.0",
-            ["context"] = context,
-            ["method"] = "events:configure",
-            ["params"] = new JsonObject { ["eventFilterList"] = filters },
-        }.ToJsonString();
+        return ConfigureTopics(entries.Select(e => new KeyValuePair<string, string?>(e.Topic, e.ContentFilter)), context);
     }
 
     /// <summary>
@@ -105,41 +67,6 @@ public static class EventStreamJson
         return "concat(" + string.Join(", '\"', ", value.Split('"').Select(part => "\"" + part + "\"")) + ")";
     }
 
-    public static StreamMessage Parse(string json)
-    {
-        JsonNode? root;
-        try
-        {
-            root = JsonNode.Parse(json);
-        }
-        catch (JsonException)
-        {
-            return new StreamMessage(null, false, null);
-        }
-
-        var method = root?["method"]?.GetValue<string>();
-        if (method == "events:configure")
-        {
-            var error = root?["error"];
-            var text = error is null ? null : error["message"]?.GetValue<string>() ?? "The device refused the event filter.";
-            return new StreamMessage(null, true, text) { Context = root?["context"] is JsonValue c && c.TryGetValue<string>(out var context) ? context : null };
-        }
-
-        if (method != "events:notify" || root?["params"]?["notification"] is not JsonObject notification)
-        {
-            return new StreamMessage(null, false, null);
-        }
-
-        var topic = notification["topic"]?.GetValue<string>() ?? string.Empty;
-        DateTimeOffset? time = notification["timestamp"] is JsonValue stamp && stamp.TryGetValue<long>(out var ms) ? DateTimeOffset.FromUnixTimeMilliseconds(ms) : null;
-        var message = notification["message"] as JsonObject;
-        return new StreamMessage(new StreamNotification(topic, time, Values(message?["source"]), Values(message?["data"])), false, null);
-    }
-
-    /// <summary>Whether a state value means on ("1", "true", "active", "yes", "on").</summary>
-    public static bool IsOn(string? value) =>
-        value is not null && (value.Trim().ToUpperInvariant() is "1" or "TRUE" or "ACTIVE" or "YES" or "ON");
-
     /// <summary>Whether a notification is one of the trigger's: same topic, every narrowed value equal.</summary>
     public static bool Matches(TriggerDefinition trigger, StreamNotification notification)
     {
@@ -160,22 +87,5 @@ public static class EventStreamJson
         }
 
         return key.ToString();
-    }
-
-    private static Dictionary<string, string> Values(JsonNode? node)
-    {
-        var values = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (node is JsonObject obj)
-        {
-            foreach (var (name, value) in obj)
-            {
-                if (value is JsonValue v)
-                {
-                    values[name] = v.TryGetValue<string>(out var s) ? s : v.ToJsonString();
-                }
-            }
-        }
-
-        return values;
     }
 }
