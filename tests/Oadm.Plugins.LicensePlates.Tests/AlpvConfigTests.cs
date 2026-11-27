@@ -28,8 +28,9 @@ public sealed class AlpvConfigTests
 
         Assert.Equal(new RecognitionSettings
         {
-            Region = "metric",
+            Region = "5", // lprUseCase: Europe (regional_settings is the unit system, "metric")
             CameraLocation = "AUT",
+            State = string.Empty,
             PlateWidthMin = 50,
             PlateWidthMax = 300,
             CharactersMin = 4,

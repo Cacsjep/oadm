@@ -1,0 +1,1060 @@
+{
+ "source": "AXIS License Plate Verifier 3.1.7 web page (options chunk), read from the test camera 2026-11-27",
+ "regions": [
+  {
+   "name": "Europe",
+   "code": 5
+  },
+  {
+   "name": "North America",
+   "code": 21
+  },
+  {
+   "name": "South America",
+   "code": 32
+  },
+  {
+   "name": "USA",
+   "code": 16
+  },
+  {
+   "name": "Mexico",
+   "code": 19
+  },
+  {
+   "name": "Canada",
+   "code": 17
+  },
+  {
+   "name": "GCC",
+   "code": 7
+  },
+  {
+   "name": "Indonesia",
+   "code": 130
+  },
+  {
+   "name": "Australia",
+   "code": 256
+  },
+  {
+   "name": "New Zealand",
+   "code": 257
+  },
+  {
+   "name": "Taiwan",
+   "code": 128
+  },
+  {
+   "name": "Vietnam",
+   "code": 129
+  },
+  {
+   "name": "Hong Kong",
+   "code": 131
+  },
+  {
+   "name": "Singapore",
+   "code": 133
+  },
+  {
+   "name": "Israel",
+   "code": 272
+  },
+  {
+   "name": "Palestine",
+   "code": 273
+  },
+  {
+   "name": "South Africa",
+   "code": 9
+  }
+ ],
+ "regionCountryGroups": {
+  "1": [
+   "CIS"
+  ],
+  "4": [
+   "EU"
+  ],
+  "5": [
+   "EU",
+   "CIS"
+  ],
+  "128": [
+   "Taiwan"
+  ],
+  "129": [
+   "Vietnam"
+  ],
+  "16": [
+   "USA"
+  ],
+  "17": [
+   "Canada"
+  ],
+  "19": [
+   "Mexico"
+  ],
+  "21": [
+   "North America"
+  ],
+  "32": [
+   "South America"
+  ],
+  "9": [
+   "South Africa"
+  ],
+  "272": [
+   "Israel"
+  ],
+  "273": [
+   "Palestine"
+  ],
+  "130": [
+   "Indonesia"
+  ],
+  "131": [
+   "Hong Kong"
+  ],
+  "256": [
+   "Australia"
+  ],
+  "257": [
+   "New Zealand"
+  ],
+  "133": [
+   "Singapore"
+  ],
+  "7": [
+   "GCC"
+  ]
+ },
+ "countries": [
+  {
+   "name": "Albania",
+   "code": "ALB",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Armenia",
+   "code": "ARM",
+   "groups": [
+    "CIS"
+   ]
+  },
+  {
+   "name": "Austria",
+   "code": "AUT",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Azerbaijan",
+   "code": "AZE",
+   "groups": [
+    "CIS"
+   ]
+  },
+  {
+   "name": "Belarus",
+   "code": "BLR",
+   "groups": [
+    "CIS"
+   ]
+  },
+  {
+   "name": "Belgium",
+   "code": "BEL",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Bosnia and Herzegovina",
+   "code": "BIH",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Bulgaria",
+   "code": "BGR",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Croatia",
+   "code": "HRV",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Cyprus",
+   "code": "CYP",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Czech Republic",
+   "code": "CZE",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Denmark",
+   "code": "DNK",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Estonia",
+   "code": "EST",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Finland",
+   "code": "FIN",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "France",
+   "code": "FRA",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Gibraltar",
+   "code": "GIB",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Georgia",
+   "code": "GEO",
+   "groups": [
+    "CIS"
+   ]
+  },
+  {
+   "name": "Germany",
+   "code": "DEU",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Greece",
+   "code": "GRC",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Hungary",
+   "code": "HUN",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Iceland",
+   "code": "ISL",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Ireland",
+   "code": "IRL",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Italy",
+   "code": "ITA",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Kosovo",
+   "code": "XKX",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Kazakhstan",
+   "code": "KAZ",
+   "groups": [
+    "CIS"
+   ]
+  },
+  {
+   "name": "Kyrgyzstan",
+   "code": "KGZ",
+   "groups": [
+    "CIS"
+   ]
+  },
+  {
+   "name": "Latvia",
+   "code": "LVA",
+   "groups": [
+    "EU",
+    "CIS"
+   ]
+  },
+  {
+   "name": "Liechtenstein",
+   "code": "LIE",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Lithuania",
+   "code": "LTU",
+   "groups": [
+    "EU",
+    "CIS"
+   ]
+  },
+  {
+   "name": "Luxembourg",
+   "code": "LUX",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Macedonia",
+   "code": "MKD",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Malta",
+   "code": "MLT",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Moldova",
+   "code": "MDA",
+   "groups": [
+    "CIS"
+   ]
+  },
+  {
+   "name": "Monaco",
+   "code": "MCO",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Mongolia",
+   "code": "MNG",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Montenegro",
+   "code": "MNE",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Netherlands",
+   "code": "NLD",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Norway",
+   "code": "NOR",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Poland",
+   "code": "POL",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Portugal",
+   "code": "PRT",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Romania",
+   "code": "ROU",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Russian Federation",
+   "code": "RUS",
+   "groups": [
+    "CIS"
+   ]
+  },
+  {
+   "name": "San Marino",
+   "code": "SMR",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Serbia",
+   "code": "SRB",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Slovakia",
+   "code": "SVK",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Slovenia",
+   "code": "SVN",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Spain",
+   "code": "ESP",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Sweden",
+   "code": "SWE",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Switzerland",
+   "code": "CHE",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Tajikistan",
+   "code": "TJK",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Turkey",
+   "code": "TUR",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Turkmenistan",
+   "code": "TKM",
+   "groups": [
+    "CIS"
+   ]
+  },
+  {
+   "name": "Ukraine",
+   "code": "UKR",
+   "groups": [
+    "CIS"
+   ]
+  },
+  {
+   "name": "United Kingdom",
+   "code": "GBR",
+   "groups": [
+    "EU"
+   ]
+  },
+  {
+   "name": "Uzbekistan",
+   "code": "UZB",
+   "groups": [
+    "CIS"
+   ]
+  },
+  {
+   "name": "United States of America",
+   "code": "US",
+   "groups": [
+    "North America",
+    "USA"
+   ]
+  },
+  {
+   "name": "Canada",
+   "code": "CA",
+   "groups": [
+    "North America",
+    "Canada"
+   ]
+  },
+  {
+   "name": "Mexico",
+   "code": "MX",
+   "groups": [
+    "North America",
+    "Mexico"
+   ]
+  },
+  {
+   "name": "United Arab Emirates",
+   "code": "ARE",
+   "groups": [
+    "GCC"
+   ]
+  },
+  {
+   "name": "Saudi Arabia",
+   "code": "SAU",
+   "groups": [
+    "GCC"
+   ]
+  },
+  {
+   "name": "Qatar",
+   "code": "QAT",
+   "groups": [
+    "GCC"
+   ]
+  },
+  {
+   "name": "Kuwait",
+   "code": "KWT",
+   "groups": [
+    "GCC"
+   ]
+  },
+  {
+   "name": "Bahrain",
+   "code": "BHR",
+   "groups": [
+    "GCC"
+   ]
+  },
+  {
+   "name": "Oman",
+   "code": "OMN",
+   "groups": [
+    "GCC"
+   ]
+  },
+  {
+   "name": "Brazil",
+   "code": "BRA",
+   "groups": [
+    "South America"
+   ]
+  },
+  {
+   "name": "Argentina",
+   "code": "ARG",
+   "groups": [
+    "South America"
+   ]
+  },
+  {
+   "name": "Uruguay",
+   "code": "URY",
+   "groups": [
+    "South America"
+   ]
+  },
+  {
+   "name": "Chile",
+   "code": "CHL",
+   "groups": [
+    "South America"
+   ]
+  },
+  {
+   "name": "Colombia",
+   "code": "COL",
+   "groups": [
+    "South America"
+   ]
+  },
+  {
+   "name": "Peru",
+   "code": "PER",
+   "groups": [
+    "South America"
+   ]
+  },
+  {
+   "name": "Paraguay",
+   "code": "PY",
+   "groups": [
+    "South America"
+   ]
+  },
+  {
+   "name": "Indonesia",
+   "code": "IDN",
+   "groups": [
+    "Indonesia"
+   ]
+  },
+  {
+   "name": "Australia",
+   "code": "AUS",
+   "groups": [
+    "Australia"
+   ]
+  },
+  {
+   "name": "New Zealand",
+   "code": "NZL",
+   "groups": [
+    "New Zealand"
+   ]
+  },
+  {
+   "name": "Taiwan",
+   "code": "TWN",
+   "groups": [
+    "Taiwan"
+   ]
+  },
+  {
+   "name": "Vietnam",
+   "code": "VNM",
+   "groups": [
+    "Vietnam"
+   ]
+  },
+  {
+   "name": "Hong Kong",
+   "code": "HKG",
+   "groups": [
+    "Hong Kong"
+   ]
+  },
+  {
+   "name": "Singapore",
+   "code": "SGP",
+   "groups": [
+    "Singapore"
+   ]
+  },
+  {
+   "name": "South Africa",
+   "code": "ZAF",
+   "groups": [
+    "South Africa"
+   ]
+  },
+  {
+   "name": "Israel",
+   "code": "ISR",
+   "groups": [
+    "Israel"
+   ]
+  },
+  {
+   "name": "Palestine",
+   "code": "PSE",
+   "groups": [
+    "Palestine"
+   ]
+  }
+ ],
+ "regionsWithStates": [
+  16,
+  17,
+  19,
+  21
+ ],
+ "states": [
+  {
+   "name": "Ciudad de México",
+   "code": "CMX",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Aguascalientes",
+   "code": "AGU",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Baja California",
+   "code": "BCN",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Baja California Sur",
+   "code": "BCS",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Campeche",
+   "code": "CAM",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Coahuila de Zaragoza",
+   "code": "COA",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Colima",
+   "code": "COL",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Chiapas",
+   "code": "CHP",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Chihuahua",
+   "code": "CHH",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Durango",
+   "code": "DUR",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Guanajuato",
+   "code": "GUA",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Guerrero",
+   "code": "GRO",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Hidalgo",
+   "code": "HID",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Jalisco",
+   "code": "JAL",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "México",
+   "code": "MEX",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Michoacán de Ocampo",
+   "code": "MIC",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Morelos",
+   "code": "MOR",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Nayarit",
+   "code": "NAY",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Nuevo León",
+   "code": "NLE",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Oaxaca",
+   "code": "OAX",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Puebla",
+   "code": "PUE",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Querétaro",
+   "code": "QUE",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Quintana Roo",
+   "code": "ROO",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "San Luis Potosí",
+   "code": "SLP",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Sinaloa",
+   "code": "SIN",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Sonora",
+   "code": "SON",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Tabasco",
+   "code": "TAB",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Tamaulipas",
+   "code": "TAM",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Tlaxcala",
+   "code": "TLA",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Veracruz de Ignacio de la Llave",
+   "code": "VER",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Yucatán",
+   "code": "YUC",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  },
+  {
+   "name": "Zacatecas",
+   "code": "ZAC",
+   "country": [
+    "Mexico",
+    "MX"
+   ]
+  }
+ ],
+ "vehicleColors": [
+  {
+   "name": "Beige",
+   "code": 0
+  },
+  {
+   "name": "Black",
+   "code": 1
+  },
+  {
+   "name": "Blue",
+   "code": 2
+  },
+  {
+   "name": "Brown",
+   "code": 3
+  },
+  {
+   "name": "Gray",
+   "code": 4
+  },
+  {
+   "name": "Green",
+   "code": 5
+  },
+  {
+   "name": "Orange",
+   "code": 6
+  },
+  {
+   "name": "Red",
+   "code": 7
+  },
+  {
+   "name": "White",
+   "code": 8
+  },
+  {
+   "name": "Yellow",
+   "code": 9
+  },
+  {
+   "name": "Silver",
+   "code": 10
+  }
+ ],
+ "vehicleTypes": [
+  {
+   "name": "UNDEFINED",
+   "code": 0
+  },
+  {
+   "name": "CAR",
+   "code": 1
+  },
+  {
+   "name": "BUS",
+   "code": 2
+  },
+  {
+   "name": "SUV",
+   "code": 4
+  },
+  {
+   "name": "VAN",
+   "code": 8
+  },
+  {
+   "name": "MINIVAN",
+   "code": 16
+  },
+  {
+   "name": "TRUCK",
+   "code": 32
+  },
+  {
+   "name": "PICKUP",
+   "code": 64
+  },
+  {
+   "name": "BIKE",
+   "code": 128
+  }
+ ],
+ "directions": {
+  "2": "IN",
+  "3": "OUT",
+  "1": "UNK"
+ }
+}

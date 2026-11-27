@@ -212,6 +212,15 @@ public static class LicensePlatesMethods
     /// <summary><see cref="DevicesRequest"/> -> <see cref="TasksReply"/>: one task Use recommended image settings per camera.</summary>
     public const string UseRecommendedImageSettings = "useRecommendedImageSettings";
 
+    /// <summary>() -> <see cref="Oadm.Plugins.LicensePlates.AlpvLists"/>: ALPV's regions, countries, states, vehicle types and colours ("show").</summary>
+    public const string AlpvLists = "alpvLists";
+
+    /// <summary><see cref="VehicleNamesRequest"/> -> <see cref="VehicleNamesReply"/>: the vehicle makes ALPV knows, read from a connected camera ("log").</summary>
+    public const string VehicleMakes = "vehicleMakes";
+
+    /// <summary><see cref="VehicleNamesRequest"/> (with the make) -> <see cref="VehicleNamesReply"/>: the models of a make ("log").</summary>
+    public const string VehicleModels = "vehicleModels";
+
     // ---- Settings (Administrators) ----
 
     /// <summary>() -> <see cref="LicensePlateSettings"/>.</summary>
@@ -235,7 +244,7 @@ public static class LicensePlatesMethods
     public const string StatusTopic = "status";
 
     /// <summary>The methods that need the plate log permission.</summary>
-    public static bool IsLog(string method) => method is Log or LogCount or LogStatus or Picture or Stats;
+    public static bool IsLog(string method) => method is Log or LogCount or LogStatus or Picture or Stats or VehicleMakes or VehicleModels;
 
     /// <summary>The methods that change plates or plate tags.</summary>
     public static bool IsPlateChange(string method) =>
@@ -474,11 +483,14 @@ public sealed record AlpvArea
 /// </summary>
 public sealed record RecognitionSettings
 {
-    /// <summary><c>regional_settings</c>.</summary>
+    /// <summary><c>lprUseCase</c>: the code of a region of <see cref="AlpvLists.Regions"/> as text ("5" Europe).</summary>
     public string? Region { get; init; }
 
-    /// <summary><c>CountryPriority</c>, alpha-3 ("AUT").</summary>
+    /// <summary><c>CountryPriority</c>: a code of <see cref="AlpvLists.Countries"/> ("AUT", "US"); "0" none.</summary>
     public string? CameraLocation { get; init; }
+
+    /// <summary><c>StatePriority</c>: a code of <see cref="AlpvLists.States"/> ("CMX"); empty none.</summary>
+    public string? State { get; init; }
 
     /// <summary><c>plate.plate_min_size</c>, plate width in pixels.</summary>
     public int? PlateWidthMin { get; init; }
@@ -546,6 +558,13 @@ public sealed record SaveSetupRequest(Guid DeviceId, SetupPayload Setup, IReadOn
 public sealed record CopySettingsRequest(Guid SourceId, IReadOnlyList<Guid> TargetIds, bool Areas = false);
 
 public sealed record TasksReply(IReadOnlyList<Guid> TaskIds);
+
+/// <summary>The vehicle makes (no <see cref="Make"/>) or the models of a make, read from a connected camera of <see cref="CameraIds"/>
+/// (null: any camera of the caller); kept per ALPV version.</summary>
+public sealed record VehicleNamesRequest(IReadOnlyList<Guid>? CameraIds = null, string? Make = null);
+
+/// <summary>The names as ALPV lists them; <see cref="Problem"/> when no camera could answer ("No camera is connected.").</summary>
+public sealed record VehicleNamesReply(IReadOnlyList<string> Names, string? Problem = null);
 
 // ---------------------------------------------------------------------------------------------------------------------
 // The log

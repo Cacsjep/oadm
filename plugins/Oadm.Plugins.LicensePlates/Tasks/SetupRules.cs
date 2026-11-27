@@ -48,14 +48,21 @@ internal static class SetupRules
 
         if (payload.Recognition is { } r)
         {
-            if (r.Region is { } region && (region.Trim().Length is 0 or > 32 || !region.Trim().All(c => char.IsAsciiLetterOrDigit(c) || c is '_' or '-')))
+            // Codes of ALPV's lists (AlpvLists): a region number, a country of 2 or 3 letters or "0" (none), a state code or empty.
+            if (r.Region is { } region && (region.Trim().Length is 0 or > 6 || !region.Trim().All(char.IsAsciiDigit)))
             {
                 errors["recognition.region"] = "Choose a region.";
             }
 
-            if (r.CameraLocation is { } location && location.Trim().Length > 0 && (location.Trim().Length != 3 || !location.Trim().All(char.IsAsciiLetterUpper)))
+            if (r.CameraLocation is { } location && location.Trim() is { Length: > 0 } code && code != AlpvLists.NoCountry
+                && (code.Length is < 2 or > 3 || !code.All(char.IsAsciiLetterUpper)))
             {
                 errors["recognition.cameraLocation"] = "Choose a country.";
+            }
+
+            if (r.State is { } state && (state.Trim().Length > 8 || !state.Trim().All(char.IsAsciiLetterOrDigit)))
+            {
+                errors["recognition.state"] = "Choose a state.";
             }
 
             Range(errors, "recognition.plateWidth", r.PlateWidthMin, r.PlateWidthMax, 1, 4_000, "The plate width is 1 to 4,000 pixels.", "Choose a width from the smallest to the largest.");
@@ -123,6 +130,7 @@ internal static class SetupRules
 
         Text(AlpvConfig.Region, wanted.Region);
         Text(AlpvConfig.CameraLocation, wanted.CameraLocation);
+        Text(AlpvConfig.State, wanted.State);
         Whole([AlpvConfig.PlateWidthMin], wanted.PlateWidthMin);
         Whole([AlpvConfig.PlateWidthMax], wanted.PlateWidthMax);
         Whole(AlpvConfig.CharactersMin, wanted.CharactersMin);

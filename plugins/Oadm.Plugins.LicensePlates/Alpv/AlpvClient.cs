@@ -262,6 +262,33 @@ internal sealed class AlpvClient(IVapixClient vapix)
     public async Task WriteConfigAsync(string body, CancellationToken ct) =>
         await PostAsync(ConfigPath, body, "text/xml", ct).ConfigureAwait(false);
 
+    /// <summary>The vehicle makes ALPV knows (<c>api.cgi?api=listbrands</c>, read only), without the empty entry.</summary>
+    public async Task<IReadOnlyList<string>> ListMakesAsync(CancellationToken ct) =>
+        ParseNames(await GetTextAsync(MakesPath, ct).ConfigureAwait(false), "brands");
+
+    /// <summary>The models of a make (<c>api.cgi?api=listmodels&amp;brand=</c>, read only).</summary>
+    public async Task<IReadOnlyList<string>> ListModelsAsync(string make, CancellationToken ct) =>
+        ParseNames(await GetTextAsync(ModelsPath + Uri.EscapeDataString(make), ct).ConfigureAwait(false), "models");
+
+    public const string MakesPath = "/local/fflprapp/api.cgi?api=listbrands";
+    public const string ModelsPath = "/local/fflprapp/api.cgi?api=listmodels&brand=";
+
+    /// <summary>The names of <c>{"brands":["","(None)","Abarth",...]}</c>: empty entries dropped, the order kept.</summary>
+    public static IReadOnlyList<string> ParseNames(string json, string property)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+        try
+        {
+            return JsonNode.Parse(json)?[property] is JsonArray array
+                ? [.. array.Select(n => n?.GetValue<string>()?.Trim()).Where(n => !string.IsNullOrEmpty(n)).Select(n => n!).Distinct(StringComparer.Ordinal)]
+                : throw new AlpvException("ALPV answered without a list.");
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
+        {
+            throw new AlpvException("ALPV answered without a list.", ex);
+        }
+    }
+
     /// <summary>ALPV sets the image settings it recommends (a write, although it is a GET).</summary>
     public async Task SetOptimalImageAsync(CancellationToken ct) =>
         _ = await GetTextAsync(OptimalImagePath, ct).ConfigureAwait(false);

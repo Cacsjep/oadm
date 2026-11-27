@@ -145,6 +145,9 @@ public sealed partial class LicensePlatesPlugin
             LicensePlatesMethods.SaveSetup => Write(await SaveSetupAsync(caller, Read<SaveSetupRequest>(), ct).ConfigureAwait(false)),
             LicensePlatesMethods.CopySettings => Write(await CopySettingsAsync(caller, Read<CopySettingsRequest>(), ct).ConfigureAwait(false)),
             LicensePlatesMethods.UseRecommendedImageSettings => Write(await UseRecommendedAsync(caller, Read<DevicesRequest>().DeviceIds ?? [], ct).ConfigureAwait(false)),
+            LicensePlatesMethods.AlpvLists => Write(AlpvListData.Lists),
+            LicensePlatesMethods.VehicleMakes => Write(await VehicleNamesAsync(caller, ReadOrEmpty<VehicleNamesRequest>(), models: false, ct).ConfigureAwait(false)),
+            LicensePlatesMethods.VehicleModels => Write(await VehicleNamesAsync(caller, Read<VehicleNamesRequest>(), models: true, ct).ConfigureAwait(false)),
             LicensePlatesMethods.Settings => Write(_settings),
             LicensePlatesMethods.SaveSettings => Write(await SaveSettingsAsync(Read<LicensePlateSettings>(), ct).ConfigureAwait(false)),
             _ => throw new ArgumentException($"Unknown method '{method}'.", nameof(method)),
@@ -569,6 +572,42 @@ public sealed partial class LicensePlatesPlugin
     }
 
     // ---- cameras ----
+
+    /// <summary>The vehicle makes and models of the Log's filter, kept per ALPV version (and make).</summary>
+    private readonly ConcurrentDictionary<string, IReadOnlyList<string>> _vehicleNames = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The makes, or the models of a make, as ALPV lists them: read on demand (two GETs, never a write) from a connected camera
+    /// of the caller's choice, else from any connected camera the caller sees; kept per ALPV version.
+    /// </summary>
+    internal async Task<VehicleNamesReply> VehicleNamesAsync(ICallContext caller, VehicleNamesRequest request, bool models, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var make = request.Make?.Trim() ?? string.Empty;
+        if (models && make.Length == 0)
+        {
+            return new VehicleNamesReply([]);
+        }
+
+        var rows = (await CamerasAsync(caller, ct).ConfigureAwait(false)).Cameras.Where(r => r.Status == CameraStatus.Connected).ToList();
+        var chosen = request.CameraIds is { Count: > 0 } ids ? ids.ToHashSet() : null;
+        var camera = rows.FirstOrDefault(r => chosen is null || chosen.Contains(r.DeviceId)) ?? rows.FirstOrDefault();
+        if (camera is null)
+        {
+            return new VehicleNamesReply([], LicensePlateTexts.NoCameraConnected);
+        }
+
+        var key = (camera.AlpvVersion ?? string.Empty) + "|" + (models ? make : string.Empty);
+        if (_vehicleNames.TryGetValue(key, out var kept))
+        {
+            return new VehicleNamesReply(kept);
+        }
+
+        var alpv = new AlpvClient(await caller.Vapix.CreateAsync(camera.DeviceId, ct).ConfigureAwait(false));
+        var names = models ? await alpv.ListModelsAsync(make, ct).ConfigureAwait(false) : await alpv.ListMakesAsync(ct).ConfigureAwait(false);
+        _vehicleNames[key] = names;
+        return new VehicleNamesReply(names);
+    }
 
     internal async Task<CamerasReply> CamerasAsync(ICallContext caller, CancellationToken ct)
     {

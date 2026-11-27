@@ -18,8 +18,10 @@ public sealed class AlpvConfig
     public static readonly IReadOnlySet<string> Secrets = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "login", "password", "ipc_login", "ipc_password" };
 
     // The recognition fields of the Set up dialog and where ALPV keeps them (3.1.7 has the number of characters twice).
-    internal const string Region = "regional_settings";
+    // Region is lprUseCase (the region code of ALPV's page); regional_settings is the unit system ("metric") and never used.
+    internal const string Region = "lprUseCase";
     internal const string CameraLocation = "CountryPriority";
+    internal const string State = "StatePriority";
     internal const string PlateWidthMin = "plate.plate_min_size";
     internal const string PlateWidthMax = "plate.plate_max_size";
     internal const string Threshold = "plate.threshold";
@@ -113,6 +115,7 @@ public sealed class AlpvConfig
     {
         Region = Get(Region),
         CameraLocation = Get(CameraLocation),
+        State = Get(State),
         PlateWidthMin = Whole(PlateWidthMin),
         PlateWidthMax = Whole(PlateWidthMax),
         CharactersMin = CharactersMin.Select(Whole).FirstOrDefault(v => v is not null),

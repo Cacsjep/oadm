@@ -31,6 +31,9 @@
 
   <ItemGroup>
     <None Update="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- ALPV's lists of regions, countries, states, vehicle types and colours, read from the web page of ALPV 3.1.7
+         (Alpv/AlpvLists.cs); the client part gets them through the contract (alpvLists). -->
+    <EmbeddedResource Include="Alpv\alpv-lists-3.1.7.json" LogicalName="Oadm.Plugins.LicensePlates.alpv-lists-3.1.7.json" />
     <!-- Roboto (Apache-2.0) of the shared LogPdfFonts: the files of the Snapshot report plugin, under the names the server's
          Logs page export uses, so the linked font resolver finds them. -->
     <EmbeddedResource Include="..\Oadm.Plugins.SnapshotReport\Fonts\*.ttf" Link="Log\Fonts\%(Filename)%(Extension)"

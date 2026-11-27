@@ -51,6 +51,23 @@ public sealed class TaskTests
     }
 
     [Fact]
+    public async Task Set_up_writes_the_region_to_lprUseCase_with_the_location_and_state()
+    {
+        var camera = new AlpvCamera();
+        var payload = new SetupPayload { Recognition = new RecognitionSettings { Region = "19", CameraLocation = "MX", State = "CMX" } };
+
+        var (_, error) = await RunAsync(new SetupTask(), camera, Payload(payload));
+
+        Assert.Null(error);
+        var write = Assert.Single(camera.AlpvWrites);
+        Assert.Contains("<lprUseCase>19</lprUseCase>", write.Body, StringComparison.Ordinal);
+        Assert.Contains("<CountryPriority>MX</CountryPriority>", write.Body, StringComparison.Ordinal);
+        Assert.Contains("<StatePriority>CMX</StatePriority>", write.Body, StringComparison.Ordinal);
+        Assert.DoesNotContain("regional_settings", write.Body, StringComparison.Ordinal);
+        Assert.Contains("<lprUseCase>19</lprUseCase>", camera.ConfigXml, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Set_up_reads_ALPV_fresh_before_the_first_write()
     {
         var camera = new AlpvCamera();
