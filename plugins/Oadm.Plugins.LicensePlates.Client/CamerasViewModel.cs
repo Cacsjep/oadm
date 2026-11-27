@@ -67,7 +67,7 @@ public sealed partial class CameraRowViewModel : ObservableObject
     internal void Apply(CameraRow row, PlateTagStore tags, TimeProvider time)
     {
         Row = row;
-        Camera = string.IsNullOrWhiteSpace(row.HostName) ? row.Address : row.HostName!;
+        Camera = !string.IsNullOrWhiteSpace(row.Name) ? row.Name : string.IsNullOrWhiteSpace(row.HostName) ? row.Address : row.HostName!;
         Address = row.Address;
         Site = row.Site ?? string.Empty;
         AlpvVersion = row.AlpvVersion ?? string.Empty;
@@ -145,6 +145,9 @@ public sealed partial class CamerasViewModel : ObservableObject
     }
 
     public RangeObservableCollection<CameraRowViewModel> Rows { get; } = [];
+
+    /// <summary>Every camera of the plugin, also those the search hides.</summary>
+    public IReadOnlyList<CameraRowViewModel> AllRows => _all;
 
     /// <summary>The rows chosen in the grid (several with Ctrl or Shift); the view hands them over.</summary>
     public IReadOnlyList<CameraRowViewModel> Selected { get; private set; } = [];

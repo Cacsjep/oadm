@@ -66,6 +66,11 @@ public static class PageTexts
     public const string View = "View";
     public const string Type = "Type";
     public const string Colour = "Colour";
+    public const string ReadAsColumn = "Read as";
+    public const string VehicleTypeColumn = "Vehicle type";
+    public const string VehicleColorColumn = "Vehicle colour";
+    public const string VehicleMakeColumn = "Vehicle make";
+    public const string VehicleModelColumn = "Vehicle model";
     public const string Make = "Make";
     public const string Model = "Model";
     public const string Any = "Any";
@@ -77,7 +82,6 @@ public static class PageTexts
     public const string ChooseCamerasFirst = "Choose the cameras first.";
     public const string Exporting = "Making the file";
     public const string ExportTitle = "Export plate log";
-    public const string ExportDone = "Saved";
 
     // ---- Plates ----
     public const string AddPlate = "Add plate";
@@ -151,12 +155,11 @@ public static class PageTexts
     public const string PlateWidth = "Plate width in pixels";
     public const string Characters = "Number of characters";
     public const string Threshold = "Confidence threshold";
+    public const string ThresholdRange = "Choose 20 to 100 %.";
+    public const string EnterName = "Enter a name.";
+    public const string NameTooLong = "Use at most 64 characters.";
     public const string Plates = "Plates";
-    public const string Events = "Events";
-    public const string EventsOn = "New, Update and Lost are on";
-    public const string EventsWillTurnOn = "Save turns on New, Update and Lost";
     public const string LastRead = "Last read";
-    public const string NoReadYet = "No read yet";
     public const string AlpvPageLink = "Open the ALPV page";
     public const string AlpvPageTip = "Barrier, relay and storage";
     public const string ReadingCamera = "Reading the camera";
@@ -179,17 +182,15 @@ public static class PageTexts
     public const string Today = "Today";
     public const string Last7Days = "Last 7 days";
     public const string Last30Days = "Last 30 days";
-    public const string ReadsPerHour = "Reads per hour";
-    public const string PerCamera = "Per camera";
-    public const string Total = "Reads";
-    public const string ShareAllowed = "Allowed";
+    public const string Last24Hours = "Last 24 hours";
+    public const string LastHour = "Last hour";
+    public const string Total = "Total";
+    public const string PlateConfidence = "Plate confidence per camera";
+    public const string VehicleConfidence = "Vehicle confidence per camera";
+    public const string ReadsOverTime = "Reads over time";
+    public const string ConfidenceOverTime = "Confidence over time";
+    public const string NoVehicleConfidence = "No camera sends a vehicle confidence.";
     public const string AverageConfidence = "Average confidence";
-    public const string ShareLow = "Below 60";
-    public const string ShareBelow75 = "Below 75";
-    public const string From60To74 = "60 to 74";
-    public const string From75To89 = "75 to 89";
-    public const string From90 = "90 and above";
-    public const string ConfidenceChart = "Confidence";
     public const string ReadingStats = "Reading the stats";
     public const string NoStats = "No reads in this time.";
 

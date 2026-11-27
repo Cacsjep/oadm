@@ -40,6 +40,7 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
     {
         _page = page ?? throw new ArgumentNullException(nameof(page));
         Camera = camera ?? throw new ArgumentNullException(nameof(camera));
+        Name = camera.Camera;
         TagChoices = new CheckChoiceList(PageTexts.AllTags, PageTexts.NoTags);
         TagChoices.Set(page.Tags.All.Select(t => new CheckChoice(t.Id, t.Name)), false, camera.Row.AllowedTags.Cast<object?>());
         _video = page.Client.Context.LiveVideo?.Create(VideoPlace);
@@ -49,7 +50,8 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
             .Rule(nameof(PlateWidthMax), () => RangeMax(PlateWidthMin, PlateWidthMax, 1, 2000))
             .Rule(nameof(CharactersMin), () => Range(CharactersMin, CharactersMax, 1, 20))
             .Rule(nameof(CharactersMax), () => RangeMax(CharactersMin, CharactersMax, 1, 20))
-            .Rule(nameof(ConfidenceThreshold), () => HasThreshold && ConfidenceThreshold is null or < 0 or > 1 ? "Enter 0 to 1." : null)
+            .Rule(nameof(ThresholdText), () => HasThreshold && ThresholdPercent is null ? PageTexts.ThresholdRange : null)
+            .Rule(nameof(Name), NameProblem)
             .Rule(nameof(Areas), () => null);
         Validation.Validate();
     }
@@ -116,7 +118,39 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
 
     [ObservableProperty] public partial decimal? CharactersMax { get; set; }
 
-    [ObservableProperty] public partial decimal? ConfidenceThreshold { get; set; }
+    /// <summary>The confidence threshold in percent as typed or slid ("25"); ALPV keeps 0.2 to 1.0.</summary>
+    [ObservableProperty] public partial string ThresholdText { get; set; } = string.Empty;
+
+    public const int MinThreshold = 20;
+
+    /// <summary>The slider's bounds and step for XAML (doubles).</summary>
+    public const double SliderMinimum = MinThreshold;
+    public const double SliderMaximum = MaxThreshold;
+    public const double SliderStep = ThresholdStep;
+    public const int MaxThreshold = 100;
+    public const int ThresholdStep = 5;
+
+    /// <summary>The threshold in whole percent, 20 to 100; null when the text is not one.</summary>
+    public int? ThresholdPercent => int.TryParse(ThresholdText.Trim().TrimEnd('%').Trim(), System.Globalization.NumberStyles.Integer, CultureInfo.CurrentCulture, out var p) && p is >= MinThreshold and <= MaxThreshold ? p : null;
+
+    /// <summary>ALPV's value (0.25) as the percent the dialog shows ("25").</summary>
+    public static string PercentOf(double threshold) => Math.Round(threshold * 100).ToString("0", CultureInfo.CurrentCulture);
+
+    /// <summary>The camera's name in License Plate Center (first field; required, unique, at most 64 characters).</summary>
+    [ObservableProperty] public partial string Name { get; set; } = string.Empty;
+
+    public const int MaxNameLength = LicensePlateLimits.MaxCameraNameLength;
+
+    /// <summary>The names of the plugin's other cameras (the uniqueness check).</summary>
+    private HashSet<string> OtherNames => _page.Cameras.AllRows.Where(r => r.DeviceId != Camera.DeviceId).Select(r => r.Camera.Trim()).ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+
+    private string? NameProblem() => Name.Trim() switch
+    {
+        { Length: 0 } => PageTexts.EnterName,
+        { Length: > MaxNameLength } => PageTexts.NameTooLong,
+        var name when OtherNames.Contains(name) => LicensePlateTexts.CameraNameTaken,
+        _ => null,
+    };
 
     public bool HasRegion => _read?.Recognition.Region is not null;
 
@@ -130,11 +164,6 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
 
     public CheckChoiceList TagChoices { get; }
 
-    [ObservableProperty] public partial string EventsText { get; private set; } = string.Empty;
-
-    [ObservableProperty] public partial bool EventsOn { get; private set; }
-
-    [ObservableProperty] public partial string LastReadText { get; private set; } = PageTexts.NoReadYet;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MayEditAreas), nameof(CanAddArea2))]
@@ -270,7 +299,7 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
             PlateWidthMax = Changed(read.PlateWidthMax, Whole(PlateWidthMax)),
             CharactersMin = Changed(read.CharactersMin, Whole(CharactersMin)),
             CharactersMax = Changed(read.CharactersMax, Whole(CharactersMax)),
-            ConfidenceThreshold = read.ConfidenceThreshold is { } t && ConfidenceThreshold is { } v && Math.Abs(t - (double)v) > 0.0001 ? (double)v : null,
+            ConfidenceThreshold = read.ConfidenceThreshold is { } t && ThresholdPercent is { } v && Math.Abs(t - (v / 100.0)) > 0.0001 ? v / 100.0 : null,
         };
         var anyRecognition = recognition != new RecognitionSettings();
         var areas = Rotated || SameAreas(_areas, _readAreas.Where(a => a.Id == 1 || ReadArea2Active).ToList()) ? null : _areas.Select(ToAlpv).ToList();
@@ -321,12 +350,7 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
         PlateWidthMax = r.PlateWidthMax;
         CharactersMin = r.CharactersMin;
         CharactersMax = r.CharactersMax;
-        ConfidenceThreshold = r.ConfidenceThreshold is { } t ? (decimal)t : null;
-        EventsOn = read.Events.AllOn;
-        EventsText = read.Events.AllOn ? PageTexts.EventsOn : PageTexts.EventsWillTurnOn;
-        LastReadText = read.LastRead is { } last
-            ? TimeZoneInfo.ConvertTime(last, _page.Time.LocalTimeZone).ToString("d MMM yyyy HH:mm:ss", CultureInfo.CurrentCulture)
-            : PageTexts.NoReadYet;
+        ThresholdText = r.ConfidenceThreshold is { } t ? PercentOf(t) : string.Empty;
         TagChoices.Set(_page.Tags.All.Select(t => new CheckChoice(t.Id, t.Name)), false, read.AllowedTags.Cast<object?>());
         OnPropertyChanged(nameof(HasRegion));
         OnPropertyChanged(nameof(HasCameraLocation));
@@ -353,6 +377,17 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
         {
             var error = await GuardedRun.RunAsync(async () =>
             {
+                // A new name first (the plugin's records, audited, the device in OADM keeps its own): a refusal shows below Name.
+                if (!string.Equals(Name.Trim(), Camera.Camera, StringComparison.Ordinal))
+                {
+                    var renamed = await _page.Client.CallAsync<RenameCameraReply>(LicensePlatesMethods.RenameCamera, new RenameCameraRequest(Camera.DeviceId, Name.Trim())).ConfigureAwait(true);
+                    if (renamed.Error is { } nameError)
+                    {
+                        Validation.SetServerError(nameof(Name), nameError);
+                        return;
+                    }
+                }
+
                 await _page.Client.CallAsync<TasksReply>(LicensePlatesMethods.SaveSetup, ToRequest()).ConfigureAwait(true);
                 CloseRequested?.Invoke(this, true);
             }).ConfigureAwait(true);

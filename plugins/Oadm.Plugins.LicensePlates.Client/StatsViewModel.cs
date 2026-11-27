@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -13,6 +14,7 @@ namespace Oadm.Plugins.LicensePlates.Client;
 public enum StatsRange
 {
     Today,
+    Last24Hours,
     Last7Days,
     Last30Days,
 }
@@ -23,48 +25,25 @@ public sealed record StatsRangeChoice(StatsRange Range, string Name)
     public override string ToString() => Name;
 }
 
-/// <summary>One camera's row of the Stats tab (sorted by any column).</summary>
-public sealed record CameraStatsRow(CameraStats Stats, string LastReadText)
-{
-    public string Camera => Stats.Camera;
-
-    public int Reads => Stats.Reads;
-
-    public string ReadsText => Stats.Reads.ToString("N0", CultureInfo.CurrentCulture);
-
-    public double AllowedShare => Stats.AllowedShare;
-
-    public string AllowedText => PageTexts.Percent(Stats.AllowedShare);
-
-    public double AverageConfidence => Stats.AverageConfidence;
-
-    public string AverageConfidenceText => Math.Round(Stats.AverageConfidence).ToString("0", CultureInfo.CurrentCulture);
-
-    public double LowShare => Stats.LowShare;
-
-    public string LowText => PageTexts.Percent(Stats.LowShare);
-
-    public double Below75Share => Stats.Below75Share;
-
-    public string Below75Text => PageTexts.Percent(Stats.Below75Share);
-
-    /// <summary>The average below 75: the warning colour; below 60: the error colour (the Log's thresholds).</summary>
-    public bool IsLowConfidence => Stats.AverageConfidence is >= ConfidenceLevels.Error and < ConfidenceLevels.Warning;
-
-    public bool IsVeryLowConfidence => Stats.AverageConfidence < ConfidenceLevels.Error;
-
-    public DateTimeOffset LastReadSortKey => Stats.LastRead ?? DateTimeOffset.MinValue;
-}
-
 /// <summary>
-/// The Stats tab (docs/spec/license-plate-center.md "Stats"): for the page's camera choice and Today, Last 7 days or Last 30
-/// days, counted on the server from the log's count tables: the reads by result, the reads per hour of the
-/// day (one bar per hour; over several days the sum of each hour) and the cameras.
+/// The Stats tab (docs/spec/license-plate-center.md "Stats", decisions 2026-11-27), like the dashboard installers know from
+/// their plate systems: four cards (Last hour, Last 24 hours, Last 7 days, Total), the plate and the vehicle confidence per
+/// camera (one bar per camera, coloured by the Log's thresholds, sideways when many), the reads and the confidence over
+/// time (a Total line and a line per camera; Total and the 10 busiest cameras shown at first, the others in the legend).
+/// Everything is counted on the server; the client only builds the bars and lines.
 /// </summary>
 public sealed partial class StatsViewModel : ObservableObject
 {
+    /// <summary>The busiest cameras whose lines show at first; the others are in the legend, off.</summary>
+    public const int ShownCameras = 10;
+
+    /// <summary>The legend key of the Total line.</summary>
+    public const string TotalKey = "total";
+
     private readonly LicensePlatesViewModel _page;
+    private StatsReply? _reply;
     private int _version;
+    private bool _applying;
 
     internal StatsViewModel(LicensePlatesViewModel page)
     {
@@ -84,35 +63,48 @@ public sealed partial class StatsViewModel : ObservableObject
     }
 
     public static IReadOnlyList<StatsRangeChoice> RangeChoices { get; } =
-        [new(StatsRange.Today, PageTexts.Today), new(StatsRange.Last7Days, PageTexts.Last7Days), new(StatsRange.Last30Days, PageTexts.Last30Days)];
+    [
+        new(StatsRange.Today, PageTexts.Today),
+        new(StatsRange.Last24Hours, PageTexts.Last24Hours),
+        new(StatsRange.Last7Days, PageTexts.Last7Days),
+        new(StatsRange.Last30Days, PageTexts.Last30Days),
+    ];
 
     [ObservableProperty] public partial StatsRangeChoice SelectedRange { get; set; }
 
     public string CameraChoiceText => _page.CameraChoice.ButtonText;
 
+    [ObservableProperty] public partial string LastHourText { get; private set; } = "0";
+
+    [ObservableProperty] public partial string Last24HoursText { get; private set; } = "0";
+
+    [ObservableProperty] public partial string Last7DaysText { get; private set; } = "0";
+
     [ObservableProperty] public partial string TotalText { get; private set; } = "0";
 
-    [ObservableProperty] public partial string AllowedText { get; private set; } = "0";
+    /// <summary>"Allowed 1,204 · Not allowed 31 · Unknown 412 · Average confidence 86 %": the chosen time, above the reads chart.</summary>
+    [ObservableProperty] public partial string ResultsText { get; private set; } = string.Empty;
 
-    [ObservableProperty] public partial string NotAllowedText { get; private set; } = "0";
+    /// <summary>One bar per camera: its average plate confidence; below 75 the warning colour, below 60 the error colour.</summary>
+    [ObservableProperty] public partial IReadOnlyList<ChartBar> PlateBars { get; private set; } = [];
 
-    [ObservableProperty] public partial string UnknownText { get; private set; } = "0";
+    /// <summary>The same for the vehicle confidence; a camera without one has no bar.</summary>
+    [ObservableProperty] public partial IReadOnlyList<ChartBar> VehicleBars { get; private set; } = [];
 
-    [ObservableProperty] public partial bool HasNotAllowed { get; private set; }
+    /// <summary>Whether any chosen camera sent a vehicle confidence.</summary>
+    [ObservableProperty] public partial bool HasVehicleConfidence { get; private set; }
 
-    /// <summary>The average confidence of every read, a whole number 0 to 100.</summary>
-    [ObservableProperty] public partial string AverageConfidenceText { get; private set; } = "0";
+    /// <summary>The legend of both line charts: Total, then the cameras, busiest first.</summary>
+    public RangeObservableCollection<ChartLegendItem> Legend { get; } = [];
 
-    [ObservableProperty] public partial bool IsConfidenceWarning { get; private set; }
+    [ObservableProperty] public partial IReadOnlyList<ChartSeries> ReadSeries { get; private set; } = [];
 
-    [ObservableProperty] public partial bool IsConfidenceError { get; private set; }
+    [ObservableProperty] public partial IReadOnlyList<ChartSeries> ConfidenceSeries { get; private set; } = [];
 
-    /// <summary>The reads in the four confidence bands ("Below 60 · 4 %"), the two low ones in the error and warning colours.</summary>
-    [ObservableProperty] public partial IReadOnlyList<ChartBar> ConfidenceBars { get; private set; } = [];
+    /// <summary>The time of the first step in this computer's zone.</summary>
+    [ObservableProperty] public partial DateTimeOffset? ChartStart { get; private set; }
 
-    [ObservableProperty] public partial IReadOnlyList<ChartBar> HourBars { get; private set; } = [];
-
-    public RangeObservableCollection<CameraStatsRow> PerCamera { get; } = [];
+    [ObservableProperty] public partial TimeSpan ChartStep { get; private set; } = TimeSpan.FromHours(1);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowEmpty))]
@@ -150,16 +142,25 @@ public sealed partial class StatsViewModel : ObservableObject
     [RelayCommand]
     private void Refresh() => RequestReload();
 
-    /// <summary>The From and To of the chosen time in this computer's zone (Today from midnight).</summary>
-    public (DateTimeOffset From, DateTimeOffset To) Resolve()
+    /// <summary>
+    /// From, To and the step of the chosen time in this computer's zone: Today from midnight and Last 24 hours by the hour;
+    /// Last 7 and 30 days by the day, from midnight 6 (29) days ago.
+    /// </summary>
+    public (DateTimeOffset From, DateTimeOffset To, StatsStep Step) Resolve()
     {
         var now = _page.Time.GetLocalNow();
-        var midnight = new DateTimeOffset(now.Date, now.Offset);
+        DateTimeOffset Midnight(int daysAgo)
+        {
+            var day = now.Date.AddDays(-daysAgo);
+            return new DateTimeOffset(day, _page.Time.LocalTimeZone.GetUtcOffset(day));
+        }
+
         return SelectedRange?.Range switch
         {
-            StatsRange.Last7Days => (now.AddDays(-7), now),
-            StatsRange.Last30Days => (now.AddDays(-30), now),
-            _ => (midnight, now),
+            StatsRange.Last24Hours => (now.AddHours(-24), now, StatsStep.Hour),
+            StatsRange.Last7Days => (Midnight(6), now, StatsStep.Day),
+            StatsRange.Last30Days => (Midnight(29), now, StatsStep.Day),
+            _ => (Midnight(0), now, StatsStep.Hour),
         };
     }
 
@@ -176,13 +177,17 @@ public sealed partial class StatsViewModel : ObservableObject
         ErrorText = null;
         try
         {
-            var (from, to) = Resolve();
+            var (from, to, step) = Resolve();
             var choice = _page.CameraChoice;
+            var zone = _page.Time.LocalTimeZone;
             var request = new StatsRequest
             {
                 CameraIds = choice.Choice.Kind == DeviceChoiceKind.All ? null : [.. choice.Resolve().Select(d => d.Id)],
                 From = from,
                 To = to,
+                Step = step,
+                TimeZone = zone.Id,
+                UtcOffsetMinutes = (int)zone.GetUtcOffset(to).TotalMinutes,
             };
             StatsReply? reply = null;
             var error = await GuardedRun.RunAsync(async () =>
@@ -207,68 +212,134 @@ public sealed partial class StatsViewModel : ObservableObject
 
     internal void Apply(StatsReply? reply)
     {
+        _reply = reply;
+        var totals = reply?.Totals ?? new ReadTotals(0, 0, 0, 0);
+        LastHourText = Compact(totals.LastHour);
+        Last24HoursText = Compact(totals.Last24Hours);
+        Last7DaysText = Compact(totals.Last7Days);
+        TotalText = Compact(totals.Total);
         var results = reply?.Results ?? new ResultCounts(0, 0, 0);
-        TotalText = N(results.Total);
-        AllowedText = N(results.Allowed);
-        NotAllowedText = N(results.NotAllowed);
-        UnknownText = N(results.Unknown);
-        HasNotAllowed = results.NotAllowed > 0;
-        var average = reply?.AverageConfidence ?? 0;
-        AverageConfidenceText = Math.Round(average).ToString("0", CultureInfo.CurrentCulture);
-        IsConfidenceError = results.Total > 0 && average < ConfidenceLevels.Error;
-        IsConfidenceWarning = results.Total > 0 && average is >= ConfidenceLevels.Error and < ConfidenceLevels.Warning;
-        ConfidenceBars = Bands(reply?.Confidence);
-        HasReads = results.Total > 0;
-        HourBars = Hours(reply?.PerHour ?? []);
-        PerCamera.ReplaceAll([.. (reply?.PerCamera ?? []).OrderByDescending(c => c.Reads).Select(c => new CameraStatsRow(c, LastRead(c.LastRead)))]);
+        HasReads = results.Total > 0 || totals.Total > 0;
+        ResultsText = results.Total == 0 ? string.Empty : string.Join(" · ",
+            $"{LicensePlateTexts.Allowed} {N(results.Allowed)}",
+            $"{LicensePlateTexts.NotAllowed} {N(results.NotAllowed)}",
+            $"{LicensePlateTexts.Unknown} {N(results.Unknown)}",
+            $"{PageTexts.AverageConfidence} {Math.Round(reply!.AverageConfidence).ToString("0", CultureInfo.CurrentCulture)} %");
+
+        var cameras = reply?.Cameras ?? [];
+        var byName = cameras.OrderBy(c => c.Camera, StringComparer.CurrentCultureIgnoreCase).ToList();
+        PlateBars = [.. byName.Select(c => Bar(c, c.Confidence))];
+        VehicleBars = [.. byName.Select(c => Bar(c, c.VehicleConfidence))];
+        HasVehicleConfidence = cameras.Any(c => c.VehicleConfidence is not null);
+
+        ChartStep = reply?.Step == StatsStep.Day ? TimeSpan.FromDays(1) : TimeSpan.FromHours(1);
+        ChartStart = reply is null ? null : TimeZoneInfo.ConvertTime(reply.Start, _page.Time.LocalTimeZone);
+        BuildLegend(cameras);
+        BuildSeries();
     }
 
-    /// <summary>24 bars "00" to "23": the reads of each hour of the day in this computer's zone.</summary>
-    private IReadOnlyList<ChartBar> Hours(IReadOnlyList<HourCount> perHour)
+    /// <summary>
+    /// Total and the cameras busiest first; the first <see cref="ShownCameras"/> shown, the others off. A camera the user turned
+    /// on or off keeps that choice across reloads while it stays in the list.
+    /// </summary>
+    private void BuildLegend(IReadOnlyList<CameraSeries> cameras)
     {
-        if (perHour.Count == 0)
+        var before = Legend.ToDictionary(i => i.Key, i => i.IsShown, StringComparer.Ordinal);
+        foreach (var item in Legend)
         {
-            return [];
+            item.PropertyChanged -= OnLegendChanged;
         }
 
-        var sums = new int[24];
-        foreach (var hour in perHour)
+        var items = new List<ChartLegendItem>(cameras.Count + 1);
+        if (cameras.Count > 0)
         {
-            sums[TimeZoneInfo.ConvertTime(hour.Hour, _page.Time.LocalTimeZone).Hour] += hour.Reads;
+            items.Add(new ChartLegendItem(TotalKey, PageTexts.Total, ChartColor.Strong, N(cameras.Sum(c => c.Reads))) { IsShown = before.GetValueOrDefault(TotalKey, true) });
         }
 
-        return [.. sums.Select((reads, hour) => new ChartBar(hour.ToString("00", CultureInfo.InvariantCulture), reads))];
+        for (var i = 0; i < cameras.Count; i++)
+        {
+            var key = cameras[i].CameraId.ToString("D");
+            items.Add(new ChartLegendItem(key, cameras[i].Camera, ChartPalette.Of(i), N(cameras[i].Reads))
+            {
+                IsShown = before.TryGetValue(key, out var shown) ? shown : i < ShownCameras,
+            });
+        }
+
+        foreach (var item in items)
+        {
+            item.PropertyChanged += OnLegendChanged;
+        }
+
+        Legend.ReplaceAll(items);
     }
 
-    private string LastRead(DateTimeOffset? time)
+    private void OnLegendChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (time is not { } t)
+        if (e.PropertyName == nameof(ChartLegendItem.IsShown) && !_applying)
         {
-            return string.Empty;
+            BuildSeries();
         }
-
-        var local = TimeZoneInfo.ConvertTime(t, _page.Time.LocalTimeZone);
-        var today = _page.Time.GetLocalNow().Date;
-        return local.ToString(local.Date == today ? "HH:mm" : "d MMM HH:mm", CultureInfo.CurrentCulture);
     }
 
-    /// <summary>Four bars: below 60 (error), 60 to 74 (warning), 75 to 89 and 90 and above; the label says the share.</summary>
-    private static IReadOnlyList<ChartBar> Bands(ConfidenceBands? bands)
+    /// <summary>The lines of the shown legend items: the reads per step and the average confidence per step (no reads: a gap).</summary>
+    private void BuildSeries()
     {
-        if (bands is not { Total: > 0 } b)
+        _applying = true;
+        try
         {
-            return [];
-        }
+            var reply = _reply;
+            if (reply is null || Legend.Count == 0)
+            {
+                ReadSeries = [];
+                ConfidenceSeries = [];
+                return;
+            }
 
-        string Label(string name, int count) => name + " · " + PageTexts.Percent((double)count / b.Total);
-        return
-        [
-            new ChartBar(Label(PageTexts.ShareLow, b.Below60), b.Below60, ChartColor.Error),
-            new ChartBar(Label(PageTexts.From60To74, b.From60To74), b.From60To74, ChartColor.Warning),
-            new ChartBar(Label(PageTexts.From75To89, b.From75To89), b.From75To89),
-            new ChartBar(Label(PageTexts.From90, b.From90), b.From90),
-        ];
+            var cameras = reply.Cameras.ToDictionary(c => c.CameraId.ToString("D"), StringComparer.Ordinal);
+            var reads = new List<ChartSeries>();
+            var confidence = new List<ChartSeries>();
+            foreach (var item in Legend.Where(i => i.IsShown))
+            {
+                var (perStep, average) = item.Key == TotalKey
+                    ? (reply.TotalReads, reply.TotalConfidence)
+                    : cameras.TryGetValue(item.Key, out var c) ? (c.ReadsPerStep, c.ConfidencePerStep) : ([], []);
+                reads.Add(new ChartSeries(item.Name, [.. perStep.Select(v => (double)v)], item.Color));
+                confidence.Add(new ChartSeries(item.Name, [.. average.Select(v => v ?? double.NaN)], item.Color));
+            }
+
+            ReadSeries = reads;
+            ConfidenceSeries = confidence;
+        }
+        finally
+        {
+            _applying = false;
+        }
     }
 
-    private static string N(int value) => value.ToString("N0", CultureInfo.CurrentCulture);
+    /// <summary>A camera's bar: the average or no bar (NaN), the Log's colours, the name, the average and the reads on hover.</summary>
+    private static ChartBar Bar(CameraSeries camera, double? average) =>
+        new(camera.Camera, average ?? double.NaN, average switch
+        {
+            < ConfidenceLevels.Error => ChartColor.Error,
+            < ConfidenceLevels.Warning => ChartColor.Warning,
+            _ => ChartColor.Primary,
+        })
+        {
+            Details = [LicensePlateTexts.Reads(camera.Reads)],
+        };
+
+    /// <summary>"812", "4,812", "49.6k", "123k", "4.4M".</summary>
+    public static string Compact(long value)
+    {
+        var culture = CultureInfo.CurrentCulture;
+        return value switch
+        {
+            < 10_000 => value.ToString("N0", culture),
+            < 100_000 => (Math.Floor(value / 100.0) / 10).ToString("0.#", culture) + "k",
+            < 1_000_000 => Math.Floor(value / 1000.0).ToString("0", culture) + "k",
+            _ => (Math.Floor(value / 100_000.0) / 10).ToString("0.#", culture) + "M",
+        };
+    }
+
+    private static string N(long value) => value.ToString("N0", CultureInfo.CurrentCulture);
 }

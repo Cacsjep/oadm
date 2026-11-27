@@ -34,7 +34,7 @@
         <DataGrid x:Name="CameraGrid" Classes="wrapRows" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Extended"
                   CanUserSortColumns="True" CanUserReorderColumns="False">
           <DataGrid.Columns>
-            <DataGridTextColumn Header="{x:Static vm:PageTexts.Camera}" Width="170" Binding="{Binding Camera}" x:DataType="vm:CameraRowViewModel" />
+            <DataGridTextColumn Header="{x:Static vm:PageTexts.Name}" Width="170" Binding="{Binding Camera}" x:DataType="vm:CameraRowViewModel" />
             <DataGridTextColumn Header="{x:Static vm:PageTexts.Address}" Width="130" Binding="{Binding Address}" x:DataType="vm:CameraRowViewModel" />
             <DataGridTextColumn Header="{x:Static vm:PageTexts.Site}" Width="130" Binding="{Binding Site}" x:DataType="vm:CameraRowViewModel" />
             <DataGridTextColumn Header="{x:Static vm:PageTexts.Alpv}" Width="90" Binding="{Binding AlpvVersion}" x:DataType="vm:CameraRowViewModel" />
