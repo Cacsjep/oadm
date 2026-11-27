@@ -512,6 +512,26 @@ event of the event rules, plus "<Trigger>: connection lost".
 - MCP ([mcp.md](mcp.md)): the read-only tools `oadm_device_triggers_list` and `oadm_device_triggers_devices`.
 - Page actions as tools (decision 2026-11-15, [mcp.md](mcp.md) "Page actions"), with the page's rights: `oadm_device_triggers_events_read` and `_events` (the editor's read), `_save`, `_set_enabled`, `_copy`, `_delete` (changes).
 
+## License Plate Center (core plugin)
+
+`plugins/Oadm.Plugins.LicensePlates` (+ `.Client`, not built yet), id `oadm.license-plates`, rail page **License Plate
+Center** (group Integrations, icon `car`), free, **off by default**. One plate list with plate tags for every camera with
+AXIS License Plate Verifier 3; the server decides every read; spec [license-plate-center.md](license-plate-center.md),
+details in the plugin's README.
+
+- Rules that must hold: the cameras' own lists are never read or written; one permanent event connection per camera
+  (the shared `plugins/Shared/EventStream` of Device triggers); an exact match fires at once, other reads wait for the best
+  one (Lost or the wait, 60 s drop); only plates allowed at that camera at that moment count; ALPV 3 only, read fresh
+  before every write; only fields the camera returned are written, only changed ones, read back; first sensor only;
+  ALPV's logins and passwords are dropped while its answer is parsed; the log lives in a folder an Administrator chooses
+  (none by default), outside every backup, with retention in days and a size limit.
+- Device groups: one plate list and tag set for the server ("Manage plates"); cameras, reads, pictures, stats and events
+  by the caller's devices, fail closed; the settings are for Administrators with all devices.
+- Tasks (page tasks, no menu entry): Set up License Plate Verifier, Use recommended image settings.
+- Events: Plate allowed, Plate not allowed, Unknown plate, Plate read, Camera problem, Any camera problem.
+- MCP ([mcp.md](mcp.md)): `oadm_license_plates_plates`, `_tags`, `_cameras`, `_log`, `_stats` (reads) and `_plate_save`,
+  `_plates_delete`, `_tag_save`, `_tag_delete` (changes).
+
 ## Action Rule Editor (core plugin)
 
 `plugins/Oadm.Plugins.ActionRules` (+ `.Client`), id `oadm.action-rules`, rail page **Action Rule Editor** (group

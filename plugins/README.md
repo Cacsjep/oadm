@@ -171,6 +171,7 @@ plugin that links it.
 | `ContextCall.cs` | `ContextCall` (the call of the old `InvokeAsync` overload, for in-process work without a user) and `OwnerScope` (objects kept per device group: `Sees`, `ForSave`, `HasNoDevices`, `LeftOwnerAsync`) |
 | `ViewerScopes.cs` | `ViewedSet`: the devices a user or a device scope sees, as sets, to filter rows of server-wide state (PKI, EST, NTP, DHCP) |
 | `ActionEngine/` | The devices' own action rules, recipients and schedules over SOAP (`SoapActionEngine`, namespace `Oadm.Plugins.ActionEngine`) |
+| `EventStream/` | The permanent event connection of Device triggers and License Plate Center: the stream JSON (`EventStreamJson.ConfigureTopics`, `Parse`), `EventStreamSocket` (stream path and API, keep-alive, reconnect waits, devices not contacted, the session's text, one whole message); namespace `Oadm.Plugins.EventStream` |
 | `DeviceEvents/` | A device's event list (`EventDeclarations`, `DeviceEvent`); the client part's filter rows in `DeviceEvents/Client` |
 | `DeviceClock/` | `CameraClock`: the clock check before a certificate goes onto a camera |
 | `LensFocus.cs` | The autofocus of every lens of a camera (Optics Control): the Autofocus task and Provisioning's Autofocus node |

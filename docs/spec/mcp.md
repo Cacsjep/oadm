@@ -317,6 +317,11 @@ The page reads of the bundled plugins (read only, the page's own rights and devi
 - `oadm_device_triggers_list(search, problems)`, `oadm_device_triggers_devices(trigger_id, connection)` (Device triggers,
   "show"): the triggers of the caller's scope with their counts, and one trigger's devices with how OADM receives the
   event from each (the page's Get, so another scope's trigger answers like an unknown one).
+- `oadm_license_plates_plates(search, tag)`, `oadm_license_plates_tags`, `oadm_license_plates_cameras`,
+  `oadm_license_plates_log(from, to, result, search, camera_id)`, `oadm_license_plates_stats(from, to, camera_ids)` (License
+  Plate Center: plates and tags "show", the log and stats "View plate log"): the plate list, the plate tags with their
+  use, the caller's cameras with status, the reads of the caller's cameras newest first (`more` instead of a total, never
+  a picture), the counts of at most 31 days.
 - `oadm_ocr_readers(search, problems)`, `oadm_ocr_reads(reader_id)` (Text recognition, "show"): the readers with the
   last text and problem, and the recent reads of one as text (at most 50, never a cut-out or picture).
 - `oadm_vision_pipelines(search, problems)` (Vision Center, "show"): the pipelines with mode, rate, problem and live
@@ -423,6 +428,8 @@ changes (`will_change`, `unit`) for the Assistant's card. Bundled:
   `class_list_save`, `model_upload` (a `file_id` of the caller's uploads, through the page's upload steps and model check:
   standard operators only, no external data, the limits; audited like the page), `model_update` (name and classes; the page
   replaces no model file), `model_delete` (refused while pipelines use it), `use_gpu`. Text recognition: `use_gpu`.
+- License Plate Center: `plate_save` (tags by name, times in the server's zone), `plates_delete`, `tag_save`,
+  `tag_delete` (takes the tag off its plates and cameras), with the right Manage plates.
 - Load test: `plan`, `start` (the page's limits: 1,000 streams, batches of 200; the exposure always goes back), `cancel`,
   `check_delete`. DHCP server: `static_lease_save`, `static_lease_delete`, `lease_make_static`, `lease_release`,
   `settings_save` (on/off, interface, range, automatic add; the plan warns that a DHCP server hands out addresses to every

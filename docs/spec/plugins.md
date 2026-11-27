@@ -607,8 +607,8 @@ box back with the error below the list (`PluginsViewModel.SwitchAsync`).
 
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
   **Off by default: Action Rule Editor, Application management, Dashboards, Device triggers, Edge Recording Export, Edge
-  storage, Hardening scan, Image Health Dashboard, Load test, I/O Monitor, Live View, Metadata Monitor, Snapshot report and VPN
-  Fleet**,
+  storage, Hardening scan, Image Health Dashboard, License Plate Center, Load test, I/O Monitor, Live View, Metadata Monitor, Snapshot
+  report and VPN Fleet**,
   the optional plugins Text recognition and Vision Center, and inside PKI the EST and 802.1X servers (their
   own Turn on, below). The administrator's choices are the server setting `Plugins.Enabled` (JSON object package id ->
   on; packages without a choice use their default), applied before the core plugins start

@@ -76,11 +76,14 @@ plugins/               folders, build and tests of a bundled plugin: plugins/REA
   Oadm.Plugins.Overlays(.Client)/ Text overlays (docs/spec/overlays.md): the text overlays of many cameras, one task each
   Oadm.Plugins.Schedules(.Client)/ Scheduled tasks (docs/spec/schedules.md): devices, time and actions; the action nodes are
                                 Provisioning's sources compiled in
+  Oadm.Plugins.LicensePlates(.Client)/ License Plate Center (docs/spec/license-plate-center.md): one plate list with tags
+                                for every camera with ALPV 3; the log in its own SQLite store (Log/), the ALPV calls (Alpv/)
   Oadm.Plugins.VpnFleet(.Client)/ community plugin VPN Fleet (docs/spec/vpn-fleet.md); GitHubHttp.cs is its only HTTP
                                 outside the host: the apps' releases on github.com
   Shared/                       source linked into several plugins (CachedApiCheck, ContextCall, DeviceSweep, SweepRows,
                                 ViewerScopes, ActionEngine: the devices' action rules over SOAP, DeviceEvents: a
-                                device's event list, DeviceClock: the clock check before a certificate, LensFocus: the autofocus of every lens, DeviceId: the
+                                device's event list, EventStream: the permanent event connection of Device triggers and
+                                License Plate Center, DeviceClock: the clock check before a certificate, LensFocus: the autofocus of every lens, DeviceId: the
                                 Axis device ID roots); Vision/ and Vision.Client/ shared by the vision add-ons (frames,
                                 engine, previews, stats; the picture overlay, the Stream settings dialog)
 tests/
@@ -250,6 +253,11 @@ must never break.
 - **[Audio](docs/spec/audio.md)** (spec, not built; core plugin `oadm.audio`, free, off by default): clips, sound,
   display, siren and light of many devices; every change a task, hazardous settings confirmed, tests ask first; no live
   audio, no multicast, presets via the Action Rule Editor.
+- **[License Plate Center](docs/spec/license-plate-center.md)** (server built, client not built; core plugin `oadm.license-plates`,
+  free, off by default): one plate list with tags for every camera with AXIS License Plate Verifier 3; the server
+  decides per read (Allowed, Not allowed, Unknown plate) over its own event connection per camera, an exact match fires
+  at once, other reads wait for the best one; the cameras' own lists and ALPV's access control are never touched; a live
+  log with retention in its own folder, never in a backup; first sensor only; writes only fields the camera has, as tasks.
 - **[Removing plugins](docs/spec/plugin-removal.md)** (built): what a release ships is the truth; a generated
   manifest of the bundled plugins, folders not in it skipped and deleted, all state of an id no longer shipped deleted
   once (also after a restore); never a retired list, a rename is a new id; turned off, failed, data-folder plugins and
