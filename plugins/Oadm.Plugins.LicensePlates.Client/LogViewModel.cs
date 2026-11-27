@@ -165,6 +165,7 @@ public sealed partial class LogViewModel : ObservableObject
         SelectedMake = AnyChoice;
         SelectedModel = AnyChoice;
         page.ListsChanged += (_, _) => OnListsChanged();
+        Filters = BuildFilters();
         Decode = bytes =>
         {
             using var stream = new MemoryStream(bytes);
@@ -378,6 +379,11 @@ public sealed partial class LogViewModel : ObservableObject
     /// <summary>Reads the newest page again (a filter, the search or the camera choice changed).</summary>
     public void Reload()
     {
+        foreach (var kind in Filters?.Kinds ?? [])
+        {
+            kind.Refresh();
+        }
+
         OnPropertyChanged(nameof(HasFilters));
         OnPropertyChanged(nameof(EmptyText));
         ClearFiltersCommand.NotifyCanExecuteChanged();
@@ -616,7 +622,6 @@ public sealed partial class LogViewModel : ObservableObject
             SelectedVehicleColor = AnyChoice;
             SelectedMake = AnyChoice;
             SelectedModel = AnyChoice;
-            SearchText = string.Empty;
         }
         finally
         {
@@ -907,4 +912,83 @@ public sealed partial class LogViewModel : ObservableObject
     }
 
     private static string? Text(string value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>The filters behind the Filter button and their chips (decision 2026-11-27): Time, Result, Tags, Area, Direction, Country, Vehicle.</summary>
+    public FilterSet Filters { get; }
+
+    private FilterSet BuildFilters()
+    {
+        var time = new FilterKind(PageTexts.Time, Range, () => !Range.IsAll, () => Range.Text, Range.Reset);
+        time.Opening += (_, _) => Range.OnOpening();
+        Range.Changed += (_, _) => time.RequestClose(); // a preset or Apply closes the editor
+        var area = new ChoiceFilter(() => AreaChoices, () => SelectedArea, v => SelectedArea = v as FilterChoice<int?>);
+        var direction = new ChoiceFilter(() => DirectionChoices, () => SelectedDirection, v => SelectedDirection = v as FilterChoice<PlateDirection?>);
+        var country = new ChoiceFilter(() => CountryChoices, () => SelectedCountry, v => SelectedCountry = v as CodeChoice);
+        var kinds = new List<FilterKind>
+        {
+            time,
+            new(PageTexts.Result, ResultChoices, () => !ResultChoices.All.Chosen, () => PageTexts.Result + ": " + ResultChoices.Summary, () => ResultChoices.Set(ResultChoices.Items, true, [])),
+            new(PageTexts.Tags, TagChoices, () => !TagChoices.All.Chosen, () => PageTexts.Tags + ": " + TagChoices.Summary, () => TagChoices.Set(TagChoices.Items, true, [])),
+            Chosen(PageTexts.Area, area, () => SelectedArea?.Value is not null, () => SelectedArea?.Name, () => SelectedArea = AreaChoices[0]),
+            Chosen(PageTexts.Direction, direction, () => SelectedDirection?.Value is not null, () => PageTexts.Direction + ": " + SelectedDirection?.Name, () => SelectedDirection = DirectionChoices[0]),
+            Chosen(PageTexts.Country, country, () => SelectedCountry?.Value is not null, () => PageTexts.Country + ": " + SelectedCountry?.Name, () => SelectedCountry = AllCountries),
+        };
+        var vehicle = new FilterKind(PageTexts.Vehicle, new VehicleFilter(this), () => VehicleText != PageTexts.Vehicle, () => VehicleText, () =>
+        {
+            SelectedView = ViewChoices[0];
+            SelectedVehicleType = AnyChoice;
+            SelectedVehicleColor = AnyChoice;
+            SelectedMake = AnyChoice;
+            SelectedModel = AnyChoice;
+        });
+        vehicle.Opening += (_, _) => EnsureMakes();
+        kinds.Add(vehicle);
+        return new FilterSet(kinds, ClearFilters);
+
+        static FilterKind Chosen(string name, ChoiceFilter editor, Func<bool> isSet, Func<string?> text, Action clear)
+        {
+            var kind = new FilterKind(name, editor, isSet, () => text() ?? name, clear);
+            editor.Chosen += (_, _) => kind.RequestClose(); // a choice applies at once
+            kind.Opening += (_, _) => editor.Refresh(); // the countries arrive with ALPV's lists
+            return kind;
+        }
+    }
+}
+
+/// <summary>The editor of a filter with one choice (Area, Direction, Country): the choices and the chosen one.</summary>
+public sealed class ChoiceFilter(Func<IEnumerable<object>> choices, Func<object?> get, Action<object?> set) : ObservableObject
+{
+    public IReadOnlyList<object> Choices => [.. choices()];
+
+    public object? Selected
+    {
+        get => get();
+        set
+        {
+            if (Equals(value, get()) || value is null)
+            {
+                return;
+            }
+
+            set(value);
+            OnPropertyChanged();
+            Chosen?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>The user picked a choice.</summary>
+    public event EventHandler? Chosen;
+
+    /// <summary>The choices and the chosen one again (the editor opens).</summary>
+    public void Refresh()
+    {
+        OnPropertyChanged(nameof(Choices));
+        OnPropertyChanged(nameof(Selected));
+    }
+}
+
+/// <summary>The editor of the Vehicle filter: View, Type, Colour, Make and Model of the log.</summary>
+public sealed class VehicleFilter(LogViewModel log)
+{
+    public LogViewModel Log { get; } = log;
 }

@@ -4,9 +4,57 @@
              xmlns:vm="using:Oadm.Plugins.LicensePlates.Client"
              x:Class="Oadm.Plugins.LicensePlates.Client.LogView"
              x:DataType="vm:LogViewModel">
-  <!-- The Log tab (docs/spec/license-plate-center.md "Log"): the toolbar (the camera choice, Pause, Add to plates, Export; the
-       search right), the filter row like ALPV's Search with Clear filters, the log's problem or the export's notice, the
-       virtualized grid (newest first, older pages as it scrolls) and the footer (Live or Paused, reads today, the log's size). -->
+  <!-- The Log tab (docs/spec/license-plate-center.md "Log"): the toolbar (the camera choice, Pause, Add to plates, Export,
+       Filter; the search right), the row of filter chips (only while a filter is set; Clear filters last), the log's problem
+       or the export's notice, the virtualized grid (newest first, older pages as it scrolls) and the footer (Live or Paused,
+       reads today, the log's size). -->
+  <UserControl.DataTemplates>
+    <!-- The editors of the filter chips (ui:FilterBar shows them in a flyout). -->
+    <DataTemplate DataType="ui:DateRangeChoice">
+      <ui:DateRangePanel />
+    </DataTemplate>
+    <DataTemplate DataType="ui:CheckChoiceList">
+      <ScrollViewer MaxHeight="360" HorizontalScrollBarVisibility="Disabled">
+        <ItemsControl ItemsSource="{Binding Entries}" MinWidth="220">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="ui:CheckChoice">
+              <CheckBox Content="{Binding Name}" IsChecked="{Binding Chosen}" Margin="0,2" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </DataTemplate>
+    <DataTemplate DataType="vm:ChoiceFilter">
+      <ListBox ItemsSource="{Binding Choices}" SelectedItem="{Binding Selected}" SelectionMode="Single" MaxHeight="360" MinWidth="220"
+               IsTextSearchEnabled="True" />
+    </DataTemplate>
+    <DataTemplate DataType="vm:VehicleFilter">
+      <ContentControl DataContext="{Binding Log}" x:DataType="vm:LogViewModel">
+        <StackPanel x:Name="VehicleForm" Classes="form" Width="320">
+          <ui:FormField Label="{x:Static vm:PageTexts.View}" LabelWidth="70">
+            <ComboBox ItemsSource="{x:Static vm:LogViewModel.ViewChoices}" SelectedItem="{Binding SelectedView}" HorizontalAlignment="Stretch" />
+          </ui:FormField>
+          <ui:FormField Label="{x:Static vm:PageTexts.Type}" LabelWidth="70">
+            <ComboBox x:Name="VehicleTypeFilter" ItemsSource="{Binding VehicleTypeChoices}" SelectedItem="{Binding SelectedVehicleType}" HorizontalAlignment="Stretch" />
+          </ui:FormField>
+          <ui:FormField Label="{x:Static vm:PageTexts.Colour}" LabelWidth="70">
+            <ComboBox x:Name="VehicleColorFilter" ItemsSource="{Binding VehicleColorChoices}" SelectedItem="{Binding SelectedVehicleColor}" HorizontalAlignment="Stretch" />
+          </ui:FormField>
+          <ui:FormField Label="{x:Static vm:PageTexts.Make}" LabelWidth="70" Error="{Binding NamesProblem}">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <ComboBox x:Name="MakeFilter" ItemsSource="{Binding MakeChoices}" SelectedItem="{Binding SelectedMake}" IsTextSearchEnabled="True" MaxDropDownHeight="360"
+                        HorizontalAlignment="Stretch" />
+              <ui:ProgressRing Grid.Column="1" Width="16" Height="16" IsVisible="{Binding IsLoadingNames}" ToolTip.Tip="{x:Static vm:PageTexts.ReadingMakes}" />
+            </Grid>
+          </ui:FormField>
+          <ui:FormField Label="{x:Static vm:PageTexts.Model}" LabelWidth="70">
+            <ComboBox x:Name="ModelFilter" ItemsSource="{Binding ModelChoices}" SelectedItem="{Binding SelectedModel}" IsEnabled="{Binding CanChooseModel}"
+                      IsTextSearchEnabled="True" MaxDropDownHeight="360" HorizontalAlignment="Stretch" />
+          </ui:FormField>
+        </StackPanel>
+      </ContentControl>
+    </DataTemplate>
+  </UserControl.DataTemplates>
   <Border Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="10">
       <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="16">
@@ -17,51 +65,14 @@
           <ui:ToolbarButton x:Name="AddToPlatesButton" IconKey="add" Text="{x:Static vm:PageTexts.AddToPlates}" Command="{Binding AddToPlatesCommand}"
                             IsVisible="{Binding MayAddToPlates}" ToolTip.Tip="{x:Static vm:PageTexts.AddToPlatesTip}" ToolTip.ShowOnDisabled="True" />
           <ui:ExportButton x:Name="ExportButton" CsvCommand="{Binding ExportCsvCommand}" PdfCommand="{Binding ExportPdfCommand}" IsVisible="{Binding MayExport}" />
+          <ui:FilterButton x:Name="FilterButton" Filters="{Binding Filters}" />
         </ui:ToolbarOverflowPanel>
         <ui:SearchBox Grid.Column="1" Width="240" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="{x:Static vm:PageTexts.Search}" />
       </Grid>
 
-      <!-- The filters like ALPV's Search: time, result, tags, area, direction, country, vehicle; Clear filters last. -->
-      <WrapPanel x:Name="FilterRow" Grid.Row="1" Orientation="Horizontal" ItemSpacing="8" LineSpacing="8">
-        <ui:DateRangeButton x:Name="RangeButton" Range="{Binding Range}" VerticalAlignment="Center" />
-        <ComboBox x:Name="ResultFilter" Classes="multiSelect" Width="170" ItemsSource="{Binding ResultChoices.Entries}" PlaceholderText="{Binding ResultChoices.Summary}"
-                  HorizontalAlignment="Left" VerticalAlignment="Center" />
-        <ComboBox x:Name="TagFilter" Classes="multiSelect" Width="170" ItemsSource="{Binding TagChoices.Entries}" PlaceholderText="{Binding TagChoices.Summary}"
-                  HorizontalAlignment="Left" VerticalAlignment="Center" MaxDropDownHeight="360" />
-        <ComboBox x:Name="AreaFilter" Width="130" ItemsSource="{x:Static vm:LogViewModel.AreaChoices}" SelectedItem="{Binding SelectedArea}" VerticalAlignment="Center" />
-        <ComboBox x:Name="DirectionFilter" Width="150" ItemsSource="{x:Static vm:LogViewModel.DirectionChoices}" SelectedItem="{Binding SelectedDirection}" VerticalAlignment="Center" />
-        <ComboBox x:Name="CountryFilter" Width="170" ItemsSource="{Binding CountryChoices}" SelectedItem="{Binding SelectedCountry}" IsTextSearchEnabled="True"
-                  MaxDropDownHeight="360" VerticalAlignment="Center" ToolTip.Tip="Type to find a country" />
-        <ui:ToolbarButton x:Name="VehicleButton" IconKey="car" Text="{Binding VehicleText}" VerticalAlignment="Center">
-          <ui:ToolbarButton.Flyout>
-            <Flyout Placement="BottomEdgeAlignedLeft">
-              <StackPanel x:Name="VehicleForm" Classes="form" Width="320">
-                <ui:FormField Label="{x:Static vm:PageTexts.View}" LabelWidth="70">
-                  <ComboBox ItemsSource="{x:Static vm:LogViewModel.ViewChoices}" SelectedItem="{Binding SelectedView}" HorizontalAlignment="Stretch" />
-                </ui:FormField>
-                <ui:FormField Label="{x:Static vm:PageTexts.Type}" LabelWidth="70">
-                  <ComboBox x:Name="VehicleTypeFilter" ItemsSource="{Binding VehicleTypeChoices}" SelectedItem="{Binding SelectedVehicleType}" HorizontalAlignment="Stretch" />
-                </ui:FormField>
-                <ui:FormField Label="{x:Static vm:PageTexts.Colour}" LabelWidth="70">
-                  <ComboBox x:Name="VehicleColorFilter" ItemsSource="{Binding VehicleColorChoices}" SelectedItem="{Binding SelectedVehicleColor}" HorizontalAlignment="Stretch" />
-                </ui:FormField>
-                <ui:FormField Label="{x:Static vm:PageTexts.Make}" LabelWidth="70" Error="{Binding NamesProblem}">
-                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                    <ComboBox x:Name="MakeFilter" ItemsSource="{Binding MakeChoices}" SelectedItem="{Binding SelectedMake}" IsTextSearchEnabled="True" MaxDropDownHeight="360"
-                              HorizontalAlignment="Stretch" />
-                    <ui:ProgressRing Grid.Column="1" Width="16" Height="16" IsVisible="{Binding IsLoadingNames}" ToolTip.Tip="{x:Static vm:PageTexts.ReadingMakes}" />
-                  </Grid>
-                </ui:FormField>
-                <ui:FormField Label="{x:Static vm:PageTexts.Model}" LabelWidth="70">
-                  <ComboBox x:Name="ModelFilter" ItemsSource="{Binding ModelChoices}" SelectedItem="{Binding SelectedModel}" IsEnabled="{Binding CanChooseModel}"
-                            IsTextSearchEnabled="True" MaxDropDownHeight="360" HorizontalAlignment="Stretch" />
-                </ui:FormField>
-              </StackPanel>
-            </Flyout>
-          </ui:ToolbarButton.Flyout>
-        </ui:ToolbarButton>
-        <ui:ToolbarButton x:Name="ClearFiltersButton" IconKey="eraser" Text="{x:Static vm:PageTexts.ClearFilters}" Command="{Binding ClearFiltersCommand}" VerticalAlignment="Center" />
-      </WrapPanel>
+
+      <!-- The filter chips: a chip per set filter (its text opens its editor, x removes it), Clear filters last. -->
+      <ui:FilterBar x:Name="FilterRow" Grid.Row="1" Filters="{Binding Filters}" />
 
       <StackPanel Grid.Row="2" Spacing="6">
         <ui:StatusChip x:Name="ProblemChip" Text="{Binding Problem}" IsWarning="True" MaxLines="2" IsVisible="{Binding HasProblem}" />

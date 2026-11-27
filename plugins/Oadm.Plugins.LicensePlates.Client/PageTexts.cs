@@ -140,6 +140,7 @@ public static class PageTexts
     // ---- Set up ----
     public const string SetUpTitle = "Set up License Plate Verifier";
     public const string Areas = "Areas";
+    public const string Area = "Area";
     public const string Area1 = "Area 1";
     public const string Area2 = "Area 2";
     public const string AddArea2 = "Add area 2";
