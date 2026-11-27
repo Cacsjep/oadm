@@ -2,6 +2,7 @@ using System.Text;
 
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -101,22 +102,28 @@ public sealed class ScreenshotTests
             chip.Editor.Hide();
             Headless.Pump();
 
-            // Choose columns open, then more columns shown (the vehicle, the view) and Tags hidden.
+            // Choose columns open; the default columns; then all 18: every column keeps its minimum and the grid scrolls sideways.
             var chooser = view.FindControl<LogView>("LogPage")!.FindControl<ColumnChooserButton>("ColumnChooser")!;
             chooser.Flyout!.ShowAt(chooser);
             Headless.Pump();
             Assert.Equal(LogColumns.All.Count, chooser.List.ItemCount);
             Headless.Capture(window, $"log-columns-open-{Suffix}.png");
             chooser.Flyout.Hide();
-            foreach (var key in new[] { LogColumns.ListEntry, LogColumns.VehicleType, LogColumns.VehicleMake, LogColumns.VehicleModel })
+            Headless.Pump();
+            Assert.Equal(LogColumns.Defaults.Count, grid.Columns.Count(c => c.IsVisible));
+            Assert.All(grid.Columns.Where(c => c.IsVisible), c => Assert.True(c.ActualWidth >= c.MinWidth - 0.5, $"{c.Tag}: {c.ActualWidth} < {c.MinWidth}"));
+            Headless.Capture(window, $"log-default-columns-{Suffix}.png");
+
+            foreach (var option in page.Log.Columns.Columns)
             {
-                page.Log.Columns.Find(key)!.IsVisible = true;
+                option.IsVisible = true;
             }
 
-            page.Log.Columns.Find(LogColumns.Tags)!.IsVisible = false;
-            page.Log.Columns.Find(LogColumns.Direction)!.IsVisible = false;
             Headless.Pump();
-            Assert.NotEmpty(VisibleTexts(grid, "Volkswagen"));
+            Assert.Equal(LogColumns.All.Count, grid.Columns.Count(c => c.IsVisible));
+            Assert.All(grid.Columns, c => Assert.True(c.ActualWidth >= c.MinWidth - 0.5, $"{c.Tag}: {c.ActualWidth} < {c.MinWidth}"));
+            Assert.True(grid.Columns.Sum(c => c.ActualWidth) > grid.Bounds.Width); // wider than the card: the grid scrolls sideways
+            Assert.Contains(grid.GetVisualDescendants().OfType<ScrollBar>(), b => b.Orientation == Avalonia.Layout.Orientation.Horizontal && b.IsEffectivelyVisible);
             Assert.Single(VisibleTexts(grid, "AXIS12**")); // the List entry of the wildcard read
             Assert.Equal("Matches AXIS12**", ToolTip.GetTip(grid.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "PlateCell" && t.Text == "AXIS1234")));
             Headless.Capture(window, $"log-extra-columns-{Suffix}.png");

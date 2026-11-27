@@ -458,7 +458,9 @@ Details the spec left open, decided while building the page; none changes a rule
   error. The request carries the chosen columns in their order (`LogExportRequest.Columns`, `LogColumns` keys; unknown
   keys dropped, none: the defaults). Times in this computer's time zone.
 - **Columns** of the Log are the shared `GridColumnLayout` of the device grid (extracted into the client SDK with
-  `GridColumnBinder` and `ColumnChooserButton`), kept under the local setting `logColumns`; Picture keeps its width.
+  `GridColumnBinder` and `ColumnChooserButton`), kept under the local setting `logColumns`; Picture keeps its width. Like
+  the device grid, every column is a star column with a minimum that fits its header and content (Picture a fixed 136 px):
+  the stars share only the room left over, and with more than fit (all 18 at 1600 px) the grid scrolls sideways.
 - **Plates** are read in pages of 5,000 (the first shows at once) and searched and filtered in memory: the plate from its
   start with spaces, dashes and dots ignored, or the name; the tag filter "All tags" or one tag. Ended means Allowed to
   before this computer's clock (the server's zone is not known to the client). A day without a time is 00:00 for Allowed
