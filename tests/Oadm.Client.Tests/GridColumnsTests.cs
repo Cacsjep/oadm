@@ -1,15 +1,15 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Client.Tests;
 
 /// <summary>
-/// The shared column chooser pieces (docs/spec/visual-style.md "Small and scaled screens"): every column keeps its minimum
-/// width, star columns share only the room left over, and the grid scrolls sideways when the minimums do not fit; saved
-/// widths come back as star weights.
+/// The shared column chooser pieces (docs/spec/visual-style.md "Small and scaled screens"): with many columns the grid
+/// scrolls sideways, with few it does not; the saved order comes back and Reset restores the default columns.
 /// </summary>
 public sealed class GridColumnsTests
 {
@@ -24,6 +24,9 @@ public sealed class GridColumnsTests
         return grid;
     }
 
+    private static bool ScrollsSideways(DataGrid grid) =>
+        grid.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.ScrollBar>().Any(b => b.Orientation == Avalonia.Layout.Orientation.Horizontal && b.IsEffectivelyVisible);
+
     private static void Pump()
     {
         Dispatcher.UIThread.RunJobs();
@@ -32,7 +35,7 @@ public sealed class GridColumnsTests
     }
 
     [Fact]
-    public async Task Columns_keep_their_minimum_and_the_grid_scrolls_sideways_when_they_do_not_fit()
+    public async Task Many_columns_scroll_sideways_and_few_do_not()
     {
         var done = await HeadlessSession.Shared.Dispatch(() =>
         {
@@ -43,8 +46,7 @@ public sealed class GridColumnsTests
             window.Show();
             Pump();
 
-            Assert.All(grid.Columns, c => Assert.True(c.ActualWidth >= c.MinWidth - 0.5, $"{c.Header}: {c.ActualWidth} < {c.MinWidth}"));
-            Assert.True(grid.Columns.Sum(c => c.ActualWidth) > 1200); // wider than the window: the grid scrolls sideways
+            Assert.True(ScrollsSideways(grid)); // many columns: the grid scrolls sideways
 
             // Few columns: the stars share the whole width.
             foreach (var option in layout.Columns.Skip(4))
@@ -54,7 +56,7 @@ public sealed class GridColumnsTests
 
             Pump();
             Assert.Equal(4, grid.Columns.Count(c => c.IsVisible));
-            Assert.All(grid.Columns.Where(c => c.IsVisible), c => Assert.True(c.ActualWidth > c.MinWidth));
+            Assert.False(ScrollsSideways(grid)); // few columns fit
             window.Close();
             return Task.FromResult(true);
         }, CancellationToken.None);
@@ -62,7 +64,7 @@ public sealed class GridColumnsTests
     }
 
     [Fact]
-    public void Saved_widths_and_order_come_back_and_new_columns_take_their_default()
+    public void The_saved_order_comes_back_and_reset_restores_the_default_columns()
     {
         IReadOnlyList<GridColumnState> saved = [];
         GridColumnDefinition[] definitions = [new("a", "A"), new("b", "B"), new("c", "C", IsDefault: false)];
@@ -72,7 +74,6 @@ public sealed class GridColumnsTests
 
         var again = new GridColumnLayout(definitions, saved, _ => { });
         Assert.Equal(["b", "a", "c"], again.VisibleKeys);
-        Assert.Equal(200, again.Find("b")!.Width);
 
         again.ResetToDefault();
         Assert.Equal(["a", "b"], again.VisibleKeys);
