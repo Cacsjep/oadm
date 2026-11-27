@@ -192,7 +192,7 @@ public sealed class LogTabTests
     }
 
     [Fact]
-    public async Task Export_sends_the_query_and_names_the_newest_10000_when_there_are_more()
+    public async Task Export_sends_the_query_and_the_columns_and_shows_no_status_after_it()
     {
         var (page, ctx, dialogs) = await Samples.OpenAsync();
         var log = page.Log;
@@ -203,7 +203,8 @@ public sealed class LogTabTests
         Assert.Equal(ExportFormat.Pdf, request.Format);
         Assert.Equal("Test/Vienna", request.TimeZone);
         Assert.Equal(60, request.UtcOffsetMinutes);
-        Assert.Equal("Saved: The newest 10,000 of 48,213 reads", log.Notice);
+        Assert.Null(log.ErrorText);
+        Assert.Null(typeof(LogViewModel).GetProperty("Notice")); // no status line after an export (decision 2026-11-27)
         Assert.Equal("Time,Camera,Plate\n", System.Text.Encoding.UTF8.GetString(dialogs.SavedBytes));
 
         ctx.Answers[LicensePlatesMethods.LogCount] = _ => Samples.Serialize(new CountReply(1_204));
@@ -212,7 +213,8 @@ public sealed class LogTabTests
         await log.ExportCsvCommand.ExecuteAsync(null);
         Assert.Equal(ExportFormat.Csv, ctx.LastPayload<LogExportRequest>(LicensePlatesMethods.ExportLog).Format);
         Assert.Equal("Last 24 hours", ctx.LastPayload<LogExportRequest>(LicensePlatesMethods.ExportLog).RangeName);
-        Assert.Equal("Saved: 1,204 reads", log.Notice);
+        Assert.Null(log.ErrorText);
+        Assert.Equal(LogColumns.Defaults, ctx.LastPayload<LogExportRequest>(LicensePlatesMethods.ExportLog).Columns); // the chosen columns, in their order
     }
 
     [Fact]

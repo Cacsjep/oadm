@@ -197,28 +197,65 @@ public sealed class LogStoreTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Stats_count_by_result_confidence_hour_and_camera()
+    public async Task Stats_count_the_cards_the_results_and_the_series_of_total_and_each_camera()
     {
         await AddAsync(
             Row(T(-5), "W1"),
-            Row(T(-4), "W1", confidence: 50),
+            Row(T(-4), "W1", confidence: 50) with { VehicleConfidence = 80 },
             Row(T(-3), "K9", ReadResult.Unknown, camera: CameraB, direction: PlateDirection.Out, confidence: 74),
             Row(T(-2), "K9", ReadResult.Unknown, camera: CameraB, confidence: 75),
-            Row(T(-1), "W2", ReadResult.NotAllowed, confidence: 60));
+            Row(T(-1), "W2", ReadResult.NotAllowed, confidence: 60) with { VehicleConfidence = 90 },
+            Row(T(-25 * 60), "OLD", confidence: 99));
 
-        var stats = await _store.StatsAsync(new StatsRequest { From = T(-60), To = T(60) }, LogScope.All, id => id == CameraA ? "gate-a" : "gate-b", CancellationToken.None);
+        var stats = await _store.StatsAsync(new StatsRequest { From = T(-60), To = T(0), Step = StatsStep.Hour }, LogScope.All,
+            id => id == CameraA ? "gate-a" : "gate-b", CancellationToken.None);
 
+        Assert.Equal(new ReadTotals(5, 5, 6, 6), stats.Totals); // the cards ignore the chosen time
         Assert.Equal(new ResultCounts(2, 1, 2), stats.Results);
-        Assert.Equal(5, stats.PerHour.Sum(h => h.Reads));
-        var a = Assert.Single(stats.PerCamera, c => c.CameraId == CameraA);
-        Assert.Equal((3, "gate-a"), (a.Reads, a.Camera));
-        Assert.Equal(0.6667, a.AllowedShare, 3);
-        Assert.Equal(0.3333, a.LowShare, 3);
-        Assert.Equal(0.6667, a.Below75Share, 3); // 50 and 60
-        var b = Assert.Single(stats.PerCamera, c => c.CameraId == CameraB);
-        Assert.Equal(0.5, b.Below75Share, 3); // 74
-        Assert.Equal(new ConfidenceBands(1, 2, 1, 1), stats.Confidence); // 50 | 60, 74 | 75 | 90
         Assert.Equal(69.8, stats.AverageConfidence, 1); // (90 + 50 + 74 + 75 + 60) / 5
+        Assert.Equal(1, stats.Steps); // 11:00 to 12:00
+        Assert.Equal([5], stats.TotalReads);
+        Assert.Equal(69.8, stats.TotalConfidence[0]!.Value, 1);
+        var a = stats.Cameras[0];
+        Assert.Equal((CameraA, "gate-a", 3), (a.CameraId, a.Camera, a.Reads));
+        Assert.Equal(66.7, a.Confidence!.Value, 1);
+        Assert.Equal(85, a.VehicleConfidence); // only the reads with one: (80 + 90) / 2
+        var b = stats.Cameras[1];
+        Assert.Equal(74.5, b.Confidence!.Value, 1);
+        Assert.Null(b.VehicleConfidence); // no vehicle detection: no value, not 0
+    }
+
+    [Fact]
+    public async Task Stats_by_the_day_begin_at_midnight_in_the_users_zone()
+    {
+        // 12:00 UTC is 13:00 in UTC+1; 23:30 UTC yesterday is already today 00:30 there.
+        await AddAsync(Row(T(-12.5 * 60), "A"), Row(T(-13.5 * 60), "B"), Row(T(-3 * 24 * 60), "C"));
+
+        var stats = await _store.StatsAsync(new StatsRequest
+        {
+            From = new DateTimeOffset(2026, 11, 21, 0, 0, 0, TimeSpan.FromHours(1)),
+            To = T(0),
+            Step = StatsStep.Day,
+            UtcOffsetMinutes = 60,
+        }, LogScope.All, _ => "gate-a", CancellationToken.None);
+
+        Assert.Equal(7, stats.Steps);
+        Assert.Equal(new DateTimeOffset(2026, 11, 21, 0, 0, 0, TimeSpan.FromHours(1)), stats.Start);
+        Assert.Equal([0, 0, 0, 1, 0, 1, 1], stats.TotalReads); // C on the 24th, B on the 26th (22:30), A today (00:30)
+        Assert.Null(stats.TotalConfidence[0]); // a day without reads has no confidence
+    }
+
+    [Fact]
+    public void Series_frames_hours_and_days()
+    {
+        var zone = StatsSeries.Zone(null, 60);
+        var (start, steps) = StatsSeries.Frame(new DateTimeOffset(2026, 11, 27, 0, 0, 0, TimeSpan.FromHours(1)), new DateTimeOffset(2026, 11, 27, 14, 5, 0, TimeSpan.FromHours(1)), StatsStep.Hour, zone);
+        Assert.Equal((new DateTimeOffset(2026, 11, 26, 23, 0, 0, TimeSpan.Zero), 15), (start, steps));
+        (start, steps) = StatsSeries.Frame(new DateTimeOffset(2026, 10, 29, 0, 0, 0, TimeSpan.FromHours(1)), new DateTimeOffset(2026, 11, 27, 14, 5, 0, TimeSpan.FromHours(1)), StatsStep.Day, zone);
+        Assert.Equal(30, steps);
+        Assert.Equal(new DateTimeOffset(2026, 10, 29, 0, 0, 0, TimeSpan.FromHours(1)), start);
+        Assert.Equal(29, StatsSeries.StepOf(new DateTimeOffset(2026, 11, 27, 13, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds() / 3_600_000, start, StatsStep.Day, zone));
+        Assert.Equal(-1, StatsSeries.StepOf(new DateTimeOffset(2026, 10, 28, 12, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds() / 3_600_000, start, StatsStep.Day, zone));
     }
 
     [Fact]
@@ -284,9 +321,9 @@ public sealed class LogStoreTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task The_CSV_has_the_grids_columns_and_more_and_says_when_it_is_limited()
+    public async Task The_CSV_has_the_chosen_columns_in_their_order_with_the_date_and_says_when_it_is_limited()
     {
-        await AddAsync(Row(T(-1), "W12345A", name: "Anna", tags: ["Staff", "Visitors"]) with { ReadAs = "W12345B" });
+        await AddAsync(Row(T(-1), "W12345A", name: "Anna", tags: ["Staff", "Visitors"]) with { ReadAs = "W12345B", State = "CMX", View = "rear" });
         var rows = await _store.NewestAsync(new LogQuery(), LogScope.All, LicensePlateLimits.MaxExportRows, CancellationToken.None);
         var clock = LogExportClock.Of("UTC", 0);
 
@@ -295,8 +332,33 @@ public sealed class LogStoreTests : IAsyncLifetime
         Assert.StartsWith("﻿", csv, StringComparison.Ordinal);
         var lines = csv.TrimStart('﻿').Split("\r\n");
         Assert.Equal("\"The newest 1 of 48,213 reads\"", lines[0]);
-        Assert.Equal("Time,Time (ISO 8601),Camera,Plate,Read as,Name,Tags,Result,Direction,Confidence,Area,Country,Vehicle", lines[1]);
-        Assert.Equal("2026-11-27 11:59:00,2026-11-27T11:59:00+00:00,gate-a,W12345A,W12345B,Anna,\"Staff, Visitors\",Allowed,In,90,1,AUT,car", lines[2]);
+        Assert.Equal("Time,Camera,Plate,Name,Tags,Result,Direction,Confidence", lines[1]); // the default columns without Picture
+        Assert.Equal("27 Nov 2026 11:59:00,gate-a,W12345A,Anna,\"Staff, Visitors\",Allowed,In,90", lines[2]);
+
+        var chosen = new PlateExportHead([], "server", "admin", T(0), 1)
+        {
+            Columns = LogColumns.Valid(["confidence", "plate", "picture", "state", "view", "readAs", "unknown", "plate"]),
+        };
+        lines = System.Text.Encoding.UTF8.GetString(PlateLogExport.Csv(rows, chosen, clock)).TrimStart('﻿').Split("\r\n");
+        Assert.Equal("Confidence,Plate,State,View,Read as", lines[0]);
+        Assert.Equal("90,W12345A,CMX,Rear,W12345B", lines[1]);
+    }
+
+    [Fact]
+    public void The_PDF_leaves_out_the_picture_when_it_does_not_fit_and_says_so()
+    {
+        var rows = new List<PlateRead> { Row(T(-1), "W1") };
+        var head = new PlateExportHead([], "server", "admin", T(0), 1) { Columns = [.. LogColumns.All.Select(c => c.Key)] };
+
+        Assert.False(PlateLogExport.PdfPictures(rows, head)); // 17 other columns
+        Assert.DoesNotContain(LogColumns.Picture, PlateLogExport.PdfKeys(rows, head));
+        Assert.Contains("Without pictures: too many columns.", PlateLogExport.HeadLines(rows, head));
+        Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(PlateLogExport.Pdf(rows, head, LogExportClock.Of("UTC", 0), _ => null, CancellationToken.None), 0, 4));
+
+        var fits = head with { Columns = LogColumns.Defaults };
+        Assert.True(PlateLogExport.PdfPictures(rows, fits));
+        Assert.Equal(LogColumns.Defaults, PlateLogExport.PdfKeys(rows, fits));
+        Assert.DoesNotContain(PlateLogExport.HeadLines(rows, fits), l => l.StartsWith("Without pictures", StringComparison.Ordinal));
     }
 
     [Fact]

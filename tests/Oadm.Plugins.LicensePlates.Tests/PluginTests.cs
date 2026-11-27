@@ -183,6 +183,28 @@ public sealed class PluginTests
     }
 
     [Fact]
+    public async Task A_camera_gets_its_own_name_unique_in_the_plugin_and_the_device_keeps_its_own()
+    {
+        await using var rig = await Rig.StartAsync(cameras: 2);
+        await rig.CallAsync(LicensePlatesMethods.AddCameras, new DevicesRequest([rig.Id(0), rig.Id(1)]));
+        var before = (await rig.CallAsync<CamerasReply>(LicensePlatesMethods.Cameras)).Cameras;
+        var deviceName = rig.Ctx.DeviceList[0].HostName ?? rig.Ctx.DeviceList[0].Address;
+        Assert.Equal(deviceName, before.Single(c => c.DeviceId == rig.Id(0)).Name); // by default the device's name
+
+        Assert.Null((await rig.CallAsync<RenameCameraReply>(LicensePlatesMethods.RenameCamera, new RenameCameraRequest(rig.Id(0), "  Main gate "))).Error);
+        Assert.Equal(LicensePlateTexts.CameraNameTaken, (await rig.CallAsync<RenameCameraReply>(LicensePlatesMethods.RenameCamera, new RenameCameraRequest(rig.Id(1), "MAIN GATE"))).Error);
+        Assert.Equal("Enter a name.", (await rig.CallAsync<RenameCameraReply>(LicensePlatesMethods.RenameCamera, new RenameCameraRequest(rig.Id(1), " "))).Error);
+        Assert.Equal("Use at most 64 characters.", (await rig.CallAsync<RenameCameraReply>(LicensePlatesMethods.RenameCamera, new RenameCameraRequest(rig.Id(1), new string('x', 65)))).Error);
+
+        var after = (await rig.CallAsync<CamerasReply>(LicensePlatesMethods.Cameras)).Cameras;
+        Assert.Equal("Main gate", after.Single(c => c.DeviceId == rig.Id(0)).Name);
+        Assert.Equal("Main gate", rig.Plugin.CameraName(rig.Id(0))); // the log, the stats, the events and the tools
+        Assert.Equal("Main gate", rig.Plugin.Store!.Camera(rig.Id(0))!.Name); // kept with the camera in the records
+        Assert.Equal(deviceName, rig.Ctx.DeviceList[0].HostName ?? rig.Ctx.DeviceList[0].Address); // never the device in OADM
+        Assert.True(LicensePlatesMethods.IsCameraChange(LicensePlatesMethods.RenameCamera)); // the Set up cameras permission, audited
+    }
+
+    [Fact]
     public void The_audit_text_of_a_sweep_counts_the_plates()
     {
         Assert.Equal("Deleted 1 plate whose time ended", LicensePlatesPlugin.EndedAuditDetail(1));
