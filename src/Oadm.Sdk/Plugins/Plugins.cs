@@ -647,6 +647,13 @@ public interface ICorePluginContext
     /// <see cref="IUserCalls"/>, SDK 0.16.0). Only bundled plugins get it; null for every other plugin and on older hosts.
     /// </summary>
     IUserCalls? UserCalls => null;
+
+    /// <summary>
+    /// The checks of a folder on the server an administrator chose for the plugin's data (<see cref="IServerFolderCheck"/>,
+    /// SDK 0.17.0; the client's server folder picker shows the same result). Check again when the setting is saved. Null on
+    /// older hosts.
+    /// </summary>
+    IServerFolderCheck? FolderCheck => null;
 }
 
 /// <summary>
@@ -875,7 +882,7 @@ public static class TaskPluginNames
 public static class SdkInfo
 {
     /// <summary>The SDK version; a plugin whose <c>minSdkVersion</c> is newer is not loaded.</summary>
-    public const string Version = "0.16.0";
+    public const string Version = "0.17.0";
 
     /// <summary>
     /// The first SDK with the call context (<see cref="ICallContext"/>, OADM 4.5). Users with a device group may call only

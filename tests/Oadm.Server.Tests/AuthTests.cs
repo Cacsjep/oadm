@@ -95,7 +95,7 @@ public sealed class AuthTests
             Proto.TaskService.Descriptor, Proto.DeviceService.Descriptor, Proto.PluginService.Descriptor, Proto.DiscoveryService.Descriptor,
             Proto.AddDevicesService.Descriptor, Proto.FileService.Descriptor, Proto.LiveViewService.Descriptor, Proto.TagService.Descriptor,
             Proto.EventService.Descriptor, Proto.RoleService.Descriptor, Proto.DeviceWebService.Descriptor, Proto.BackupService.Descriptor, Proto.WaitingDeviceService.Descriptor, Proto.ServerLogService.Descriptor, Proto.LogExportService.Descriptor,
-            Proto.ComplianceService.Descriptor, Proto.SiteService.Descriptor, Proto.LicenseService.Descriptor, Proto.SupportService.Descriptor,
+            Proto.ComplianceService.Descriptor, Proto.SiteService.Descriptor, Proto.LicenseService.Descriptor, Proto.SupportService.Descriptor, Proto.ServerFolderService.Descriptor,
             Proto.DeviceGroupService.Descriptor, Proto.VulnerabilityService.Descriptor, Proto.MyAxisService.Descriptor, Proto.UpdateService.Descriptor,
             Proto.McpService.Descriptor, Proto.AccessKeyService.Descriptor, Proto.AssistantService.Descriptor,
         }.SelectMany(s => s.Methods.Select(m => $"/{s.FullName}/{m.Name}")).ToHashSet();

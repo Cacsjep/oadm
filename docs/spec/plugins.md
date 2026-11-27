@@ -109,7 +109,10 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   does not tell: a relay at a site, an older host) lists the addresses bound now, empty while not listening;
   `FakePluginNetwork.LastUdpAddresses` / `LastTcpAddresses` and `RefuseAddress` (leave an address out, as the host does)
   in tests), `Sites` (relays at sites, `docs/spec/sites.md`), `License`, `Pro`, `Services`, `ProtectedTags`, `System`,
-  `Jobs`, `DeviceScopes` (all below), `UserCalls` (SDK 0.16.0, `IUserCalls`, below).
+  `Jobs`, `DeviceScopes` (all below), `UserCalls` (SDK 0.16.0, `IUserCalls`, below), `FolderCheck` (SDK 0.17.0,
+  `IServerFolderCheck`: the checks of a folder on the server an administrator chose for the plugin's data,
+  `docs/spec/security.md` "Folders a plugin writes to"; the client part has `ICorePluginClientContext.ServerFolders` and
+  the shared `ServerFolderPicker`).
 - **User calls** (SDK 0.16.0, `ICorePluginContext.UserCalls`, `IUserCalls.ForUserAsync(userName, ct)`): the current
   `ICallContext` of a stored user who is not signed in, for work the user set up to run later (Schedules,
   `docs/spec/schedules.md` "Host: running as the owner"). Only bundled packages get it (`PluginOrigin.Bundled`: loaded
@@ -512,17 +515,17 @@ for server reports.
 - Host services: `FakeEventPublisher` (the events a source fires or switches), `FakeDeviceScopes` (device groups),
   `FakeSites`, `FakeSite`, `FakeDeviceNetwork` and `FakePluginNetwork` with the in-memory relays (sites and sockets),
   `FakePluginJobs`, `FakePluginServices`, `FakeProtectedTags`, `FakeStreamProbes` (the server's measuring video streams),
-  `FakeAxisDownloads` (files from axis.com), `FakeUserCalls` (the current calls of stored users, SDK 0.16.0); `FakeHostRules` (internal) holds the server's rules for a user's call.
+  `FakeAxisDownloads` (files from axis.com), `FakeUserCalls` (the current calls of stored users, SDK 0.16.0), `FakeServerFolderCheck` (the server folder checks, SDK 0.17.0); `FakeHostRules` (internal) holds the server's rules for a user's call.
 - Device groups: `PluginCanary` calls every method of a core plugin with a device outside the caller's group and fails
   on a leak; `TaskPluginCanaryHost` puts task plugins and actions under it.
 
 ## SDK versions
 
-`SdkInfo.Version` (0.16.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
+`SdkInfo.Version` (0.17.0) is the SDK version, `SdkInfo.CallContextVersion` (0.4.0) the first one with the call context.
 Both are constants: a plugin that reads them gets the value of the SDK it was built against, not the host's. The table of
 what each version added is `website/src/content/docs/dev/compatibility.md`.
 
-- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.16.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.16.0
+- `Oadm.Plugin.Versions.props` sets `OadmMinSdkVersion` 0.17.0: a plugin rebuilt on this SDK writes `minSdkVersion` 0.17.0
   into `plugin.json`, so an older host refuses it. A plugin that uses no newer member may set a lower `OadmMinSdkVersion`
   in its project to stay loadable on older hosts; below 0.4.0 it is refused for users with a device group. The bundled
   packages keep their own hand-written `plugin.json`: 0.4.0, or the version of the newest member a package uses at run time

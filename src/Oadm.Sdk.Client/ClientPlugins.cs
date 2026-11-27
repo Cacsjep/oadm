@@ -306,6 +306,13 @@ public interface ICorePluginClientContext
     ILiveVideoAccess? LiveVideo => null;
 
     /// <summary>
+    /// The folders of the server's computer (SDK 0.17.0, <see cref="IServerFolders"/>) for a setting such as "Folder on the
+    /// server": give it to <see cref="Controls.ServerFolderPicker.Folders"/>. Administrators only (offer it while
+    /// <see cref="IsAdministrator"/>). Null when the host has none (older hosts).
+    /// </summary>
+    IServerFolders? ServerFolders => null;
+
+    /// <summary>
     /// Whether the user's role allows <paramref name="permission"/>, e.g. "oadm.dhcp-server:manage": the page hides or
     /// disables what the role lacks (the server refuses the call anyway). Default (older hosts): true.
     /// </summary>

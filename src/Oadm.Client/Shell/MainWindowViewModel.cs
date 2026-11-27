@@ -1456,4 +1456,9 @@ internal sealed class CorePluginClientContext : ICorePluginClientContext, IDispo
     /// <summary>The page's live videos; disposed when the page closes.</summary>
     public ILiveVideoAccess? LiveVideo =>
         _disposed || _liveVideoHost is null ? null : _liveVideo ??= new Oadm.Client.LiveView.PageLiveVideoAccess(_liveVideoHost);
+
+    /// <summary>The server's folders (ServerFolderService, administrators only); none for a closed page.</summary>
+    public IServerFolders? ServerFolders => _disposed ? null : _serverFolders ??= new Oadm.Client.Folders.ApiServerFolders(_api);
+
+    private IServerFolders? _serverFolders;
 }

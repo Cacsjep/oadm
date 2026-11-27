@@ -234,6 +234,16 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 - `FileRow`: every file chooser. One wide button that shows "Choose file" until a file is chosen, then its name, the
   details and an error below it; never a "No file chosen" line; `IsSingleButton="False"` keeps the row with the button on
   the right.
+- `ServerFolderPicker` + `ServerFolderWindow` (`ServerFolderPickerViewModel`): every folder on the server's computer
+  (License Plate Center's "Folder on the server"), never the local folder dialog. The field: the path in a text box and
+  the secondary "Choose folder" (folder icon) right of it, in a `ui:FormField` with class `wide`; the bound property's
+  error below the text box, else the server's check of a typed path (`Problem`). The dialog (680 x 600, a card): Up,
+  Drives and New folder as command buttons, the path bar "Folder" (Enter opens a typed path; the open folder's check or
+  the refusal below it), the inline New folder name with the primary Create and Cancel (Choose turns secondary meanwhile;
+  the name's error below it), the virtualized list (`ListBox.devicePicker` rows: folder or drive icon, the name, the full
+  path as tooltip; double click or Enter opens) with `LoadingOverlay` "Reading folders" while it reads, "No folders here.
+  Create one with New folder." when empty, a line when the list was cut at 2,000; footer Cancel and the primary Choose for
+  the open folder, off with the reason as tooltip until it passes the check.
 - `ProgressRow` (progress bar + status text), `ProgressRing` (an indeterminate ring where something loads without a known
   progress: a live picture that connects, Sites; class `checkBox`: small, in place of a check box while its change runs,
   Plugins page), `LoadingOverlay` (a dialog that waits for a read: steps and cards hidden,

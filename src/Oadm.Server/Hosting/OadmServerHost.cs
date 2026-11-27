@@ -142,6 +142,7 @@ public static partial class OadmServerHost
         app.MapGrpcService<Backup.BackupGrpcService>();
         app.MapGrpcService<Licensing.LicenseGrpcService>();
         app.MapGrpcService<Support.SupportGrpcService>();
+        app.MapGrpcService<Folders.ServerFolderGrpcService>();
         app.MapGrpcService<Vulnerabilities.VulnerabilityGrpcService>();
         app.MapGrpcService<MyAxis.MyAxisGrpcService>();
         app.MapGrpcService<Logging.ServerLogGrpcService>();
@@ -549,7 +550,13 @@ public static partial class OadmServerHost
                 sp.GetRequiredService<Core.Auth.RoleStore>(),
                 sp.GetRequiredService<Core.DeviceGroups.DeviceViewFactory>(),
                 sp.GetRequiredService<Core.Auth.AccessEpochs>()),
+            FolderCheck = sp.GetRequiredService<Folders.ServerFolderBrowser>(), // a folder an administrator chose for a plugin's data
         });
+        // The server folder picker and the folder checks of plugins (docs/spec/security.md "Folders a plugin writes to"); the
+        // admin-only check only as the installed service.
+        services.AddSingleton(sp => new Folders.ServerFolderBrowser(
+            sp.GetRequiredService<OadmPaths>().DataDirectory, AppContext.BaseDirectory, sp.GetService<IFolderPermissions>(),
+            sp.GetRequiredService<ILogger<Folders.ServerFolderBrowser>>()));
         services.AddSingleton<PluginServiceRegistry>();
         services.AddSingleton<HostDeviceScopes>();
         services.AddSingleton<Core.Auth.AccessEpochs>(); // the interceptor captures it, the job registry records changes in it

@@ -452,6 +452,18 @@ used again.
   answer) and says "The provider answered." or the error in plain words; it never saves.
 - **`SupportService`** (`support.proto`, `docs/spec/settings-backup.md` "Support report"): `CreateReport` (Admin, audited
   "Created support report"; stream of `DownloadChunk`: name and length first, 256 KB chunks, uncompressed).
+- **`ServerFolderService`** (`server_folders.proto`, Admin; the server folder picker, `docs/spec/security.md` "Folders a
+  plugin writes to"): `List(path)` -> `ServerFolderList` {path (normalized; empty for the roots), parent (empty at a root),
+  folders (`ServerFolder` {name, path, is_root}), more, problem} (empty path: the drives on Windows, "/", the data folder's
+  parent and the mount folders that exist on Linux and macOS, problem "Choose a folder."; else the subfolders sorted by
+  name, at most 2,000 with `more`, hidden, system and unreadable ones left out, names only; `problem` the check of the
+  folder itself; INVALID_ARGUMENT "Enter a full path on the server.", NOT_FOUND "This folder does not exist on the
+  server.", FAILED_PRECONDITION "The server cannot open this folder."), `Create(path, name)` -> `ServerFolder` (audited
+  "Created folder on the server", target the new path; INVALID_ARGUMENT path or name (`ServerFolderTexts.CheckName`),
+  NOT_FOUND parent, ALREADY_EXISTS "A folder with this name exists already.", FAILED_PRECONDITION a system or OADM
+  folder or "The server cannot create a folder here."), `Check(path)` -> {path, problem} (empty problem: a plugin may
+  keep its data there). Client: `IOadmApi.ListServerFoldersAsync`, `CreateServerFolderAsync`, `CheckServerFolderAsync`,
+  for plugins `ICorePluginClientContext.ServerFolders`.
 - **`BackupService`** (`backup.proto`, Admin): `GetState`, `SetSchedule`, `Create`, `Download`, `Delete`, `Inspect`,
   `Restore`, see `docs/spec/settings-backup.md` "Backup and restore".
 - **`UpdateService`** (`update.proto`, `docs/spec/self-update.md`): `Get` and `Start` are Administrators only
