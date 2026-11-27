@@ -123,7 +123,7 @@ public sealed class LogTabTests
     }
 
     [Fact]
-    public async Task Typed_filters_wait_for_the_last_key_then_read_once()
+    public async Task The_search_waits_for_the_last_key_then_reads_once()
     {
         var (page, ctx, _) = await Samples.OpenAsync();
         var clock = (Microsoft.Extensions.Time.Testing.FakeTimeProvider)page.Time;
@@ -132,7 +132,6 @@ public sealed class LogTabTests
 
         log.SearchText = "W";
         log.SearchText = "W1";
-        log.Country = "aut";
         Assert.Equal(before, ctx.CallsOf(LicensePlatesMethods.Log));
         clock.Advance(LogViewModel.TypingDelay);
         await Eventually.TrueAsync(() => ctx.CallsOf(LicensePlatesMethods.Log) == before + 1, "the log read after typing");
@@ -140,7 +139,6 @@ public sealed class LogTabTests
 
         var query = ctx.LastPayload<LogPageRequest>(LicensePlatesMethods.Log).Query;
         Assert.Equal("W1", query.Search);
-        Assert.Equal("AUT", query.Country);
     }
 
     [Fact]

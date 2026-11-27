@@ -212,9 +212,6 @@ public sealed class CamerasTabTests
         Assert.False(setup.SaveCommand.CanExecute(null));
         setup.CharactersMax = 10;
         Assert.True(setup.SaveCommand.CanExecute(null));
-
-        setup.CameraLocation = "AT";
-        Assert.Equal("Enter three letters, like AUT.", setup.ErrorOf(nameof(SetupViewModel.CameraLocation)));
     }
 
     [Fact]

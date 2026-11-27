@@ -566,7 +566,7 @@ internal static class Samples
             new AlpvArea { Id = 1, Active = true, Angle = 180_000, Corners = [new(120, 420), new(560, 380), new(610, 860), new(80, 900)] },
             new AlpvArea { Id = 2, Active = true, Angle = 0, Corners = [new(640, 380), new(930, 400), new(960, 880), new(700, 860), new(660, 620)] },
         ],
-        Recognition = new RecognitionSettings { Region = "Europe", CameraLocation = "AUT", PlateWidthMin = 50, PlateWidthMax = 300, CharactersMin = 4, CharactersMax = 10, ConfidenceThreshold = 0.25 },
+        Recognition = new RecognitionSettings { Region = "5", CameraLocation = "AUT", State = string.Empty, PlateWidthMin = 50, PlateWidthMax = 300, CharactersMin = 4, CharactersMax = 10, ConfidenceThreshold = 0.25 },
         Events = new EventSwitches(true, true, false),
         Rotated = rotated,
         LastRead = Now.AddMinutes(-1),
@@ -581,6 +581,9 @@ internal static class Samples
         var allReads = reads ?? Reads();
         var store = (plates ?? Plates()).ToList();
         ctx.Answers[LicensePlatesMethods.Tags] = _ => Serialize(new TagsReply(Tags));
+        ctx.Answers[LicensePlatesMethods.AlpvLists] = _ => Serialize(AlpvListData.Lists);
+        ctx.Answers[LicensePlatesMethods.VehicleMakes] = _ => Serialize(new VehicleNamesReply(["(None)", "Audi", "BMW", "Skoda", "Volkswagen"]));
+        ctx.Answers[LicensePlatesMethods.VehicleModels] = payload => Serialize(new VehicleNamesReply(Parse<VehicleNamesRequest>(payload).Make == "Volkswagen" ? ["Caddy", "Golf", "Passat"] : []));
         ctx.Answers[LicensePlatesMethods.Cameras] = _ => Serialize(CamerasReply());
         ctx.Answers[LicensePlatesMethods.Plates] = payload =>
         {
@@ -712,6 +715,7 @@ internal static class Samples
     {
         for (var i = 0; i < 3; i++)
         {
+            await page.ListsTask;
             await page.TagsTask;
             await page.Cameras.ReloadTask;
             await page.Plates.ReloadTask;

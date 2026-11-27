@@ -55,6 +55,7 @@ public sealed class ScreenshotTests
             var (page, view, window, _) = await ShowPageAsync();
             page.Log.Range.Choose(DateRangePreset.Last24Hours);
             page.Log.SelectedArea = LogViewModel.AreaChoices[1];
+            page.Log.SelectedCountry = page.Log.CountryChoices.Single(c => c.Value == "AUT");
             await page.Log.LoadTask;
             Headless.Pump();
             await Eventually.TrueAsync(() => page.Log.PicturesPending == 0, "the plate crops read");
@@ -226,7 +227,16 @@ public sealed class ScreenshotTests
             Assert.False(window.FindControl<ToolbarButton>("AddArea2Button")!.IsEffectivelyVisible);
             Assert.Equal(1, PrimaryButtons(window));
             Assert.Single(VisibleTexts(window, PageTexts.EventsWillTurnOn));
+            Assert.Equal("Europe", window.FindControl<ComboBox>("RegionBox")!.SelectionBoxItem?.ToString());
             Headless.Capture(window, $"setup-{Suffix}.png");
+
+            // The Camera location select open: None, then the countries of Europe by name.
+            var location = window.FindControl<ComboBox>("LocationBox")!;
+            location.IsDropDownOpen = true;
+            Headless.Pump();
+            Assert.Contains(setup.LocationChoices, c => c.Value == "ARM");
+            Headless.Capture(window, $"setup-location-open-{Suffix}.png");
+            location.IsDropDownOpen = false;
             window.Close();
             Close(page, pageWindow);
             return true;
