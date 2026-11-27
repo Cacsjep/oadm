@@ -103,7 +103,7 @@
                   <StackPanel Orientation="Horizontal" Spacing="6" Margin="10,0" VerticalAlignment="Center">
                     <ui:OadmIcon x:Name="DeviationIcon" Classes="warn" Data="{StaticResource Icon.status.warning}" IsVisible="{Binding IsDeviated}" ToolTip.Tip="{Binding ReadAsTip}" />
                     <ui:OadmIcon Classes="warn" Data="{StaticResource Icon.status.warning}" IsVisible="{Binding IsGap}" ToolTip.Tip="{Binding GapText}" />
-                    <TextBlock Classes="mono" Text="{Binding PlateText}" VerticalAlignment="Center" />
+                    <TextBlock x:Name="PlateCell" Classes="mono" Text="{Binding PlateText}" VerticalAlignment="Center" ToolTip.Tip="{Binding PlateTip}" />
                   </StackPanel>
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
@@ -139,6 +139,7 @@
             </DataGridTemplateColumn>
             <DataGridTextColumn Tag="direction" Header="{x:Static vm:PageTexts.Direction}" Width="100" Binding="{Binding DirectionText}" x:DataType="vm:LogRow" />
             <DataGridTextColumn Tag="readAs" Header="{x:Static vm:PageTexts.ReadAsColumn}" Width="120" Binding="{Binding ReadAsText}" x:DataType="vm:LogRow" />
+            <DataGridTextColumn Tag="listEntry" Header="{x:Static vm:PageTexts.ListEntryColumn}" Width="130" Binding="{Binding ListEntryText}" x:DataType="vm:LogRow" />
             <DataGridTextColumn Tag="area" Header="{x:Static vm:PageTexts.Area}" Width="70" Binding="{Binding AreaText}" x:DataType="vm:LogRow" />
             <DataGridTextColumn Tag="country" Header="{x:Static vm:PageTexts.Country}" Width="90" Binding="{Binding CountryText}" x:DataType="vm:LogRow" />
             <DataGridTextColumn Tag="state" Header="{x:Static vm:PageTexts.State}" Width="80" Binding="{Binding StateText}" x:DataType="vm:LogRow" />

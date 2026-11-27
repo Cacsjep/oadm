@@ -364,7 +364,7 @@ public sealed partial class PlatesViewModel : ObservableObject
         Rows.ReplaceAll(text.Length == 0 && tag is null
             ? _all
             : [.. _all.Where(r => (tag is null || r.Plate.Tags.Contains(tag.Value))
-                && (text.Length == 0 || (plate.Length > 0 && r.Text.StartsWith(plate, StringComparison.Ordinal)) || r.Name.Contains(text, StringComparison.CurrentCultureIgnoreCase)))]);
+                && (text.Length == 0 || (plate.Length > 0 && Plates.PlateText.Starts(r.Text, plate)) || r.Name.Contains(text, StringComparison.CurrentCultureIgnoreCase)))]);
         // The grid raised its own selection while the rows were replaced: keep that (without rows that are gone). A single
         // plate selected before is selected again in the grid when the grid dropped it (a read of the list makes new rows).
         var shown = Rows.ToHashSet();
