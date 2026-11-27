@@ -140,6 +140,12 @@ the client part (`alpvLists`); the client keeps no copy.
   12 characters), **Name** (up to 100 characters), **Tags** (plate tags), **Allowed from** and **Allowed to** (both
   optional, date and time in the server's time zone; Allowed to must be after Allowed from), **Delete when it ends**
   (on by default for a new plate; only with an Allowed to).
+- **Wildcard plates** (company cars, decisions of 2026-11-27): `*` in a plate stands for exactly one letter or digit
+  (`AXIS12**` matches AXIS1234 and AXIS12AB, not AXIS123 or AXIS12345); no other wildcard. An ordinary plate entry (name,
+  tags, Allowed from and to, Delete when it ends), shown as entered; at least 3 letters or digits besides `*` ("Use at least
+  3 letters or digits besides *." below the field); unique like plates; at most 1,000 (`LicensePlateLimits.MaxWildcardPlates`).
+  The Add plate dialog says below the field "* stands for one letter or digit." The Plates search finds one by its fixed
+  part and by a plate it fits ("AXIS", "AXIS1234"). The CSV import and export take `*` (ALPV's export has none).
 - **Delete when it ends**: the server deletes the plate within a minute after its Allowed to passed, with an audit
   entry. Off: the plate stays and is Not allowed from then on.
 - **Plate tags** are the plugin's own (device tags exist only for devices): a name (up to 64 characters, unique) and
@@ -159,7 +165,16 @@ the client part (`alpvLists`); the client keeps no copy.
   another garage never opens this one because its plate is close to an allowed one.
 - **Allowed character deviation**: Exact, 1 or 2, one setting for the server, default 1 (as ALPV). A wrong, a missing
   and an extra character each count as 1. With 2, plates shorter than 6 characters are matched with at most 1.
+- **The order** (decisions of 2026-11-27): a plate entered on its own read exactly, then a wildcard plate the read fits,
+  then a near match. The plate on its own decides alone (AXIS1234 ended yesterday: Not allowed, although AXIS12** would
+  allow it), and a wildcard plate the read fits beats a near match to a plate on its own.
 - **Exact match**: Allowed, at once.
+- **Wildcard plate**: never with a deviation (its fixed characters are read exactly, the length must match); decided at
+  once like an exact match. Of several, the one with more fixed characters decides; on a tie the read is Allowed when any
+  of the tied plates allows it at this camera, else Not allowed with the reason of the first. The Log's Plate is what the
+  camera read (the real car), the Plate cell's tooltip says "Matches AXIS12**"; Name and Tags come from the wildcard plate.
+  The log column List entry (optional) and the events' field List entry name the plate or wildcard plate that decided a
+  read (empty for Unknown plate). A wildcard plate is never a near match.
 - **Near match** (within the deviation): waits for the best read like an unknown plate; then Allowed with the
   plate of the list as Plate and the camera's text as Read as. Equally close to two allowed plates: Not allowed
   ("Matches more than one plate").
@@ -167,7 +182,9 @@ the client part (`alpvLists`); the client keeps no copy.
   allowed here, before Allowed from, after Allowed to). Near matches to such plates do not count: Unknown plate.
 - **Unknown plate**: everything else.
 - The index: exact matches by a dictionary per camera tag set; near matches by a deletion index of the allowed
-  plates, rebuilt per changed tag set, never a scan of the list per read.
+  plates, rebuilt per changed tag set; wildcard plates by length and the positions of their first three fixed
+  characters, one lookup per shape of the read's length (`WildcardIndex`); never a scan of the list per read (Perf test:
+  1,000 wildcard plates among 100,000 plates).
 
 ## From events to a read
 
@@ -237,7 +254,7 @@ Live, newest first, virtualized, paged from the server.
 - Columns (decision 2026-11-27): the user chooses them like on the device grid, with the shared column chooser (the
   icon-only button "Choose columns" left of the search; headers dragged to reorder); kept per user on this computer
   like the device grid's. Available: Time, Camera, Picture (the plate crop, loaded only for visible rows), **Plate**,
-  Read as, Name, Tags, **Result**, Direction, Area, Country, State, Vehicle type, Vehicle colour, Vehicle make, Vehicle
+  Read as, List entry, Name, Tags, **Result**, Direction, Area, Country, State, Vehicle type, Vehicle colour, Vehicle make, Vehicle
   model, View (Front, Rear), **Confidence**. Shown by default: Time, Camera, Picture, Plate, Name, Tags, Result,
   Direction, Confidence.
   - **Time** has the date on every row: "27 Nov 2026 14:04:14", this computer's zone (no group header per day: a row
