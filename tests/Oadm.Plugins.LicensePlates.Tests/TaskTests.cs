@@ -124,6 +124,22 @@ public sealed class TaskTests
         Assert.Empty(camera.Requests);
     }
 
+    [Theory]
+    [InlineData(0.1)]
+    [InlineData(0.19)]
+    [InlineData(1.01)]
+    public async Task Set_up_refuses_a_threshold_outside_ALPVs_0_2_to_1_before_the_first_write(double threshold)
+    {
+        var camera = new AlpvCamera();
+
+        var (_, error) = await RunAsync(new SetupTask(), camera, Payload(new SetupPayload { Recognition = new RecognitionSettings { ConfidenceThreshold = threshold } }));
+
+        Assert.Equal("The threshold is 0.2 to 1. " + LicensePlateTexts.NothingChanged, Assert.IsType<ArgumentException>(error).Message);
+        Assert.Empty(camera.Requests);
+        Assert.Empty(Tasks.SetupRules.Check(new SetupPayload { Recognition = new RecognitionSettings { ConfidenceThreshold = 0.2 } }));
+        Assert.Empty(Tasks.SetupRules.Check(new SetupPayload { Recognition = new RecognitionSettings { ConfidenceThreshold = 1.0 } }));
+    }
+
     [Fact]
     public async Task Set_up_saves_both_areas_and_turns_on_only_the_events_that_are_off()
     {

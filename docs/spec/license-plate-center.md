@@ -226,7 +226,9 @@ of 42 cameras connected". Tabs: **Log**, **Plates**, **Cameras**, **Stats**. No 
 
 ### Log
 
-Live, newest first, virtualized, paged from the server.
+Live, newest first, virtualized, paged from the server. The live rows are those stored after the highest read id shown,
+whatever their time (a read that waited for its best read, a gap row that began before reads shown), each put in at its
+time; older pages go by time.
 
 - Toolbar: the device choice (the cameras of the page, default all cameras of the plugin), **Pause** (the list stops
   moving, reads are still stored), **Add to plates** (for a selected Unknown plate: the Add plate dialog with the
@@ -428,8 +430,10 @@ Details the spec left open, decided while building; none changes a rule above.
   plus the reads of the first, partial hour (exact). Stores of an older build get the new columns once; their hours have
   no vehicle confidence. The daily plate counts of the first build (only the top lists used them) are dropped from older stores.
 - **The log folder**: none until an Administrator chooses one (nothing is stored before, events fire); a folder inside the
-  plugins' data of OADM (`plugin-data`, part of every backup) is refused, so is one OADM cannot write; then every save with
-  a folder runs the host's folder checks of `security.md` "Folders a plugin writes to" (`ICorePluginContext.FolderCheck`,
+  plugins' data of OADM (`plugin-data`, part of every backup) is refused, so is one that does not exist ("This folder does not
+  exist. Choose it with Choose folder, where New folder creates it."; Save never creates a folder, decision 2026-11-27); then
+  every save with a folder runs the host's folder checks before anything is written there, then a write test (one OADM
+  cannot write is refused) of `security.md` "Folders a plugin writes to" (`ICorePluginContext.FolderCheck`,
   the picker's rules, also for an unchanged folder) and refuses with their text below the field; a new folder starts a new
   log and the old one keeps its files. Plate crops: JPEG only, at most 512 KB.
 - **Audit of Delete when it ends**: one entry per sweep, "Deleted 3 plates whose time ended", user `system`

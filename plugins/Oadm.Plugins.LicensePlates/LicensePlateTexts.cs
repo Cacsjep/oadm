@@ -37,6 +37,7 @@ public static class LicensePlateTexts
     public const string PreviewGone = "The import ended. Choose the file again.";
     public const string NoCameraConnected = "No camera is connected.";
     public const string CameraNameTaken = "Another camera has this name.";
+    public const string FolderMissing = "This folder does not exist. Choose it with Choose folder, where New folder creates it.";
 
     public static readonly string TooManyNames = string.Create(CultureInfo.InvariantCulture, $"More than {LicensePlateLimits.MaxNamedPlates:N0} names match. Type more.");
     public static readonly string TooManyWildcards = string.Create(CultureInfo.InvariantCulture, $"OADM keeps at most {LicensePlateLimits.MaxWildcardPlates:N0} plates with *.");

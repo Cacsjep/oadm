@@ -12,7 +12,11 @@ namespace Oadm.Plugins.LicensePlates.Log;
 internal sealed record LogInsert(PlateRead Row, byte[]? Picture);
 
 /// <summary>A later change of a stored read: its direction, a better plate crop.</summary>
-internal sealed record LogUpdate(long Id, PlateDirection? Direction, byte[]? Picture);
+internal sealed record LogUpdate(long Id, PlateDirection? Direction, byte[]? Picture)
+{
+    /// <summary>The camera of the read: an update changes only a row of this camera (a reopened log never gets another row changed).</summary>
+    public Guid? Camera { get; init; }
+}
 
 /// <summary>The cameras a call may see in the log: null = every camera (users with all devices).</summary>
 internal sealed record LogScope(IReadOnlySet<Guid>? Cameras)
@@ -82,6 +86,9 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
 
     /// <summary>The next id of a row: the log hands it out before the row is written, so a later change can name it.</summary>
     public long NextId() => Interlocked.Increment(ref _nextId);
+
+    /// <summary>The highest id of the log: the highest stored at open, raised by <see cref="NextId"/>.</summary>
+    public long LastId => Interlocked.Read(ref _nextId);
 
     /// <summary>The database, its journal and the plate crops, in bytes.</summary>
     public long UsedBytes
@@ -470,8 +477,13 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
         await using (var read = db.CreateCommand())
         {
             read.Transaction = tx;
-            read.CommandText = "SELECT time, camera, result, direction, confidence, plate, picture FROM reads WHERE id = @id AND gap_until IS NULL;";
+            read.CommandText = "SELECT time, camera, result, direction, confidence, plate, picture FROM reads WHERE id = @id AND gap_until IS NULL"
+                + (update.Camera is null ? ";" : " AND camera = @camera;");
             read.Parameters.AddWithValue("@id", update.Id);
+            if (update.Camera is { } updateCamera)
+            {
+                read.Parameters.AddWithValue("@camera", CameraKey(updateCamera));
+            }
             await using var reader = await read.ExecuteReaderAsync().ConfigureAwait(false);
             if (!await reader.ReadAsync().ConfigureAwait(false))
             {
@@ -488,14 +500,16 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
         }
 
         var time = DateTimeOffset.FromUnixTimeMilliseconds(ms);
-        if (update.Picture is not null && KeepPictures)
+        // A better crop replaces the old one only when it can be kept (a JPEG within the limit); the old one's bytes leave
+        // its day's count. A refused crop keeps the old picture.
+        if (update.Picture is { } better && KeepPictures && IsJpeg(better))
         {
             if (picture is not null)
             {
-                DeletePicture(picture);
+                await ForgetPictureAsync(db, tx, picture).ConfigureAwait(false);
             }
 
-            picture = await SavePictureAsync(db, tx, update.Id, time, update.Picture, zone).ConfigureAwait(false) ?? picture;
+            picture = await SavePictureAsync(db, tx, update.Id, time, better, zone).ConfigureAwait(false);
         }
 
         var newDirection = update.Direction ?? direction;
@@ -546,7 +560,7 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
 
     private async Task<string?> SavePictureAsync(SqliteConnection db, SqliteTransaction tx, long id, DateTimeOffset time, byte[] picture, TimeZoneInfo zone)
     {
-        if (picture.Length is < 4 or > MaxPictureBytes || picture[0] != 0xFF || picture[1] != 0xD8)
+        if (!IsJpeg(picture))
         {
             return null; // not a JPEG: nothing is converted
         }
@@ -565,6 +579,30 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         return relative.Replace('\\', '/');
     }
+
+    /// <summary>A crop the log keeps: a JPEG of at most 512 KB (never converted).</summary>
+    private static bool IsJpeg(byte[] picture) => picture.Length is >= 4 and <= MaxPictureBytes && picture[0] == 0xFF && picture[1] == 0xD8;
+
+    /// <summary>Deletes a stored crop and takes its bytes off its day (the folder name of its path).</summary>
+    private async Task ForgetPictureAsync(SqliteConnection db, SqliteTransaction tx, string relative)
+    {
+        var length = DeletePicture(relative);
+        var parts = relative.Split('/', '\\');
+        if (length <= 0 || parts.Length < 3)
+        {
+            return;
+        }
+
+        await using var cmd = db.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "UPDATE picture_days SET bytes = bytes - @bytes WHERE day = @day;";
+        cmd.Parameters.AddWithValue("@day", parts[^2]);
+        cmd.Parameters.AddWithValue("@bytes", length);
+        await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>The bytes of the plate crops as counted (the files the log holds).</summary>
+    internal long PictureBytes => Interlocked.Read(ref _pictureBytes);
 
     private long DeletePicture(string relative)
     {
@@ -749,8 +787,8 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
 
         if (after is not null)
         {
-            where.Add("(time > @atime OR (time = @atime AND id > @aid))");
-            cmd.Parameters.AddWithValue("@atime", after.TimeMs);
+            // Stored later (ids grow with every stored row), whatever the read's time.
+            where.Add("id > @aid");
             cmd.Parameters.AddWithValue("@aid", after.Id);
         }
 

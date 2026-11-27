@@ -129,6 +129,9 @@ internal sealed class AlpvCamera : FakeCamera, IVapixClient
     /// <summary>The filter is answered with this error while set.</summary>
     public string? RefuseFilter { get; set; }
 
+    /// <summary>The next reads of the application list fail (a server error) this many times.</summary>
+    public int FailAppReads { get; set; }
+
     private HttpResponseMessage? Answer(HttpRequestMessage request, string? body)
     {
         var uri = request.RequestUri!.OriginalString;
@@ -137,6 +140,9 @@ internal sealed class AlpvCamera : FakeCamera, IVapixClient
         {
             switch (uri)
             {
+                case "/axis-cgi/applications/list.cgi" when FailAppReads > 0:
+                    FailAppReads--;
+                    return new HttpResponseMessage(System.Net.HttpStatusCode.InternalServerError);
                 case "/axis-cgi/applications/list.cgi":
                     return Ok(AppsXml);
                 case "/local/fflprapp/config.cgi" when !post:

@@ -205,6 +205,143 @@ public sealed class PluginTests
     }
 
     [Fact]
+    public async Task A_camera_whose_first_check_fails_is_checked_again_before_it_connects()
+    {
+        await using var rig = await Rig.StartAsync();
+        var camera = rig.Camera(0);
+        camera.FailAppReads = 1;
+        await rig.CallAsync(LicensePlatesMethods.AddCameras, new DevicesRequest([rig.Id(0)]));
+
+        // Time moves on (the wait after a failure) until the camera is connected; it never connects unchecked.
+        var connectedUnchecked = false;
+        await Eventually.TrueAsync(() =>
+        {
+            var state = rig.Plugin.Runtime!.StateOf(rig.Id(0));
+            connectedUnchecked |= camera.IsConnected && state.Checked is null;
+            if (state.Status != CameraStatus.Connected)
+            {
+                rig.Time.Advance(TimeSpan.FromSeconds(1));
+                return false;
+            }
+
+            return state.Checked is not null;
+        }, "connected after a check");
+        Assert.False(connectedUnchecked);
+        Assert.Equal(0, camera.FailAppReads);
+        Assert.Equal("3.1.7", rig.Plugin.Runtime!.StateOf(rig.Id(0)).AlpvVersion);
+    }
+
+    [Fact]
+    public async Task After_a_connected_session_breaks_the_first_wait_is_1_second_again()
+    {
+        await using var rig = await Rig.StartAsync();
+        var camera = rig.Camera(0);
+        camera.Refuse = new HttpRequestException("No route to host");
+        await rig.CallAsync(LicensePlatesMethods.AddCameras, new DevicesRequest([rig.Id(0)]));
+        await Eventually.TrueAsync(() => rig.Plugin.Runtime!.StateOf(rig.Id(0)).LostSince is not null, "a refused connection");
+
+        camera.Refuse = null;
+        await Eventually.TrueAsync(() =>
+        {
+            if (camera.IsConnected && rig.Plugin.Runtime!.StateOf(rig.Id(0)).Status == CameraStatus.Connected)
+            {
+                return true;
+            }
+
+            rig.Time.Advance(TimeSpan.FromSeconds(1));
+            return false;
+        }, "connected after the failures");
+
+        // The session breaks: one second later the camera is connected again (not the wait after earlier failures).
+        var connections = camera.Connections;
+        camera.Drop();
+        await Eventually.TrueAsync(() => !camera.IsConnected, "the session broke");
+        await Eventually.TrueAsync(() => rig.Plugin.Runtime!.StateOf(rig.Id(0)).LostSince is not null, "the loss is seen");
+        rig.Time.Advance(TimeSpan.FromSeconds(1));
+        await Eventually.TrueAsync(() => camera.IsConnected && camera.Connections > connections, "connected again after 1 s");
+    }
+
+    [Fact]
+    public async Task A_read_marked_at_the_same_time_as_a_state_change_never_undoes_it()
+    {
+        await using var rig = await Rig.StartAsync();
+        rig.Camera(0).Refuse = new HttpRequestException("No route to host"); // the connection waits quietly (time stands still)
+        await rig.CallAsync(LicensePlatesMethods.AddCameras, new DevicesRequest([rig.Id(0)]));
+        await Eventually.TrueAsync(() => rig.Plugin.Runtime!.StateOf(rig.Id(0)).LostSince is not null, "the camera waits");
+        var runtime = rig.Plugin.Runtime!;
+        var id = rig.Id(0);
+        const int Count = 200_000;
+        var undone = 0;
+
+        using var stop = new CancellationTokenSource();
+        var marks = Task.Run(() =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                runtime.MarkRead(id, rig.Time.GetUtcNow());
+            }
+        });
+        var changes = Task.Run(() =>
+        {
+            for (var i = 0; i <= Count; i++)
+            {
+                var text = i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                runtime.Update(id, s => s with { Detail = text });
+                if (runtime.StateOf(id).Detail != text)
+                {
+                    undone++; // a mark wrote back the state from before the change
+                }
+            }
+        });
+        await changes;
+        await stop.CancelAsync();
+        await marks;
+
+        Assert.Equal(0, undone);
+    }
+
+    [Fact]
+    public async Task A_log_reopened_while_a_car_is_tracked_never_gets_another_row_changed()
+    {
+        await using var rig = await Rig.StartAsync();
+        var staff = await rig.TagAsync("Staff");
+        await rig.PlateAsync("W12345A", staff);
+        var camera = rig.Camera(0);
+        await rig.CallAsync(LicensePlatesMethods.AddCameras, new DevicesRequest([rig.Id(0)]));
+        await rig.CallAsync(LicensePlatesMethods.SetAllowedTags, new AllowedTagsRequest([rig.Id(0)], Set: [staff.Id]));
+        await Eventually.TrueAsync(() => camera.IsConnected && rig.Plugin.Runtime!.StateOf(rig.Id(0)).Status == CameraStatus.Connected, "connected");
+        await camera.SendAsync(Fixture.Notify("New", "1", "W12345A", 0.93));
+        await Eventually.TrueAsync(() => rig.Plugin.Log!.Store!.Written == 1, "the read is stored");
+        var readId = (await rig.CallAsync<LogPage>(LicensePlatesMethods.Log, new LogPageRequest())).Rows.Single().Id;
+
+        // Another log folder with rows of another camera, whose ids include the read's.
+        var other = Path.Combine(rig.Folder, "other-log");
+        var otherCamera = Guid.NewGuid();
+        var seed = await Log.PlateLogStore.OpenAsync(other, rig.Time, null, CancellationToken.None);
+        for (var i = 0; i < 5; i++)
+        {
+            seed.Insert(new Log.LogInsert(new PlateRead { Id = seed.NextId(), Time = rig.Time.GetUtcNow().AddMinutes(-10), CameraId = otherCamera, Camera = "other", Plate = "OTHER" + i }, null));
+        }
+
+        await seed.FlushAsync();
+        await seed.DisposeAsync();
+        var settings = PluginJson.Parse<LicensePlateSettings>(await rig.CallAsync(LicensePlatesMethods.Settings), LicensePlatesJson.Options);
+        Assert.Null((await rig.CallAsync<SaveSettingsReply>(LicensePlatesMethods.SaveSettings, settings with { Folder = other })).Errors);
+
+        // The same car within its window: a better picture and another direction for the read stored in the old log.
+        await camera.SendAsync(Fixture.Notify("Update", "1", "W12345A", 0.97, direction: "out", image: Fixture.JpegBase64));
+        await camera.SendAsync(Fixture.Notify("New", "2", "W12345A", 0.95));
+        await Eventually.TrueAsync(() => rig.Plugin.Log!.Store!.Written >= 1, "the next read is stored in the new log");
+        await rig.Plugin.Log!.Store!.FlushAsync();
+
+        var rows = (await rig.CallAsync<LogPage>(LicensePlatesMethods.Log, new LogPageRequest { Limit = 50 })).Rows;
+        var untouched = rows.Single(r => r.Id == readId);
+        Assert.Equal(("OTHER" + (readId - 1), PlateDirection.Unknown, false), (untouched.Plate, untouched.Direction, untouched.HasPicture)); // the other camera's row
+        var next = rows.Single(r => r.CameraId == rig.Id(0));
+        Assert.True(next.Id > 5 && next.Id > readId); // above every id of both logs
+    }
+
+    [Fact]
     public async Task A_read_a_wildcard_plate_decides_logs_the_car_and_names_the_pattern()
     {
         await using var rig = await Rig.StartAsync();
@@ -408,6 +545,8 @@ public sealed class PluginTests
         await using var rig = await Rig.StartAsync(cameras: 0);
         var loose = Path.Combine(rig.Folder, "loose");
         var safe = Path.Combine(rig.Folder, "safe");
+        Directory.CreateDirectory(loose);
+        Directory.CreateDirectory(safe);
         var folders = new FakeServerFolderCheck().Refuse(loose, ServerFolderTexts.OthersCanChange);
         rig.Ctx.FolderCheck = folders;
         var before = PluginJson.Parse<LicensePlateSettings>(await rig.CallAsync(LicensePlatesMethods.Settings), LicensePlatesJson.Options);
@@ -427,6 +566,27 @@ public sealed class PluginTests
         // The plugin's own checks come first: a relative path never reaches the host.
         await rig.CallAsync<SaveSettingsReply>(LicensePlatesMethods.SaveSettings, before with { Folder = "relative/log" });
         Assert.Equal([loose, safe], folders.Checked);
+    }
+
+    [Fact]
+    public async Task Save_never_creates_a_folder_and_writes_nothing_where_the_host_refuses()
+    {
+        await using var rig = await Rig.StartAsync(cameras: 0);
+        var missing = Path.Combine(rig.Folder, "not-there");
+        var system = Path.Combine(rig.Folder, "system");
+        Directory.CreateDirectory(system);
+        var folders = new FakeServerFolderCheck().Refuse(system, ServerFolderTexts.SystemFolder);
+        rig.Ctx.FolderCheck = folders;
+        var before = PluginJson.Parse<LicensePlateSettings>(await rig.CallAsync(LicensePlatesMethods.Settings), LicensePlatesJson.Options);
+
+        var refused = await rig.CallAsync<SaveSettingsReply>(LicensePlatesMethods.SaveSettings, before with { Folder = missing });
+        Assert.Equal(LicensePlateTexts.FolderMissing, refused.Errors!["folder"]);
+        Assert.False(Directory.Exists(missing)); // new folders only with the picker's New folder
+
+        var system1 = await rig.CallAsync<SaveSettingsReply>(LicensePlatesMethods.SaveSettings, before with { Folder = system });
+        Assert.Equal(ServerFolderTexts.SystemFolder, system1.Errors!["folder"]);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(system));
+        Assert.Equal([system], folders.Checked);
     }
 
     [Fact]

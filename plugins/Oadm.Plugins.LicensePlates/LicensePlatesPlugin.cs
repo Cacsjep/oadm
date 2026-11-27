@@ -49,7 +49,8 @@ public sealed partial class LicensePlatesPlugin : ICorePlugin, IDynamicEventSour
     private ITimer? _maintain;
     private CancellationTokenSource? _running;
     private volatile LicensePlateSettings _settings = new();
-    private long _localIds;
+    /// <summary>The last read id handed out: one source for every read and gap row, never lowered (raised to a store's highest id).</summary>
+    private long _lastId;
     private int _sweeping;
 
     public LicensePlatesPlugin()
@@ -226,7 +227,24 @@ public sealed partial class LicensePlatesPlugin : ICorePlugin, IDynamicEventSour
 
     // ---- reads ----
 
-    private long NextReadId() => _log?.Store?.NextId() ?? Interlocked.Increment(ref _localIds);
+    /// <summary>
+    /// The next read id: above every id handed out before and every id of the log store open now (seeded from its highest
+    /// at open), also while no store is open, so a read never shares its id with another row.
+    /// </summary>
+    internal long NextReadId()
+    {
+        if (_log?.Store is { } store)
+        {
+            var floor = store.LastId;
+            var current = Interlocked.Read(ref _lastId);
+            while (current < floor && Interlocked.CompareExchange(ref _lastId, floor, current) != current)
+            {
+                current = Interlocked.Read(ref _lastId);
+            }
+        }
+
+        return Interlocked.Increment(ref _lastId);
+    }
 
     private MatchResult Match(Guid camera, string text)
     {
@@ -297,7 +315,7 @@ public sealed partial class LicensePlatesPlugin : ICorePlugin, IDynamicEventSour
 
     private void OnChanged(ReadChange change)
     {
-        _log?.Store?.Update(new LogUpdate(change.ReadId, change.Direction, Picture(change.Image)));
+        _log?.Store?.Update(new LogUpdate(change.ReadId, change.Direction, Picture(change.Image)) { Camera = change.Camera });
         _readCameras.TryAdd(change.Camera, 0);
     }
 
@@ -323,7 +341,7 @@ public sealed partial class LicensePlatesPlugin : ICorePlugin, IDynamicEventSour
 
         store.Insert(new LogInsert(new PlateRead
         {
-            Id = store.NextId(),
+            Id = NextReadId(),
             Time = from,
             Until = until,
             Gap = true,

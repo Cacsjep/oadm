@@ -75,10 +75,12 @@ public sealed class LogStoreTests : IAsyncLifetime
         Assert.Equal(5, last.Rows.Count);
         Assert.Null(last.Next);
 
-        // The live list: what is newer than the newest row shown.
-        await AddAsync(Row(T(1), "NEW1"), Row(T(2), "NEW2"));
-        var newer = await _store.PageAsync(new LogPageRequest { After = new LogCursor(first.Rows[0].Time.ToUnixTimeMilliseconds(), first.Rows[0].Id) }, LogScope.All, CancellationToken.None);
-        Assert.Equal(["NEW2", "NEW1"], newer.Rows.Select(r => r.Plate));
+        // The live list: what was stored after the highest id shown, whatever its time (a read that waited for its best read,
+        // a gap row that begins before the reads shown).
+        var shown = first.Rows.Concat(second.Rows).Concat(last.Rows).Max(r => r.Id);
+        await AddAsync(Row(T(1), "NEW1"), Row(T(2), "NEW2"), Row(T(-3), "LATE"));
+        var newer = await _store.PageAsync(new LogPageRequest { After = new LogCursor(0, shown) }, LogScope.All, CancellationToken.None);
+        Assert.Equal(["NEW2", "NEW1", "LATE"], newer.Rows.Select(r => r.Plate));
     }
 
     [Fact]
@@ -117,6 +119,37 @@ public sealed class LogStoreTests : IAsyncLifetime
         Assert.Equal(["W12345A"], await Plates(new LogQuery { Search = "gruber", NamedPlates = ["W12345A"] })); // the plate list found it
         Assert.Empty(await Plates(new LogQuery { Search = "gruber", NamedPlates = ["W12345A"], From = T(-60) }));
         Assert.Equal(["K12345"], await Plates(new LogQuery { Search = "100%", NamedPlates = ["K12345"] }));
+    }
+
+    private static byte[] Jpeg(int length)
+    {
+        var bytes = new byte[length];
+        bytes[0] = 0xFF;
+        bytes[1] = 0xD8;
+        return bytes;
+    }
+
+    private long FilesBytes() =>
+        Directory.EnumerateFiles(Path.Combine(_folder, PlateLogStore.PicturesFolder), "*.jpg", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length);
+
+    [Fact]
+    public async Task Better_crops_replace_the_picture_with_exact_counts_and_a_refused_one_keeps_it()
+    {
+        var row = Row(T(-1), "W1") with { HasPicture = true };
+        _store.Insert(new LogInsert(row, Jpeg(1_000)));
+        _store.Update(new LogUpdate(row.Id, null, Jpeg(1_500)));
+        _store.Update(new LogUpdate(row.Id, null, Jpeg(800)));
+        await _store.FlushAsync();
+        Assert.Equal((800L, 800L), (FilesBytes(), _store.PictureBytes));
+
+        _store.Update(new LogUpdate(row.Id, null, [1, 2, 3, 4, 5])); // not a JPEG: refused
+        await _store.FlushAsync();
+        Assert.Equal(800, (await _store.PictureAsync(row.Id, LogScope.All, CancellationToken.None))!.Length);
+
+        // After a restart the count comes from the days: still exact.
+        await _store.DisposeAsync();
+        _store = await PlateLogStore.OpenAsync(_folder, _time, null, CancellationToken.None);
+        Assert.Equal((800L, 800L), (FilesBytes(), _store.PictureBytes));
     }
 
     [Fact]
