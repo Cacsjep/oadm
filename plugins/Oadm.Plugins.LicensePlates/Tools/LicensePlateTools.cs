@@ -67,12 +67,14 @@ internal static class LicensePlateTools
             LicensePlatesMethods.Log,
             async (plugin, caller, input, ct) => await LogOf(plugin, caller, input, ct).ConfigureAwait(false))
         .Read<StatsArgs, StatsReply>(
-            new PluginTool("stats", "License plate statistics", "Reads by result, the average confidence and the reads in its bands (below 60, 60 to 74, 75 to 89, 90 and above), per hour and per camera, for at most 31 days."),
+            new PluginTool("stats", "License plate statistics", "Like the Stats tab: the reads of the last hour, 24 hours, 7 days and in all; for the time: reads by result, the average plate confidence, and per hour or day the reads and average confidence in all and per camera (with its average vehicle confidence), busiest camera first, for at most 31 days."),
             LicensePlatesMethods.Stats,
             async (plugin, caller, input, ct) => await plugin.StatsAsync(caller, new StatsRequest
             {
                 From = input.Args.From,
                 To = input.Args.To,
+                Step = input.Args.ByDay == true ? StatsStep.Day : StatsStep.Hour,
+                TimeZone = input.Args.TimeZone,
                 CameraIds = input.Args.CameraIds?.Select(c => Guid.TryParse(c, out var id) ? id : throw new PluginToolInputException("camera_ids", "Enter ids of cameras from oadm_license_plates_cameras.")).ToList(),
             }, ct).ConfigureAwait(false));
 
@@ -365,5 +367,7 @@ internal static class LicensePlateTools
     internal sealed record StatsArgs(
         [property: Description("From (UTC or with an offset)."), Required] DateTimeOffset From,
         [property: Description("To (UTC or with an offset), at most 31 days after From."), Required] DateTimeOffset To,
-        [property: Description("Only these cameras (device ids)."), MaxLength(1000)] IReadOnlyList<string>? CameraIds = null);
+        [property: Description("Only these cameras (device ids)."), MaxLength(1000)] IReadOnlyList<string>? CameraIds = null,
+        [property: Description("Steps of a day instead of an hour.")] bool? ByDay = null,
+        [property: Description("The time zone of the days (IANA or Windows id); default UTC.")] string? TimeZone = null);
 }

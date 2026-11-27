@@ -11,6 +11,9 @@ public sealed record CameraEntry
     public IReadOnlyList<Guid> AllowedTags { get; init; } = [];
 
     public DateTimeOffset Added { get; init; }
+
+    /// <summary>The camera's own name in the plugin; null: the device's name in OADM.</summary>
+    public string? Name { get; init; }
 }
 
 /// <summary>

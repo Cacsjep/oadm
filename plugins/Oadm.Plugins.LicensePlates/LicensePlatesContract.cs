@@ -62,6 +62,9 @@ public static class LicensePlateLimits
     public const int MaxNameLength = 100;
     public const int MaxTagNameLength = 64;
 
+    /// <summary>The longest name of a camera in the plugin.</summary>
+    public const int MaxCameraNameLength = 64;
+
     /// <summary>An export writes at most this many reads, newest first.</summary>
     public const int MaxExportRows = 10_000;
 
@@ -197,6 +200,9 @@ public static class LicensePlatesMethods
     /// <summary><see cref="AllowedTagsRequest"/> -> <see cref="CamerasReply"/>.</summary>
     public const string SetAllowedTags = "setAllowedTags";
 
+    /// <summary><see cref="RenameCameraRequest"/> -> <see cref="RenameCameraReply"/>: the camera's name in the plugin (never the device's in OADM).</summary>
+    public const string RenameCamera = "renameCamera";
+
     /// <summary><see cref="DevicesRequest"/> -> <see cref="CamerasReply"/>: reads ALPV of these cameras again (in the background).</summary>
     public const string RefreshCameras = "refreshCameras";
 
@@ -252,7 +258,7 @@ public static class LicensePlatesMethods
 
     /// <summary>The methods that change cameras or start tasks on them.</summary>
     public static bool IsCameraChange(string method) =>
-        method is AddCameras or RemoveCameras or SetAllowedTags or RefreshCameras or SaveSetup or CopySettings or UseRecommendedImageSettings;
+        method is AddCameras or RemoveCameras or SetAllowedTags or RefreshCameras or SaveSetup or CopySettings or UseRecommendedImageSettings or RenameCamera;
 
     /// <summary>The settings dialog (Administrators).</summary>
     public static bool IsSettings(string method) => method is Settings or SaveSettings;
@@ -426,6 +432,9 @@ public sealed record CameraRow
 {
     public Guid DeviceId { get; init; }
 
+    /// <summary>The camera's name in the plugin: its own, else the device's host name, else its address.</summary>
+    public string Name { get; init; } = string.Empty;
+
     public string Address { get; init; } = string.Empty;
 
     public string? HostName { get; init; }
@@ -457,6 +466,12 @@ public sealed record CamerasReply(IReadOnlyList<CameraRow> Cameras, int Connecte
 public sealed record DevicesRequest(IReadOnlyList<Guid> DeviceIds);
 
 public sealed record DeviceRequest(Guid DeviceId);
+
+/// <summary>A new name of a camera in the plugin (required, at most 64 characters, unique among the plugin's cameras).</summary>
+public sealed record RenameCameraRequest(Guid DeviceId, string Name);
+
+/// <summary>The refusal of the name (below the field), or null when it was saved.</summary>
+public sealed record RenameCameraReply(string? Error = null);
 
 /// <summary>The allowed tags of the cameras: <see cref="Set"/> replaces them; else <see cref="Add"/> and <see cref="Remove"/>.</summary>
 public sealed record AllowedTagsRequest(IReadOnlyList<Guid> DeviceIds, IReadOnlyList<Guid>? Set = null, IReadOnlyList<Guid>? Add = null, IReadOnlyList<Guid>? Remove = null);
@@ -658,6 +673,12 @@ public sealed record PlateRead
 
     public string? VehicleModel { get; init; }
 
+    /// <summary><c>vehicleConfidence</c> times 100; null when the camera sends none.</summary>
+    public int? VehicleConfidence { get; init; }
+
+    /// <summary>The plate's state (<c>regionCode</c>, "CMX"); null without one.</summary>
+    public string? State { get; init; }
+
     /// <summary>The log kept the plate crop (<see cref="LicensePlatesMethods.Picture"/>).</summary>
     public bool HasPicture { get; init; }
 
@@ -765,6 +786,16 @@ public sealed record LogExportRequest
 
     /// <summary>The name of the time filter for the head ("Last 24 hours"); null: From and To.</summary>
     public string? RangeName { get; init; }
+
+    /// <summary>The Log's chosen columns in their order (<see cref="LogColumns"/> keys); null: the default columns.</summary>
+    public IReadOnlyList<string>? Columns { get; init; }
+}
+
+/// <summary>The steps of the Stats' charts: hours (Today, Last 24 hours) or days in the user's zone (Last 7 and 30 days).</summary>
+public enum StatsStep
+{
+    Hour = 0,
+    Day = 1,
 }
 
 public sealed record StatsRequest
@@ -774,14 +805,20 @@ public sealed record StatsRequest
     public DateTimeOffset From { get; init; }
 
     public DateTimeOffset To { get; init; }
+
+    /// <summary>Hours or days; days begin at midnight in <see cref="TimeZone"/>.</summary>
+    public StatsStep Step { get; init; }
+
+    /// <summary>The user's time zone (Windows or IANA id); null: <see cref="UtcOffsetMinutes"/>.</summary>
+    public string? TimeZone { get; init; }
+
+    public int UtcOffsetMinutes { get; init; }
 }
 
 public sealed record ResultCounts(int Allowed, int NotAllowed, int Unknown)
 {
     public int Total => Allowed + NotAllowed + Unknown;
 }
-
-public sealed record HourCount(DateTimeOffset Hour, int Reads);
 
 /// <summary>The confidence bands of the Log and the Stats: below <see cref="Error"/> the error colour, below <see cref="Warning"/> the warning colour.</summary>
 public static class ConfidenceLevels
@@ -793,22 +830,50 @@ public static class ConfidenceLevels
     public const int High = 90;
 }
 
-/// <summary>The reads in the four confidence bands: below 60, 60 to 74, 75 to 89, 90 and above.</summary>
-public sealed record ConfidenceBands(int Below60, int From60To74, int From75To89, int From90)
+/// <summary>The top cards of the Stats: the reads of the chosen cameras in the last hour, 24 hours, 7 days and all the log holds.</summary>
+public sealed record ReadTotals(long LastHour, long Last24Hours, long Last7Days, long Total);
+
+/// <summary>
+/// One camera of the Stats over the chosen time: its reads, its average plate confidence (0 to 100), its average vehicle
+/// confidence (null: the camera sent none, no vehicle detection) and one value per step for the charts (oldest first;
+/// a step without reads has no confidence: null).
+/// </summary>
+public sealed record CameraSeries(
+    Guid CameraId,
+    string Camera,
+    int Reads,
+    double? Confidence,
+    double? VehicleConfidence,
+    IReadOnlyList<int> ReadsPerStep,
+    IReadOnlyList<double?> ConfidencePerStep);
+
+/// <summary>
+/// The Stats tab (decisions 2026-11-27): the top cards (<see cref="Totals"/>, the chosen cameras, independent of the time),
+/// and for the chosen time the reads by result, the overall average confidence, the Total line (<see cref="TotalReads"/>,
+/// <see cref="TotalConfidence"/>) and one <see cref="CameraSeries"/> per camera, busiest first. <see cref="Start"/> is the
+/// start of the first step; there are <see cref="Steps"/> steps of <see cref="Step"/>.
+/// </summary>
+public sealed record StatsReply
 {
-    public int Total => Below60 + From60To74 + From75To89 + From90;
+    public ReadTotals Totals { get; init; } = new(0, 0, 0, 0);
+
+    public ResultCounts Results { get; init; } = new(0, 0, 0);
+
+    /// <summary>The average plate confidence of every read of the time, 0 when there is none.</summary>
+    public double AverageConfidence { get; init; }
+
+    public DateTimeOffset Start { get; init; }
+
+    public StatsStep Step { get; init; }
+
+    public int Steps { get; init; }
+
+    public IReadOnlyList<int> TotalReads { get; init; } = [];
+
+    public IReadOnlyList<double?> TotalConfidence { get; init; } = [];
+
+    public IReadOnlyList<CameraSeries> Cameras { get; init; } = [];
 }
-
-/// <summary>A camera of the Stats: its reads, the share Allowed, the average confidence and the shares below 60 and below 75.</summary>
-public sealed record CameraStats(Guid CameraId, string Camera, int Reads, double AllowedShare, double AverageConfidence, double LowShare, DateTimeOffset? LastRead, double Below75Share = 0);
-
-/// <summary>The Stats tab: the reads by result, the average confidence and its bands over all chosen cameras, per hour and per camera.</summary>
-public sealed record StatsReply(
-    ResultCounts Results,
-    IReadOnlyList<HourCount> PerHour,
-    IReadOnlyList<CameraStats> PerCamera,
-    double AverageConfidence = 0,
-    ConfidenceBands? Confidence = null);
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Settings
