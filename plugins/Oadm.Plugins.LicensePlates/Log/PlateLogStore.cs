@@ -488,14 +488,16 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
         }
 
         var time = DateTimeOffset.FromUnixTimeMilliseconds(ms);
-        if (update.Picture is not null && KeepPictures)
+        // A better crop replaces the old one only when it can be kept (a JPEG within the limit); the old one's bytes leave
+        // its day's count. A refused crop keeps the old picture.
+        if (update.Picture is { } better && KeepPictures && IsJpeg(better))
         {
             if (picture is not null)
             {
-                DeletePicture(picture);
+                await ForgetPictureAsync(db, tx, picture).ConfigureAwait(false);
             }
 
-            picture = await SavePictureAsync(db, tx, update.Id, time, update.Picture, zone).ConfigureAwait(false) ?? picture;
+            picture = await SavePictureAsync(db, tx, update.Id, time, better, zone).ConfigureAwait(false);
         }
 
         var newDirection = update.Direction ?? direction;
@@ -546,7 +548,7 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
 
     private async Task<string?> SavePictureAsync(SqliteConnection db, SqliteTransaction tx, long id, DateTimeOffset time, byte[] picture, TimeZoneInfo zone)
     {
-        if (picture.Length is < 4 or > MaxPictureBytes || picture[0] != 0xFF || picture[1] != 0xD8)
+        if (!IsJpeg(picture))
         {
             return null; // not a JPEG: nothing is converted
         }
@@ -565,6 +567,30 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
         await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         return relative.Replace('\\', '/');
     }
+
+    /// <summary>A crop the log keeps: a JPEG of at most 512 KB (never converted).</summary>
+    private static bool IsJpeg(byte[] picture) => picture.Length is >= 4 and <= MaxPictureBytes && picture[0] == 0xFF && picture[1] == 0xD8;
+
+    /// <summary>Deletes a stored crop and takes its bytes off its day (the folder name of its path).</summary>
+    private async Task ForgetPictureAsync(SqliteConnection db, SqliteTransaction tx, string relative)
+    {
+        var length = DeletePicture(relative);
+        var parts = relative.Split('/', '\\');
+        if (length <= 0 || parts.Length < 3)
+        {
+            return;
+        }
+
+        await using var cmd = db.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "UPDATE picture_days SET bytes = bytes - @bytes WHERE day = @day;";
+        cmd.Parameters.AddWithValue("@day", parts[^2]);
+        cmd.Parameters.AddWithValue("@bytes", length);
+        await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>The bytes of the plate crops as counted (the files the log holds).</summary>
+    internal long PictureBytes => Interlocked.Read(ref _pictureBytes);
 
     private long DeletePicture(string relative)
     {

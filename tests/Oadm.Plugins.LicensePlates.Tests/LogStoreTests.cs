@@ -121,6 +121,37 @@ public sealed class LogStoreTests : IAsyncLifetime
         Assert.Equal(["K12345"], await Plates(new LogQuery { Search = "100%", NamedPlates = ["K12345"] }));
     }
 
+    private static byte[] Jpeg(int length)
+    {
+        var bytes = new byte[length];
+        bytes[0] = 0xFF;
+        bytes[1] = 0xD8;
+        return bytes;
+    }
+
+    private long FilesBytes() =>
+        Directory.EnumerateFiles(Path.Combine(_folder, PlateLogStore.PicturesFolder), "*.jpg", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length);
+
+    [Fact]
+    public async Task Better_crops_replace_the_picture_with_exact_counts_and_a_refused_one_keeps_it()
+    {
+        var row = Row(T(-1), "W1") with { HasPicture = true };
+        _store.Insert(new LogInsert(row, Jpeg(1_000)));
+        _store.Update(new LogUpdate(row.Id, null, Jpeg(1_500)));
+        _store.Update(new LogUpdate(row.Id, null, Jpeg(800)));
+        await _store.FlushAsync();
+        Assert.Equal((800L, 800L), (FilesBytes(), _store.PictureBytes));
+
+        _store.Update(new LogUpdate(row.Id, null, [1, 2, 3, 4, 5])); // not a JPEG: refused
+        await _store.FlushAsync();
+        Assert.Equal(800, (await _store.PictureAsync(row.Id, LogScope.All, CancellationToken.None))!.Length);
+
+        // After a restart the count comes from the days: still exact.
+        await _store.DisposeAsync();
+        _store = await PlateLogStore.OpenAsync(_folder, _time, null, CancellationToken.None);
+        Assert.Equal((800L, 800L), (FilesBytes(), _store.PictureBytes));
+    }
+
     [Fact]
     public async Task A_caller_of_a_device_group_sees_only_its_cameras()
     {
