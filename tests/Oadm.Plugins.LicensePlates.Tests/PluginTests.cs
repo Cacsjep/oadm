@@ -301,6 +301,47 @@ public sealed class PluginTests
     }
 
     [Fact]
+    public async Task A_log_reopened_while_a_car_is_tracked_never_gets_another_row_changed()
+    {
+        await using var rig = await Rig.StartAsync();
+        var staff = await rig.TagAsync("Staff");
+        await rig.PlateAsync("W12345A", staff);
+        var camera = rig.Camera(0);
+        await rig.CallAsync(LicensePlatesMethods.AddCameras, new DevicesRequest([rig.Id(0)]));
+        await rig.CallAsync(LicensePlatesMethods.SetAllowedTags, new AllowedTagsRequest([rig.Id(0)], Set: [staff.Id]));
+        await Eventually.TrueAsync(() => camera.IsConnected && rig.Plugin.Runtime!.StateOf(rig.Id(0)).Status == CameraStatus.Connected, "connected");
+        await camera.SendAsync(Fixture.Notify("New", "1", "W12345A", 0.93));
+        await Eventually.TrueAsync(() => rig.Plugin.Log!.Store!.Written == 1, "the read is stored");
+        var readId = (await rig.CallAsync<LogPage>(LicensePlatesMethods.Log, new LogPageRequest())).Rows.Single().Id;
+
+        // Another log folder with rows of another camera, whose ids include the read's.
+        var other = Path.Combine(rig.Folder, "other-log");
+        var otherCamera = Guid.NewGuid();
+        var seed = await Log.PlateLogStore.OpenAsync(other, rig.Time, null, CancellationToken.None);
+        for (var i = 0; i < 5; i++)
+        {
+            seed.Insert(new Log.LogInsert(new PlateRead { Id = seed.NextId(), Time = rig.Time.GetUtcNow().AddMinutes(-10), CameraId = otherCamera, Camera = "other", Plate = "OTHER" + i }, null));
+        }
+
+        await seed.FlushAsync();
+        await seed.DisposeAsync();
+        var settings = PluginJson.Parse<LicensePlateSettings>(await rig.CallAsync(LicensePlatesMethods.Settings), LicensePlatesJson.Options);
+        Assert.Null((await rig.CallAsync<SaveSettingsReply>(LicensePlatesMethods.SaveSettings, settings with { Folder = other })).Errors);
+
+        // The same car within its window: a better picture and another direction for the read stored in the old log.
+        await camera.SendAsync(Fixture.Notify("Update", "1", "W12345A", 0.97, direction: "out", image: Fixture.JpegBase64));
+        await camera.SendAsync(Fixture.Notify("New", "2", "W12345A", 0.95));
+        await Eventually.TrueAsync(() => rig.Plugin.Log!.Store!.Written >= 1, "the next read is stored in the new log");
+        await rig.Plugin.Log!.Store!.FlushAsync();
+
+        var rows = (await rig.CallAsync<LogPage>(LicensePlatesMethods.Log, new LogPageRequest { Limit = 50 })).Rows;
+        var untouched = rows.Single(r => r.Id == readId);
+        Assert.Equal(("OTHER" + (readId - 1), PlateDirection.Unknown, false), (untouched.Plate, untouched.Direction, untouched.HasPicture)); // the other camera's row
+        var next = rows.Single(r => r.CameraId == rig.Id(0));
+        Assert.True(next.Id > 5 && next.Id > readId); // above every id of both logs
+    }
+
+    [Fact]
     public async Task A_read_a_wildcard_plate_decides_logs_the_car_and_names_the_pattern()
     {
         await using var rig = await Rig.StartAsync();

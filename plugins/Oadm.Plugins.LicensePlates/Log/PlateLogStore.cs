@@ -12,7 +12,11 @@ namespace Oadm.Plugins.LicensePlates.Log;
 internal sealed record LogInsert(PlateRead Row, byte[]? Picture);
 
 /// <summary>A later change of a stored read: its direction, a better plate crop.</summary>
-internal sealed record LogUpdate(long Id, PlateDirection? Direction, byte[]? Picture);
+internal sealed record LogUpdate(long Id, PlateDirection? Direction, byte[]? Picture)
+{
+    /// <summary>The camera of the read: an update changes only a row of this camera (a reopened log never gets another row changed).</summary>
+    public Guid? Camera { get; init; }
+}
 
 /// <summary>The cameras a call may see in the log: null = every camera (users with all devices).</summary>
 internal sealed record LogScope(IReadOnlySet<Guid>? Cameras)
@@ -82,6 +86,9 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
 
     /// <summary>The next id of a row: the log hands it out before the row is written, so a later change can name it.</summary>
     public long NextId() => Interlocked.Increment(ref _nextId);
+
+    /// <summary>The highest id of the log: the highest stored at open, raised by <see cref="NextId"/>.</summary>
+    public long LastId => Interlocked.Read(ref _nextId);
 
     /// <summary>The database, its journal and the plate crops, in bytes.</summary>
     public long UsedBytes
@@ -470,8 +477,13 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
         await using (var read = db.CreateCommand())
         {
             read.Transaction = tx;
-            read.CommandText = "SELECT time, camera, result, direction, confidence, plate, picture FROM reads WHERE id = @id AND gap_until IS NULL;";
+            read.CommandText = "SELECT time, camera, result, direction, confidence, plate, picture FROM reads WHERE id = @id AND gap_until IS NULL"
+                + (update.Camera is null ? ";" : " AND camera = @camera;");
             read.Parameters.AddWithValue("@id", update.Id);
+            if (update.Camera is { } updateCamera)
+            {
+                read.Parameters.AddWithValue("@camera", CameraKey(updateCamera));
+            }
             await using var reader = await read.ExecuteReaderAsync().ConfigureAwait(false);
             if (!await reader.ReadAsync().ConfigureAwait(false))
             {
