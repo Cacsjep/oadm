@@ -30,7 +30,7 @@ Settings dialog is the shared `ui:ServerFolderPicker`.
 | `LicensePlateTexts.cs` | Every status, result and refusal text, one phrase per concept |
 | `LicensePlatesPlugin.cs`, `.Methods.cs` | The core plugin: start, reads to events and log, timers, page methods, rights, downloads |
 | `Plates/` | `PlateStore` (records `plates`, `tags`, `cameras`), `PlateRules`, `PlateText`, `PlateCsv` (import and export) |
-| `Matching/` | `PlateMatcher` (exact: one dictionary lookup; near: `DeletionIndex` per camera tag set), `EditDistance` |
+| `Matching/` | `PlateMatcher` (exact: one dictionary lookup; wildcard plates: `WildcardIndex`; near: `DeletionIndex` per camera tag set), `EditDistance` |
 | `Reads/` | `AlpvEvent` (ALPV's fields), `ReadAggregator` (one read per car and camera, on a `TimeProvider`) |
 | `Cameras/` | `CameraRuntime`: one event WebSocket per camera, ALPV checks, status, gaps |
 | `Alpv/` | `AlpvClient` (every ALPV call, also the make and model lists), `AlpvConfig` (the configuration, secrets dropped while parsed), `AlpvLists` with `alpv-lists-3.1.7.json` (ALPV's regions, countries, states, vehicle types and colours, embedded) |
@@ -59,6 +59,11 @@ its native SQLite. PDFsharp is the plugin's own copy, as in Snapshot report.
   64-bit hashes in one sorted array), built on the first read of a set and rebuilt in the background when a plate with
   one of its tags changes; every candidate is checked against the current list with the bounded edit distance. Plates
   shorter than 6 characters deviate at most 1 with the setting 2 (the list's plate counts).
+- **Wildcard plates** (`AXIS12**`, `*` = one letter or digit): the plate store keeps them in a `WildcardIndex` too (by length
+  and the positions of the first three fixed characters, keyed by those characters); the matcher asks it after the exact
+  lookup and before the near match, never with a deviation; more fixed characters win, a tie allows when any allows. They
+  are left out of the deletion index. At most 1,000. The read keeps the camera's text as `Plate` and the pattern as
+  `ListEntry` (log column `list_entry`, added once to older stores; event field `listEntry`).
 - **Reads**: the read's time is ALPV's `capture_timestamp`. A Lost of a car never seen with a text is a read of its own.
 - **Log store**: `<folder>/plate-log.db` (WAL, `auto_vacuum=INCREMENTAL`), crops in `<folder>/pictures/<yyyy-MM-dd>/<id>.jpg`
   (the server's day; only JPEG, at most 512 KB, never converted). Writes: one writer, up to 2,000 rows per transaction.
@@ -146,9 +151,9 @@ Notes for the page: the Picture column reads `picture` only for visible rows; th
 
 ## Tests
 
-`tests/Oadm.Plugins.LicensePlates.Tests`: matching, the aggregator on a fake clock, ALPV's configuration of 3.0.13 and
+`tests/Oadm.Plugins.LicensePlates.Tests`: matching and wildcard plates (`WildcardTests`), the aggregator on a fake clock, ALPV's configuration of 3.0.13 and
 3.1.7, the tasks against a fake camera, the log store, the export, the plugin through its methods with a fake event
-stream, the device group canary and the tools. `PerfTests` (`Category=Perf`): 100,000 plates, 1,000 cameras among
+stream, the device group canary and the tools. `PerfTests` (`Category=Perf`): 100,000 plates (also with 1,000 wildcard plates), 1,000 cameras among
 100,000 devices, a log of 10 million reads (plate search under 100 ms), the export at 10,000 rows.
 
 `Client/`: the page's view models against a sample server (`ClientSupport.cs`: Austrian plates, garages as tags, a camera
@@ -158,6 +163,6 @@ button's chips), `GridSelectionTests` (a row clicked in the real grid reaches th
 `AlpvListsClientTests` (the selects of ALPV's lists), `PlatesTabTests` (search, tag
 filter, rights, Delete, Change and Manage tags, the editor's errors and Delete when it ends, Import), `CamerasTabTests`
 (statuses, image settings, toolbar rights, Set up, Copy settings, Settings, Stats: cards, bars, lines and legend),
-`SetupAndColumnsTests` (fixed dialogs, the camera's name, the threshold in percent, the Log's chosen columns and the date); `ScreenshotTests` (headless, PNGs with
+`SetupAndColumnsTests` (fixed dialogs, the camera's name, the threshold in percent, the Log's chosen columns and the date), `WildcardClientTests` (the editor, the search, the Log's tooltip and List entry); `ScreenshotTests` (headless, PNGs with
 `OADM_SCREENSHOT_DIR`, `OADM_TEST_APPEARANCE=Light` for the light theme); `ClientPerfTests` (`Category=Perf`: 100,000
 plates, 1,000 cameras).

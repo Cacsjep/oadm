@@ -36,6 +36,7 @@ public static class LicensePlatesInfo
     /// <summary>The fields of the four read events (their placeholders).</summary>
     public const string PlateField = "plate";
     public const string ReadAsField = "readAs";
+    public const string ListEntryField = "listEntry";
     public const string NameField = "name";
     public const string TagsField = "tags";
     public const string DirectionField = "direction";
@@ -59,6 +60,12 @@ public static class LicensePlateLimits
     public const int MaxTags = 200;
     public const int MinPlateLength = 2;
     public const int MaxPlateLength = 12;
+
+    /// <summary>The most wildcard plates (with *) of the list; each is an index entry the matcher checks per read.</summary>
+    public const int MaxWildcardPlates = 1_000;
+
+    /// <summary>The fewest letters and digits besides * in a wildcard plate.</summary>
+    public const int MinWildcardFixed = 3;
     public const int MaxNameLength = 100;
     public const int MaxTagNameLength = 64;
 
@@ -640,6 +647,9 @@ public sealed record PlateRead
 
     /// <summary>The camera's text when it differs from <see cref="Plate"/> (a near match); null otherwise.</summary>
     public string? ReadAs { get; init; }
+
+    /// <summary>The plate of the list that decided the read, as entered ("AXIS12**" for a wildcard plate); null for an unknown plate.</summary>
+    public string? ListEntry { get; init; }
 
     public ReadResult Result { get; init; }
 

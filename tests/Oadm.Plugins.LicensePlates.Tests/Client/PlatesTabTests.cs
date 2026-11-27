@@ -23,7 +23,7 @@ public sealed class PlatesTabTests
         Assert.True(visitor.IsEnded); // ended 26 Nov 18:00, still in the list
         Assert.Equal("26 Nov 2026 18:00", visitor.AllowedToText);
         Assert.False(plates.Rows.Single(r => r.Text == "G4711XY").IsEnded);
-        Assert.Equal("10 plates", plates.Footer);
+        Assert.Equal("12 plates", plates.Footer);
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public sealed class PlatesTabTests
         Assert.Equal("Delete 3 plates? They are no longer allowed anywhere.", message);
         Assert.Equal("Delete", confirm); // MessageWindow makes it red
         Assert.Equal(3, ctx.LastPayload<PlateTextsRequest>(LicensePlatesMethods.DeletePlates).Plates.Count);
-        Assert.Equal(7, plates.Rows.Count);
+        Assert.Equal(9, plates.Rows.Count);
     }
 
     [Fact]
@@ -192,7 +192,7 @@ public sealed class PlatesTabTests
         editor.Text = "W";
         Assert.Equal("A plate has 2 to 12 characters.", editor.ErrorOf(nameof(PlateEditorViewModel.Text)));
         editor.Text = "W1Ä!";
-        Assert.Equal("Use only letters and digits.", editor.ErrorOf(nameof(PlateEditorViewModel.Text)));
+        Assert.Equal("Use only letters, digits and *.", editor.ErrorOf(nameof(PlateEditorViewModel.Text)));
         editor.Text = "W4242X";
 
         editor.FromDate = new DateTimeOffset(2026, 12, 10, 0, 0, 0, TimeSpan.Zero);
@@ -250,7 +250,7 @@ public sealed class PlatesTabTests
         Assert.Null(saved.Original);
         Assert.Equal([Samples.Staff], saved.Plate.Tags);
         Assert.Equal("W4242X", page.Plates.SelectedRow?.Text);
-        Assert.Equal(11, page.Plates.Rows.Count);
+        Assert.Equal(13, page.Plates.Rows.Count);
     }
 
     [Fact]

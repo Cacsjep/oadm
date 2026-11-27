@@ -13,6 +13,7 @@ public static class LogColumns
     public const string Picture = "picture";
     public const string Plate = "plate";
     public const string ReadAs = "readAs";
+    public const string ListEntry = "listEntry";
     public const string Name = "name";
     public const string Tags = "tags";
     public const string Result = "result";
@@ -35,6 +36,7 @@ public static class LogColumns
         (Picture, "Picture", true),
         (Plate, "Plate", true),
         (ReadAs, "Read as", false),
+        (ListEntry, "List entry", false),
         (Name, "Name", true),
         (Tags, "Tags", true),
         (Result, "Result", true),
@@ -81,6 +83,7 @@ public static class LogColumns
             Camera => row.Camera,
             Plate => row.Plate,
             ReadAs => row.ReadAs ?? string.Empty,
+            ListEntry => row.ListEntry ?? string.Empty,
             Name => row.Name,
             Tags => string.Join(", ", row.Tags),
             Result => LicensePlateTexts.Result(row.Result),

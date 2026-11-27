@@ -23,6 +23,7 @@ internal static class PlateEvents
         {
             new(LicensePlatesInfo.PlateField, "Plate"),
             new(LicensePlatesInfo.ReadAsField, "Read as"),
+            new(LicensePlatesInfo.ListEntryField, "List entry"),
             new(LicensePlatesInfo.NameField, "Name"),
             new(LicensePlatesInfo.TagsField, "Tags"),
             new(LicensePlatesInfo.DirectionField, "Direction", EventFieldType.Choice, Directions),
@@ -100,6 +101,7 @@ internal static class PlateEvents
         {
             [LicensePlatesInfo.PlateField] = read.Plate,
             [LicensePlatesInfo.ReadAsField] = read.ReadAs ?? string.Empty,
+            [LicensePlatesInfo.ListEntryField] = read.ListEntry ?? string.Empty,
             [LicensePlatesInfo.NameField] = read.Name,
             [LicensePlatesInfo.TagsField] = string.Join(", ", read.Tags),
             [LicensePlatesInfo.DirectionField] = LicensePlateTexts.Direction(read.Direction),

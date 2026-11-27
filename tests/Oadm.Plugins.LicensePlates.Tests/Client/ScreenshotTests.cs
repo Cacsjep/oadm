@@ -2,6 +2,7 @@ using System.Text;
 
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -101,22 +102,28 @@ public sealed class ScreenshotTests
             chip.Editor.Hide();
             Headless.Pump();
 
-            // Choose columns open, then more columns shown (the vehicle, the view) and Tags hidden.
+            // Choose columns open; the default columns fit; all 18 scroll sideways.
             var chooser = view.FindControl<LogView>("LogPage")!.FindControl<ColumnChooserButton>("ColumnChooser")!;
             chooser.Flyout!.ShowAt(chooser);
             Headless.Pump();
             Assert.Equal(LogColumns.All.Count, chooser.List.ItemCount);
             Headless.Capture(window, $"log-columns-open-{Suffix}.png");
             chooser.Flyout.Hide();
-            foreach (var key in new[] { LogColumns.VehicleType, LogColumns.VehicleColor, LogColumns.VehicleMake, LogColumns.VehicleModel, LogColumns.View })
+            Headless.Pump();
+            Assert.Equal(LogColumns.Defaults.Count, grid.Columns.Count(c => c.IsVisible));
+            Assert.DoesNotContain(grid.GetVisualDescendants().OfType<ScrollBar>(), b => b.Orientation == Avalonia.Layout.Orientation.Horizontal && b.IsEffectivelyVisible); // the default columns fit
+            Headless.Capture(window, $"log-default-columns-{Suffix}.png");
+
+            foreach (var option in page.Log.Columns.Columns)
             {
-                page.Log.Columns.Find(key)!.IsVisible = true;
+                option.IsVisible = true;
             }
 
-            page.Log.Columns.Find(LogColumns.Tags)!.IsVisible = false;
-            page.Log.Columns.Find(LogColumns.Direction)!.IsVisible = false;
             Headless.Pump();
-            Assert.NotEmpty(VisibleTexts(grid, "Volkswagen"));
+            Assert.Equal(LogColumns.All.Count, grid.Columns.Count(c => c.IsVisible));
+            Assert.Contains(grid.GetVisualDescendants().OfType<ScrollBar>(), b => b.Orientation == Avalonia.Layout.Orientation.Horizontal && b.IsEffectivelyVisible);
+            Assert.Single(VisibleTexts(grid, "AXIS12**")); // the List entry of the wildcard read
+            Assert.Equal("Matches AXIS12**", ToolTip.GetTip(grid.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Name == "PlateCell" && t.Text == "AXIS1234")));
             Headless.Capture(window, $"log-extra-columns-{Suffix}.png");
             Close(page, window);
             return true;
@@ -136,7 +143,9 @@ public sealed class ScreenshotTests
             plates.Grid.SelectedItems.Add(page.Plates.Rows[3]);
             Headless.Pump();
 
-            Assert.Equal("10 plates · 2 selected", page.Plates.Footer);
+            Assert.Equal("12 plates · 2 selected", page.Plates.Footer);
+            Assert.Single(VisibleTexts(plates.Grid, "AXIS12**")); // a wildcard plate as entered
+            Assert.Single(VisibleTexts(plates.Grid, "GU7**AB"));
             Assert.Contains(plates.Grid.GetVisualDescendants().OfType<TagChips>(), c => c.IsEffectivelyVisible && c.ShownCount > 0);
             Assert.Contains(plates.Grid.GetVisualDescendants().OfType<OadmIcon>(), c => c.Name == "EndedIcon" && c.IsEffectivelyVisible);
             Assert.Contains("danger", plates.FindControl<ToolbarButton>("DeleteButton")!.Classes);
@@ -172,6 +181,18 @@ public sealed class ScreenshotTests
             Assert.True(window.FindControl<CheckBox>("DeleteWhenEndsBox")!.IsEffectivelyEnabled);
             Assert.Equal(1, PrimaryButtons(window));
             Headless.Capture(window, $"plate-editor-error-{Suffix}.png");
+
+            // A wildcard plate: the hint below the plate says what * means; too few fixed characters is an error there.
+            editor.Text = "axis 34**";
+            Headless.Pump();
+            Assert.Null(editor.ErrorOf(nameof(PlateEditorViewModel.Text)));
+            Assert.Single(VisibleTexts(window, PageTexts.WildcardHint));
+            Headless.Capture(window, $"plate-editor-wildcard-hint-{Suffix}.png");
+            editor.Text = "AB****";
+            Headless.Pump();
+            Assert.Equal(LicensePlateTexts.TooFewFixed, editor.ErrorOf(nameof(PlateEditorViewModel.Text)));
+            Assert.Single(VisibleTexts(window, LicensePlateTexts.TooFewFixed));
+            Headless.Capture(window, $"plate-editor-wildcard-error-{Suffix}.png");
             window.Close();
             Close(page, pageWindow);
             return true;

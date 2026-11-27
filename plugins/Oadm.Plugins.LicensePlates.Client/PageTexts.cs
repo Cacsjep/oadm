@@ -67,6 +67,8 @@ public static class PageTexts
     public const string Type = "Type";
     public const string Colour = "Colour";
     public const string ReadAsColumn = "Read as";
+    public const string ListEntryColumn = "List entry";
+    public const string WildcardHint = "* stands for one letter or digit.";
     public const string VehicleTypeColumn = "Vehicle type";
     public const string VehicleColorColumn = "Vehicle colour";
     public const string VehicleMakeColumn = "Vehicle make";

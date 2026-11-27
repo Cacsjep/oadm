@@ -49,6 +49,8 @@ public sealed partial class LogRow : ObservableObject
         DirectionText = LicensePlateTexts.Direction(read.Direction);
         ConfidenceText = read.Confidence.ToString(CultureInfo.CurrentCulture);
         ReadAsText = LogColumns.Text(read, LogColumns.ReadAs);
+        ListEntryText = LogColumns.Text(read, LogColumns.ListEntry);
+        PlateTip = Plates.PlateText.IsWildcard(read.ListEntry) ? LicensePlateTexts.Matches(read.ListEntry!) : null;
         AreaText = LogColumns.Text(read, LogColumns.Area);
         CountryText = LogColumns.Text(read, LogColumns.Country);
         StateText = LogColumns.Text(read, LogColumns.State);
@@ -60,6 +62,12 @@ public sealed partial class LogRow : ObservableObject
     }
 
     public string ReadAsText { get; } = string.Empty;
+
+    /// <summary>The plate or wildcard plate of the list that decided the read; empty for an unknown plate.</summary>
+    public string ListEntryText { get; } = string.Empty;
+
+    /// <summary>"Matches AXIS12**" on the plate a wildcard plate decided; null otherwise.</summary>
+    public string? PlateTip { get; }
 
     public string AreaText { get; } = string.Empty;
 

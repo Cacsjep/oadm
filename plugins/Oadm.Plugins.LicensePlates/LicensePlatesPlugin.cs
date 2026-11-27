@@ -257,8 +257,10 @@ public sealed partial class LicensePlatesPlugin : ICorePlugin, IDynamicEventSour
             Time = read.Time,
             CameraId = read.Camera,
             Camera = CameraName(read.Camera),
-            Plate = plate?.Text ?? read.Event.Text,
-            ReadAs = plate is not null && !string.Equals(plate.Text, read.Event.Text, StringComparison.Ordinal) ? read.Event.Text : null,
+            // A wildcard plate: the plate is what the camera read (the real car), the pattern is the list entry.
+            Plate = plate is null || PlateText.IsWildcard(plate.Text) ? read.Event.Text : plate.Text,
+            ReadAs = plate is not null && !PlateText.IsWildcard(plate.Text) && !string.Equals(plate.Text, read.Event.Text, StringComparison.Ordinal) ? read.Event.Text : null,
+            ListEntry = plate?.Text,
             Result = read.Match.Result,
             Reason = read.Match.Reason,
             ReasonTime = read.Match.ReasonTime,

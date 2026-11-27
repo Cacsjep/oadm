@@ -15,7 +15,7 @@
     <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
     <Border Grid.Row="1" Classes="dialogBody">
       <StackPanel Classes="form">
-        <ui:FormField Label="{x:Static vm:PageTexts.Plate}" LabelWidth="140" InputWidth="358">
+        <ui:FormField Label="{x:Static vm:PageTexts.Plate}" LabelWidth="140" InputWidth="358" Hint="{x:Static vm:PageTexts.WildcardHint}">
           <TextBox x:Name="PlateBox" Classes="mono" Text="{Binding Text}" MaxLength="{x:Static vm:PlateEditorViewModel.MaxTextLength}" />
         </ui:FormField>
         <ui:FormField Label="{x:Static vm:PageTexts.Name}" LabelWidth="140" InputWidth="358" Hint="Optional">
