@@ -67,9 +67,10 @@ internal static class SetupRules
 
             Range(errors, "recognition.plateWidth", r.PlateWidthMin, r.PlateWidthMax, 1, 4_000, "The plate width is 1 to 4,000 pixels.", "Choose a width from the smallest to the largest.");
             Range(errors, "recognition.characters", r.CharactersMin, r.CharactersMax, 1, 20, "A plate has 1 to 20 characters.", "Choose a number from the fewest to the most.");
-            if (r.ConfidenceThreshold is { } t && (double.IsNaN(t) || t is < 0 or > 1))
+            // ALPV keeps 0.2 to 1.0 (the Set up slider: 20 to 100 %); anything else is refused before the first write.
+            if (r.ConfidenceThreshold is { } t && (double.IsNaN(t) || t is < 0.2 or > 1))
             {
-                errors["recognition.confidenceThreshold"] = "The threshold is 0 to 1.";
+                errors["recognition.confidenceThreshold"] = "The threshold is 0.2 to 1.";
             }
         }
 
