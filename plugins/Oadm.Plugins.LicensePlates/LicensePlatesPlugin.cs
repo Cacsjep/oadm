@@ -372,7 +372,11 @@ public sealed partial class LicensePlatesPlugin : ICorePlugin, IDynamicEventSour
         problems.Report(map, _log is { HasFolder: true } log ? log.Problem : null);
     }
 
-    /// <summary>Plates with Delete when it ends are deleted within a minute after their Allowed to.</summary>
+    /// <summary>The audit entry of one sweep: the count, never a plate's text (plates are personal data).</summary>
+    internal static string EndedAuditDetail(int count) =>
+        count == 1 ? "Deleted 1 plate whose time ended" : "Deleted " + count.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " plates whose time ended";
+
+    /// <summary>Plates with Delete when it ends are deleted within a minute after their Allowed to; one audit entry per sweep.</summary>
     internal async Task SweepEndedAsync()
     {
         if (_store is not { } store || Interlocked.Exchange(ref _sweeping, 1) == 1)
@@ -392,6 +396,10 @@ public sealed partial class LicensePlatesPlugin : ICorePlugin, IDynamicEventSour
                 }
 
                 PublishPlates();
+                if (_ctx?.Audit is { } audit)
+                {
+                    await audit.WriteAsync(EndedAuditDetail(ended.Count), _running?.Token ?? CancellationToken.None).ConfigureAwait(false);
+                }
             }
         }
 #pragma warning disable CA1031 // Tried again in 30 s.

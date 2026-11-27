@@ -169,14 +169,24 @@ public sealed class PluginTests
     [Fact]
     public async Task Delete_when_it_ends_deletes_the_plate_within_a_minute_after_allowed_to()
     {
-        await using var rig = await Rig.StartAsync(cameras: 0);
+        var audit = new FakePluginAudit();
+        await using var rig = await Rig.StartAsync(cameras: 0, setup: ctx => ctx.Audit = audit);
         var end = new DateTime(2026, 11, 27, 12, 1, 0);
         await rig.CallAsync(LicensePlatesMethods.SavePlate, new SavePlateRequest(new Plate { Text = "AA100", AllowedTo = end, DeleteWhenEnds = true }));
         await rig.CallAsync(LicensePlatesMethods.SavePlate, new SavePlateRequest(new Plate { Text = "BB200", AllowedTo = end, DeleteWhenEnds = false }));
 
         rig.Time.Advance(TimeSpan.FromSeconds(90));
 
-        await Eventually.TrueAsync(async () => (await rig.CallAsync<PlatesPage>(LicensePlatesMethods.Plates, new PlatesRequest())).Plates.Select(p => p.Text).SequenceEqual(["BB200"]), "the ended plate is deleted, the other stays");
+        // One audit entry for the sweep, with the count and never the plate (personal data).
+        await Eventually.TrueAsync(async () => (await rig.CallAsync<PlatesPage>(LicensePlatesMethods.Plates, new PlatesRequest())).Plates.Select(p => p.Text).SequenceEqual(["BB200"])
+            && audit.Entries.SequenceEqual(["Deleted 1 plate whose time ended"]), "the ended plate is deleted with one audit entry, the other stays");
+    }
+
+    [Fact]
+    public void The_audit_text_of_a_sweep_counts_the_plates()
+    {
+        Assert.Equal("Deleted 1 plate whose time ended", LicensePlatesPlugin.EndedAuditDetail(1));
+        Assert.Equal("Deleted 1,200 plates whose time ended", LicensePlatesPlugin.EndedAuditDetail(1200));
     }
 
     [Fact]
@@ -290,6 +300,33 @@ public sealed class PluginTests
 
         Assert.Equal(["deviation", "folder", "keepDays", "maxGigabytes", "waitSeconds"], reply.Errors!.Keys.Order(StringComparer.Ordinal));
         Assert.Equal("Choose a folder on the server.", (await rig.CallAsync<SaveSettingsReply>(LicensePlatesMethods.SaveSettings, new LicensePlateSettings { Folder = "relative/log" })).Errors!["folder"]);
+    }
+
+    [Fact]
+    public async Task A_folder_the_servers_folder_checks_refuse_is_not_saved()
+    {
+        await using var rig = await Rig.StartAsync(cameras: 0);
+        var loose = Path.Combine(rig.Folder, "loose");
+        var safe = Path.Combine(rig.Folder, "safe");
+        var folders = new FakeServerFolderCheck().Refuse(loose, ServerFolderTexts.OthersCanChange);
+        rig.Ctx.FolderCheck = folders;
+        var before = PluginJson.Parse<LicensePlateSettings>(await rig.CallAsync(LicensePlatesMethods.Settings), LicensePlatesJson.Options);
+
+        var refused = await rig.CallAsync<SaveSettingsReply>(LicensePlatesMethods.SaveSettings, before with { Folder = loose });
+
+        Assert.Equal(ServerFolderTexts.OthersCanChange, Assert.Single(refused.Errors!, e => e.Key == "folder").Value);
+        Assert.Null(refused.Settings);
+        Assert.Equal(before.Folder, PluginJson.Parse<LicensePlateSettings>(await rig.CallAsync(LicensePlatesMethods.Settings), LicensePlatesJson.Options).Folder);
+
+        var saved = await rig.CallAsync<SaveSettingsReply>(LicensePlatesMethods.SaveSettings, before with { Folder = safe });
+
+        Assert.Empty(saved.Errors ?? new Dictionary<string, string>());
+        Assert.Equal(safe, saved.Settings!.Folder);
+        Assert.Equal([loose, safe], folders.Checked);
+
+        // The plugin's own checks come first: a relative path never reaches the host.
+        await rig.CallAsync<SaveSettingsReply>(LicensePlatesMethods.SaveSettings, before with { Folder = "relative/log" });
+        Assert.Equal([loose, safe], folders.Checked);
     }
 
     [Fact]

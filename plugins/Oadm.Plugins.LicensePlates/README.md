@@ -61,12 +61,15 @@ its native SQLite. PDFsharp is the plugin's own copy, as in Snapshot report.
   A full disk or a folder that cannot be written stops storing (the problem is on the page and in Any camera problem);
   the folder is tried again every minute; the cleanup runs every hour.
 - **Folder**: no folder by default (nothing stored until an Administrator chooses one). Refused: a relative path, a folder
-  OADM cannot write, and a folder inside the plugins' data of OADM (`plugin-data`, part of every backup). A new folder
-  starts a new log; the old folder keeps its files.
+  OADM cannot write, a folder inside the plugins' data of OADM (`plugin-data`, part of every backup), and then, on every
+  save with a folder, one the host's folder checks refuse (`ICorePluginContext.FolderCheck`, the folder picker's rules:
+  no system or OADM folder, as the service only administrators can change it); its text is the `folder` error. A new
+  folder starts a new log; the old folder keeps its files.
 - **Device groups**: one plate list and tag set; cameras, reads, pictures, stats and events by `call.Devices` (fail
   closed). The log of a group user holds the reads of every camera of the group, also of cameras removed from the plugin.
 - **Audit**: every change and every export; the texts never hold a plate (personal data). The automatic deletion of
-  Delete when it ends is written to the server log only: the SDK has no audit entry without a user's call.
+  Delete when it ends is one entry per sweep with the count ("Deleted 3 plates whose time ended", user `system`,
+  `ICorePluginContext.Audit`); the server log names the plates.
 - **ALPV checks**: the application list, the configuration and the event switches are read when a camera is added, on
   Refresh, after a task of the plugin, every 5 minutes for a camera with a problem (and while its events are off). A
   camera whose `camera.videoChannelId` is not 1 takes part in nothing. The Set up task refuses areas on a rotated picture

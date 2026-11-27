@@ -855,6 +855,15 @@ public sealed partial class LicensePlatesPlugin
     {
         ArgumentNullException.ThrowIfNull(incoming);
         var errors = CheckSettings(incoming);
+
+        // The host's folder checks (docs/spec/security.md "Folders a plugin writes to"), the same as the folder picker's;
+        // after the plugin's own, which create a missing folder. Also for an unchanged folder: its rights may have changed.
+        if (!errors.ContainsKey("folder") && !string.IsNullOrWhiteSpace(incoming.Folder) && _ctx?.FolderCheck is { } folders
+            && await folders.CheckAsync(Path.GetFullPath(incoming.Folder.Trim()), ct).ConfigureAwait(false) is { } problem)
+        {
+            errors["folder"] = problem;
+        }
+
         if (errors.Count > 0)
         {
             return new SaveSettingsReply(null, errors);

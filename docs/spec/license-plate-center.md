@@ -343,8 +343,12 @@ Details the spec left open, decided while building; none changes a rule above.
 - **Stats** come from two count tables of the log store written with every read (per hour; plates per day of the server's
   zone), never from a scan of the reads.
 - **The log folder**: none until an Administrator chooses one (nothing is stored before, events fire); a folder inside the
-  plugins' data of OADM (`plugin-data`, part of every backup) is refused, so is one OADM cannot write; a new folder starts
-  a new log and the old one keeps its files. Plate crops: JPEG only, at most 512 KB.
+  plugins' data of OADM (`plugin-data`, part of every backup) is refused, so is one OADM cannot write; then every save with
+  a folder runs the host's folder checks of `security.md` "Folders a plugin writes to" (`ICorePluginContext.FolderCheck`,
+  the picker's rules, also for an unchanged folder) and refuses with their text below the field; a new folder starts a new
+  log and the old one keeps its files. Plate crops: JPEG only, at most 512 KB.
+- **Audit of Delete when it ends**: one entry per sweep, "Deleted 3 plates whose time ended", user `system`
+  (`ICorePluginContext.Audit`, SDK 0.17.0); never the plates, the server log names them.
 - **Plate tag names** hold no comma (the events carry them comma separated, so does the CSV).
 - **Delete when it ends** without an Allowed to is saved as off.
 - **Camera problem** is also on for a camera OADM cannot contact (site offline, credentials) once that lasted 30 s; Any
@@ -359,13 +363,9 @@ Details the spec left open, decided while building; none changes a rule above.
   OADM shows "Rotated pictures are set up on the ALPV page" until it is tested.
 - The second step: writing the allowed plates to the cameras (list size limit and the meaning of ALPV's date are not
   documented).
-- Audit entry of the automatic deletion (Delete when it ends): the SDK has no audit entry without a user's call, so the
-  server log has it; a host member for it is needed.
 - Add cameras offers "only devices with ALPV installed": the host's device picker cannot know without reading every
   device; until a cached application list exists, every camera can be added and shows "ALPV is not installed".
 - The choices of Region and Camera location: ALPV's configuration returns the values, not the lists; the server checks the
   form only (Region letters, digits, `_` and `-`; Camera location alpha-3 or empty).
-- The folder picker's check against the service's folder checks of `security.md` (`FolderGuard`) belongs to the host's
-  picker call; the plugin checks that the folder can be written.
 - The event topics (`tnsaxis:CameraApplicationPlatform/ALPV.New` and the others) and the WebSocket messages of ALPV are not
   recorded yet: the read checks used GET only.
