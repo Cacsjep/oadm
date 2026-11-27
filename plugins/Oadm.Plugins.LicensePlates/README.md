@@ -61,8 +61,9 @@ its native SQLite. PDFsharp is the plugin's own copy, as in Snapshot report.
 - **Reads**: the read's time is ALPV's `capture_timestamp`. A Lost of a car never seen with a text is a read of its own.
 - **Log store**: `<folder>/plate-log.db` (WAL, `auto_vacuum=INCREMENTAL`), crops in `<folder>/pictures/<yyyy-MM-dd>/<id>.jpg`
   (the server's day; only JPEG, at most 512 KB, never converted). Writes: one writer, up to 2,000 rows per transaction.
-  The Stats tab counts from two tables written with every read: per hour, camera, result and direction; per day (the
-  server's zone), camera, plate and result. Gap rows ("Connection lost from 13:58 to 14:06") are rows with `gap_until`.
+  The Stats tab counts from the hourly table written with every read: per hour, camera, result and direction the reads,
+  the confidence sum and the reads below 60, 60 to 74 and 75 to 89 (`low`, `mid`, `good`; `mid` and `good` are added to
+  older stores, their hours count as 90 and above). Gap rows ("Connection lost from 13:58 to 14:06") are rows with `gap_until`.
   A full disk or a folder that cannot be written stops storing (the problem is on the page and in Any camera problem);
   the folder is tried again every minute; the cleanup runs every hour.
 - **Folder**: no folder by default (nothing stored until an Administrator chooses one). Refused: a relative path, a folder
@@ -148,8 +149,10 @@ stream, the device group canary and the tools. `PerfTests` (`Category=Perf`): 10
 
 `Client/`: the page's view models against a sample server (`ClientSupport.cs`: Austrian plates, garages as tags, a camera
 of every status, a log with every result): `LogTabTests` (rows, the deviation triangle, the result's tooltip, the
-Confidence colours, filters, Pause, Add to plates, Export, pictures for shown rows only), `PlatesTabTests` (search, tag
+Confidence colours, filters, Pause, Add to plates, Export, pictures for shown rows only), `FilterChipsTests` (the Filter
+button's chips), `GridSelectionTests` (a row clicked in the real grid reaches the toolbar, also after Remove and a reload),
+`AlpvListsClientTests` (the selects of ALPV's lists), `PlatesTabTests` (search, tag
 filter, rights, Delete, Change and Manage tags, the editor's errors and Delete when it ends, Import), `CamerasTabTests`
-(statuses, image settings, toolbar rights, Set up, Copy settings, Settings, Stats); `ScreenshotTests` (headless, PNGs with
+(statuses, image settings, toolbar rights, Set up, Copy settings, Settings, Stats with the confidence); `ScreenshotTests` (headless, PNGs with
 `OADM_SCREENSHOT_DIR`, `OADM_TEST_APPEARANCE=Light` for the light theme); `ClientPerfTests` (`Category=Perf`: 100,000
 plates, 1,000 cameras).

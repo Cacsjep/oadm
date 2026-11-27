@@ -226,8 +226,11 @@ Live, newest first, virtualized, paged from the server.
     the PDF), Time, Camera, Plate (with "read as" below when it differs), Name, Tags, Result (the word, not only the
     icon), Direction, Confidence; "Page X of Y". Pictures make the file large: without pictures when more than 2,000
     rows.
-- Filter row, like ALPV's Search: time (Last hour, Last 24 hours, Last 7 days, or From and To), result, tags, area,
-  direction, country, vehicle (view, type, colour, make, model), **Clear filters**. Country, vehicle type and colour are
+- Filters, like ALPV's Search, behind the command button **Filter** of the toolbar (decision 2026-11-27): its menu lists
+  time (Last hour, Last 24 hours, Last 7 days, or From and To), result, tags, area, direction, country, vehicle (view,
+  type, colour, make, model). A chosen kind becomes a chip ("Country: Austria", "Last 24 hours") in one row below the
+  toolbar, which exists only while a filter is set; a chip's text opens its editor in a flyout, its x removes it,
+  **Clear filters** ends the row. No row with every filter. Country, vehicle type and colour are
   selects of ALPV's lists (see "ALPV's lists"); make and model are selects of what a connected camera lists.
 - Columns: Time, Camera, Picture (the plate crop, loaded only for visible rows), **Plate**, Name, Tags, **Result**,
   Direction, **Confidence**.
@@ -295,12 +298,15 @@ when asked, since they belong to the picture of one camera.
 
 For the chosen cameras and time (Today, Last 7 days, Last 30 days), from the log:
 
-- Reads in total and by result (Allowed, Not allowed, Unknown plate), and the same by direction.
-- Reads per hour (a chart).
-- Per camera: reads, share Allowed, average confidence, share below 60, last read. Sorted by any column.
-- Most read plates and most read unknown plates (10 each).
+- Reads in total and by result (Allowed, Not allowed, Unknown plate), and the **Average confidence** (a whole number, the
+  Log's colours: below 75 warning, below 60 error).
+- Reads per hour (a chart) and **Confidence** (a chart of the reads below 60, 60 to 74, 75 to 89, 90 and above, with count
+  and share; the two low bands in the error and warning colours).
+- Per camera: reads, share Allowed, average confidence (coloured like the total), shares below 60 and below 75, last
+  read. Sorted by any column.
 
-Counted by the log's indexes on the server, never in the client.
+No directions and no most read plates (decision 2026-11-27). Counted on the server from the log's hourly counts, never in
+the client; the MCP stats tool returns the same numbers.
 
 ### Settings (dialog, Administrators)
 
@@ -363,8 +369,9 @@ Details the spec left open, decided while building; none changes a rule above.
   `reads`, `cameras`, `plates`, `status` (plugin README "Client contract").
 - **Exact matches** are one lookup in the plate list, then the tag and date check (O(1)); the near-match index is per
   camera tag set as above. With 2, the plate of the list decides whether a plate is shorter than 6 characters.
-- **Stats** come from two count tables of the log store written with every read (per hour; plates per day of the server's
-  zone), never from a scan of the reads.
+- **Stats** come from the hourly count table of the log store, written with every read (per hour, camera, result and
+  direction: reads, confidence sum, the reads below 60, 60 to 74 and 75 to 89, the last read), never from a scan of the
+  reads. The daily plate counts of the first build (only the top lists used them) are dropped from older stores.
 - **The log folder**: none until an Administrator chooses one (nothing is stored before, events fire); a folder inside the
   plugins' data of OADM (`plugin-data`, part of every backup) is refused, so is one OADM cannot write; then every save with
   a folder runs the host's folder checks of `security.md` "Folders a plugin writes to" (`ICorePluginContext.FolderCheck`,
@@ -386,11 +393,12 @@ Details the spec left open, decided while building the page; none changes a rule
   dialog is laid out like the device tags dialog. Change tags (plates), Allowed tags (cameras) and Manage tags are one
   dialog: a check box per tag for all, some or none of the selected; OK sends only the clicked tags as add and remove.
 - **Log**: the camera choice is the shared page choice (default All cameras of the plugin, kept on this computer) and is
-  shared with Stats. The time filter is the shared date range button of the Logs page (Last hour, Today, Last 24 hours,
-  Last 7 days, All, Custom with From and To). Result and Tags are check-box selects; Area, Direction and the vehicle's View
-  are single choices; Country (type to jump to a name), the vehicle's Type, Colour, Make and Model are selects; the vehicle
-  fields sit in the flyout of a Vehicle button, whose first opening reads the makes, a make its models; the search reads
-  300 ms after the last key. Pages of 200 rows; the next older page is read when a row
+  shared with Stats. The filters are the shared filter chips (`ui:FilterButton`, `ui:FilterBar`, `FilterSet`): the time
+  editor is the date range panel of the Logs page (Last hour, Today, Last 24 hours, Last 7 days, All, Custom with From and
+  To); Result and Tags are check boxes; Area, Direction and Country one choice each (a choice closes the editor; type to
+  jump to a country); the Vehicle editor has View, Type, Colour, Make and Model, its first opening reads the makes, a make
+  its models. A chip whose editor closes without a value goes away; a filter set elsewhere gets its chip. The search
+  reads 300 ms after the last key; Clear filters leaves it. Pages of 200 rows; the next older page is read when a row
   20 from the end shows; newer rows on every `reads` event of a shown camera; crops read four at a time.
 - **Log columns**: a gap row shows the warning icon in Plate and "Connection lost from 13:58 to 14:06" in Name. The deviation
   triangle and the ended triangle of Plates are the theme's warning icon left of the text. Result's icons: the OK check,
@@ -414,7 +422,10 @@ Details the spec left open, decided while building the page; none changes a rule
   area 2 teal; a new area 2 takes ALPV's inactive area 2 or a box in the right half. Save sends the areas only when they
   changed, only the changed Recognition values, the allowed tags only when changed.
 - **Stats**: "Reads per hour" is a bar per hour of the day (00 to 23, this computer's zone); over 7 or 30 days each bar is
-  the sum of that hour over the days. The counts are stat cards; By direction, Per camera and the two top lists are grids.
+  the sum of that hour over the days. The counts are stat cards; Per camera is a grid. The confidence bands 60 to 74 and 75
+  to 89 are counted in the hourly counts from this build on; hours stored before count as 90 and above.
+- **Selection**: a grid that gets new rows (after Remove, a reload, a filter) keeps the selection it shows itself and hands
+  it to the page; the page never puts back a selection the grid no longer shows (the toolbar stayed off after Remove).
 - **Settings**: the folder is optional (without one nothing is stored); the number limits of the dialog are Wait 1 to 10 s,
   Keep reads 1 to 3,650 days, Maximum size 1 to 10,000 GB; the server's refusal shows below its field.
 

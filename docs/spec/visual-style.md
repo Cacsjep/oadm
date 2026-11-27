@@ -244,6 +244,11 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
   path as tooltip; double click or Enter opens) with `LoadingOverlay` "Reading folders" while it reads, "No folders here.
   Create one with New folder." when empty, a line when the list was cut at 2,000; footer Cancel and the primary Choose for
   the open folder, off with the reason as tooltip until it passes the check.
+- `FilterButton`, `FilterBar`, `FilterSet`, `FilterKind`: the filters of a list as chips (decision 2026-11-27, License Plate
+  Center's log): the command button **Filter** (filter icon) in the toolbar lists the kinds; a chosen kind becomes a chip
+  (`Border.chatChip` with class `filterChip`: the text, which opens the kind's editor in a flyout, and an x "Remove
+  filter") in one row below the toolbar, with **Clear filters** last; the row exists only while a chip shows. The page gives
+  each kind's editor a DataTemplate. A chip whose editor closes without a value goes; a filter set elsewhere gets its chip.
 - `TagChipRow`, `TagChips`, `TagColorPicker`, `TagColors`: tags look the same everywhere. `TagChipRow` lays out tags on one
   line (`Border.tagChip`, "+N" for what does not fit, every name in the tooltip): the device grid's `TagChipList` and
   `TagChips` (plain `TagChip` name and colour: License Plate Center's plate tags). `TagColorPicker` (the eight colours as
