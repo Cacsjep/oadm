@@ -163,7 +163,7 @@ public sealed class HeadlessSmokeTests
             {
                 ["users"] = "Who can log in, which devices they reach and what each role may do.",
                 ["credentials"] = "Passwords OADM tries when it adds devices.",
-                ["plugins"] = "A plugin that is off shows no page, menu entry or toolbar button.",
+                ["plugins"] = "Turn plugins of OADM on or off.",
                 ["settings"] = "Allow Basic login over HTTP", // a row of the group General (the page has its own tests)
                 ["about"] = "Version and licenses.",
                 ["ai"] = Oadm.Client.Settings.AiAgentsViewModel.PageSubtitle,

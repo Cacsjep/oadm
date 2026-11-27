@@ -14,7 +14,7 @@
   <Grid RowDefinitions="Auto,Auto,*" RowSpacing="16">
     <!-- The live status of the whole page at the right end: "12 of 22 on"; the right margin of the filters and tiles
          below (clear of the scroll bar), so the count, the pills and the tiles end on one edge. -->
-    <c:PageTitleBar Title="Plugins" Subtitle="A plugin that is off shows no page, menu entry or toolbar button." Status="{Binding CountText}"
+    <c:PageTitleBar Title="Plugins" Subtitle="Turn plugins of OADM on or off." Status="{Binding CountText}"
                     Margin="0,0,16,0" />
     <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,0,16,0" IsVisible="{Binding !IsEmpty}">
       <ui:SearchBox x:Name="Search" Classes="wide" Text="{Binding SearchText}" Placeholder="Search plugins, for example plates, SD card, VPN" />
