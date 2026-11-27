@@ -361,6 +361,9 @@ public sealed partial class LogViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasError))]
     public partial string? ErrorText { get; private set; }
 
+    /// <summary>More than 1,000 plates of the list have a name with the search: the line below the search says so.</summary>
+    [ObservableProperty] public partial bool TooManyNames { get; private set; }
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExportCsvCommand), nameof(ExportPdfCommand))]
     public partial bool IsExporting { get; private set; }
@@ -797,6 +800,7 @@ public sealed partial class LogViewModel : ObservableObject
                 var page = await _page.Client.CallAsync<LogPage>(LicensePlatesMethods.Log, new LogPageRequest { Query = Query(), Limit = PageSize }).ConfigureAwait(true);
                 if (version == _version)
                 {
+                    TooManyNames = page.TooManyNames;
                     Set(page.Rows, page.Next);
                 }
             }).ConfigureAwait(true);

@@ -64,6 +64,9 @@ public static class LicensePlateLimits
     /// <summary>The most wildcard plates (with *) of the list; each is an index entry the matcher checks per read.</summary>
     public const int MaxWildcardPlates = 1_000;
 
+    /// <summary>The most plates of the list a search by name looks for in the log.</summary>
+    public const int MaxNamedPlates = 1_000;
+
     /// <summary>The fewest letters and digits besides * in a wildcard plate.</summary>
     public const int MinWildcardFixed = 3;
     public const int MaxNameLength = 100;
@@ -728,8 +731,15 @@ public sealed record LogQuery
 
     public string? VehicleModel { get; init; }
 
-    /// <summary>Plates that start with it, or names that hold it (the name only inside <see cref="From"/> and <see cref="To"/>).</summary>
+    /// <summary>
+    /// Plates that start with it, or the reads of the plates of the list whose name holds its words (the plate's current name,
+    /// found in the plate list first; decision 2026-11-27).
+    /// </summary>
     public string? Search { get; init; }
+
+    /// <summary>The plates of the list the search's name found (the server fills it; never sent).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<string> NamedPlates { get; init; } = [];
 }
 
 /// <summary>A position in the log (newest first: time, then id).</summary>
@@ -751,7 +761,11 @@ public sealed record LogPageRequest
 }
 
 /// <summary>Rows newest first; <see cref="Next"/>: the cursor of the next older page, null at the end.</summary>
-public sealed record LogPage(IReadOnlyList<PlateRead> Rows, LogCursor? Next);
+public sealed record LogPage(IReadOnlyList<PlateRead> Rows, LogCursor? Next)
+{
+    /// <summary>More plates of the list than <see cref="LicensePlateLimits.MaxNamedPlates"/> have a name with the search: only the first are searched.</summary>
+    public bool TooManyNames { get; init; }
+}
 
 public sealed record LogStatus
 {

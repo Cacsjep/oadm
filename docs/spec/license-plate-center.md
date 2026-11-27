@@ -230,7 +230,8 @@ Live, newest first, virtualized, paged from the server.
 
 - Toolbar: the device choice (the cameras of the page, default all cameras of the plugin), **Pause** (the list stops
   moving, reads are still stored), **Add to plates** (for a selected Unknown plate: the Add plate dialog with the
-  plate filled in), **Export** (a menu: **PDF report**, **CSV**); right: search by plate or name.
+  plate filled in), **Export** (a menu: **PDF report**, **CSV**); right: search by plate (from its start) or by the name
+  a plate of the list has now (see "The log store").
 - **Export** (decision 2026-11-27) writes exactly the rows the filters and the search show, newest first, at most
   **10,000** (`LicensePlateLimits.MaxExportRows`); with more it says "The newest 10,000 of 48,213 reads" in the file's
   head. After a saved export the page shows no status line, only an error (decision 2026-11-27). Made on the server from the log store, streamed to the client's save dialog, one
@@ -368,9 +369,12 @@ the client; the MCP stats tool (`ByDay`, `TimeZone`) returns the same series.
 
 - A SQLite database of the plugin in the log folder (WAL), one row per read: time, camera, plate (the list's or the
   read text), read as, result and reason, the camera's name, name and tags at the time of the read, direction, area,
-  country, state (`regionCode`), confidence, vehicle values and the vehicle confidence (null without one), picture file. Indexes on time, on plate and time, on camera and time, on result and time.
+  country, state (`regionCode`), confidence, vehicle values and the vehicle confidence (null without one), picture file. Indexes on time, on plate and time, on camera and time, on result and time, on list entry and time.
 - Search by plate is from the start of the plate and uses the index; it must stay under 100 ms at 10 million reads
-  (`Perf` test). Search by name runs inside the chosen time.
+  (`Perf` test). A search by name looks up the plate list first (decision 2026-11-27): the plates whose current name holds
+  the words, at most 1,000 ("More than 1,000 names match. Type more." below the search), then their reads through the
+  plate index (a wildcard plate by the indexed list entry); never a scan of the stored names. So a read is found by the
+  plate's name now, not by a name it had at the time of the read; the row still shows the stored name.
 - Plate pictures are JPEG files in a folder per day next to the database, never in the database.
 - Cleanup every hour: reads older than the days, then the oldest days until the size is under the maximum. A full
   disk or an unreachable folder stops storing, shows a problem on the page and raises Any camera problem; reads still

@@ -158,6 +158,9 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
             await ExecuteAsync(db, "ALTER TABLE reads ADD COLUMN list_entry TEXT;", ct).ConfigureAwait(false);
         }
 
+        // A search by name finds the reads of a wildcard plate by its list entry.
+        await ExecuteAsync(db, "CREATE INDEX IF NOT EXISTS reads_list_entry_time ON reads(list_entry, time);", ct).ConfigureAwait(false);
+
         var nextId = Convert.ToInt64(await ScalarAsync(db, "SELECT COALESCE(MAX(id), 0) FROM reads;", ct).ConfigureAwait(false), CultureInfo.InvariantCulture);
         var pictures = Convert.ToInt64(await ScalarAsync(db, "SELECT COALESCE(SUM(bytes), 0) FROM picture_days;", ct).ConfigureAwait(false), CultureInfo.InvariantCulture);
         return new PlateLogStore(folder, time, logger ?? NullLogger.Instance, nextId, pictures);
@@ -273,6 +276,95 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
                         break;
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Fills a new log fast (the Perf test of 10 million reads): prepared inserts, one transaction per 200,000 rows, the
+    /// journal off and no sync for the fill only, then the hourly counts in one pass. Never used by the plugin itself.
+    /// </summary>
+    internal async Task BulkFillAsync(IEnumerable<PlateRead> rows, Action<long>? progress, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        await FlushAsync().ConfigureAwait(false);
+        await using var db = new SqliteConnection(_connection);
+        await db.OpenAsync(ct).ConfigureAwait(false);
+        await ExecuteAsync(db, "PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF;", ct).ConfigureAwait(false);
+        try
+        {
+            long count = 0;
+            SqliteTransaction? tx = null;
+            SqliteCommand? cmd = null;
+            try
+            {
+                foreach (var row in rows)
+                {
+                    if (tx is null)
+                    {
+                        tx = (SqliteTransaction)await db.BeginTransactionAsync(ct).ConfigureAwait(false);
+                        cmd = db.CreateCommand();
+                        cmd.Transaction = tx;
+                        cmd.CommandText = "INSERT INTO reads(id, time, camera, camera_name, plate, result, reason, name, tags, direction, confidence) VALUES (@id, @time, @camera, @camera_name, @plate, @result, @reason, @name, @tags, @direction, @confidence);";
+                        foreach (var name in new[] { "@id", "@time", "@camera", "@camera_name", "@plate", "@result", "@reason", "@name", "@tags", "@direction", "@confidence" })
+                        {
+                            cmd.Parameters.Add(new SqliteParameter { ParameterName = name });
+                        }
+
+                        cmd.Prepare();
+                    }
+
+                    var p = cmd!.Parameters;
+                    p["@id"].Value = row.Id;
+                    p["@time"].Value = row.Time.ToUnixTimeMilliseconds();
+                    p["@camera"].Value = CameraKey(row.CameraId);
+                    p["@camera_name"].Value = row.Camera;
+                    p["@plate"].Value = row.Plate;
+                    p["@result"].Value = (int)row.Result;
+                    p["@reason"].Value = (int)row.Reason;
+                    p["@name"].Value = row.Name;
+                    p["@tags"].Value = TagsKey(row.Tags);
+                    p["@direction"].Value = (int)row.Direction;
+                    p["@confidence"].Value = row.Confidence;
+                    await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                    if (++count % 200_000 == 0)
+                    {
+                        await tx.CommitAsync(ct).ConfigureAwait(false);
+                        await cmd.DisposeAsync().ConfigureAwait(false);
+                        await tx.DisposeAsync().ConfigureAwait(false);
+                        (tx, cmd) = (null, null);
+                        progress?.Invoke(count);
+                    }
+                }
+
+                if (tx is not null)
+                {
+                    await tx.CommitAsync(ct).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                if (cmd is not null)
+                {
+                    await cmd.DisposeAsync().ConfigureAwait(false);
+                }
+
+                if (tx is not null)
+                {
+                    await tx.DisposeAsync().ConfigureAwait(false);
+                }
+            }
+
+            await ExecuteAsync(db, $"""
+                INSERT INTO hourly(hour, camera, result, direction, reads, confidence, low, last, mid, good)
+                SELECT time / {HourMs}, camera, result, direction, COUNT(*), SUM(confidence), SUM(confidence < {ConfidenceLevels.Error}), MAX(time),
+                  SUM(confidence >= {ConfidenceLevels.Error} AND confidence < {ConfidenceLevels.Warning}), SUM(confidence >= {ConfidenceLevels.Warning} AND confidence < {ConfidenceLevels.High})
+                FROM reads WHERE gap_until IS NULL GROUP BY time / {HourMs}, camera, result, direction;
+                """, ct).ConfigureAwait(false);
+            Interlocked.Add(ref _written, count);
+        }
+        finally
+        {
+            await ExecuteAsync(db, "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;", CancellationToken.None).ConfigureAwait(false);
         }
     }
 
@@ -692,8 +784,9 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
     }
 
     /// <summary>
-    /// The select of a query: with a search, the plates that start with it (the plate index) together with the names that
-    /// hold it (inside the query's time), as two parts of one union; else one select.
+    /// The select of a query: with a search, the plates that start with it and the plates of the list its name found
+    /// (<see cref="LogQuery.NamedPlates"/>; a wildcard plate by its list entry), each through an index, as parts of one union;
+    /// never a scan of the stored names. Without a search one select.
     /// </summary>
     private static string Select(LogQuery query, SqliteCommand cmd, List<string> where, string select)
     {
@@ -707,11 +800,30 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
         var prefix = Plates.PlateText.OfRead(search);
         cmd.Parameters.AddWithValue("@plate_from", prefix);
         cmd.Parameters.AddWithValue("@plate_to", prefix + "￿");
-        cmd.Parameters.AddWithValue("@name_like", "%" + search.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("%", "\\%", StringComparison.Ordinal).Replace("_", "\\_", StringComparison.Ordinal) + "%");
         var and = common.Length == 0 ? string.Empty : common + " AND ";
-        var plates = prefix.Length == 0 ? null : $"{select} FROM reads WHERE {and}plate >= @plate_from AND plate < @plate_to";
-        var names = $"{select} FROM reads WHERE {and}name LIKE @name_like ESCAPE '\\'";
-        return "SELECT * FROM (" + (plates is null ? names : plates + " UNION " + names) + ")";
+        var parts = new List<string>(3);
+        if (prefix.Length > 0)
+        {
+            parts.Add($"{select} FROM reads WHERE {and}plate >= @plate_from AND plate < @plate_to");
+        }
+
+        var named = query.NamedPlates.Where(p => !Plates.PlateText.IsWildcard(p)).ToList();
+        var entries = query.NamedPlates.Where(Plates.PlateText.IsWildcard).ToList();
+        if (named.Count > 0)
+        {
+            parts.Add($"{select} FROM reads WHERE {and}plate IN (SELECT value FROM json_each(@named))");
+            cmd.Parameters.AddWithValue("@named", System.Text.Json.JsonSerializer.Serialize(named));
+        }
+
+        if (entries.Count > 0)
+        {
+            parts.Add($"{select} FROM reads WHERE {and}list_entry IN (SELECT value FROM json_each(@entries))");
+            cmd.Parameters.AddWithValue("@entries", System.Text.Json.JsonSerializer.Serialize(entries));
+        }
+
+        return parts.Count == 0
+            ? $"{select} FROM reads WHERE 0"
+            : "SELECT * FROM (" + string.Join(" UNION ", parts) + ")";
     }
 
     /// <summary>The conditions of a query and the caller's cameras (gap rows only without value filters).</summary>

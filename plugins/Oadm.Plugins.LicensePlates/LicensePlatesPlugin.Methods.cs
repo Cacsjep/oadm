@@ -212,11 +212,30 @@ public sealed partial class LicensePlatesPlugin
             return new LogPage([], null);
         }
 
-        return await store.PageAsync(request with { Query = request.Query ?? new LogQuery() }, await LogScopeAsync(caller, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
+        var (query, tooMany) = Named(request.Query ?? new LogQuery());
+        var page = await store.PageAsync(request with { Query = query }, await LogScopeAsync(caller, ct).ConfigureAwait(false), ct).ConfigureAwait(false);
+        return page with { TooManyNames = tooMany };
     }
 
     internal async Task<int> LogCountAsync(ICallContext caller, LogQuery query, CancellationToken ct) =>
-        Running.Log.Store is { } store ? await store.CountAsync(query, await LogScopeAsync(caller, ct).ConfigureAwait(false), ct).ConfigureAwait(false) : 0;
+        Running.Log.Store is { } store ? await store.CountAsync(Named(query).Query, await LogScopeAsync(caller, ct).ConfigureAwait(false), ct).ConfigureAwait(false) : 0;
+
+    /// <summary>
+    /// The query with the plates of the list whose name holds the search's words (decision 2026-11-27): the log is searched
+    /// by those plates through its plate index, never by a scan of the stored names; at most
+    /// <see cref="LicensePlateLimits.MaxNamedPlates"/>.
+    /// </summary>
+    internal (LogQuery Query, bool TooMany) Named(LogQuery query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        if (string.IsNullOrWhiteSpace(query.Search))
+        {
+            return (query, false);
+        }
+
+        var (texts, tooMany) = Running.Store.PlatesNamed(query.Search, LicensePlateLimits.MaxNamedPlates);
+        return (query with { NamedPlates = texts }, tooMany);
+    }
 
     private async Task<LogStatus> LogStatusAsync(ICallContext caller, CancellationToken ct)
     {
@@ -1023,7 +1042,7 @@ public sealed partial class LicensePlatesPlugin
         ArgumentNullException.ThrowIfNull(request);
         var store = RequireLogStore();
         await store.FlushAsync().ConfigureAwait(false);
-        var query = request.Query ?? new LogQuery();
+        var query = Named(request.Query ?? new LogQuery()).Query;
         var scope = await LogScopeAsync(caller, ct).ConfigureAwait(false);
         var total = await store.CountAsync(query, scope, ct).ConfigureAwait(false);
         var rows = await store.NewestAsync(query, scope, LicensePlateLimits.MaxExportRows, ct).ConfigureAwait(false);

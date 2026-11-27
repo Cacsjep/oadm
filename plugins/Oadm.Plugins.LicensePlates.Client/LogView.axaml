@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="using:Oadm.Sdk.Client.Controls"
              xmlns:vm="using:Oadm.Plugins.LicensePlates.Client"
+             xmlns:lp="using:Oadm.Plugins.LicensePlates"
              x:Class="Oadm.Plugins.LicensePlates.Client.LogView"
              x:DataType="vm:LogViewModel">
   <!-- The Log tab (docs/spec/license-plate-center.md "Log"): the toolbar (the camera choice, Pause, Add to plates, Export,
@@ -69,7 +70,11 @@
         </ui:ToolbarOverflowPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
           <ui:ColumnChooserButton x:Name="ColumnChooser" Columns="{Binding Columns.Choosable}" />
-          <ui:SearchBox Width="240" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="{x:Static vm:PageTexts.Search}" />
+          <StackPanel Spacing="2" VerticalAlignment="Center">
+            <ui:SearchBox Width="240" Text="{Binding SearchText}" Placeholder="{x:Static vm:PageTexts.Search}" />
+            <!-- A search by name looks for at most 1,000 plates of the list; with more it says so below the search. -->
+            <TextBlock x:Name="TooManyNamesText" Classes="secondary" Width="240" TextWrapping="Wrap" Text="{x:Static lp:LicensePlateTexts.TooManyNames}" IsVisible="{Binding TooManyNames}" />
+          </StackPanel>
         </StackPanel>
       </Grid>
 
