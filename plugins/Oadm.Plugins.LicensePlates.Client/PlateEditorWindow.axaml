@@ -1,0 +1,45 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.LicensePlates.Client"
+        x:Class="Oadm.Plugins.LicensePlates.Client.PlateEditorWindow"
+        x:DataType="vm:PlateEditorViewModel"
+        Title="{Binding Title}"
+        Width="530" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Add plate / Edit plate (docs/spec/license-plate-center.md "Plates"): one form, no card; every error directly below its field. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <ui:FormField Label="{x:Static vm:PageTexts.Plate}" LabelWidth="140" InputWidth="358">
+          <TextBox x:Name="PlateBox" Classes="mono" Text="{Binding Text}" MaxLength="{x:Static vm:PlateEditorViewModel.MaxTextLength}" />
+        </ui:FormField>
+        <ui:FormField Label="{x:Static vm:PageTexts.Name}" LabelWidth="140" InputWidth="358" Hint="Optional">
+          <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="{x:Static vm:PlateEditorViewModel.MaxNameLength}" />
+        </ui:FormField>
+        <ui:FormField Label="{x:Static vm:PageTexts.Tags}" LabelWidth="140" InputWidth="358" Error="{Binding TagsError}">
+          <ComboBox x:Name="TagsBox" Classes="multiSelect" ItemsSource="{Binding TagChoices.Items}" PlaceholderText="{Binding TagChoices.Summary}" MaxDropDownHeight="320" />
+        </ui:FormField>
+        <ui:FormField Label="{x:Static vm:PageTexts.AllowedFrom}" LabelWidth="140" InputWidth="358" Hint="Optional">
+          <ui:DateTimeInput x:Name="FromInput" SelectedDate="{Binding FromDate}" SelectedTime="{Binding FromTime}" />
+        </ui:FormField>
+        <ui:FormField Label="{x:Static vm:PageTexts.AllowedTo}" LabelWidth="140" InputWidth="358" Hint="Optional">
+          <ui:DateTimeInput x:Name="ToInput" SelectedDate="{Binding ToDate}" SelectedTime="{Binding ToTime}" />
+        </ui:FormField>
+        <ui:FormField Label="" LabelWidth="140" InputWidth="358">
+          <CheckBox x:Name="DeleteWhenEndsBox" Content="{x:Static vm:PageTexts.DeleteWhenEnds}" IsChecked="{Binding DeleteWhenEnds}" IsEnabled="{Binding HasAllowedTo}"
+                    ToolTip.Tip="{x:Static vm:PageTexts.DeleteWhenEndsTip}" ToolTip.ShowOnDisabled="True" />
+        </ui:FormField>
+        <TextBlock Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button x:Name="SaveButton" Classes="primary" Content="{x:Static vm:PageTexts.Save}" Command="{Binding SaveCommand}" IsDefault="True"
+              ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

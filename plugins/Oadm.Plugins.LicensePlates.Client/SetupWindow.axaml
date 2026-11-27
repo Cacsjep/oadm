@@ -1,0 +1,108 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.LicensePlates.Client"
+        xmlns:lp="using:Oadm.Plugins.LicensePlates"
+        x:Class="Oadm.Plugins.LicensePlates.Client.SetupWindow"
+        x:DataType="vm:SetupViewModel"
+        Title="{x:Static vm:PageTexts.SetUpTitle}"
+        Width="1180" Height="760" MinWidth="980" MinHeight="620"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- Set up (docs/spec/license-plate-center.md "Set up"): several sections, so cards. Left the live picture of the first sensor
+       with the two areas and their direction arrows (Add area 2 / Remove area 2 below it); right Recognition, Plates and Events.
+       Footer: Cancel, the ALPV page in Web View, Save (starts the task). -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:PageTexts.SetUpTitle}" Subtitle="{Binding Subtitle}" />
+
+    <Grid Grid.Row="1" ColumnDefinitions="*,380" ColumnSpacing="16" Margin="16,0">
+      <Border Grid.Column="0" Classes="card">
+        <Grid RowDefinitions="*,Auto" RowSpacing="10">
+          <Panel x:Name="VideoPanel">
+            <Border Classes="liveViewSurface" />
+            <ContentControl x:Name="VideoHost" Content="{Binding VideoView}" IsVisible="{Binding HasVideo}" />
+            <vm:AreaPicture x:Name="Picture" Areas="{Binding Areas}" CanEdit="{Binding MayEditAreas}" />
+          </Panel>
+          <StackPanel Grid.Row="1" Spacing="6">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <ui:ToolbarButton x:Name="AddArea2Button" IconKey="add" Text="{x:Static vm:PageTexts.AddArea2}" Command="{Binding AddArea2Command}"
+                                  IsVisible="{Binding CanAddArea2}" />
+                <ui:ToolbarButton x:Name="RemoveArea2Button" Classes="danger" IconKey="remove" Text="{x:Static vm:PageTexts.RemoveArea2}" Command="{Binding RemoveArea2Command}"
+                                  IsVisible="{Binding HasArea2}" IsEnabled="{Binding MayEditAreas}" />
+              </StackPanel>
+              <TextBlock Grid.Column="1" Classes="secondary" Text="{x:Static vm:PageTexts.AreaHint}" TextWrapping="Wrap" VerticalAlignment="Center"
+                         IsVisible="{Binding MayEditAreas}" />
+            </Grid>
+            <ui:StatusChip x:Name="RotatedChip" Text="{x:Static lp:LicensePlateTexts.Rotated}" IsWarning="True" IsVisible="{Binding Rotated}" />
+            <TextBlock Classes="fieldMessage error" Text="{Binding AreasError}" IsVisible="{Binding AreasError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <Border Grid.Column="1" Classes="card">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="18">
+            <StackPanel Classes="form">
+              <TextBlock Classes="cardTitle" Text="{x:Static vm:PageTexts.Recognition}" />
+              <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.Region}" IsVisible="{Binding HasRegion}">
+                <TextBox x:Name="RegionBox" Text="{Binding Region}" MaxLength="40" />
+              </ui:FormField>
+              <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.CameraLocation}" IsVisible="{Binding HasCameraLocation}">
+                <TextBox x:Name="LocationBox" Text="{Binding CameraLocation}" MaxLength="3" />
+              </ui:FormField>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="8" IsVisible="{Binding HasPlateWidth}">
+                <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.PlateWidth}" VerticalAlignment="Top">
+                  <NumericUpDown x:Name="WidthMinBox" Value="{Binding PlateWidthMin}" Minimum="1" Maximum="2000" Increment="10" FormatString="0" ParsingNumberStyle="Integer" />
+                </ui:FormField>
+                <ui:FormField Grid.Column="1" Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.To}" VerticalAlignment="Top">
+                  <NumericUpDown x:Name="WidthMaxBox" Value="{Binding PlateWidthMax}" Minimum="1" Maximum="2000" Increment="10" FormatString="0" ParsingNumberStyle="Integer" />
+                </ui:FormField>
+              </Grid>
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="8" IsVisible="{Binding HasCharacters}">
+                <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.Characters}" VerticalAlignment="Top">
+                  <NumericUpDown x:Name="CharsMinBox" Value="{Binding CharactersMin}" Minimum="1" Maximum="20" Increment="1" FormatString="0" ParsingNumberStyle="Integer" />
+                </ui:FormField>
+                <ui:FormField Grid.Column="1" Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.To}" VerticalAlignment="Top">
+                  <NumericUpDown x:Name="CharsMaxBox" Value="{Binding CharactersMax}" Minimum="1" Maximum="20" Increment="1" FormatString="0" ParsingNumberStyle="Integer" />
+                </ui:FormField>
+              </Grid>
+              <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.Threshold}" IsVisible="{Binding HasThreshold}">
+                <NumericUpDown x:Name="ThresholdBox" Value="{Binding ConfidenceThreshold}" Minimum="0" Maximum="1" Increment="0.05" FormatString="0.00" />
+              </ui:FormField>
+            </StackPanel>
+
+            <StackPanel Classes="form">
+              <TextBlock Classes="cardTitle" Text="{x:Static vm:PageTexts.Plates}" />
+              <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.AllowedTags}">
+                <ComboBox x:Name="TagsBox" Classes="multiSelect" ItemsSource="{Binding TagChoices.Items}" PlaceholderText="{Binding TagChoices.Summary}" MaxDropDownHeight="320" />
+              </ui:FormField>
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+              <TextBlock Classes="cardTitle" Text="{x:Static vm:PageTexts.Events}" />
+              <ui:StatusChip x:Name="EventsChip" Text="{Binding EventsText}" IsOk="{Binding EventsOn}" IsWarning="{Binding !EventsOn}" MaxLines="2" />
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Classes="secondary" Text="{x:Static vm:PageTexts.LastRead}" />
+                <TextBlock x:Name="LastReadText" Text="{Binding LastReadText}" />
+              </StackPanel>
+            </StackPanel>
+
+            <TextBlock Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+
+      <ui:LoadingOverlay Grid.ColumnSpan="2" Text="{x:Static vm:PageTexts.ReadingCamera}" IsVisible="{Binding IsLoading}" />
+    </Grid>
+
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button x:Name="AlpvPageButton" Classes="link" Command="{Binding OpenAlpvPageCommand}" ToolTip.Tip="{x:Static vm:PageTexts.AlpvPageTip}" VerticalAlignment="Center">
+        <ui:IconLabel Icon="{StaticResource Icon.externalLink}" Text="{x:Static vm:PageTexts.AlpvPageLink}" />
+      </Button>
+      <Button x:Name="SaveButton" Classes="primary" Content="{x:Static vm:PageTexts.Save}" Command="{Binding SaveCommand}"
+              ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

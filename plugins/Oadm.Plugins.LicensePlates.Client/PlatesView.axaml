@@ -1,0 +1,71 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.LicensePlates.Client"
+             x:Class="Oadm.Plugins.LicensePlates.Client.PlatesView"
+             x:DataType="vm:PlatesViewModel">
+  <!-- The Plates tab (docs/spec/license-plate-center.md "Plates"): the toolbar (Add plate, Import, Export, Change tags, Manage
+       tags, Delete in red apart; the tag filter and the search right), the virtualized grid (Plate, Name, Tags, Allowed from,
+       Allowed to with a warning triangle once it ended) and the footer with the count and the selection. -->
+  <Border Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
+    <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
+      <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+        <ui:ToolbarOverflowPanel Grid.Column="0" Spacing="4">
+          <ui:ToolbarButton x:Name="AddPlateButton" IconKey="add" Text="{x:Static vm:PageTexts.AddPlate}" Command="{Binding AddPlateCommand}" IsVisible="{Binding MayManage}" />
+          <ui:ToolbarButton x:Name="ImportButton" IconKey="upload" Text="{x:Static vm:PageTexts.Import}" Command="{Binding ImportCommand}" IsVisible="{Binding MayManage}" />
+          <ui:ToolbarButton x:Name="ExportButton" IconKey="export" Text="{x:Static vm:PageTexts.Export}" Command="{Binding ExportCommand}" />
+          <ui:ToolbarButton x:Name="ChangeTagsButton" IconKey="tag" Text="{x:Static vm:PageTexts.ChangeTags}" Command="{Binding ChangeTagsCommand}" IsVisible="{Binding MayManage}" />
+          <ui:ToolbarButton x:Name="ManageTagsButton" IconKey="edit" Text="{x:Static vm:PageTexts.ManageTags}" Command="{Binding ManageTagsCommand}" IsVisible="{Binding MayManage}" />
+          <ui:ToolbarSeparator IsVisible="{Binding MayManage}" />
+          <ui:ToolbarButton x:Name="DeleteButton" Classes="danger" IconKey="remove" Text="{x:Static vm:PageTexts.Delete}" Command="{Binding DeleteCommand}" IsVisible="{Binding MayManage}" />
+        </ui:ToolbarOverflowPanel>
+        <ComboBox x:Name="TagFilter" Grid.Column="1" Width="170" VerticalAlignment="Center" ItemsSource="{Binding TagFilters}" SelectedItem="{Binding SelectedTagFilter}" />
+        <ui:SearchBox Grid.Column="2" Width="240" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="{x:Static vm:PageTexts.Search}" />
+      </Grid>
+
+      <ui:ProgressRow Grid.Row="1" Text="{x:Static vm:PageTexts.ReadingPlates}" IsVisible="{Binding IsLoadingMore}" />
+
+      <Panel Grid.Row="2">
+        <DataGrid x:Name="PlateGrid" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow, Mode=OneWay}" IsReadOnly="True" SelectionMode="Extended"
+                  CanUserSortColumns="True" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Plate}" Width="150" SortMemberPath="Text">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:PlateRow">
+                  <TextBlock Classes="mono" Text="{Binding Text}" Margin="10,0" VerticalAlignment="Center" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="{x:Static vm:PageTexts.Name}" Width="*" MinWidth="160" Binding="{Binding Name}" x:DataType="vm:PlateRow" />
+            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Tags}" Width="240" SortMemberPath="TagsSortKey">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:PlateRow">
+                  <ui:TagChips Tags="{Binding Tags}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="{x:Static vm:PageTexts.AllowedFrom}" Width="170" Binding="{Binding AllowedFromText}" SortMemberPath="FromSortKey" x:DataType="vm:PlateRow" />
+            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.AllowedTo}" Width="190" SortMemberPath="ToSortKey">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:PlateRow">
+                  <StackPanel Orientation="Horizontal" Spacing="6" Margin="10,0" VerticalAlignment="Center">
+                    <ui:OadmIcon x:Name="EndedIcon" Classes="warn" Data="{StaticResource Icon.status.warning}" IsVisible="{Binding IsEnded}" ToolTip.Tip="{x:Static vm:PageTexts.EndedTip}" />
+                    <TextBlock Text="{Binding AllowedToText}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:PageTexts.NoPlates}" IsVisible="{Binding ShowEmpty}" />
+        <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:PageTexts.NoMatchingPlates}" IsVisible="{Binding ShowNoMatch}" />
+        <ui:LoadingOverlay Text="{x:Static vm:PageTexts.ReadingPlates}" IsVisible="{Binding IsLoading}" />
+      </Panel>
+
+      <Grid Grid.Row="3" ColumnDefinitions="*,Auto">
+        <TextBlock x:Name="FooterText" Classes="secondary" Text="{Binding Footer}" VerticalAlignment="Center" />
+        <TextBlock Grid.ColumnSpan="2" Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" HorizontalAlignment="Right" />
+      </Grid>
+    </Grid>
+  </Border>
+</UserControl>

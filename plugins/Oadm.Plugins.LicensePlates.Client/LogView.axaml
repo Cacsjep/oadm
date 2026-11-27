@@ -1,0 +1,144 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.LicensePlates.Client"
+             x:Class="Oadm.Plugins.LicensePlates.Client.LogView"
+             x:DataType="vm:LogViewModel">
+  <!-- The Log tab (docs/spec/license-plate-center.md "Log"): the toolbar (the camera choice, Pause, Add to plates, Export; the
+       search right), the filter row like ALPV's Search with Clear filters, the log's problem or the export's notice, the
+       virtualized grid (newest first, older pages as it scrolls) and the footer (Live or Paused, reads today, the log's size). -->
+  <Border Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="10">
+      <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="16">
+        <ui:ToolbarOverflowPanel Grid.Column="0" Spacing="4">
+          <ui:ToolbarButton x:Name="CameraChoiceButton" IconKey="devices" Text="{Binding CameraChoiceText}" Command="{Binding ChooseCamerasCommand}" />
+          <ui:ToolbarSeparator />
+          <ui:ToolbarButton x:Name="PauseButton" IconKey="{Binding PauseIcon}" Text="{Binding PauseText}" Command="{Binding TogglePauseCommand}" />
+          <ui:ToolbarButton x:Name="AddToPlatesButton" IconKey="add" Text="{x:Static vm:PageTexts.AddToPlates}" Command="{Binding AddToPlatesCommand}"
+                            IsVisible="{Binding MayAddToPlates}" ToolTip.Tip="{x:Static vm:PageTexts.AddToPlatesTip}" ToolTip.ShowOnDisabled="True" />
+          <ui:ExportButton x:Name="ExportButton" CsvCommand="{Binding ExportCsvCommand}" PdfCommand="{Binding ExportPdfCommand}" IsVisible="{Binding MayExport}" />
+        </ui:ToolbarOverflowPanel>
+        <ui:SearchBox Grid.Column="1" Width="240" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="{x:Static vm:PageTexts.Search}" />
+      </Grid>
+
+      <!-- The filters like ALPV's Search: time, result, tags, area, direction, country, vehicle; Clear filters last. -->
+      <WrapPanel x:Name="FilterRow" Grid.Row="1" Orientation="Horizontal" ItemSpacing="8" LineSpacing="8">
+        <ui:DateRangeButton x:Name="RangeButton" Range="{Binding Range}" VerticalAlignment="Center" />
+        <ComboBox x:Name="ResultFilter" Classes="multiSelect" Width="170" ItemsSource="{Binding ResultChoices.Entries}" PlaceholderText="{Binding ResultChoices.Summary}"
+                  HorizontalAlignment="Left" VerticalAlignment="Center" />
+        <ComboBox x:Name="TagFilter" Classes="multiSelect" Width="170" ItemsSource="{Binding TagChoices.Entries}" PlaceholderText="{Binding TagChoices.Summary}"
+                  HorizontalAlignment="Left" VerticalAlignment="Center" MaxDropDownHeight="360" />
+        <ComboBox x:Name="AreaFilter" Width="130" ItemsSource="{x:Static vm:LogViewModel.AreaChoices}" SelectedItem="{Binding SelectedArea}" VerticalAlignment="Center" />
+        <ComboBox x:Name="DirectionFilter" Width="150" ItemsSource="{x:Static vm:LogViewModel.DirectionChoices}" SelectedItem="{Binding SelectedDirection}" VerticalAlignment="Center" />
+        <TextBox x:Name="CountryFilter" Width="110" Text="{Binding Country}" PlaceholderText="{x:Static vm:PageTexts.Country}" MaxLength="3" VerticalAlignment="Center" />
+        <ui:ToolbarButton x:Name="VehicleButton" IconKey="car" Text="{Binding VehicleText}" VerticalAlignment="Center">
+          <ui:ToolbarButton.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft">
+              <StackPanel x:Name="VehicleForm" Classes="form" Width="300">
+                <ui:FormField Label="{x:Static vm:PageTexts.View}" LabelWidth="70">
+                  <ComboBox ItemsSource="{x:Static vm:LogViewModel.ViewChoices}" SelectedItem="{Binding SelectedView}" HorizontalAlignment="Stretch" />
+                </ui:FormField>
+                <ui:FormField Label="{x:Static vm:PageTexts.Type}" LabelWidth="70">
+                  <TextBox Text="{Binding VehicleType}" />
+                </ui:FormField>
+                <ui:FormField Label="{x:Static vm:PageTexts.Colour}" LabelWidth="70">
+                  <TextBox Text="{Binding VehicleColor}" />
+                </ui:FormField>
+                <ui:FormField Label="{x:Static vm:PageTexts.Make}" LabelWidth="70">
+                  <TextBox Text="{Binding VehicleMake}" />
+                </ui:FormField>
+                <ui:FormField Label="{x:Static vm:PageTexts.Model}" LabelWidth="70">
+                  <TextBox Text="{Binding VehicleModel}" />
+                </ui:FormField>
+              </StackPanel>
+            </Flyout>
+          </ui:ToolbarButton.Flyout>
+        </ui:ToolbarButton>
+        <ui:ToolbarButton x:Name="ClearFiltersButton" IconKey="eraser" Text="{x:Static vm:PageTexts.ClearFilters}" Command="{Binding ClearFiltersCommand}" VerticalAlignment="Center" />
+      </WrapPanel>
+
+      <StackPanel Grid.Row="2" Spacing="6">
+        <ui:StatusChip x:Name="ProblemChip" Text="{Binding Problem}" IsWarning="True" MaxLines="2" IsVisible="{Binding HasProblem}" />
+        <ui:ProgressRow Text="{x:Static vm:PageTexts.Exporting}" IsVisible="{Binding IsExporting}" />
+        <ui:StatusChip x:Name="NoticeChip" Text="{Binding Notice}" IsOk="True" IsVisible="{Binding HasNotice}" />
+        <ui:ProgressRow Text="{x:Static vm:PageTexts.ReadingLog}" IsVisible="{Binding IsLoadingOlder}" />
+      </StackPanel>
+
+      <Panel Grid.Row="3">
+        <DataGrid x:Name="LogGrid" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Extended" CanUserSortColumns="False" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="{x:Static vm:PageTexts.Time}" Width="130" Binding="{Binding TimeText}" x:DataType="vm:LogRow" />
+            <DataGridTextColumn Header="{x:Static vm:PageTexts.Camera}" Width="150" Binding="{Binding Camera}" x:DataType="vm:LogRow" />
+            <!-- The plate crop, read only for the rows the grid shows (LogView: LoadingRow). -->
+            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Picture}" Width="136">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:LogRow">
+                  <Image Source="{Binding Picture}" Width="120" Height="28" Stretch="Uniform" HorizontalAlignment="Left" Margin="10,0" VerticalAlignment="Center" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <!-- One Plate column: the list's plate, or the read text; a warning triangle left of it when the read deviated. -->
+            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Plate}" Width="150">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:LogRow">
+                  <StackPanel Orientation="Horizontal" Spacing="6" Margin="10,0" VerticalAlignment="Center">
+                    <ui:OadmIcon x:Name="DeviationIcon" Classes="warn" Data="{StaticResource Icon.status.warning}" IsVisible="{Binding IsDeviated}" ToolTip.Tip="{Binding ReadAsTip}" />
+                    <ui:OadmIcon Classes="warn" Data="{StaticResource Icon.status.warning}" IsVisible="{Binding IsGap}" ToolTip.Tip="{Binding GapText}" />
+                    <TextBlock Classes="mono" Text="{Binding PlateText}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Name}" Width="*" MinWidth="140">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:LogRow">
+                  <Panel Margin="10,0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" IsVisible="{Binding !IsGap}" />
+                    <TextBlock Classes="secondary" Text="{Binding GapText}" TextTrimming="CharacterEllipsis" IsVisible="{Binding IsGap}" />
+                  </Panel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Tags}" Width="190">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:LogRow">
+                  <ui:TagChips Tags="{Binding Tags}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <!-- Result: only the status icon (check green, no entry red, question mark grey); the tooltip names it and why. -->
+            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Result}" Width="80">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:LogRow">
+                  <Panel ToolTip.Tip="{Binding ResultTip}" Background="Transparent">
+                    <ui:StatusChip x:Name="AllowedIcon" IsOk="True" IsVisible="{Binding IsAllowed}" />
+                    <ui:StatusChip x:Name="NotAllowedIcon" IsError="True" Icon="{StaticResource Icon.cancel}" IsVisible="{Binding IsNotAllowed}" />
+                    <ui:StatusChip x:Name="UnknownIcon" Icon="{StaticResource Icon.help}" IsVisible="{Binding IsUnknown}" />
+                  </Panel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="{x:Static vm:PageTexts.Direction}" Width="100" Binding="{Binding DirectionText}" x:DataType="vm:LogRow" />
+            <DataGridTemplateColumn Width="125" MinWidth="120" CellStyleClasses="number">
+              <DataGridTemplateColumn.Header>
+                <TextBlock Classes="numberHeader" Text="{x:Static vm:PageTexts.Confidence}" />
+              </DataGridTemplateColumn.Header>
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:LogRow">
+                  <TextBlock Text="{Binding ConfidenceText}" Classes.warning="{Binding IsLowConfidence}" Classes.error="{Binding IsVeryLowConfidence}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{Binding EmptyText}" IsVisible="{Binding ShowEmpty}" />
+        <ui:LoadingOverlay Text="{x:Static vm:PageTexts.ReadingLog}" IsVisible="{Binding IsLoading}" />
+      </Panel>
+
+      <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
+        <TextBlock x:Name="FooterText" Classes="secondary" Text="{Binding Footer}" VerticalAlignment="Center" />
+        <TextBlock Grid.ColumnSpan="2" Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" HorizontalAlignment="Right" />
+      </Grid>
+    </Grid>
+  </Border>
+</UserControl>

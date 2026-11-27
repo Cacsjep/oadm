@@ -1,0 +1,83 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.LicensePlates.Client"
+             x:Class="Oadm.Plugins.LicensePlates.Client.CamerasView"
+             x:DataType="vm:CamerasViewModel">
+  <!-- The Cameras tab (docs/spec/license-plate-center.md "Cameras"): the toolbar (Add cameras, Set up, Allowed tags, Copy
+       settings, Use recommended image settings, Refresh, Settings; Remove in red apart; the search right), the log's problem
+       and what a change started, the virtualized grid (Camera, Address, Site, ALPV, Status, Allowed tags, Image settings). -->
+  <Border Classes="card" Padding="{StaticResource Oadm.GridCardPadding}">
+    <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
+      <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="16">
+        <ui:ToolbarOverflowPanel Grid.Column="0" Spacing="4">
+          <ui:ToolbarButton x:Name="AddCamerasButton" IconKey="add" Text="{x:Static vm:PageTexts.AddCameras}" Command="{Binding AddCamerasCommand}" IsVisible="{Binding MayChange}" />
+          <ui:ToolbarButton x:Name="SetUpButton" IconKey="sliders" Text="{x:Static vm:PageTexts.SetUp}" Command="{Binding SetUpCommand}" IsVisible="{Binding MayChange}"
+                            ToolTip.Tip="{x:Static vm:PageTexts.ChooseOneCamera}" ToolTip.ShowOnDisabled="True" />
+          <ui:ToolbarButton x:Name="AllowedTagsButton" IconKey="tag" Text="{x:Static vm:PageTexts.AllowedTags}" Command="{Binding AllowedTagsCommand}" IsVisible="{Binding MayChange}" />
+          <ui:ToolbarButton x:Name="CopySettingsButton" IconKey="copy" Text="{x:Static vm:PageTexts.CopySettings}" Command="{Binding CopySettingsCommand}" IsVisible="{Binding MayChange}" />
+          <ui:ToolbarButton x:Name="UseRecommendedButton" IconKey="focus" Text="{x:Static vm:PageTexts.UseRecommended}" Command="{Binding UseRecommendedCommand}" IsVisible="{Binding MayChange}" />
+          <ui:ToolbarButton x:Name="RefreshButton" IconKey="refresh" Text="{x:Static vm:PageTexts.Refresh}" Command="{Binding RefreshCommand}" />
+          <ui:ToolbarButton x:Name="SettingsButton" IconKey="settings" Text="{x:Static vm:PageTexts.Settings}" Command="{Binding SettingsCommand}" IsVisible="{Binding IsAdministrator}" />
+          <ui:ToolbarSeparator IsVisible="{Binding MayChange}" />
+          <ui:ToolbarButton x:Name="RemoveButton" Classes="danger" IconKey="remove" Text="{x:Static vm:PageTexts.Remove}" Command="{Binding RemoveCommand}" IsVisible="{Binding MayChange}" />
+        </ui:ToolbarOverflowPanel>
+        <ui:SearchBox Grid.Column="1" Width="220" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="{x:Static vm:PageTexts.SearchCameras}" />
+      </Grid>
+
+      <StackPanel Grid.Row="1" Spacing="6">
+        <ui:StatusChip x:Name="LogProblemChip" Text="{Binding LogProblem}" IsWarning="True" MaxLines="2" IsVisible="{Binding HasLogProblem}" />
+        <ui:StatusChip x:Name="NoticeChip" Text="{Binding Notice}" IsAccent="True" IsVisible="{Binding HasNotice}" />
+      </StackPanel>
+
+      <Panel Grid.Row="2">
+        <DataGrid x:Name="CameraGrid" Classes="wrapRows" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Extended"
+                  CanUserSortColumns="True" CanUserReorderColumns="False">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="{x:Static vm:PageTexts.Camera}" Width="170" Binding="{Binding Camera}" x:DataType="vm:CameraRowViewModel" />
+            <DataGridTextColumn Header="{x:Static vm:PageTexts.Address}" Width="130" Binding="{Binding Address}" x:DataType="vm:CameraRowViewModel" />
+            <DataGridTextColumn Header="{x:Static vm:PageTexts.Site}" Width="130" Binding="{Binding Site}" x:DataType="vm:CameraRowViewModel" />
+            <DataGridTextColumn Header="{x:Static vm:PageTexts.Alpv}" Width="90" Binding="{Binding AlpvVersion}" x:DataType="vm:CameraRowViewModel" />
+            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Status}" Width="*" MinWidth="220" SortMemberPath="StatusSortKey">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:CameraRowViewModel">
+                  <ui:StatusChip Text="{Binding StatusText}" IsOk="{Binding IsOk}" IsWarning="{Binding IsWarning}" IsError="{Binding IsError}"
+                                 IsAccent="{Binding IsConnecting}" MaxLines="2" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.AllowedTags}" Width="220" SortMemberPath="TagsSortKey">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:CameraRowViewModel">
+                  <ui:TagChips Tags="{Binding AllowedTags}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <!-- A check when the image settings are as ALPV recommends, a warning triangle when not; the rich tooltip lists each
+                 value with the recommended one next to it. -->
+            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.ImageSettings}" Width="130" SortMemberPath="ImageSortKey">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="vm:CameraRowViewModel">
+                  <Panel x:Name="ImageSettingsCell" Background="Transparent" HorizontalAlignment="Left" IsVisible="{Binding HasImageSettings}">
+                    <ui:StatusChip IsOk="True" IsVisible="{Binding ImageSettingsOk}" />
+                    <ui:StatusChip IsWarning="True" IsVisible="{Binding ImageSettingsDiffer}" />
+                    <ToolTip.Tip>
+                      <ToolTip Classes="wide">
+                        <vm:ImageSettingsTip />
+                      </ToolTip>
+                    </ToolTip.Tip>
+                  </Panel>
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:PageTexts.NoCameras}" IsVisible="{Binding ShowEmpty}" />
+        <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:PageTexts.NoMatchingCameras}" IsVisible="{Binding ShowNoMatch}" />
+        <ui:LoadingOverlay Text="{x:Static vm:PageTexts.ReadingCameras}" IsVisible="{Binding IsLoading}" />
+      </Panel>
+
+      <TextBlock Grid.Row="3" Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+    </Grid>
+  </Border>
+</UserControl>

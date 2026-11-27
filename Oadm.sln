@@ -317,6 +317,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Oadm.Plugins.LicensePlates"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Oadm.Plugins.LicensePlates.Tests", "tests\Oadm.Plugins.LicensePlates.Tests\Oadm.Plugins.LicensePlates.Tests.csproj", "{ACFCBC59-F511-4A63-9C08-2F4C91A23FE1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Oadm.Plugins.LicensePlates.Client", "plugins\Oadm.Plugins.LicensePlates.Client\Oadm.Plugins.LicensePlates.Client.csproj", "{7E40430C-C8C4-41E9-9269-E54D71D64E39}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -2127,6 +2129,18 @@ Global
 		{ACFCBC59-F511-4A63-9C08-2F4C91A23FE1}.Release|x64.Build.0 = Release|Any CPU
 		{ACFCBC59-F511-4A63-9C08-2F4C91A23FE1}.Release|x86.ActiveCfg = Release|Any CPU
 		{ACFCBC59-F511-4A63-9C08-2F4C91A23FE1}.Release|x86.Build.0 = Release|Any CPU
+		{7E40430C-C8C4-41E9-9269-E54D71D64E39}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7E40430C-C8C4-41E9-9269-E54D71D64E39}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7E40430C-C8C4-41E9-9269-E54D71D64E39}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7E40430C-C8C4-41E9-9269-E54D71D64E39}.Debug|x64.Build.0 = Debug|Any CPU
+		{7E40430C-C8C4-41E9-9269-E54D71D64E39}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7E40430C-C8C4-41E9-9269-E54D71D64E39}.Debug|x86.Build.0 = Debug|Any CPU
+		{7E40430C-C8C4-41E9-9269-E54D71D64E39}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7E40430C-C8C4-41E9-9269-E54D71D64E39}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7E40430C-C8C4-41E9-9269-E54D71D64E39}.Release|x64.ActiveCfg = Release|Any CPU
+		{7E40430C-C8C4-41E9-9269-E54D71D64E39}.Release|x64.Build.0 = Release|Any CPU
+		{7E40430C-C8C4-41E9-9269-E54D71D64E39}.Release|x86.ActiveCfg = Release|Any CPU
+		{7E40430C-C8C4-41E9-9269-E54D71D64E39}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -2283,5 +2297,6 @@ Global
 		{6C2FF6B7-BD54-44BA-B51D-5161B6969D5D} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{3DCE4EDD-9A75-4301-9699-FE98A9B83D14} = {07D57EEB-2F50-60C4-C011-FE4FA775C9A8}
 		{ACFCBC59-F511-4A63-9C08-2F4C91A23FE1} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{7E40430C-C8C4-41E9-9269-E54D71D64E39} = {07D57EEB-2F50-60C4-C011-FE4FA775C9A8}
 	EndGlobalSection
 EndGlobal

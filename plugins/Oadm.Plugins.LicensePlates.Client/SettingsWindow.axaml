@@ -1,0 +1,61 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.LicensePlates.Client"
+        x:Class="Oadm.Plugins.LicensePlates.Client.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Title="{x:Static vm:PageTexts.SettingsTitle}"
+        Width="640" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Settings (docs/spec/license-plate-center.md "Settings", Administrators): one form, no card; Matching, then Log with the
+       folder on the server chosen with the shared server folder picker. Save stays off while an error or the folder's problem shows. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:PageTexts.SettingsTitle}" />
+    <Panel Grid.Row="1">
+      <Border Classes="dialogBody">
+        <StackPanel Classes="form">
+          <TextBlock Classes="sectionTitle" Text="{x:Static vm:PageTexts.Matching}" />
+          <ui:FormField Label="{x:Static vm:PageTexts.Deviation}" LabelWidth="210" InputWidth="200">
+            <ComboBox x:Name="DeviationBox" ItemsSource="{x:Static vm:SettingsViewModel.DeviationChoices}" SelectedItem="{Binding SelectedDeviation}" HorizontalAlignment="Stretch" />
+          </ui:FormField>
+          <ui:FormField Label="{x:Static vm:PageTexts.WaitSeconds}" LabelWidth="210" InputWidth="200">
+            <NumericUpDown x:Name="WaitBox" Value="{Binding WaitSeconds}" Minimum="{x:Static vm:SettingsViewModel.MinWait}" Maximum="{x:Static vm:SettingsViewModel.MaxWait}"
+                           Increment="1" FormatString="0" ParsingNumberStyle="Integer" />
+
+          </ui:FormField>
+
+          <TextBlock Classes="sectionTitle" Text="{x:Static vm:PageTexts.Log}" />
+          <ui:FormField Label="{x:Static vm:PageTexts.KeepDays}" LabelWidth="210" InputWidth="200">
+            <NumericUpDown x:Name="DaysBox" Value="{Binding KeepDays}" Minimum="{x:Static vm:SettingsViewModel.MinDays}" Maximum="{x:Static vm:SettingsViewModel.MaxDays}"
+                           Increment="1" FormatString="0" ParsingNumberStyle="Integer" />
+
+          </ui:FormField>
+          <ui:FormField Label="{x:Static vm:PageTexts.MaxSize}" LabelWidth="210" InputWidth="200">
+            <NumericUpDown x:Name="SizeBox" Value="{Binding MaxSize}" Minimum="{x:Static vm:SettingsViewModel.MinGigabytes}" Maximum="{x:Static vm:SettingsViewModel.MaxGigabytes}"
+                           Increment="1" FormatString="0" ParsingNumberStyle="Integer" />
+
+          </ui:FormField>
+          <ui:FormField x:Name="FolderField" Classes="wide" Label="{x:Static vm:PageTexts.Folder}" LabelWidth="210">
+            <ui:ServerFolderPicker x:Name="FolderPicker" Path="{Binding Folder}" Folders="{Binding ServerFolders}" Heading="{x:Static vm:PageTexts.FolderHeading}"
+                                   Problem="{Binding FolderProblem, Mode=OneWayToSource}" />
+          </ui:FormField>
+          <ui:FormField Label="" LabelWidth="210">
+            <StackPanel Spacing="8">
+              <CheckBox x:Name="PicturesBox" Content="{x:Static vm:PageTexts.KeepPictures}" IsChecked="{Binding KeepPictures}" />
+              <CheckBox x:Name="UnknownBox" Content="{x:Static vm:PageTexts.KeepUnknown}" IsChecked="{Binding KeepUnknown}" />
+            </StackPanel>
+          </ui:FormField>
+          <TextBlock Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+      <ui:LoadingOverlay Text="{x:Static vm:PageTexts.ReadingSettings}" IsVisible="{Binding IsLoading}" />
+    </Panel>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button x:Name="SaveButton" Classes="primary" Content="{x:Static vm:PageTexts.Save}" Command="{Binding SaveCommand}" IsDefault="True"
+              ToolTip.Tip="{Binding SaveBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

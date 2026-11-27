@@ -1,0 +1,37 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.LicensePlates.Client"
+        x:Class="Oadm.Plugins.LicensePlates.Client.CopySettingsWindow"
+        x:DataType="vm:CopySettingsViewModel"
+        Title="{x:Static vm:PageTexts.CopyTitle}"
+        Width="520" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowDecorations="BorderOnly">
+  <!-- Copy settings: one form, no card. From the selected camera to the chosen ones, the areas only when asked. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:PageTexts.CopyTitle}" />
+    <Border Grid.Row="1" Classes="dialogBody">
+      <StackPanel Classes="form">
+        <ui:FormField Label="{x:Static vm:PageTexts.CopyFrom}" LabelWidth="80">
+          <TextBlock Text="{Binding SourceText}" VerticalAlignment="Center" />
+        </ui:FormField>
+        <ui:FormField Label="{x:Static vm:PageTexts.CopyTo}" LabelWidth="80" Error="{Binding TargetsError}">
+          <Button x:Name="TargetsButton" Classes="secondary" HorizontalAlignment="Left" Command="{Binding ChooseTargetsCommand}">
+            <ui:IconLabel Icon="{StaticResource Icon.devices}" Text="{Binding TargetsText}" />
+          </Button>
+        </ui:FormField>
+        <ui:FormField Label="" LabelWidth="80">
+          <CheckBox x:Name="AreasBox" Content="{x:Static vm:PageTexts.CopyAreas}" IsChecked="{Binding CopyAreas}" ToolTip.Tip="{x:Static vm:PageTexts.CopyAreasTip}" />
+        </ui:FormField>
+        <TextBlock Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button x:Name="CopyButton" Classes="primary" Content="{x:Static vm:PageTexts.Copy}" Command="{Binding CopyCommand}" IsDefault="True"
+              ToolTip.Tip="{Binding CopyBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

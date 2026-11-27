@@ -1,0 +1,29 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.LicensePlates.Client"
+             x:Class="Oadm.Plugins.LicensePlates.Client.ImageSettingsTip"
+             x:DataType="vm:CameraRowViewModel">
+  <!-- The rich tooltip of the Image settings column: the state, then each of ALPV's image settings with the camera's value and
+       the recommended one next to it; a value that differs has the warning icon in a column of its own, so the values line up.
+       At most six rows. -->
+  <StackPanel Spacing="8">
+    <TextBlock Classes="tipTitle" Text="{Binding ImageSettingsTitle}" />
+    <Grid ColumnDefinitions="130,24,80,110">
+      <TextBlock Grid.Column="2" Classes="secondary" Text="{x:Static vm:PageTexts.Camera}" />
+      <TextBlock Grid.Column="3" Classes="secondary" Text="{x:Static vm:PageTexts.Recommended}" />
+    </Grid>
+    <ItemsControl x:Name="Values" ItemsSource="{Binding ImageValues}">
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:ImageValueRow">
+          <Grid ColumnDefinitions="130,24,80,110" Margin="0,2">
+            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+            <ui:OadmIcon Grid.Column="1" Classes="warn" Data="{StaticResource Icon.status.warning}" HorizontalAlignment="Left" IsVisible="{Binding !Matches}" />
+            <TextBlock Grid.Column="2" Text="{Binding Current}" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="3" Text="{Binding Recommended}" VerticalAlignment="Center" />
+          </Grid>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </StackPanel>
+</UserControl>

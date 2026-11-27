@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:Oadm.Sdk.Client.Controls"
+             xmlns:vm="using:Oadm.Plugins.LicensePlates.Client"
+             x:Class="Oadm.Plugins.LicensePlates.Client.LicensePlatesView"
+             x:DataType="vm:LicensePlatesViewModel"
+             ui:PageHeader.Subtitle="{x:Static vm:PageTexts.Subtitle}">
+  <!-- The live status of the whole page (docs/spec/license-plate-center.md "The page"): "41 of 42 cameras connected" at the
+       right end of the page header, like Text recognition's load. -->
+  <ui:PageHeader.Trailing>
+    <StackPanel Margin="0,13,0,-18" Orientation="Horizontal" VerticalAlignment="Center">
+      <ui:StatusChip x:Name="ConnectedChip" VerticalAlignment="Center" Text="{Binding ConnectedText}" IsOk="{Binding AllConnected}"
+                     IsWarning="{Binding SomeNotConnected}" IsVisible="{Binding ConnectedText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+    </StackPanel>
+  </ui:PageHeader.Trailing>
+
+  <!-- Own cards (ICorePluginPage.HasOwnCards): the fixed tabs Log, Plates, Cameras, Stats (Log and Stats with "View plate log"),
+       then the shown tab's card. No card repeats the page title. -->
+  <Grid RowDefinitions="Auto,*">
+    <ItemsControl Grid.Row="0" ItemsSource="{Binding Tabs}" Margin="0,0,0,8">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="2" /></ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:PageTabViewModel">
+          <ui:PageTab Title="{Binding Title}" IsActive="{Binding IsActive}" ActivateCommand="{Binding ActivateCommand}" />
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <vm:LogView x:Name="LogPage" Grid.Row="1" DataContext="{Binding Log}" IsVisible="{Binding $parent[vm:LicensePlatesView].((vm:LicensePlatesViewModel)DataContext).IsLogTab}" />
+    <vm:PlatesView x:Name="PlatesPage" Grid.Row="1" DataContext="{Binding Plates}" IsVisible="{Binding $parent[vm:LicensePlatesView].((vm:LicensePlatesViewModel)DataContext).IsPlatesTab}" />
+    <vm:CamerasView x:Name="CamerasPage" Grid.Row="1" DataContext="{Binding Cameras}" IsVisible="{Binding $parent[vm:LicensePlatesView].((vm:LicensePlatesViewModel)DataContext).IsCamerasTab}" />
+    <vm:StatsView x:Name="StatsPage" Grid.Row="1" DataContext="{Binding Stats}" IsVisible="{Binding $parent[vm:LicensePlatesView].((vm:LicensePlatesViewModel)DataContext).IsStatsTab}" />
+  </Grid>
+</UserControl>

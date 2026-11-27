@@ -1,0 +1,87 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.LicensePlates.Client"
+        x:Class="Oadm.Plugins.LicensePlates.Client.TagsWindow"
+        x:DataType="vm:TagsDialogViewModel"
+        Title="{Binding Title}"
+        Width="540" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- Change tags, Allowed tags and Manage tags of License Plate Center, laid out like the device tags dialog: search and New
+       tag, the inline editor (name with its error below, colour), the tag list (virtualized; a check box per tag while
+       changing, rename and delete while managing), footer. -->
+  <Grid RowDefinitions="Auto,Auto,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{Binding Title}" />
+
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <StackPanel>
+        <Grid ColumnDefinitions="Auto,*">
+          <ui:ToolbarButton Grid.Column="0" x:Name="NewTagButton" Text="{x:Static vm:PageTexts.NewTag}" IconKey="add" Margin="0,0,8,0" Command="{Binding StartNewTagCommand}"
+                            IsVisible="{Binding MayManage}" />
+          <ui:SearchBox Grid.Column="1" Text="{Binding SearchText}" Placeholder="{x:Static vm:PageTexts.SearchTags}" Width="NaN" HorizontalAlignment="Stretch" />
+        </Grid>
+
+        <!-- New tag or Change tag: name (error below the field) and colour -->
+        <Border x:Name="Editor" Classes="inlineEditor" IsVisible="{Binding IsEditorOpen}">
+          <StackPanel Classes="form">
+            <TextBlock Classes="sectionTitle" Text="{Binding EditorTitle}" />
+            <ui:FormField Label="{x:Static vm:PageTexts.Name}">
+              <TextBox x:Name="TagNameBox" Text="{Binding TagName}" MaxLength="{x:Static vm:TagsDialogViewModel.MaxTagName}" />
+            </ui:FormField>
+            <ui:FormField Label="{x:Static vm:PageTexts.Color}">
+              <ui:TagColorPicker x:Name="ColorPicker" SelectedColor="{Binding TagColor}" />
+            </ui:FormField>
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button x:Name="SaveTagButton" Classes="primary" Content="{Binding EditorButton}" IsDefault="True" Command="{Binding SaveTagCommand}" />
+              <Button Classes="secondary" Content="{x:Static vm:PageTexts.Cancel}" Command="{Binding CancelEditorCommand}" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <Panel Margin="0,12,0,0">
+          <ScrollViewer MaxHeight="{StaticResource Oadm.TagListMaxHeight}" HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl x:Name="TagList" ItemsSource="{Binding Rows}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:TagChoiceRow">
+                  <Grid Classes="tagRow" ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                    <CheckBox Grid.Column="0" IsThreeState="False" IsChecked="{Binding IsChecked, Mode=OneWay}" Command="{Binding ToggleCommand}"
+                              ToolTip.Tip="{Binding StateText}" IsVisible="{Binding $parent[Window].((vm:TagsDialogViewModel)DataContext).IsChange}" />
+                    <Ellipse Grid.Column="1" Classes="tagDot" Fill="{Binding Color, Converter={x:Static ui:TagColors.BrushConverter}}" />
+                    <TextBlock Grid.Column="2" Text="{Binding Name}" Foreground="{Binding Color, Converter={x:Static ui:TagColors.BrushConverter}}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="3" Classes="secondary" Text="{Binding CountText}" Margin="12,0" />
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="2"
+                                IsVisible="{Binding $parent[Window].((vm:TagsDialogViewModel)DataContext).MayManage}">
+                      <Button Classes="toolbar iconOnly" ToolTip.Tip="{x:Static vm:PageTexts.RenameOrRecolor}"
+                              Command="{Binding $parent[Window].((vm:TagsDialogViewModel)DataContext).StartEditCommand}" CommandParameter="{Binding}">
+                        <ui:OadmIcon Data="{StaticResource Icon.edit}" />
+                      </Button>
+                      <Button Classes="toolbar iconOnly danger" ToolTip.Tip="{x:Static vm:PageTexts.DeleteTag}"
+                              Command="{Binding $parent[Window].((vm:TagsDialogViewModel)DataContext).DeleteCommand}" CommandParameter="{Binding}">
+                        <ui:OadmIcon Data="{StaticResource Icon.remove}" />
+                      </Button>
+                    </StackPanel>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+          <TextBlock Classes="secondary" Text="{Binding EmptyText}" IsVisible="{Binding IsEmpty}" Margin="0,8" />
+        </Panel>
+
+        <TextBlock Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" Margin="0,4,0,0" />
+        <ui:ProgressRow IsActive="{Binding IsBusy}" Text="{x:Static vm:PageTexts.Saving}" IsVisible="{Binding IsBusy}" Margin="0,12,0,0" />
+      </StackPanel>
+    </Border>
+
+    <!-- Change: OK applies the clicks (the accent goes to the inline editor's button while it is open); Manage: Close alone. -->
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}" CancelText="{Binding CancelText}">
+      <Button x:Name="OkButton" Classes.primary="{Binding !IsEditorOpen}" Classes.secondary="{Binding IsEditorOpen}" Content="{x:Static vm:PageTexts.Ok}"
+              Command="{Binding OkCommand}" IsVisible="{Binding IsChange}" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>

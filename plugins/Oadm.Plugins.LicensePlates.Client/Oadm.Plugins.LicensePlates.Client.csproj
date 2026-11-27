@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>Oadm.Plugins.LicensePlates.Client</AssemblyName>
+    <RootNamespace>Oadm.Plugins.LicensePlates.Client</RootNamespace>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- Same folder as the server part: artifacts/plugins/oadm.license-plates/. -->
+    <OadmPluginId>oadm.license-plates</OadmPluginId>
+    <OadmPluginOutputDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'plugins', '$(OadmPluginId)'))</OadmPluginOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Avalonia, CommunityToolkit.Mvvm and the SDKs are shared from the client host (PluginLoadContext.IsShared):
+         compile against them, never copy them into the plugin folder. -->
+    <PackageReference Include="Avalonia" Version="12.1.4" ExcludeAssets="runtime" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" ExcludeAssets="runtime" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" ExcludeAssets="runtime" />
+    <ProjectReference Include="..\..\src\Oadm.Sdk.Client\Oadm.Sdk.Client.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\..\src\Oadm.Sdk\Oadm.Sdk.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <!-- The contract, the texts and the plate rules are shared with the server part (same plugin folder). -->
+    <ProjectReference Include="..\Oadm.Plugins.LicensePlates\Oadm.Plugins.LicensePlates.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Oadm.Plugins.LicensePlates.Tests" />
+  </ItemGroup>
+
+  <!-- The shape rules and the painter of the picture overlays of Text recognition and Vision Center (plugins/Shared/Vision.Client):
+       linked source, compiled into this plugin's own assembly. Only the parts without a picture size type: the areas are kept
+       relative to the picture (0 to 1000, as ALPV keeps them). -->
+  <ItemGroup>
+    <Compile Include="..\Shared\Vision.Client\ShapeGeometry.cs" Link="Shared\Vision.Client\ShapeGeometry.cs" />
+    <Compile Include="..\Shared\Vision.Client\PictureOverlay.cs" Link="Shared\Vision.Client\PictureOverlay.cs" />
+    <Compile Include="..\Shared\Vision.Client\Suppressions.cs" Link="Shared\Vision.Client\Suppressions.cs" />
+    <Using Include="Oadm.Plugins.Shared.Vision.Client" />
+  </ItemGroup>
+
+  <!-- Development deployment next to the server part in artifacts/plugins/oadm.license-plates/. -->
+  <Target Name="OadmDeployPlugin" AfterTargets="Build" Condition="'$(OadmSkipPluginDeploy)' != 'true'">
+    <ItemGroup>
+      <_OadmPluginFiles Include="$(OutDir)**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_OadmPluginFiles)" DestinationFiles="@(_OadmPluginFiles->'$(OadmPluginOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Message Importance="normal" Text="OADM client plugin $(OadmPluginId) deployed to $(OadmPluginOutputDir)" />
+  </Target>
+
+</Project>

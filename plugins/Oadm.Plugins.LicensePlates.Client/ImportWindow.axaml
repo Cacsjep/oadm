@@ -1,0 +1,78 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:Oadm.Sdk.Client.Controls"
+        xmlns:vm="using:Oadm.Plugins.LicensePlates.Client"
+        x:Class="Oadm.Plugins.LicensePlates.Client.ImportWindow"
+        x:DataType="vm:ImportViewModel"
+        Title="{x:Static vm:PageTexts.ImportTitle}"
+        Width="1040" Height="660"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        WindowDecorations="BorderOnly">
+  <!-- Import (docs/spec/license-plate-center.md "Import and export"): the file and the tags for every plate, then the preview
+       the server made: new, changed and refused rows, a refused row's error in its Status column; Import saves in one go. -->
+  <Grid RowDefinitions="Auto,*,Auto">
+    <ui:DialogTitleBar Grid.Row="0" Text="{x:Static vm:PageTexts.ImportTitle}" />
+    <Border Grid.Row="1" Classes="card" Margin="16,0">
+      <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="10">
+        <StackPanel Grid.Row="0" Classes="form">
+          <ui:FormField Label="CSV file" LabelWidth="170" Error="{Binding FileError}">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Button x:Name="ChooseFileButton" Classes="secondary" Command="{Binding ChooseFileCommand}">
+                <ui:IconLabel Icon="{StaticResource Icon.file}" Text="{x:Static vm:PageTexts.ChooseFile}" />
+              </Button>
+              <TextBlock x:Name="FileNameText" Text="{Binding FileName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="460" />
+            </StackPanel>
+          </ui:FormField>
+          <ui:FormField Label="{x:Static vm:PageTexts.TagsForEvery}" LabelWidth="170" InputWidth="320">
+            <ComboBox x:Name="TagsBox" Classes="multiSelect" ItemsSource="{Binding TagChoices.Items}" PlaceholderText="{Binding TagChoices.Summary}" MaxDropDownHeight="320" />
+          </ui:FormField>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="16" IsVisible="{Binding HasPreview}">
+          <TextBlock x:Name="CountsText" Text="{Binding CountsText}" VerticalAlignment="Center" />
+          <ui:StatusChip Text="{x:Static vm:PageTexts.RefusedRows}" IsWarning="True" IsVisible="{Binding HasRefused}" />
+        </StackPanel>
+
+        <TextBlock Grid.Row="2" Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />
+
+        <Panel Grid.Row="3">
+          <DataGrid x:Name="PreviewGrid" Classes="wrapRows" ItemsSource="{Binding Rows}" IsReadOnly="True" CanUserSortColumns="True" CanUserReorderColumns="False"
+                    IsVisible="{Binding HasPreview}">
+            <DataGrid.Columns>
+              <DataGridTextColumn Width="80" MinWidth="80" Binding="{Binding Line}" CellStyleClasses="number" x:DataType="vm:ImportRowViewModel">
+                <DataGridTextColumn.Header><TextBlock Classes="numberHeader" Text="{x:Static vm:PageTexts.Line}" /></DataGridTextColumn.Header>
+              </DataGridTextColumn>
+              <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Plate}" Width="120" SortMemberPath="Plate">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:ImportRowViewModel">
+                    <TextBlock Classes="mono" Text="{Binding Plate}" Margin="10,0" VerticalAlignment="Center" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+              <DataGridTextColumn Header="{x:Static vm:PageTexts.Name}" Width="*" MinWidth="110" Binding="{Binding Name}" x:DataType="vm:ImportRowViewModel" />
+              <DataGridTextColumn Header="{x:Static vm:PageTexts.Tags}" Width="150" Binding="{Binding Tags}" x:DataType="vm:ImportRowViewModel" />
+              <DataGridTextColumn Header="{x:Static vm:PageTexts.AllowedFrom}" Width="165" MinWidth="165" Binding="{Binding AllowedFrom}" x:DataType="vm:ImportRowViewModel" />
+              <DataGridTextColumn Header="{x:Static vm:PageTexts.AllowedTo}" Width="165" MinWidth="165" Binding="{Binding AllowedTo}" x:DataType="vm:ImportRowViewModel" />
+              <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Status}" Width="*" MinWidth="200" SortMemberPath="StatusText">
+                <DataGridTemplateColumn.CellTemplate>
+                  <DataTemplate x:DataType="vm:ImportRowViewModel">
+                    <ui:StatusChip Text="{Binding StatusText}" Detail="{Binding Error}" IsOk="{Binding IsNew}" IsInfo="{Binding IsChanged}" IsError="{Binding IsRefused}"
+                                   MaxLines="2" ToolTip.Tip="{Binding Error}" />
+                  </DataTemplate>
+                </DataGridTemplateColumn.CellTemplate>
+              </DataGridTemplateColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock Classes="secondary" HorizontalAlignment="Center" VerticalAlignment="Center" Text="{x:Static vm:PageTexts.ChooseFileFirst}"
+                     IsVisible="{Binding !HasPreview}" />
+          <ui:LoadingOverlay Text="{x:Static vm:PageTexts.ReadingFile}" IsVisible="{Binding IsReading}" />
+        </Panel>
+      </Grid>
+    </Border>
+    <ui:DialogFooter Grid.Row="2" CancelCommand="{Binding CancelCommand}">
+      <Button x:Name="ImportButton" Classes="primary" Content="{x:Static vm:PageTexts.ImportButton}" Command="{Binding ImportCommand}"
+              ToolTip.Tip="{Binding ImportBlockedReason}" ToolTip.ShowOnDisabled="True" />
+    </ui:DialogFooter>
+  </Grid>
+</Window>
