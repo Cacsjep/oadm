@@ -654,6 +654,12 @@ public interface ICorePluginContext
     /// older hosts.
     /// </summary>
     IServerFolderCheck? FolderCheck => null;
+
+    /// <summary>
+    /// The server's audit log for what the plugin does by itself, without a user's call (<see cref="IPluginAudit"/>, SDK
+    /// 0.17.0): one "Plugin action" entry with the plugin's name. Null on older hosts.
+    /// </summary>
+    IPluginAudit? Audit => null;
 }
 
 /// <summary>

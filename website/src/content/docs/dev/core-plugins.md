@@ -58,6 +58,7 @@ plugin that throws on start is marked as failed; the others keep running.
 | `DeviceScopes` | `IDeviceScopes`: the devices of a device group, for objects kept per group (dashboards, views) |
 | `ProtectedTags` | `IProtectedTags`: tags only users with all devices may add to or remove from devices; null on older hosts, then treat no tag as safe. See [Host services](../host-services/#protected-tags) |
 | `FolderCheck` | SDK 0.17.0, `IServerFolderCheck`: whether a folder on the server an administrator chose may hold your data, see [A folder on the server](#a-folder-on-the-server) |
+| `Audit` | SDK 0.17.0, `IPluginAudit`: an audit entry for what your plugin does by itself, without a user's call, see [Permissions](#permissions) |
 
 Every member after `Logger` except `System` may be null on an older host or where it does not apply. Check before you
 use it.
@@ -526,6 +527,18 @@ The server checks every call; the client only hides what the role lacks. A metho
   detail is the method, or the text of `AuditDetail(method, payloadJson)` (SDK 0.10.0): "Pressed Open gate on Gate
   house", never a secret. A call that threw gets " (failed)" after the detail, one the client gave up " (cancelled)".
   `AuditDetail` is read in both cases too, so it must not rely on the call having worked.
+- **Audit without a call.** What the plugin does by itself (a timer that deletes expired entries) has no call to audit.
+  Write it with `ctx.Audit` (SDK 0.17.0, null on older hosts): the same "Plugin action" entry with your plugin's name,
+  user `system`. One entry per run with a count, never a secret or personal data:
+
+  ```csharp
+  if (ctx.Audit is { } audit)
+  {
+      await audit.WriteAsync($"Deleted {count} plates whose time ended", ct);
+  }
+  ```
+
+  In tests: `FakeCoreContext.Audit = new FakePluginAudit()`, then check `Entries`.
 
 ## Self check
 

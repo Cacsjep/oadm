@@ -551,6 +551,7 @@ public static partial class OadmServerHost
                 sp.GetRequiredService<Core.DeviceGroups.DeviceViewFactory>(),
                 sp.GetRequiredService<Core.Auth.AccessEpochs>()),
             FolderCheck = sp.GetRequiredService<Folders.ServerFolderBrowser>(), // a folder an administrator chose for a plugin's data
+            AuditLog = sp.GetRequiredService<Core.Auth.AuditLog>(), // what a plugin does by itself (ICorePluginContext.Audit)
         });
         // The server folder picker and the folder checks of plugins (docs/spec/security.md "Folders a plugin writes to"); the
         // admin-only check only as the installed service.

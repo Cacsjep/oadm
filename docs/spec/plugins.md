@@ -112,7 +112,10 @@ The interfaces with their members and comments are the code: `src/Oadm.Sdk/Plugi
   `Jobs`, `DeviceScopes` (all below), `UserCalls` (SDK 0.16.0, `IUserCalls`, below), `FolderCheck` (SDK 0.17.0,
   `IServerFolderCheck`: the checks of a folder on the server an administrator chose for the plugin's data,
   `docs/spec/security.md` "Folders a plugin writes to"; the client part has `ICorePluginClientContext.ServerFolders` and
-  the shared `ServerFolderPicker`).
+  the shared `ServerFolderPicker`), `Audit` (SDK 0.17.0, `IPluginAudit.WriteAsync(detail, ct)`: an audit entry for what
+  the plugin does by itself, without a user's call, e.g. License Plate Center's Delete when it ends; the host writes
+  "Plugin action" with the plugin's name as target, user `system` (the caller inside a call), one entry per run, never
+  a secret or personal data; null on older hosts and without an audit log).
 - **User calls** (SDK 0.16.0, `ICorePluginContext.UserCalls`, `IUserCalls.ForUserAsync(userName, ct)`): the current
   `ICallContext` of a stored user who is not signed in, for work the user set up to run later (Schedules,
   `docs/spec/schedules.md` "Host: running as the owner"). Only bundled packages get it (`PluginOrigin.Bundled`: loaded
@@ -515,7 +518,7 @@ for server reports.
 - Host services: `FakeEventPublisher` (the events a source fires or switches), `FakeDeviceScopes` (device groups),
   `FakeSites`, `FakeSite`, `FakeDeviceNetwork` and `FakePluginNetwork` with the in-memory relays (sites and sockets),
   `FakePluginJobs`, `FakePluginServices`, `FakeProtectedTags`, `FakeStreamProbes` (the server's measuring video streams),
-  `FakeAxisDownloads` (files from axis.com), `FakeUserCalls` (the current calls of stored users, SDK 0.16.0), `FakeServerFolderCheck` (the server folder checks, SDK 0.17.0); `FakeHostRules` (internal) holds the server's rules for a user's call.
+  `FakeAxisDownloads` (files from axis.com), `FakeUserCalls` (the current calls of stored users, SDK 0.16.0), `FakeServerFolderCheck` (the server folder checks, SDK 0.17.0), `FakePluginAudit` (a plugin's own audit entries, SDK 0.17.0); `FakeHostRules` (internal) holds the server's rules for a user's call.
 - Device groups: `PluginCanary` calls every method of a core plugin with a device outside the caller's group and fails
   on a leak; `TaskPluginCanaryHost` puts task plugins and actions under it.
 

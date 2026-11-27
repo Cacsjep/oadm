@@ -278,6 +278,8 @@ public sealed class ServerFolderTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(parent, "Other")));
         // Core plugins check a chosen folder with the same rules.
         Assert.Same(host.Get<ServerFolderBrowser>(), host.Get<CorePluginHost>().FolderCheck);
+        // And write what they do by themselves to the server's audit log (ICorePluginContext.Audit, SDK 0.17.0 too).
+        Assert.Same(host.Get<Oadm.Core.Auth.AuditLog>(), host.Get<CorePluginHost>().AuditLog);
     }
 
     /// <summary>The installed service's folder permissions: <see cref="Loose"/> can be changed by others until fixed.</summary>

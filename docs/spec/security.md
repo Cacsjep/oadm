@@ -181,7 +181,9 @@ AuthTokens, AuditEntries) and `Roles`; client `Shell/AppShell`, `LoginViewModel`
   " (cancelled)" (it may have changed something already; `PluginGrpcService.AuditCallAsync`, Invoke and Download; tests
   `PluginCallAuditTests`, `PluginDownloadTests`); a call that ended well keeps its detail. A download is different: its
   entry is written when it opens (a long download has it while it runs, and when the server stops), and one that failed
-  or was cancelled gets a second entry with the suffix (the only one when the plugin never opened it). VAPIX Commander `tryRequest`
+  or was cancelled gets a second entry with the suffix (the only one when the plugin never opened it). What a plugin does by
+  itself, without a call, it writes as "Plugin action" too (`ICorePluginContext.Audit`, SDK 0.17.0, `HostPluginAudit`;
+  user "system", target the plugin; test `PluginAuditTests`). VAPIX Commander `tryRequest`
   and `rollout` are audited; "Install in trusted root store" on the server asks with the CA's SHA-256 fingerprint and is
   audited. `TaskService.Run` needs every key `PermissionCatalog.RunKeys` names for the payload (refused before any task
   starts), and so does a run a core plugin starts through `call.Tasks` of the user's call or job (`TaskRunPermissions`, the

@@ -133,6 +133,9 @@ public sealed partial class CorePluginHost : IAsyncDisposable
     /// <summary>The checks of a server folder a plugin writes to (<see cref="ICorePluginContext.FolderCheck"/>); null: none.</summary>
     public IServerFolderCheck? FolderCheck { get; init; }
 
+    /// <summary>The audit log of what a plugin does by itself (<see cref="ICorePluginContext.Audit"/>); null: none.</summary>
+    public AuditLog? AuditLog { get; init; }
+
     /// <summary>Live events of the core plugins for their pages (<see cref="ICorePluginContext.Events"/>).</summary>
     public PluginEventHub Events { get; }
 
@@ -225,6 +228,7 @@ public sealed partial class CorePluginHost : IAsyncDisposable
                     Uploads = UploadStore is { } uploads ? new Oadm.Core.Uploads.PluginUploads(uploads) : null,
                     UserCalls = UserCallsOf(registered, entry),
                     FolderCheck = FolderCheck,
+                    Audit = AuditLog is { } auditLog ? new HostPluginAudit(auditLog, registered.Plugin, registered.Id) : null,
                 };
                 try
                 {
@@ -770,6 +774,8 @@ internal sealed class CorePluginContext(
     public IUserCalls? UserCalls { get; init; }
 
     public IServerFolderCheck? FolderCheck { get; init; }
+
+    public IPluginAudit? Audit { get; init; }
 
     /// <summary>Created on first use, so plugins that never ask leave no empty folder behind.</summary>
     public string? DataDirectory => _dataDirectory.Value;
