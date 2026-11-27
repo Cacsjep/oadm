@@ -11,13 +11,20 @@ public enum FlowPacking
 
     /// <summary>Each child into the shortest column (cards of different heights, no gaps).</summary>
     Columns,
+
+    /// <summary>
+    /// Row by row like a catalog: the columns of the whole width also with few children (every group of tiles has tiles of
+    /// one width), each child as high as the tallest of its row (the tiles of the Plugins page).
+    /// </summary>
+    Tiles,
 }
 
 /// <summary>
 /// A panel that uses the width it gets instead of stretching its children: as many equal columns as fit
 /// <see cref="MinColumnWidth"/> (at most <see cref="MaxColumns"/>, never more than the visible children), each child as wide as
 /// its column. A narrow place gives one column, a wide one several, like a flex wrap. Invisible children take no room.
-/// Used by the node panel of Vision Center (its cards, and the fields in its forms).
+/// Used by the node panel of Vision Center (its cards, and the fields in its forms) and the tiles of the Plugins page
+/// (<see cref="FlowPacking.Tiles"/>).
 /// </summary>
 public sealed class FlowColumns : Panel
 {
@@ -101,6 +108,11 @@ public sealed class FlowColumns : Panel
 
     private Size Layout(Size size, bool arrange)
     {
+        if (Packing == FlowPacking.Tiles)
+        {
+            return LayoutTiles(size, arrange);
+        }
+
         var visible = Children.Where(c => c.IsVisible).ToList();
         var columns = ColumnsFor(size.Width, MinColumnWidth, ColumnSpacing, MaxColumns, visible.Count);
         var width = double.IsInfinity(size.Width)
@@ -151,6 +163,48 @@ public sealed class FlowColumns : Panel
 
         var total = visible.Count == 0 ? 0 : heights.Max();
         var used = double.IsInfinity(size.Width) ? widest : size.Width;
+        return new Size(visible.Count == 0 ? 0 : used, total);
+    }
+
+    /// <summary><see cref="FlowPacking.Tiles"/>: the columns that fit the width, rows as high as their tallest child.</summary>
+    private Size LayoutTiles(Size size, bool arrange)
+    {
+        var visible = Children.Where(c => c.IsVisible).ToList();
+        var columns = double.IsInfinity(size.Width) || double.IsNaN(size.Width)
+            ? Math.Max(1, visible.Count)
+            : ColumnsFor(size.Width, MinColumnWidth, ColumnSpacing, MaxColumns, int.MaxValue);
+        columns = Math.Max(1, columns);
+        var width = double.IsInfinity(size.Width) || double.IsNaN(size.Width)
+            ? MinColumnWidth
+            : Math.Max(0, (size.Width - (ColumnSpacing * (columns - 1))) / columns);
+        var top = 0.0;
+        for (var start = 0; start < visible.Count; start += columns)
+        {
+            var end = Math.Min(start + columns, visible.Count);
+            var rowHeight = 0.0;
+            for (var i = start; i < end; i++)
+            {
+                if (!arrange)
+                {
+                    visible[i].Measure(new Size(width, double.PositiveInfinity));
+                }
+
+                rowHeight = Math.Max(rowHeight, visible[i].DesiredSize.Height);
+            }
+
+            if (arrange)
+            {
+                for (var i = start; i < end; i++)
+                {
+                    visible[i].Arrange(new Rect((i - start) * (width + ColumnSpacing), top, width, rowHeight));
+                }
+            }
+
+            top += rowHeight + RowSpacing;
+        }
+
+        var total = visible.Count == 0 ? 0 : top - RowSpacing;
+        var used = double.IsInfinity(size.Width) ? (columns * width) + (ColumnSpacing * (columns - 1)) : size.Width;
         return new Size(visible.Count == 0 ? 0 : used, total);
     }
 }

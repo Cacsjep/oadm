@@ -122,8 +122,8 @@ public sealed class AddOnsCardTests
     }
 
     /// <summary>
-    /// The card follows right below the plugin list on a large screen too (not at the bottom of the window), and on a
-    /// small one the list scrolls so the card stays in view.
+    /// The card follows right below the tiles on a large screen too (not at the bottom of the window); on a small one the
+    /// tiles and the card scroll together.
     /// </summary>
     [Theory]
     [InlineData(1920, 1080)]
@@ -147,21 +147,18 @@ public sealed class AddOnsCardTests
             window.Show();
             Pump();
 
-            Border list = page.FindControl<Border>("PluginCard")!;
+            ItemsControl tiles = page.FindControl<ItemsControl>("TileGroups")!;
             AddOnsCardView card = page.FindControl<AddOnsCardView>("AddOnsCard")!;
-            Assert.True(card.IsEffectivelyVisible);
-            Point listBottom = list.TranslatePoint(new Point(0, list.Bounds.Height), window)!.Value;
-            Point cardTop = card.TranslatePoint(default, window)!.Value;
-            Point cardBottom = card.TranslatePoint(new Point(0, card.Bounds.Height), window)!.Value;
-            Assert.True(cardTop.Y >= listBottom.Y, "the card is below the list");
-            Assert.True(cardBottom.Y <= window.ClientSize.Height + 0.5, "the card stays in the window, the list scrolls");
+            Assert.True(card.IsVisible);
+            Point tilesBottom = tiles.TranslatePoint(new Point(0, tiles.Bounds.Height), page)!.Value;
+            Point cardTop = card.TranslatePoint(default, page)!.Value;
+            Assert.True(cardTop.Y >= tilesBottom.Y, "the card is below the tiles");
 
-            // The list stays a virtualized grid: on a small window it creates only the rows that fit and scrolls.
+            // A small window scrolls the tiles and the card together.
             if (height < 1000)
             {
-                DataGrid grid = page.FindControl<DataGrid>("PluginGrid")!;
-                int realized = grid.GetVisualDescendants().OfType<DataGridRow>().Count(r => r.IsVisible);
-                Assert.InRange(realized, 1, plugins.Plugins.Count - 1);
+                ScrollViewer scroll = page.FindControl<ScrollViewer>("PageScroll")!;
+                Assert.True(scroll.Extent.Height > scroll.Viewport.Height + 0.5, "the page scrolls");
             }
 
             Save(window, outDir, $"plugins-page-{width}x{height}-{appearance}.png");

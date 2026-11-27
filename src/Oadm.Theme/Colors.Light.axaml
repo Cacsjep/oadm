@@ -98,6 +98,18 @@
   <Color x:Key="Oadm.Tag.ChipBackgroundColor">#ECECEC</Color>
   <!-- Neutral badges (what a row is, Border.badge.neutral) -->
   <Color x:Key="Oadm.BadgeNeutralColor">#E6E6E6</Color>
+  <!-- The light accent: icons on an accent fill (an on tile of the Plugins page) and search matches in a text -->
+  <Color x:Key="Oadm.AccentSoftColor">#5B4BD6</Color>
+  <!-- Tiles of a catalog (Button.pluginTile): hover and its border while off; fill, border and icon square while on; the
+       icon square while off -->
+  <Color x:Key="Oadm.TileHoverColor">#F7F7F7</Color>
+  <Color x:Key="Oadm.TileHoverBorderColor">#C8C8C8</Color>
+  <Color x:Key="Oadm.TileOnColor">#F3F1FE</Color>
+  <Color x:Key="Oadm.TileOnBorderColor">#7D6EF0</Color>
+  <Color x:Key="Oadm.TileIconBackgroundColor">#F0F0F0</Color>
+  <Color x:Key="Oadm.TileOnIconBackgroundColor">#E4E0FC</Color>
+  <!-- The chosen quick filter (Button.filterPill.selected) -->
+  <Color x:Key="Oadm.FilterPillSelectedColor">#E4E0FC</Color>
   <!-- Menus, context menus and flyouts -->
   <Color x:Key="Oadm.MenuBackgroundColor">#FFFFFF</Color>
   <!-- Covers a whole camera picture while it is edited (Live View), lighter than the plates so the picture shows -->

@@ -604,12 +604,28 @@ what each version added is `website/src/content/docs/dev/compatibility.md`.
 
 ### Plugins on and off
 
-The rail page **Plugins** lists every plugin package (one plugin folder = one row: its core plugins, contributed and
+The rail page **Plugins** lists every plugin package (one plugin folder = one tile: its core plugins, contributed and
 standalone tasks and client parts together) and administrators turn each on or off; the change applies at once without a
-restart. Own rail page (not a Settings card); core functionality is always on. While a turn on or off runs (turning on
-can take a moment, e.g. a plugin that loads models), the row shows a small `ui:ProgressRing` in place of its check box and
-takes no second click; the state survives a reload of the list, other rows stay usable, and a refused change puts the
-box back with the error below the list (`PluginsViewModel.SwitchAsync`).
+restart. Own rail page (not a Settings card); core functionality is always on. Catalog tiles (decision 2026-11-27):
+
+- **Search** on top ("Search plugins, for example plates, SD card, VPN"): every word must occur in the name, the
+  description or the group (case does not matter; a word of more than 3 letters ending in "s" is searched without it, so
+  "plates" finds "plate"); the matches are marked in the name and the description (`c:HighlightText`). Right of it the
+  quick filters **All**, **On**, **Off**, **Optional** (the installed optional plugins, `docs/spec/add-ons.md`), each with
+  its count under the current search. "No plugin matches. Clear the search or choose All." when nothing is left.
+- **Tiles** under one heading per rail group (`CorePluginGroups` order, only groups with tiles, no count at a heading),
+  filling the width (`ui:FlowColumns Packing="Tiles"`, at least 270 px, a row as high as its tallest tile). A tile: the
+  group's icon in a small rounded square, the name, the manifest description; no switch, no badges. **One click anywhere
+  on the tile (Space or Enter when focused) turns it on or off** (`PluginRowViewModel.ToggleCommand`), tooltip "Click to
+  turn on" / "Click to turn off". On: accent border, light accent fill, the icon in the light accent and a check top right.
+  The page header shows "12 of 22 on" at its right end (`PageTitleBar.Status`), on one right edge with the filters and
+  the tiles (all three keep 16 px clear of the scroll bar). Search and filters are one O(n) pass in
+  the view model (`PluginsViewModel.Refilter`).
+- While a turn on or off runs (turning on can take a moment, e.g. a plugin that loads models), the tile shows the state
+  it goes to with a small `ui:ProgressRing` in place of its check and takes no second click; the state survives a reload of
+  the list, other tiles stay usable, and a refused change puts the tile back with the error in red inside that tile below
+  the description, kept over a reload until its next click (`PluginsViewModel.SwitchAsync`).
+- While the server has sites, a tile has the line "Works at sites (UDP 123)" or "Only this server's network".
 
 - Default: the manifest's `enabledByDefault` (`PluginManifest.EnabledByDefault`, `PluginOrigin.EnabledByDefault`).
   **Off by default: Action Rule Editor, Application management, Dashboards, Device triggers, Edge Recording Export, Edge
@@ -632,9 +648,10 @@ box back with the error below the list (`PluginsViewModel.SwitchAsync`).
   so the choice is kept and a new license brings the plugin back. Turning one on without the license: `SetEnabled` throws,
   `SetPackageEnabled` answers FAILED_PRECONDITION `ProLicenseTexts.NeedsPro` ("Needs an OADM PRO license or trial.").
   When the license changes (imported, removed, ran out) `PluginActivation.FollowPro` starts or stops the core plugins.
-  Plugins page: the License column shows the chip "OADM PRO" (ok while active, tooltip `NeedsPro` otherwise), the check
-  box is locked without the license and **Activate** (administrators) opens Settings, where OADM PRO is; the client
-  reloads the list after it imported or removed the license. No bundled package is a PRO plugin.
+  Plugins page: without the license the tile has the line `NeedsPro` and a click does not turn it on but asks "<name>
+  needs an OADM PRO license or trial. Start the trial or import a license in Settings." with **Open Settings**, where
+  OADM PRO is; with it the tile is like any other. The client reloads the list after it imported or removed the
+  license. No bundled package is a PRO plugin.
 - **PRO parts of PKI** (`docs/spec/pki.md` "One plugin", `plugins/Oadm.Plugins.Pki/Servers/ServerSwitch.cs`): the EST
   server (`oadm.est`) and the 802.1X server (`oadm.radius`) are core plugins of the always-on PKI package. The core plugins
   always run; each server inside runs, and opens its port, only while its stored choice (plugin setting `serverOn` of its
@@ -739,14 +756,12 @@ box back with the error below the list (`PluginsViewModel.SwitchAsync`).
   hides the toolbar entries of packages that are off: `DeviceToolbar.ApplyPackageStates`, the package of a client part
   from the plugin.json next to its dll, `IClientPluginRegistry.PackageOf`). Rail page **Plugins** (Admin only, key
   `HostPages.Plugins`, icon `plugin`, first of the bottom entries with a divider below it; subtitle "A plugin that is off
-  shows no page, menu entry or toolbar button."; `Settings/PluginsPageView` + `PluginsViewModel`): one card with a
-  DataGrid On (check box), Plugin, Description, grouped like the navigation rail (one collapsible group per rail group
-  that has plugins, in rail order, the same look as the device grid's tag groups without color, theme `DataGrid.groups`;
-  sorted by name inside a group; the view groups in code-behind with `DataGridCollectionView` + `PluginsViewModel.Groups`);
-  always-on packages are not listed; while a change runs the row's check box is a small ring (`ProgressRing.checkBox`) and
-  takes no second click; a refused change is undone with the reason below the list. Other clients see a
-  change on their next connect. The card
-  **Optional plugins** sits below the list (`docs/spec/add-ons.md` "Plugins page"). Fake mode: `FakeOadmApi.Plugins.cs` (PKI, Restart, System report always on).
+  shows no page, menu entry or toolbar button."; `Settings/PluginsPageView` + `PluginsViewModel`): the search and the
+  quick filters, then the tiles under the rail group headings (`PluginsViewModel.TileGroups`, sorted by name inside a
+  group; theme `Button.pluginTile`, `Button.filterPill`, see "Plugins on and off"); always-on packages are not listed.
+  The tiles and the card **Optional plugins** below them scroll together (`docs/spec/add-ons.md` "Plugins page"); the
+  list is a plain panel, not virtualized: a server has a few dozen packages, never thousands. Other clients see a
+  change on their next connect. Fake mode: `FakeOadmApi.Plugins.cs` (PKI, Restart, System report always on).
 - Tests: `tests/Oadm.Server.Tests/PluginPackageTests` (also the bundled manifests: off by default, always on,
   descriptions; the takeover of the 4.1 choices), `tests/Oadm.Core.Tests/Plugins/MergedPluginsTests` (PKI with three core
   plugins and the ids of 4.1, folders of 4.1 skipped, the takeover from a 4.1 fixture),
@@ -778,9 +793,9 @@ Commercial plugins: OADM checks, the plugin decides. User and developer docs: `w
   license)` and `RemovePackageLicense(id)` (Admin, audited "Entered plugin license" / "Removed plugin license";
   INVALID_ARGUMENT with the reason, NOT_FOUND, FAILED_PRECONDITION for a free plugin).
 - **Client**: Settings page, card License: "Server ID" + copy (`docs/spec/licensing.md`; `ServerSettings.server_id = 23`,
-  read only). Plugins page: a **License** column only while a plugin needs a license (no server ID, Settings shows it):
+  read only). Plugins page: the tile of a plugin that needs a license has one more line (no server ID, Settings shows it):
   status chip (Licensed ok, Trial warning, else error; reason as tooltip), Enter / Change license, Remove (red,
-  confirmed); a licensed package is listed even when always on. Dialog `Settings/PluginLicenseWindow`
+  confirmed; a failure in red in the tile); a licensed package is listed even when always on. Dialog `Settings/PluginLicenseWindow`
   (`PluginLicenseViewModel`, single operation): server ID + copy, "License key" (one-line text box, mono), its hint = what
   the key says ("ACME GmbH, until 2027-12-31, reports") or where it comes from, Choose file, the format error or the
   server's refusal below the field. `ICorePluginClientContext.LicenseOf(packageId)` for pages. Fake mode: the sample

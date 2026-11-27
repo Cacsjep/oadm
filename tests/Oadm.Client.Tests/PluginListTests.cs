@@ -39,16 +39,16 @@ public sealed class PluginListTests
 
         var changed = 0;
         store.Changed += (_, _) => changed++;
-        hardening.IsEnabled = true;
-        await WaitAsync(() => changed == 1);
+        await hardening.ToggleCommand.ExecuteAsync(null);
+        Assert.Equal(1, changed);
         Assert.Contains(await api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == FakeOadmApi.HardeningScanPluginId);
 
         // Snapshot report off: its page leaves the rail. The Metadata Monitor is off by default too.
         Assert.False(vm.Plugins.Single(p => p.Id == FakeOadmApi.MetadataMonitorPluginId).IsEnabled);
-        vm.Plugins.Single(p => p.Id == FakeOadmApi.SnapshotReportPluginId).IsEnabled = false;
-        await WaitAsync(() => changed == 2);
+        await vm.Plugins.Single(p => p.Id == FakeOadmApi.SnapshotReportPluginId).ToggleCommand.ExecuteAsync(null);
+        Assert.Equal(2, changed);
         Assert.DoesNotContain(await api.ListCorePluginsAsync(CancellationToken.None), p => p.Id == FakeOadmApi.SnapshotReportPluginId);
-        Assert.Null(vm.ErrorText);
+        Assert.All(vm.Plugins, p => Assert.False(p.HasError));
     }
 
     [Fact]
@@ -149,11 +149,21 @@ public sealed class PluginListTests
         var row = vm.Plugins.Single(p => p.Id == FakeOadmApi.SnapshotReportPluginId);
 
         api.SetOnline(false);
-        row.IsEnabled = false;
-        await WaitAsync(() => vm.HasError);
+        await row.ToggleCommand.ExecuteAsync(null);
 
+        // The tile goes back and says why, inside the tile; the other tiles have no error.
         Assert.True(row.IsEnabled);
-        Assert.StartsWith("Snapshot report could not be turned off: ", vm.ErrorText, StringComparison.Ordinal);
+        Assert.False(row.IsBusy);
+        Assert.StartsWith("Could not be turned off: ", row.ErrorText, StringComparison.Ordinal);
+        Assert.Single(vm.Plugins, p => p.HasError);
+
+        // A reload of the list keeps the error on the new tile until its next click.
+        api.SetOnline(true);
+        await store.LoadAsync(CancellationToken.None);
+        row = vm.Plugins.Single(p => p.Id == FakeOadmApi.SnapshotReportPluginId);
+        Assert.StartsWith("Could not be turned off: ", row.ErrorText, StringComparison.Ordinal);
+        await row.ToggleCommand.ExecuteAsync(null);
+        Assert.False(vm.Plugins.Single(p => p.Id == FakeOadmApi.SnapshotReportPluginId).HasError);
     }
 
     [Fact]
@@ -181,17 +191,11 @@ public sealed class PluginListTests
             Assert.Contains("Hardening scan", texts);
             Assert.Contains("Shows the events a camera sends, live.", texts);
             Assert.DoesNotContain("PKI", texts);
-            Assert.Contains("Servers", texts); // group headers like the navigation rail
+            Assert.Contains("Servers", texts); // group headings like the navigation rail
             Assert.Contains("Monitoring", texts);
-            Assert.Contains("Sites", texts); // the column next to License
-            Assert.Contains("Only this server's network", texts);
-            Assert.Contains("UDP 123", texts);
-
-            // Group keys without an icon: the headers show the chevron and the name, no icon (ui:GridGroup keys add one, PKI's policies).
-            var headers = window.GetVisualDescendants().OfType<DataGridRowGroupHeader>().Where(h => h.IsEffectivelyVisible).ToList();
-            Assert.NotEmpty(headers);
-            Assert.All(headers, h => Assert.DoesNotContain(h.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.OadmIcon>(), i => i.Name != "PART_Chevron" && i.IsEffectivelyVisible));
-            Assert.All(headers, h => Assert.IsNotType<Oadm.Sdk.Client.Controls.GridGroup>(((Avalonia.Collections.DataGridCollectionViewGroup)h.DataContext!).Key));
+            Assert.Contains("Only this server's network", texts); // the sites line of a tile while the server has sites
+            Assert.Contains("Works at sites (UDP 123)", texts);
+            Assert.Contains(plugins.CountText, texts); // "x of y on" in the page header
 
             WriteableBitmap? frame = window.CaptureRenderedFrame();
             Assert.NotNull(frame);
@@ -269,9 +273,12 @@ public sealed class PluginListTests
             row = plugins.Plugins.Single(p => p.Id == FakeOadmApi.SampleLicensedPluginId);
             Assert.Equal(("Licensed", true, true, "Change license"), (row.LicenseText, row.LicenseOk, row.HasLicense, row.EnterLicenseText));
             Assert.Equal("Licensed to ACME GmbH until 2099-12-31.", row.LicenseDetail);
-            Dispatcher.UIThread.RunJobs();
-            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
-            Dispatcher.UIThread.RunJobs();
+            Pump();
+            // The licensed plugin's tile: its state and the license buttons inside the tile.
+            Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && Equals(b.Content, "Change license"));
+            Assert.Contains(window.GetVisualDescendants().OfType<Button>(), b => b.IsEffectivelyVisible && Equals(b.Content, "Remove"));
+            window.GetVisualDescendants().OfType<ScrollViewer>().First(s => s.Name == "PageScroll").ScrollToEnd();
+            Pump();
             Save(window, outDir, "client-plugins-licenses.png");
 
             // Remove: back to the trial.
@@ -318,25 +325,27 @@ public sealed class PluginListTests
             window.Show();
             Pump();
 
-            // Turn on: the row shows a ring in place of its box while the server works.
+            // Turn on: the tile shows the state it goes to, with a ring in place of its check while the server works.
             PluginRowViewModel hardening = plugins.Plugins.Single(p => p.Id == FakeOadmApi.HardeningScanPluginId);
-            hardening.IsEnabled = true;
+            Task switching = hardening.ToggleCommand.ExecuteAsync(null);
             await Oadm.Sdk.Testing.Eventually.TrueAsync(() => api.PackageSwitchCalls == 1, "the switch reached the server");
             Pump();
             Assert.True(hardening.IsBusy);
+            Assert.True(hardening.IsEnabled);
             Assert.False(hardening.CanToggle);
             Assert.Single(VisibleRings(window));
+            Assert.True(hardening.ToggleCommand.CanExecute(null)); // the tile never looks disabled
             Save(window, outDir, "client-plugins-switching.png");
 
-            // A second click while it runs sends nothing and the box keeps the state it is going to.
-            hardening.IsEnabled = false;
+            // A second click while it runs sends nothing and the tile keeps the state it is going to.
+            await hardening.ToggleCommand.ExecuteAsync(null);
             Assert.True(hardening.IsEnabled);
             Assert.Equal(1, api.PackageSwitchCalls);
 
             // Other rows stay usable; their change rebuilds the list and the running row keeps its ring.
             PluginRowViewModel snapshot = plugins.Plugins.Single(p => p.Id == FakeOadmApi.SnapshotReportPluginId);
             Assert.True(snapshot.CanToggle);
-            snapshot.IsEnabled = false;
+            await snapshot.ToggleCommand.ExecuteAsync(null);
             await Oadm.Sdk.Testing.Eventually.TrueAsync(() => !store.IsEnabled(FakeOadmApi.SnapshotReportPluginId), "the other plugin turned off");
             hardening = plugins.Plugins.Single(p => p.Id == FakeOadmApi.HardeningScanPluginId);
             Assert.True(hardening.IsBusy);
@@ -344,8 +353,9 @@ public sealed class PluginListTests
             Pump();
             Assert.Single(VisibleRings(window));
 
-            // The server answers: the ring goes, the box shows On.
+            // The server answers: the ring goes, the tile shows On.
             held.SetResult();
+            await switching;
             await Oadm.Sdk.Testing.Eventually.TrueAsync(
                 () => plugins.Plugins.Single(p => p.Id == FakeOadmApi.HardeningScanPluginId) is { IsBusy: false, IsEnabled: true, CanToggle: true },
                 "the switch ended");
@@ -353,16 +363,17 @@ public sealed class PluginListTests
             Assert.Empty(VisibleRings(window));
             Assert.True(store.IsEnabled(FakeOadmApi.HardeningScanPluginId));
             Assert.Equal(2, api.PackageSwitchCalls);
-            Assert.Null(plugins.ErrorText);
+            Assert.All(plugins.Plugins, p => Assert.False(p.HasError));
 
-            // A refused switch: the ring goes, the box goes back and the error shows as before.
+            // A refused switch: the ring goes, the tile goes back and the error shows inside it.
             api.SetOnline(false);
             hardening = plugins.Plugins.Single(p => p.Id == FakeOadmApi.HardeningScanPluginId);
-            hardening.IsEnabled = false;
-            await Oadm.Sdk.Testing.Eventually.TrueAsync(() => plugins.HasError, "the error shows");
+            await hardening.ToggleCommand.ExecuteAsync(null);
             Assert.False(hardening.IsBusy);
             Assert.True(hardening.IsEnabled);
-            Assert.StartsWith("Hardening scan could not be turned off: ", plugins.ErrorText, StringComparison.Ordinal);
+            Assert.StartsWith("Could not be turned off: ", hardening.ErrorText, StringComparison.Ordinal);
+            Pump();
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), t => t.IsEffectivelyVisible && t.Classes.Contains("error") && t.Text == hardening.ErrorText);
 
             window.Close();
             return true;
@@ -388,16 +399,6 @@ public sealed class PluginListTests
         {
             Directory.CreateDirectory(outDir);
             frame.Save(Path.Combine(outDir, name), PngBitmapEncoderOptions.Default);
-        }
-    }
-
-    private static async Task WaitAsync(Func<bool> condition)
-    {
-        var until = DateTime.UtcNow.AddSeconds(30);
-        while (!condition())
-        {
-            Assert.True(DateTime.UtcNow < until, "Timed out.");
-            await Task.Delay(10);
         }
     }
 }

@@ -160,6 +160,14 @@
       <SolidColorBrush x:Key="Oadm.Tag.NeutralBrush" Color="{StaticResource Oadm.Tag.NeutralColor}" />
       <SolidColorBrush x:Key="Oadm.Tag.ChipBackgroundBrush" Color="{StaticResource Oadm.Tag.ChipBackgroundColor}" />
       <SolidColorBrush x:Key="Oadm.BadgeNeutralBrush" Color="{StaticResource Oadm.BadgeNeutralColor}" />
+      <SolidColorBrush x:Key="Oadm.AccentSoftBrush" Color="{StaticResource Oadm.AccentSoftColor}" />
+      <SolidColorBrush x:Key="Oadm.TileHoverBrush" Color="{StaticResource Oadm.TileHoverColor}" />
+      <SolidColorBrush x:Key="Oadm.TileHoverBorderBrush" Color="{StaticResource Oadm.TileHoverBorderColor}" />
+      <SolidColorBrush x:Key="Oadm.TileOnBrush" Color="{StaticResource Oadm.TileOnColor}" />
+      <SolidColorBrush x:Key="Oadm.TileOnBorderBrush" Color="{StaticResource Oadm.TileOnBorderColor}" />
+      <SolidColorBrush x:Key="Oadm.TileIconBackgroundBrush" Color="{StaticResource Oadm.TileIconBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.TileOnIconBackgroundBrush" Color="{StaticResource Oadm.TileOnIconBackgroundColor}" />
+      <SolidColorBrush x:Key="Oadm.FilterPillSelectedBrush" Color="{StaticResource Oadm.FilterPillSelectedColor}" />
 
       <!-- Sizes -->
       <!-- Rail: total ~56 px collapsed / ~220 px expanded including its 8 px side margins -->
@@ -183,6 +191,8 @@
       <x:Double x:Key="Oadm.GridTallHeaderHeight">58</x:Double>
       <x:Double x:Key="Oadm.ControlHeight">32</x:Double>
       <x:Double x:Key="Oadm.SearchWidth">260</x:Double>
+      <!-- A search box with a long example placeholder (the Plugins page) -->
+      <x:Double x:Key="Oadm.SearchWideWidth">420</x:Double>
       <x:Double x:Key="Oadm.SplitterHeight">16</x:Double>
       <x:Double x:Key="Oadm.DevicesCardMinHeight">220</x:Double>
       <!-- Device card keeps its toolbar on one line next to the live view; the live view never gets narrower than this -->
@@ -663,6 +673,104 @@
     <Setter Property="Background" Value="{StaticResource Oadm.SurfaceHoverBrush}" />
     <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
     <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <!-- Tiles of a catalog (the Plugins page): one click on the tile turns the plugin on or off. Off: a plain card tile, the
+       icon square in the icon colour; hover a little lighter. On: the accent border, a light accent fill, the icon in the
+       light accent on its square and the check (ui|OadmIcon.tileCheck). Name TextBlock.tileName, line TextBlock.tileText. -->
+  <Style Selector="Button.pluginTile">
+    <Setter Property="Background" Value="{StaticResource Oadm.CardBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.CardCornerRadius}" />
+    <Setter Property="Padding" Value="16,14" />
+    <Setter Property="MinHeight" Value="110" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="VerticalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Top" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.pluginTile:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.pluginTile:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TileHoverBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TileHoverBorderBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.pluginTile.on">
+    <Setter Property="Background" Value="{StaticResource Oadm.TileOnBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.TileOnBorderBrush}" />
+  </Style>
+  <Style Selector="Button.pluginTile.on:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.pluginTile.on:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.TileOnBrush}" />
+    <Setter Property="BorderBrush" Value="{StaticResource Oadm.AccentHoverBrush}" />
+  </Style>
+  <Style Selector="Border.tileIcon">
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="CornerRadius" Value="{StaticResource Oadm.CardCornerRadius}" />
+    <Setter Property="Background" Value="{StaticResource Oadm.TileIconBackgroundBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.tileIcon > ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.IconBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.pluginTile.on Border.tileIcon">
+    <Setter Property="Background" Value="{StaticResource Oadm.TileOnIconBackgroundBrush}" />
+  </Style>
+  <Style Selector="Button.pluginTile.on Border.tileIcon > ui|OadmIcon">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentSoftBrush}" />
+  </Style>
+  <Style Selector=":is(TextBlock).tileName">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector=":is(TextBlock).tileText">
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="ui|OadmIcon.tileCheck">
+    <Setter Property="Width" Value="18" />
+    <Setter Property="Height" Value="18" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.AccentSoftBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ui|ProgressRing.tileCheck">
+    <Setter Property="Width" Value="18" />
+    <Setter Property="Height" Value="18" />
+    <Setter Property="Thickness" Value="2" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <!-- Quick filters with a count (All 22, On 6): a pill; the chosen one on the muted accent -->
+  <Style Selector="Button.filterPill">
+    <Setter Property="Background" Value="{StaticResource Oadm.Tag.ChipBackgroundBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextSecondaryBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="CornerRadius" Value="14" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="Padding" Value="12,0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.filterPill:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.filterPill:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.SurfaceRaisedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.filterPill.selected">
+    <Setter Property="Background" Value="{StaticResource Oadm.FilterPillSelectedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.filterPill.selected:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.filterPill.selected:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource Oadm.FilterPillSelectedBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource Oadm.TextPrimaryBrush}" />
+  </Style>
+  <Style Selector="Button.filterPill TextBlock.pillCount">
+    <Setter Property="FontSize" Value="{StaticResource Oadm.FontSizeSmall}" />
+    <Setter Property="Opacity" Value="0.8" />
+    <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
   <Style Selector="Panel.chatUserRow">
     <Setter Property="Background" Value="{StaticResource Oadm.TransparentBrush}" />
@@ -2859,6 +2967,9 @@
     <Setter Property="Width" Value="{StaticResource Oadm.SearchWidth}" />
   </Style>
   <!-- A search box filling a narrow side card or a panel (VAPIX Commander library and targets, the event tree select) -->
+  <Style Selector="ui|SearchBox.wide">
+    <Setter Property="Width" Value="{StaticResource Oadm.SearchWideWidth}" />
+  </Style>
   <Style Selector="ui|SearchBox.stretch">
     <Setter Property="Width" Value="NaN" />
     <Setter Property="HorizontalAlignment" Value="Stretch" />

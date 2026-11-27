@@ -202,6 +202,17 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 - `FlowColumns`: a panel that uses its width instead of stretching its children: as many equal columns as fit its
   `MinColumnWidth` (at most `MaxColumns`), row by row (`Packing` Rows: form fields) or each child into the shortest
   column (Columns: cards); invisible children take no room. Vision Center's cards below the video and their fields.
+  `Packing` Tiles: the columns of the whole width also with few children, each child as high as the tallest of its row
+  (the tiles of the Plugins page, one width in every group).
+- **Catalog tiles** (theme only, the Plugins page): `Button.pluginTile` (a card tile, padding 16,14, at least 110 px high,
+  radius 8 like the approved draft; one click is the action; class `on`: border `Oadm.TileOnBorderBrush`, fill
+  `Oadm.TileOnBrush`, hover border the accent hover; off: the card, hover `Oadm.TileHoverBrush` with
+  `Oadm.TileHoverBorderBrush`), inside `Border.tileIcon` (32 px rounded square `Oadm.TileIconBackgroundBrush`, the icon in
+  the icon colour; on: `Oadm.TileOnIconBackgroundBrush`, the icon in `Oadm.AccentSoftBrush`), `TextBlock.tileName` (13 px
+  semibold), `TextBlock.tileText` (secondary, wraps), `OadmIcon.tileCheck` / `ProgressRing.tileCheck` (the check of an on
+  tile, the ring while it switches). `Button.filterPill` with `TextBlock.pillCount`: a quick filter with its count (28 px
+  pill on the tags' chip colour; class `selected` on `Oadm.FilterPillSelectedBrush`). `ui:SearchBox.wide` (420 px) for a
+  search with a long example placeholder.
 - `SearchBox`: every search field. `OadmIcon`: every icon; class `fieldIcon` with `inner` puts an icon into a text box
   through its `InnerLeftContent` (the login's user name and password). `LeadingIcon`: wraps one ComboBox or TextBox and
   puts a `fieldIcon` at its left inside, level with the input's first line (the theme's `ui|LeadingIcon > ComboBox`,
@@ -409,7 +420,10 @@ Every shared control (Coding Rules: "reuse UI components") and what it is for.
 - `Oadm.Theme.Shell`: `TermsWindow` (the terms of use on the first start, client and OADM Site Node app), `TitleBarLayout`
   and `WindowFit` (see above).
 
-**Client only** (`src/Oadm.Client/Controls`, prefix `c`): `PageTitleBar` (every host page header), the Settings
+**Client only** (`src/Oadm.Client/Controls`, prefix `c`): `PageTitleBar` (every host page header; `Status`: a live
+status of the whole page as text at its right end, on the subtitle's baseline, the Plugins page's "12 of 22 on"),
+`HighlightText` (a text with the search words marked in `Oadm.AccentSoftBrush`, semibold: the tiles of the Plugins
+page), the Settings
 page's `SettingsList` (the column of groups with the search: `Filter`, `HasMatches`), `SettingsGroup` (a heading and its
 rows 4 px apart), `SettingsCard` (one setting as a row: `Icon`, `Title`, `Hint`, the control, `IsShown`; the 20 px icon in
 the accent, inside an expander 16 px in the icon colour), `SettingsExpander` (a row with a chevron and rows below it:

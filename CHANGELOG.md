@@ -11,6 +11,10 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 
 - License Plate Center: one plate list with tags for every camera with License Plate Verifier, with a live log and events for the rules.
 
+### Changed
+
+- Plugins page: plugins are tiles you click to turn on or off, with a search and filters for on, off and optional plugins.
+
 ## [5.4.3] - 2026-11-25
 
 ### Added
