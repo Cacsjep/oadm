@@ -618,7 +618,8 @@ restart. Own rail page (not a Settings card); core functionality is always on. C
   group's icon in a small rounded square, the name, the manifest description; no switch, no badges. **One click anywhere
   on the tile (Space or Enter when focused) turns it on or off** (`PluginRowViewModel.ToggleCommand`), tooltip "Click to
   turn on" / "Click to turn off". On: accent border, light accent fill, the icon in the light accent and a check top right.
-  The page header shows "12 of 22 on" at its right end (`PageTitleBar.Status`). Search and filters are one O(n) pass in
+  The page header shows "12 of 22 on" at its right end (`PageTitleBar.Status`), on one right edge with the filters and
+  the tiles (all three keep 16 px clear of the scroll bar). Search and filters are one O(n) pass in
   the view model (`PluginsViewModel.Refilter`).
 - While a turn on or off runs (turning on can take a moment, e.g. a plugin that loads models), the tile shows the state
   it goes to with a small `ui:ProgressRing` in place of its check and takes no second click; the state survives a reload of

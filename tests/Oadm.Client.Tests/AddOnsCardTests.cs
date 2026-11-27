@@ -155,6 +155,17 @@ public sealed class AddOnsCardTests
             Assert.True(cardTop.Y >= tilesBottom.Y, "the card is below the tiles");
             Assert.True(cardTop.Y - tilesBottom.Y < 40, "the card follows right below the tiles");
 
+            // The header count, the filter pills and the tiles end on one right edge.
+            TextBlock count = page.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == plugins.CountText && t.IsEffectivelyVisible);
+            ItemsControl pills = page.FindControl<ItemsControl>("FilterPills")!;
+            // The tile panels end where a full row of tiles ends.
+            Control tilePanel = page.GetVisualDescendants().OfType<Oadm.Sdk.Client.Controls.FlowColumns>().First();
+            double countRight = count.TranslatePoint(new Point(count.Bounds.Width, 0), page)!.Value.X;
+            double pillsRight = pills.TranslatePoint(new Point(pills.Bounds.Width, 0), page)!.Value.X;
+            double tilesRight = tilePanel.TranslatePoint(new Point(tilePanel.Bounds.Width, 0), page)!.Value.X;
+            Assert.True(Math.Abs(countRight - pillsRight) < 1, $"count ends at {countRight}, pills at {pillsRight}");
+            Assert.True(Math.Abs(pillsRight - tilesRight) < 1, $"pills end at {pillsRight}, tiles at {tilesRight}");
+
             // A small window scrolls the tiles and the card together.
             if (height < 1000)
             {
