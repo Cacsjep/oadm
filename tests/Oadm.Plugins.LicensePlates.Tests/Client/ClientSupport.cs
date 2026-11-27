@@ -144,8 +144,14 @@ internal sealed class FakeLiveVideoAccess : ILiveVideoAccess
 
     private sealed class Video(FakeLiveVideoAccess owner) : ILiveVideo
     {
+        private Control? _view;
+
+        // Built on first use, which is inside the headless session (the view-model tests never touch it): Avalonia objects
+        // belong to the thread that made them.
+        public Control View => _view ??= Picture();
+
         // A 16:9 picture letterboxed like the live video, so the areas over it sit where the picture is.
-        public Control View { get; } = new Viewbox
+        private static Viewbox Picture() => new()
         {
             Stretch = Stretch.Uniform,
             Child = new Canvas
