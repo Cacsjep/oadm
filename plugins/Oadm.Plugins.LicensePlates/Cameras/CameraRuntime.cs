@@ -118,9 +118,9 @@ internal sealed partial class CameraRuntime : IAsyncDisposable
     /// <summary>A read of the camera was decided (the Set up dialog's last read).</summary>
     public void MarkRead(Guid camera, DateTimeOffset time)
     {
-        if (_states.TryGetValue(camera, out var state))
+        // Compare and swap like Update: a connection changing the state at the same time is never overwritten.
+        while (_states.TryGetValue(camera, out var state) && !_states.TryUpdate(camera, state with { LastRead = time }, state))
         {
-            _states[camera] = state with { LastRead = time };
         }
     }
 
@@ -144,7 +144,7 @@ internal sealed partial class CameraRuntime : IAsyncDisposable
         }
     }
 
-    private void Update(Guid camera, Func<CameraState, CameraState> change)
+    internal void Update(Guid camera, Func<CameraState, CameraState> change)
     {
         if (!_connections.ContainsKey(camera))
         {
@@ -198,6 +198,9 @@ internal sealed partial class CameraRuntime : IAsyncDisposable
         private Task _loop = Task.CompletedTask;
         private volatile bool _checkWanted = true;
 
+        /// <summary>Failed connections in a row; back to 0 once the camera answered the event filter.</summary>
+        private int _failures;
+
         /// <summary>Starts the loop without the user's call that added the camera: it is background work of the server.</summary>
         public void Start()
         {
@@ -236,7 +239,6 @@ internal sealed partial class CameraRuntime : IAsyncDisposable
         private async Task LoopAsync()
         {
             var ct = _stop.Token;
-            var failures = 0;
             while (!ct.IsCancellationRequested)
             {
                 var signal = ResetSignal();
@@ -275,10 +277,12 @@ internal sealed partial class CameraRuntime : IAsyncDisposable
 
                     var state = runtime.StateOf(id);
                     var stale = state.Checked is not { } checkedAt || runtime._time.GetUtcNow() - checkedAt >= runtime._options.ProblemRecheck;
-                    if (_checkWanted || (stale && state.Status is not (CameraStatus.Connected or CameraStatus.Connecting)))
+                    // Never a connection before ALPV was checked: a check that failed is wanted again (it stays wanted until it succeeds).
+                    if (_checkWanted || state.Checked is null || (stale && state.Status is not (CameraStatus.Connected or CameraStatus.Connecting)))
                     {
-                        _checkWanted = false;
+                        _checkWanted = true;
                         await CheckAsync(ct).ConfigureAwait(false);
+                        _checkWanted = false;
                     }
 
                     if (runtime.StateOf(id).Status is CameraStatus.AlpvNotInstalled or CameraStatus.AlpvNeedsVersion3 or CameraStatus.AlpvNoLicense or CameraStatus.AlpvStopped or CameraStatus.OtherSensor)
@@ -288,8 +292,7 @@ internal sealed partial class CameraRuntime : IAsyncDisposable
                         continue;
                     }
 
-                    var reported = await RunSessionAsync(signal, ct).ConfigureAwait(false);
-                    failures = reported ? 0 : failures;
+                    await RunSessionAsync(signal, ct).ConfigureAwait(false);
                     wait = TimeSpan.Zero;
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -303,8 +306,8 @@ internal sealed partial class CameraRuntime : IAsyncDisposable
                     var text = ex is AlpvException ? ex.Message : EventStreamSocket.Describe(ex, runtime._options.RequestTimeout);
                     runtime.Lost(id, CameraStatus.ConnectionLost, text);
                     LogSessionFailed(runtime.Logger, id, text);
-                    wait = EventStreamSocket.WaitAfter(failures, runtime._options.Backoff);
-                    failures++;
+                    wait = EventStreamSocket.WaitAfter(_failures, runtime._options.Backoff);
+                    _failures++;
                 }
 
                 if (wait > TimeSpan.Zero)
@@ -438,6 +441,7 @@ internal sealed partial class CameraRuntime : IAsyncDisposable
 
                         answered = true;
                         connectedAt = runtime._time.GetUtcNow();
+                        _failures = 0; // a session that breaks later starts again at the first wait
                         Connected();
                         continue;
                     }

@@ -205,6 +205,102 @@ public sealed class PluginTests
     }
 
     [Fact]
+    public async Task A_camera_whose_first_check_fails_is_checked_again_before_it_connects()
+    {
+        await using var rig = await Rig.StartAsync();
+        var camera = rig.Camera(0);
+        camera.FailAppReads = 1;
+        await rig.CallAsync(LicensePlatesMethods.AddCameras, new DevicesRequest([rig.Id(0)]));
+
+        // Time moves on (the wait after a failure) until the camera is connected; it never connects unchecked.
+        var connectedUnchecked = false;
+        await Eventually.TrueAsync(() =>
+        {
+            var state = rig.Plugin.Runtime!.StateOf(rig.Id(0));
+            connectedUnchecked |= camera.IsConnected && state.Checked is null;
+            if (state.Status != CameraStatus.Connected)
+            {
+                rig.Time.Advance(TimeSpan.FromSeconds(1));
+                return false;
+            }
+
+            return state.Checked is not null;
+        }, "connected after a check");
+        Assert.False(connectedUnchecked);
+        Assert.Equal(0, camera.FailAppReads);
+        Assert.Equal("3.1.7", rig.Plugin.Runtime!.StateOf(rig.Id(0)).AlpvVersion);
+    }
+
+    [Fact]
+    public async Task After_a_connected_session_breaks_the_first_wait_is_1_second_again()
+    {
+        await using var rig = await Rig.StartAsync();
+        var camera = rig.Camera(0);
+        camera.Refuse = new HttpRequestException("No route to host");
+        await rig.CallAsync(LicensePlatesMethods.AddCameras, new DevicesRequest([rig.Id(0)]));
+        await Eventually.TrueAsync(() => rig.Plugin.Runtime!.StateOf(rig.Id(0)).LostSince is not null, "a refused connection");
+
+        camera.Refuse = null;
+        await Eventually.TrueAsync(() =>
+        {
+            if (camera.IsConnected && rig.Plugin.Runtime!.StateOf(rig.Id(0)).Status == CameraStatus.Connected)
+            {
+                return true;
+            }
+
+            rig.Time.Advance(TimeSpan.FromSeconds(1));
+            return false;
+        }, "connected after the failures");
+
+        // The session breaks: one second later the camera is connected again (not the wait after earlier failures).
+        var connections = camera.Connections;
+        camera.Drop();
+        await Eventually.TrueAsync(() => !camera.IsConnected, "the session broke");
+        await Eventually.TrueAsync(() => rig.Plugin.Runtime!.StateOf(rig.Id(0)).LostSince is not null, "the loss is seen");
+        rig.Time.Advance(TimeSpan.FromSeconds(1));
+        await Eventually.TrueAsync(() => camera.IsConnected && camera.Connections > connections, "connected again after 1 s");
+    }
+
+    [Fact]
+    public async Task A_read_marked_at_the_same_time_as_a_state_change_never_undoes_it()
+    {
+        await using var rig = await Rig.StartAsync();
+        rig.Camera(0).Refuse = new HttpRequestException("No route to host"); // the connection waits quietly (time stands still)
+        await rig.CallAsync(LicensePlatesMethods.AddCameras, new DevicesRequest([rig.Id(0)]));
+        await Eventually.TrueAsync(() => rig.Plugin.Runtime!.StateOf(rig.Id(0)).LostSince is not null, "the camera waits");
+        var runtime = rig.Plugin.Runtime!;
+        var id = rig.Id(0);
+        const int Count = 200_000;
+        var undone = 0;
+
+        using var stop = new CancellationTokenSource();
+        var marks = Task.Run(() =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                runtime.MarkRead(id, rig.Time.GetUtcNow());
+            }
+        });
+        var changes = Task.Run(() =>
+        {
+            for (var i = 0; i <= Count; i++)
+            {
+                var text = i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                runtime.Update(id, s => s with { Detail = text });
+                if (runtime.StateOf(id).Detail != text)
+                {
+                    undone++; // a mark wrote back the state from before the change
+                }
+            }
+        });
+        await changes;
+        await stop.CancelAsync();
+        await marks;
+
+        Assert.Equal(0, undone);
+    }
+
+    [Fact]
     public async Task A_read_a_wildcard_plate_decides_logs_the_car_and_names_the_pattern()
     {
         await using var rig = await Rig.StartAsync();
