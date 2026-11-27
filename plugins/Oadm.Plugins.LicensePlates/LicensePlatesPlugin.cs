@@ -111,6 +111,10 @@ public sealed partial class LicensePlatesPlugin : ICorePlugin, IDynamicEventSour
 
     private ILogger Logger => _ctx?.Logger ?? NullLogger.Instance;
 
+    /// <summary>The camera's name in the plugin: its own name, else the device's name in OADM (host name, else address).</summary>
+    internal string CameraName(Guid camera) =>
+        _store?.Camera(camera)?.Name is { Length: > 0 } own ? own : _names.GetValueOrDefault(camera) ?? camera.ToString("D");
+
     internal (ICorePluginContext Context, PlateStore Store, PlateMatcher Matcher, CameraRuntime Runtime, PlateLog Log) Running =>
         _ctx is { } ctx && _store is { } store && _matcher is { } matcher && _runtime is { } runtime && _log is { } log
             ? (ctx, store, matcher, runtime, log)
@@ -159,6 +163,15 @@ public sealed partial class LicensePlatesPlugin : ICorePlugin, IDynamicEventSour
         EventTypesChanged?.Invoke(this, EventArgs.Empty);
         await runtime.SyncAsync([.. store.Cameras.Select(c => c.DeviceId)]).ConfigureAwait(false);
         ReportProblems();
+        foreach (var camera in store.Cameras)
+        {
+            // The names of the events and the log from the start, not only after the first call of the page.
+            if (await ctx.Devices.FindAsync(camera.DeviceId, ct).ConfigureAwait(false) is { } device)
+            {
+                _names[camera.DeviceId] = NameOf(device);
+            }
+        }
+
 
         _tick = _time.CreateTimer(_ => OnTick(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         _endedSweep = _time.CreateTimer(_ => _ = SweepEndedAsync(), null, TimeSpan.Zero, LicensePlateLimits.EndedSweep);
@@ -243,7 +256,7 @@ public sealed partial class LicensePlatesPlugin : ICorePlugin, IDynamicEventSour
             Id = read.ReadId,
             Time = read.Time,
             CameraId = read.Camera,
-            Camera = _names.GetValueOrDefault(read.Camera) ?? read.Camera.ToString("D"),
+            Camera = CameraName(read.Camera),
             Plate = plate?.Text ?? read.Event.Text,
             ReadAs = plate is not null && !string.Equals(plate.Text, read.Event.Text, StringComparison.Ordinal) ? read.Event.Text : null,
             Result = read.Match.Result,
@@ -260,6 +273,8 @@ public sealed partial class LicensePlatesPlugin : ICorePlugin, IDynamicEventSour
             VehicleColor = read.Event.VehicleColor,
             VehicleMake = read.Event.VehicleMake,
             VehicleModel = read.Event.VehicleModel,
+            VehicleConfidence = read.Event.VehicleConfidence is { } vehicle ? (int)Math.Round(vehicle * 100, MidpointRounding.AwayFromZero) : null,
+            State = read.Event.State,
             HasPicture = read.Image is not null && _settings.KeepPictures,
         };
 
@@ -311,7 +326,7 @@ public sealed partial class LicensePlatesPlugin : ICorePlugin, IDynamicEventSour
             Until = until,
             Gap = true,
             CameraId = camera,
-            Camera = _names.GetValueOrDefault(camera) ?? camera.ToString("D"),
+            Camera = CameraName(camera),
         }, null));
         _loggedCameras.TryAdd(camera, 0);
         _readCameras.TryAdd(camera, 0);
@@ -365,7 +380,7 @@ public sealed partial class LicensePlatesPlugin : ICorePlugin, IDynamicEventSour
         {
             if (runtime.StateOf(camera.DeviceId).ProblemText(now) is { } text)
             {
-                map[camera.DeviceId] = (_names.GetValueOrDefault(camera.DeviceId) ?? camera.DeviceId.ToString("D"), text);
+                map[camera.DeviceId] = (CameraName(camera.DeviceId), text);
             }
         }
 

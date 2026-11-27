@@ -453,6 +453,7 @@ internal static class Samples
             DeviceId = CameraId(i),
             Address = $"10.20.0.{40 + i}",
             HostName = Name(i),
+            Name = i switch { 1 => "Garage Nord entry", 2 => "Garage Nord exit", _ => string.Empty },
             Model = "AXIS P3265-LVE",
             Site = site,
             AlpvVersion = version,
@@ -514,8 +515,11 @@ internal static class Samples
         Area = 1,
         Country = "AUT",
         Confidence = confidence,
-        VehicleType = "car",
-        VehicleColor = "grey",
+        VehicleType = id % 5 == 0 ? "Truck" : "Car",
+        VehicleColor = (id % 4) switch { 0 => "Grey", 1 => "White", 2 => "Black", _ => "Blue" },
+        VehicleMake = (id % 3) switch { 0 => "Volkswagen", 1 => "Skoda", _ => "BMW" },
+        VehicleModel = (id % 3) switch { 0 => "Golf", 1 => "Octavia", _ => "X3" },
+        View = id % 2 == 0 ? "rear" : "front",
         HasPicture = true,
     };
 
@@ -540,17 +544,57 @@ internal static class Samples
         Read(125, 47, 1, "LL5522D", ReadResult.Unknown, 87),
     ];
 
-    public static StatsReply Stats() => new(
-        new ResultCounts(1_204, 86, 211),
-        [.. Enumerable.Range(0, 15).Select(h => new HourCount(new DateTimeOffset(Now.Date, Now.Offset).AddHours(h), h switch { < 6 => h * 3, 7 or 8 => 190 + (h * 7), 16 or 17 => 150, _ => 40 + (h * 5) }))],
-        [
-            new(CameraId(1), "nord-entry", 512, 0.86, 91.4, 0.03, Now.AddMinutes(-1), 0.06),
-            new(CameraId(2), "nord-exit", 488, 0.82, 89.9, 0.05, Now.AddMinutes(-2), 0.09),
-            new(CameraId(3), "sued-entry", 301, 0.74, 78.2, 0.12, Now.AddMinutes(-4), 0.27),
-            new(CameraId(4), "sued-exit", 200, 0.69, 58.5, 0.41, Now.AddHours(-3), 0.62),
-        ],
-        86.4,
-        new ConfidenceBands(70, 133, 412, 886));
+    private static readonly string[] SiteCameras =
+    [
+        "Gate 1 entry", "Gate 1 exit", "Gate 2 entry", "Gate 2 exit", "P1 ramp up", "P1 ramp down", "P2 ramp up", "P2 ramp down",
+        "Loading dock A", "Loading dock B", "Visitor lane", "Staff lane", "North barrier", "South barrier", "Truck scale in",
+        "Truck scale out", "Bus lane", "Fire lane", "Hotel drop-off", "Warehouse 3",
+    ];
+
+    /// <summary>The reads of an hour of the day: night, the morning and evening peaks.</summary>
+    private static int Profile(int hour) => hour switch { < 6 => 2 + hour, 7 or 8 => 190 + (hour * 7), 16 or 17 => 150, > 20 => 30, _ => 40 + (hour * 5) };
+
+    /// <summary>
+    /// The Stats of the samples: 4 cameras (nord-entry ... sued-exit, the last below 60, the third below 75 by the hour) or
+    /// <paramref name="cameras"/> cameras of a large site; every fourth camera sends no vehicle confidence. Today by the hour
+    /// (15 hours to 14:05) or the last 7 days by the day.
+    /// </summary>
+    public static StatsReply Stats(int cameras = 4, StatsStep step = StatsStep.Hour)
+    {
+        double[] fourConfidence = [91.4, 89.9, 78.2, 58.5];
+        string[] fourNames = ["nord-entry", "nord-exit", "sued-entry", "sued-exit"];
+        var steps = step == StatsStep.Hour ? 15 : 7;
+        var start = step == StatsStep.Hour ? new DateTimeOffset(Now.Date, Now.Offset) : new DateTimeOffset(Now.Date.AddDays(-6), Now.Offset);
+        var series = new List<CameraSeries>();
+        for (var i = 0; i < cameras; i++)
+        {
+            var name = cameras == 4 ? fourNames[i] : SiteCameras[i % SiteCameras.Length] + (i >= SiteCameras.Length ? $" {(i / SiteCameras.Length) + 1}" : string.Empty);
+            var weight = 1.0 / (1 + (i * 0.35));
+            var average = cameras == 4 ? fourConfidence[i] : 95 - ((i * 7) % 41);
+            var reads = Enumerable.Range(0, steps).Select(s => (int)Math.Round((step == StatsStep.Hour ? Profile(s) : 1_800 + ((s * 37) % 400)) * weight / 1.6)).ToArray();
+            var perStep = reads.Select((r, s) => r == 0 ? (double?)null : Math.Round(Math.Clamp(average + (((s * 13) + i) % 9) - 4, 0, 100), 1)).ToArray();
+            series.Add(new CameraSeries(CameraId(i + 1), name, reads.Sum(), average, i % 4 == 3 ? null : Math.Round(average - 3.5, 1), reads, perStep));
+        }
+
+        var totalReads = Enumerable.Range(0, steps).Select(s => series.Sum(c => c.ReadsPerStep[s])).ToArray();
+        var totalConfidence = Enumerable.Range(0, steps).Select(s =>
+        {
+            var n = series.Sum(c => c.ReadsPerStep[s]);
+            return n == 0 ? (double?)null : Math.Round(series.Sum(c => c.ReadsPerStep[s] * (c.ConfidencePerStep[s] ?? 0)) / n, 1);
+        }).ToArray();
+        return new StatsReply
+        {
+            Totals = cameras == 4 ? new ReadTotals(96, 1_812, 11_946, 49_631) : new ReadTotals(cameras * 41, cameras * 790, cameras * 5_480, cameras * 81_200),
+            Results = cameras == 4 ? new ResultCounts(1_204, 86, 211) : new ResultCounts((int)(totalReads.Sum() * 0.8), (int)(totalReads.Sum() * 0.05), totalReads.Sum() - (int)(totalReads.Sum() * 0.8) - (int)(totalReads.Sum() * 0.05)),
+            AverageConfidence = 86.4,
+            Start = start,
+            Step = step,
+            Steps = steps,
+            TotalReads = totalReads,
+            TotalConfidence = totalConfidence,
+            Cameras = [.. series.OrderByDescending(c => c.Reads)],
+        };
+    }
 
     public static SetupRead Setup(bool rotated = false) => new()
     {

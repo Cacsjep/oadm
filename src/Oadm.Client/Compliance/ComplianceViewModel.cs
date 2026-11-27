@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 
 using Grpc.Core;
 
+using Oadm.Sdk.Client.Controls;
 using Oadm.Client.Api;
 using Oadm.Client.Devices;
 using Oadm.Client.Dialogs;
@@ -159,7 +160,7 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
     public IReadOnlyList<ComplianceCheckSummary> ColumnChecks { get; private set; } = [];
 
     /// <summary>The column chooser: Model, Tags, Result, then one entry per check.</summary>
-    public ObservableCollection<ColumnOptionViewModel> ColumnOptions { get; } = [];
+    public ObservableCollection<GridColumnOption> ColumnOptions { get; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsProblemsTab), nameof(IsWarningsTab), nameof(IsAllTab))]
@@ -585,10 +586,10 @@ public sealed partial class ComplianceViewModel : ObservableObject, IDisposable
 
     private void AddOption(string key, string header)
     {
-        var option = new ColumnOptionViewModel(key, header, canHide: true) { IsVisible = IsColumnVisible(key) };
+        var option = new GridColumnOption(key, header, canHide: true) { IsVisible = IsColumnVisible(key) };
         option.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName != nameof(ColumnOptionViewModel.IsVisible))
+            if (e.PropertyName != nameof(GridColumnOption.IsVisible))
             {
                 return;
             }

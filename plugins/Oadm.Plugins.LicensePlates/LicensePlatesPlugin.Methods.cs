@@ -70,7 +70,7 @@ public sealed partial class LicensePlatesPlugin
         return rules is LicensePlatesMethods.SavePlate or LicensePlatesMethods.DeletePlates or LicensePlatesMethods.ChangePlateTags
             or LicensePlatesMethods.SaveTag or LicensePlatesMethods.DeleteTag or LicensePlatesMethods.ImportSave
             or LicensePlatesMethods.AddCameras or LicensePlatesMethods.RemoveCameras or LicensePlatesMethods.SetAllowedTags
-            or LicensePlatesMethods.SaveSetup or LicensePlatesMethods.CopySettings or LicensePlatesMethods.UseRecommendedImageSettings
+            or LicensePlatesMethods.SaveSetup or LicensePlatesMethods.CopySettings or LicensePlatesMethods.UseRecommendedImageSettings or LicensePlatesMethods.RenameCamera
             or LicensePlatesMethods.SaveSettings or LicensePlatesMethods.ExportLog;
     }
 
@@ -94,6 +94,7 @@ public sealed partial class LicensePlatesPlugin
             LicensePlatesMethods.RemoveCameras when PluginJson.TryParse<DevicesRequest>(payloadJson, json) is { } r => "Removed " + Count(r.DeviceIds?.Count ?? 0, "camera", "cameras"),
             LicensePlatesMethods.SetAllowedTags when PluginJson.TryParse<AllowedTagsRequest>(payloadJson, json) is { } r => "Changed the allowed tags of " + Count(r.DeviceIds?.Count ?? 0, "camera", "cameras"),
             LicensePlatesMethods.SaveSetup => "Set up License Plate Verifier on 1 camera",
+            LicensePlatesMethods.RenameCamera => "Renamed a camera",
             LicensePlatesMethods.CopySettings when PluginJson.TryParse<CopySettingsRequest>(payloadJson, json) is { } r => "Copied the settings of a camera to " + Count(r.TargetIds?.Count ?? 0, "camera", "cameras"),
             LicensePlatesMethods.UseRecommendedImageSettings when PluginJson.TryParse<DevicesRequest>(payloadJson, json) is { } r => "Used recommended image settings on " + Count(r.DeviceIds?.Count ?? 0, "camera", "cameras"),
             LicensePlatesMethods.SaveSettings => "Saved the settings",
@@ -146,6 +147,7 @@ public sealed partial class LicensePlatesPlugin
             LicensePlatesMethods.CopySettings => Write(await CopySettingsAsync(caller, Read<CopySettingsRequest>(), ct).ConfigureAwait(false)),
             LicensePlatesMethods.UseRecommendedImageSettings => Write(await UseRecommendedAsync(caller, Read<DevicesRequest>().DeviceIds ?? [], ct).ConfigureAwait(false)),
             LicensePlatesMethods.AlpvLists => Write(AlpvListData.Lists),
+            LicensePlatesMethods.RenameCamera => Write(await RenameCameraAsync(caller, Read<RenameCameraRequest>(), ct).ConfigureAwait(false)),
             LicensePlatesMethods.VehicleMakes => Write(await VehicleNamesAsync(caller, ReadOrEmpty<VehicleNamesRequest>(), models: false, ct).ConfigureAwait(false)),
             LicensePlatesMethods.VehicleModels => Write(await VehicleNamesAsync(caller, Read<VehicleNamesRequest>(), models: true, ct).ConfigureAwait(false)),
             LicensePlatesMethods.Settings => Write(_settings),
@@ -261,10 +263,10 @@ public sealed partial class LicensePlatesPlugin
 
         if (Running.Log.Store is not { } store)
         {
-            return new StatsReply(new ResultCounts(0, 0, 0), [], [], 0, new ConfidenceBands(0, 0, 0, 0));
+            return new StatsReply();
         }
 
-        return await store.StatsAsync(request, await LogScopeAsync(caller, ct).ConfigureAwait(false), id => _names.GetValueOrDefault(id) ?? id.ToString("D"), ct).ConfigureAwait(false);
+        return await store.StatsAsync(request, await LogScopeAsync(caller, ct).ConfigureAwait(false), id => CameraName(id), ct).ConfigureAwait(false);
     }
 
     // ---- plates ----
@@ -619,6 +621,7 @@ public sealed partial class LicensePlatesPlugin
             rows.Add(new CameraRow
             {
                 DeviceId = entry.DeviceId,
+                Name = entry.Name is { Length: > 0 } own ? own : NameOf(device),
                 Address = device.Address,
                 HostName = device.HostName,
                 Model = device.Model,
@@ -675,6 +678,32 @@ public sealed partial class LicensePlatesPlugin
 
         return await CamerasAsync(caller, ct).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// The camera's name in the plugin (decision 2026-11-27): required, at most 64 characters, unique among the plugin's cameras
+    /// (any case); kept with the camera in the records, audited; the device in OADM keeps its own name.
+    /// </summary>
+    internal async Task<RenameCameraReply> RenameCameraAsync(ICallContext caller, RenameCameraRequest request, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var entry = await RequireCameraAsync(caller, request.DeviceId, ct).ConfigureAwait(false);
+        var name = (request.Name ?? string.Empty).Trim();
+        if (CameraNameProblem(request.DeviceId, name) is { } problem)
+        {
+            return new RenameCameraReply(problem);
+        }
+
+        await Running.Store.WriteCamerasAsync([entry with { Name = name }], [], ct).ConfigureAwait(false);
+        OnCamerasChanged([request.DeviceId]);
+        return new RenameCameraReply();
+    }
+
+    /// <summary>Why a camera cannot have <paramref name="name"/>; null when it can.</summary>
+    internal string? CameraNameProblem(Guid camera, string name) =>
+        name.Length == 0 ? "Enter a name."
+        : name.Length > LicensePlateLimits.MaxCameraNameLength ? "Use at most 64 characters."
+        : Running.Store.Cameras.Any(c => c.DeviceId != camera && string.Equals(CameraName(c.DeviceId), name, StringComparison.OrdinalIgnoreCase)) ? LicensePlateTexts.CameraNameTaken
+        : null;
 
     internal async Task<CamerasReply> SetAllowedTagsAsync(ICallContext caller, AllowedTagsRequest request, CancellationToken ct)
     {
@@ -977,12 +1006,12 @@ public sealed partial class LicensePlatesPlugin
         var total = await store.CountAsync(query, scope, ct).ConfigureAwait(false);
         var rows = await store.NewestAsync(query, scope, LicensePlateLimits.MaxExportRows, ct).ConfigureAwait(false);
         var clock = Oadm.Server.Logging.Export.LogExportClock.Of(request.TimeZone, request.UtcOffsetMinutes);
-        var head = new PlateExportHead(FilterLines(request, clock), Environment.MachineName, caller.UserName, clock.Local(_time.GetUtcNow()), total);
+        var head = new PlateExportHead(FilterLines(request, clock), Environment.MachineName, caller.UserName, clock.Local(_time.GetUtcNow()), total) { Columns = LogColumns.Valid(request.Columns) };
         var day = clock.Local(_time.GetUtcNow()).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         if (request.Format == ExportFormat.Pdf)
         {
             var pictures = new Dictionary<long, byte[]>();
-            if (rows.Count <= LicensePlateLimits.MaxPdfPictureRows)
+            if (PlateLogExport.PdfPictures(rows, head))
             {
                 foreach (var row in rows.Where(r => r.HasPicture))
                 {
@@ -1011,7 +1040,7 @@ public sealed partial class LicensePlatesPlugin
         lines.Add("Time: " + (string.IsNullOrWhiteSpace(request.RangeName) ? range : request.RangeName.Trim() + ", " + range));
         if (q.CameraIds is { Count: > 0 } cameras)
         {
-            lines.Add("Cameras: " + string.Join(", ", cameras.Select(c => _names.GetValueOrDefault(c) ?? c.ToString("D"))));
+            lines.Add("Cameras: " + string.Join(", ", cameras.Select(c => CameraName(c))));
         }
 
         if (q.Results is { Count: > 0 } results)

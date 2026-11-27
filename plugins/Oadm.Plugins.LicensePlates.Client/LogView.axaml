@@ -67,7 +67,10 @@
           <ui:ExportButton x:Name="ExportButton" CsvCommand="{Binding ExportCsvCommand}" PdfCommand="{Binding ExportPdfCommand}" IsVisible="{Binding MayExport}" />
           <ui:FilterButton x:Name="FilterButton" Filters="{Binding Filters}" />
         </ui:ToolbarOverflowPanel>
-        <ui:SearchBox Grid.Column="1" Width="240" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="{x:Static vm:PageTexts.Search}" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+          <ui:ColumnChooserButton x:Name="ColumnChooser" Columns="{Binding Columns.Choosable}" />
+          <ui:SearchBox Width="240" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="{x:Static vm:PageTexts.Search}" />
+        </StackPanel>
       </Grid>
 
 
@@ -77,17 +80,16 @@
       <StackPanel Grid.Row="2" Spacing="6">
         <ui:StatusChip x:Name="ProblemChip" Text="{Binding Problem}" IsWarning="True" MaxLines="2" IsVisible="{Binding HasProblem}" />
         <ui:ProgressRow Text="{x:Static vm:PageTexts.Exporting}" IsVisible="{Binding IsExporting}" />
-        <ui:StatusChip x:Name="NoticeChip" Text="{Binding Notice}" IsOk="True" IsVisible="{Binding HasNotice}" />
         <ui:ProgressRow Text="{x:Static vm:PageTexts.ReadingLog}" IsVisible="{Binding IsLoadingOlder}" />
       </StackPanel>
 
       <Panel Grid.Row="3">
-        <DataGrid x:Name="LogGrid" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Extended" CanUserSortColumns="False" CanUserReorderColumns="False">
+        <DataGrid x:Name="LogGrid" ItemsSource="{Binding Rows}" IsReadOnly="True" SelectionMode="Extended" CanUserSortColumns="False" CanUserReorderColumns="True">
           <DataGrid.Columns>
-            <DataGridTextColumn Header="{x:Static vm:PageTexts.Time}" Width="130" Binding="{Binding TimeText}" x:DataType="vm:LogRow" />
-            <DataGridTextColumn Header="{x:Static vm:PageTexts.Camera}" Width="150" Binding="{Binding Camera}" x:DataType="vm:LogRow" />
+            <DataGridTextColumn Tag="time" Header="{x:Static vm:PageTexts.Time}" Width="160" Binding="{Binding TimeText}" x:DataType="vm:LogRow" />
+            <DataGridTextColumn Tag="camera" Header="{x:Static vm:PageTexts.Camera}" Width="150" Binding="{Binding Camera}" x:DataType="vm:LogRow" />
             <!-- The plate crop, read only for the rows the grid shows (LogView: LoadingRow). -->
-            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Picture}" Width="136">
+            <DataGridTemplateColumn Tag="picture" Header="{x:Static vm:PageTexts.Picture}" Width="136">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:LogRow">
                   <Image Source="{Binding Picture}" Width="120" Height="28" Stretch="Uniform" HorizontalAlignment="Left" Margin="10,0" VerticalAlignment="Center" />
@@ -95,7 +97,7 @@
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
             <!-- One Plate column: the list's plate, or the read text; a warning triangle left of it when the read deviated. -->
-            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Plate}" Width="150">
+            <DataGridTemplateColumn Tag="plate" Header="{x:Static vm:PageTexts.Plate}" Width="150">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:LogRow">
                   <StackPanel Orientation="Horizontal" Spacing="6" Margin="10,0" VerticalAlignment="Center">
@@ -106,7 +108,7 @@
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
-            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Name}" Width="*" MinWidth="140">
+            <DataGridTemplateColumn Tag="name" Header="{x:Static vm:PageTexts.Name}" Width="*" MinWidth="140">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:LogRow">
                   <Panel Margin="10,0" VerticalAlignment="Center">
@@ -116,7 +118,7 @@
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
-            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Tags}" Width="190">
+            <DataGridTemplateColumn Tag="tags" Header="{x:Static vm:PageTexts.Tags}" Width="190">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:LogRow">
                   <ui:TagChips Tags="{Binding Tags}" />
@@ -124,7 +126,7 @@
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
             <!-- Result: only the status icon (check green, no entry red, question mark grey); the tooltip names it and why. -->
-            <DataGridTemplateColumn Header="{x:Static vm:PageTexts.Result}" Width="80">
+            <DataGridTemplateColumn Tag="result" Header="{x:Static vm:PageTexts.Result}" Width="80">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate x:DataType="vm:LogRow">
                   <Panel ToolTip.Tip="{Binding ResultTip}" Background="Transparent">
@@ -135,8 +137,17 @@
                 </DataTemplate>
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
-            <DataGridTextColumn Header="{x:Static vm:PageTexts.Direction}" Width="100" Binding="{Binding DirectionText}" x:DataType="vm:LogRow" />
-            <DataGridTemplateColumn Width="125" MinWidth="120" CellStyleClasses="number">
+            <DataGridTextColumn Tag="direction" Header="{x:Static vm:PageTexts.Direction}" Width="100" Binding="{Binding DirectionText}" x:DataType="vm:LogRow" />
+            <DataGridTextColumn Tag="readAs" Header="{x:Static vm:PageTexts.ReadAsColumn}" Width="120" Binding="{Binding ReadAsText}" x:DataType="vm:LogRow" />
+            <DataGridTextColumn Tag="area" Header="{x:Static vm:PageTexts.Area}" Width="70" Binding="{Binding AreaText}" x:DataType="vm:LogRow" />
+            <DataGridTextColumn Tag="country" Header="{x:Static vm:PageTexts.Country}" Width="90" Binding="{Binding CountryText}" x:DataType="vm:LogRow" />
+            <DataGridTextColumn Tag="state" Header="{x:Static vm:PageTexts.State}" Width="80" Binding="{Binding StateText}" x:DataType="vm:LogRow" />
+            <DataGridTextColumn Tag="vehicleType" Header="{x:Static vm:PageTexts.VehicleTypeColumn}" Width="125" Binding="{Binding VehicleTypeText}" x:DataType="vm:LogRow" />
+            <DataGridTextColumn Tag="vehicleColor" Header="{x:Static vm:PageTexts.VehicleColorColumn}" Width="135" Binding="{Binding VehicleColorText}" x:DataType="vm:LogRow" />
+            <DataGridTextColumn Tag="vehicleMake" Header="{x:Static vm:PageTexts.VehicleMakeColumn}" Width="130" Binding="{Binding VehicleMakeText}" x:DataType="vm:LogRow" />
+            <DataGridTextColumn Tag="vehicleModel" Header="{x:Static vm:PageTexts.VehicleModelColumn}" Width="135" Binding="{Binding VehicleModelText}" x:DataType="vm:LogRow" />
+            <DataGridTextColumn Tag="view" Header="{x:Static vm:PageTexts.View}" Width="70" Binding="{Binding ViewText}" x:DataType="vm:LogRow" />
+            <DataGridTemplateColumn Tag="confidence" Width="125" MinWidth="120" CellStyleClasses="number">
               <DataGridTemplateColumn.Header>
                 <TextBlock Classes="numberHeader" Text="{x:Static vm:PageTexts.Confidence}" />
               </DataGridTemplateColumn.Header>

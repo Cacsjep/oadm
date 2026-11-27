@@ -38,7 +38,7 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
     private const long HourMs = 3_600_000;
 
     private const string Columns =
-        "id, time, camera, camera_name, plate, read_as, result, reason, reason_time, name, tags, direction, area, country, confidence, view, vehicle_type, vehicle_color, vehicle_make, vehicle_model, picture, gap_until";
+        "id, time, camera, camera_name, plate, read_as, result, reason, reason_time, name, tags, direction, area, country, confidence, view, vehicle_type, vehicle_color, vehicle_make, vehicle_model, picture, gap_until, state, vehicle_confidence";
 
     private readonly string _connection;
     private readonly TimeProvider _time;
@@ -121,7 +121,7 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
               id INTEGER PRIMARY KEY, time INTEGER NOT NULL, camera TEXT NOT NULL, camera_name TEXT NOT NULL, plate TEXT NOT NULL,
               read_as TEXT, result INTEGER NOT NULL, reason INTEGER NOT NULL, reason_time TEXT, name TEXT NOT NULL, tags TEXT NOT NULL,
               direction INTEGER NOT NULL, area INTEGER, country TEXT, confidence INTEGER NOT NULL, view TEXT, vehicle_type TEXT,
-              vehicle_color TEXT, vehicle_make TEXT, vehicle_model TEXT, picture TEXT, gap_until INTEGER);
+              vehicle_color TEXT, vehicle_make TEXT, vehicle_model TEXT, picture TEXT, gap_until INTEGER, state TEXT, vehicle_confidence INTEGER);
             CREATE INDEX IF NOT EXISTS reads_time ON reads(time);
             CREATE INDEX IF NOT EXISTS reads_plate_time ON reads(plate, time);
             CREATE INDEX IF NOT EXISTS reads_camera_time ON reads(camera, time);
@@ -129,6 +129,7 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
             CREATE TABLE IF NOT EXISTS hourly(
               hour INTEGER NOT NULL, camera TEXT NOT NULL, result INTEGER NOT NULL, direction INTEGER NOT NULL, reads INTEGER NOT NULL,
               confidence INTEGER NOT NULL, low INTEGER NOT NULL, last INTEGER NOT NULL, mid INTEGER NOT NULL DEFAULT 0, good INTEGER NOT NULL DEFAULT 0,
+              vehicle INTEGER NOT NULL DEFAULT 0, vehicles INTEGER NOT NULL DEFAULT 0,
               PRIMARY KEY(hour, camera, result, direction)) WITHOUT ROWID;
             DROP TABLE IF EXISTS daily_plates;
             CREATE TABLE IF NOT EXISTS picture_days(day TEXT PRIMARY KEY, bytes INTEGER NOT NULL) WITHOUT ROWID;
@@ -138,6 +139,17 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
         if (Convert.ToInt64(await ScalarAsync(db, "SELECT COUNT(*) FROM pragma_table_info('hourly') WHERE name = 'mid';", ct).ConfigureAwait(false), CultureInfo.InvariantCulture) == 0)
         {
             await ExecuteAsync(db, "ALTER TABLE hourly ADD COLUMN mid INTEGER NOT NULL DEFAULT 0; ALTER TABLE hourly ADD COLUMN good INTEGER NOT NULL DEFAULT 0;", ct).ConfigureAwait(false);
+        }
+
+        // The vehicle confidence (sum and count per hour) and the plate's state came on 2026-11-27: added once; older reads have none.
+        if (Convert.ToInt64(await ScalarAsync(db, "SELECT COUNT(*) FROM pragma_table_info('hourly') WHERE name = 'vehicle';", ct).ConfigureAwait(false), CultureInfo.InvariantCulture) == 0)
+        {
+            await ExecuteAsync(db, "ALTER TABLE hourly ADD COLUMN vehicle INTEGER NOT NULL DEFAULT 0; ALTER TABLE hourly ADD COLUMN vehicles INTEGER NOT NULL DEFAULT 0;", ct).ConfigureAwait(false);
+        }
+
+        if (Convert.ToInt64(await ScalarAsync(db, "SELECT COUNT(*) FROM pragma_table_info('reads') WHERE name = 'state';", ct).ConfigureAwait(false), CultureInfo.InvariantCulture) == 0)
+        {
+            await ExecuteAsync(db, "ALTER TABLE reads ADD COLUMN state TEXT; ALTER TABLE reads ADD COLUMN vehicle_confidence INTEGER;", ct).ConfigureAwait(false);
         }
 
         var nextId = Convert.ToInt64(await ScalarAsync(db, "SELECT COALESCE(MAX(id), 0) FROM reads;", ct).ConfigureAwait(false), CultureInfo.InvariantCulture);
@@ -310,7 +322,7 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
         await using (var cmd = db.CreateCommand())
         {
             cmd.Transaction = tx;
-            cmd.CommandText = $"INSERT INTO reads({Columns}) VALUES (@id, @time, @camera, @camera_name, @plate, @read_as, @result, @reason, @reason_time, @name, @tags, @direction, @area, @country, @confidence, @view, @vehicle_type, @vehicle_color, @vehicle_make, @vehicle_model, @picture, @gap_until);";
+            cmd.CommandText = $"INSERT INTO reads({Columns}) VALUES (@id, @time, @camera, @camera_name, @plate, @read_as, @result, @reason, @reason_time, @name, @tags, @direction, @area, @country, @confidence, @view, @vehicle_type, @vehicle_color, @vehicle_make, @vehicle_model, @picture, @gap_until, @state, @vehicle_confidence);";
             cmd.Parameters.AddWithValue("@id", row.Id);
             cmd.Parameters.AddWithValue("@time", ms);
             cmd.Parameters.AddWithValue("@camera", CameraKey(row.CameraId));
@@ -333,12 +345,14 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
             cmd.Parameters.AddWithValue("@vehicle_model", (object?)row.VehicleModel ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@picture", (object?)picture ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@gap_until", row.Until is { } until ? until.ToUnixTimeMilliseconds() : DBNull.Value);
+            cmd.Parameters.AddWithValue("@state", (object?)row.State ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@vehicle_confidence", (object?)row.VehicleConfidence ?? DBNull.Value);
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
 
         if (!row.Gap)
         {
-            await CountAsync(db, tx, ms, row.CameraId, row.Result, row.Direction, row.Confidence, +1).ConfigureAwait(false);
+            await CountAsync(db, tx, ms, row.CameraId, row.Result, row.Direction, row.Confidence, row.VehicleConfidence, +1).ConfigureAwait(false);
         }
     }
 
@@ -398,20 +412,21 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
 
         if (newDirection != direction)
         {
-            await CountAsync(db, tx, ms, camera, result, direction, confidence, -1).ConfigureAwait(false);
-            await CountAsync(db, tx, ms, camera, result, newDirection, confidence, +1).ConfigureAwait(false);
+            // The vehicle confidence stays with the hour and the camera: only the direction of the count moves.
+            await CountAsync(db, tx, ms, camera, result, direction, confidence, null, -1).ConfigureAwait(false);
+            await CountAsync(db, tx, ms, camera, result, newDirection, confidence, null, +1).ConfigureAwait(false);
         }
     }
 
-    private static async Task CountAsync(SqliteConnection db, SqliteTransaction tx, long ms, Guid camera, ReadResult result, PlateDirection direction, int confidence, int delta)
+    private static async Task CountAsync(SqliteConnection db, SqliteTransaction tx, long ms, Guid camera, ReadResult result, PlateDirection direction, int confidence, int? vehicle, int delta)
     {
         await using (var cmd = db.CreateCommand())
         {
             cmd.Transaction = tx;
             cmd.CommandText = """
-                INSERT INTO hourly(hour, camera, result, direction, reads, confidence, low, last, mid, good) VALUES (@hour, @camera, @result, @direction, @delta, @confidence, @low, @time, @mid, @good)
+                INSERT INTO hourly(hour, camera, result, direction, reads, confidence, low, last, mid, good, vehicle, vehicles) VALUES (@hour, @camera, @result, @direction, @delta, @confidence, @low, @time, @mid, @good, @vehicle, @vehicles)
                 ON CONFLICT(hour, camera, result, direction) DO UPDATE SET reads = reads + @delta, confidence = confidence + @confidence, low = low + @low, last = MAX(last, @time),
-                  mid = mid + @mid, good = good + @good;
+                  mid = mid + @mid, good = good + @good, vehicle = vehicle + @vehicle, vehicles = vehicles + @vehicles;
                 """;
             cmd.Parameters.AddWithValue("@hour", ms / HourMs);
             cmd.Parameters.AddWithValue("@camera", CameraKey(camera));
@@ -423,6 +438,8 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
             cmd.Parameters.AddWithValue("@mid", confidence is >= ConfidenceLevels.Error and < ConfidenceLevels.Warning ? delta : 0);
             cmd.Parameters.AddWithValue("@good", confidence is >= ConfidenceLevels.Warning and < ConfidenceLevels.High ? delta : 0);
             cmd.Parameters.AddWithValue("@time", ms);
+            cmd.Parameters.AddWithValue("@vehicle", vehicle is { } v ? delta * v : 0);
+            cmd.Parameters.AddWithValue("@vehicles", vehicle is null ? 0 : delta);
             await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
 
@@ -806,6 +823,8 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
             HasPicture = !r.IsDBNull(20),
             Gap = gap,
             Until = gap ? DateTimeOffset.FromUnixTimeMilliseconds(r.GetInt64(21)) : null,
+            State = r.IsDBNull(22) ? null : r.GetString(22),
+            VehicleConfidence = r.IsDBNull(23) ? null : r.GetInt32(23),
         };
     }
 
@@ -874,7 +893,11 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
         return " AND camera IN (SELECT value FROM json_each(@cameras))";
     }
 
-    /// <summary>The Stats tab from the hourly counts (whole hours): the totals by result, the confidence (average and bands), the reads per hour and per camera.</summary>
+    /// <summary>
+    /// The Stats tab from the hourly counts (docs/spec/license-plate-center.md "Stats"): the top cards (the last hour, 24 hours
+    /// and 7 days exactly: whole hours from the counts plus the reads of the first, partial hour; Total: everything the log
+    /// holds) and for the chosen time the series of <see cref="StatsSeries"/>.
+    /// </summary>
     public async Task<StatsReply> StatsAsync(StatsRequest request, LogScope scope, Func<Guid, string> cameraName, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -886,68 +909,70 @@ internal sealed partial class PlateLogStore : IAsyncDisposable
             cameras = cameras is null ? chosen : [.. chosen.Where(cameras.Contains)];
         }
 
-        var empty = new StatsReply(new ResultCounts(0, 0, 0), [], [], 0, new ConfidenceBands(0, 0, 0, 0));
+        var zone = StatsSeries.Zone(request.TimeZone, request.UtcOffsetMinutes);
         if (cameras is { Count: 0 })
         {
-            return empty;
+            return StatsSeries.Build([], request.From, request.To, request.Step, zone, cameraName, new ReadTotals(0, 0, 0, 0));
         }
 
-        var fromMs = request.From.ToUnixTimeMilliseconds();
-        var toMs = request.To.ToUnixTimeMilliseconds();
+        var (start, steps) = StatsSeries.Frame(request.From, request.To, request.Step, zone);
+        var fromHour = start.ToUnixTimeMilliseconds() / HourMs;
+        var toHour = request.Step == StatsStep.Day
+            ? start.AddDays(steps + 1).ToUnixTimeMilliseconds() / HourMs // a day of a zone change has 23 or 25 hours: StepOf drops the rest
+            : fromHour + steps;
         await using var db = await OpenReadAsync(ct).ConfigureAwait(false);
-
-        var byResultDirection = new Dictionary<(int Result, int Direction), int>();
-        var perHour = new SortedDictionary<long, int>();
-        var perCamera = new Dictionary<string, (int Reads, int Allowed, long Confidence, int Low, long Last, int Mid, int Good)>(StringComparer.Ordinal);
+        var rows = new List<HourRow>();
         await using (var cmd = db.CreateCommand())
         {
-            cmd.CommandText = "SELECT hour, camera, result, direction, reads, confidence, low, last, mid, good FROM hourly WHERE hour >= @from AND hour < @to" + CameraCondition(cameras, cmd) + ";";
-            cmd.Parameters.AddWithValue("@from", fromMs / HourMs);
-            cmd.Parameters.AddWithValue("@to", (toMs + HourMs - 1) / HourMs);
+            cmd.CommandText = "SELECT hour, camera, result, SUM(reads), SUM(confidence), SUM(vehicle), SUM(vehicles) FROM hourly WHERE hour >= @from AND hour < @to"
+                + CameraCondition(cameras, cmd) + " GROUP BY hour, camera, result;";
+            cmd.Parameters.AddWithValue("@from", fromHour);
+            cmd.Parameters.AddWithValue("@to", toHour);
             await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
             while (await reader.ReadAsync(ct).ConfigureAwait(false))
             {
-                var hour = reader.GetInt64(0);
-                var camera = reader.GetString(1);
-                var result = reader.GetInt32(2);
-                var direction = reader.GetInt32(3);
-                var reads = reader.GetInt32(4);
-                if (reads <= 0)
-                {
-                    continue;
-                }
-
-                byResultDirection[(result, direction)] = byResultDirection.GetValueOrDefault((result, direction)) + reads;
-                perHour[hour] = perHour.GetValueOrDefault(hour) + reads;
-                var c = perCamera.GetValueOrDefault(camera);
-                perCamera[camera] = (c.Reads + reads, c.Allowed + (result == (int)ReadResult.Allowed ? reads : 0), c.Confidence + reader.GetInt64(5), c.Low + reader.GetInt32(6),
-                    Math.Max(c.Last, reader.GetInt64(7)), c.Mid + reader.GetInt32(8), c.Good + reader.GetInt32(9));
+                rows.Add(new HourRow(reader.GetInt64(0), Guid.TryParse(reader.GetString(1), out var id) ? id : Guid.Empty, reader.GetInt32(2), reader.GetInt32(3),
+                    reader.GetInt64(4), reader.GetInt64(5), reader.GetInt32(6)));
             }
         }
 
-        ResultCounts Counts(Func<(int Result, int Direction), bool> pick) => new(
-            byResultDirection.Where(e => e.Key.Result == 0 && pick(e.Key)).Sum(e => e.Value),
-            byResultDirection.Where(e => e.Key.Result == 1 && pick(e.Key)).Sum(e => e.Value),
-            byResultDirection.Where(e => e.Key.Result == 2 && pick(e.Key)).Sum(e => e.Value));
-
-        var all = perCamera.Values;
-        var total = all.Sum(v => v.Reads);
-        var bands = new ConfidenceBands(all.Sum(v => v.Low), all.Sum(v => v.Mid), all.Sum(v => v.Good), total - all.Sum(v => v.Low + v.Mid + v.Good));
-        return new StatsReply(
-            Counts(_ => true),
-            [.. perHour.Select(h => new HourCount(DateTimeOffset.FromUnixTimeMilliseconds(h.Key * HourMs), h.Value))],
-            [.. perCamera.Select(c =>
-            {
-                var id = Guid.TryParse(c.Key, out var g) ? g : Guid.Empty;
-                var v = c.Value;
-                return new CameraStats(id, cameraName(id), v.Reads, Share(v.Allowed, v.Reads), v.Reads == 0 ? 0 : Math.Round((double)v.Confidence / v.Reads, 1), Share(v.Low, v.Reads),
-                    v.Last > 0 ? DateTimeOffset.FromUnixTimeMilliseconds(v.Last) : null, Share(v.Low + v.Mid, v.Reads));
-            }).OrderByDescending(c => c.Reads)],
-            total == 0 ? 0 : Math.Round((double)all.Sum(v => v.Confidence) / total, 1),
-            bands);
+        var now = _time.GetUtcNow();
+        var totals = new ReadTotals(
+            await CountSinceAsync(db, cameras, now - TimeSpan.FromHours(1), ct).ConfigureAwait(false),
+            await CountSinceAsync(db, cameras, now - TimeSpan.FromHours(24), ct).ConfigureAwait(false),
+            await CountSinceAsync(db, cameras, now - TimeSpan.FromDays(7), ct).ConfigureAwait(false),
+            await CountSinceAsync(db, cameras, null, ct).ConfigureAwait(false));
+        return StatsSeries.Build(rows, request.From, request.To, request.Step, zone, cameraName, totals);
     }
 
-    private static double Share(int part, int whole) => whole == 0 ? 0 : Math.Round((double)part / whole, 4);
+    /// <summary>The reads since <paramref name="since"/> (null: all): whole hours from the counts, the partial first hour from the reads.</summary>
+    private static async Task<long> CountSinceAsync(SqliteConnection db, IReadOnlyCollection<Guid>? cameras, DateTimeOffset? since, CancellationToken ct)
+    {
+        var sinceMs = since?.ToUnixTimeMilliseconds() ?? 0;
+        var fullHour = (sinceMs + HourMs - 1) / HourMs;
+        long count;
+        await using (var cmd = db.CreateCommand())
+        {
+            cmd.CommandText = "SELECT COALESCE(SUM(reads), 0) FROM hourly WHERE hour >= @hour" + CameraCondition(cameras, cmd) + ";";
+            cmd.Parameters.AddWithValue("@hour", fullHour);
+            count = Convert.ToInt64(await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false), CultureInfo.InvariantCulture);
+        }
+
+        if (since is null || fullHour * HourMs == sinceMs)
+        {
+            return count;
+        }
+
+        await using (var cmd = db.CreateCommand())
+        {
+            cmd.CommandText = "SELECT COUNT(*) FROM reads WHERE time >= @from AND time < @to AND gap_until IS NULL" + CameraCondition(cameras, cmd) + ";";
+            cmd.Parameters.AddWithValue("@from", sinceMs);
+            cmd.Parameters.AddWithValue("@to", fullHour * HourMs);
+            count += Convert.ToInt64(await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false), CultureInfo.InvariantCulture);
+        }
+
+        return count;
+    }
 
     // ---- helpers ----
 

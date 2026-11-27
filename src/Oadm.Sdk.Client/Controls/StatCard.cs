@@ -111,6 +111,10 @@ public sealed class StatCard : Border
         {
             Update();
         }
+        else if (change.Property == IconKeyProperty)
+        {
+            UpdateIcon();
+        }
         else if (change.Property == IsOkProperty || change.Property == IsWarningProperty || change.Property == IsErrorProperty)
         {
             Classes.Set("ok", IsOk && !IsWarning && !IsError);
@@ -120,14 +124,28 @@ public sealed class StatCard : Border
         }
     }
 
-    private string IconKey => IsError ? "Icon.status.error"
+    /// <summary>
+    /// The icon of a card without a status ("barChart" for <c>Icon.barChart</c>; SDK 0.17.0); null: the neutral status icon.
+    /// A status (ok, warning, error) shows its own icon.
+    /// </summary>
+    public string? IconKey
+    {
+        get => GetValue(IconKeyProperty);
+        set => SetValue(IconKeyProperty, value);
+    }
+
+    public static readonly StyledProperty<string?> IconKeyProperty =
+        AvaloniaProperty.Register<StatCard, string?>(nameof(IconKey));
+
+    private string IconResource => IsError ? "Icon.status.error"
         : IsWarning ? "Icon.status.warning"
         : IsOk ? "Icon.status.ok"
+        : IconKey is { Length: > 0 } key ? "Icon." + key
         : "Icon.status.neutral";
 
     private void UpdateIcon()
     {
-        if (this.TryFindResource(IconKey, ActualThemeVariant, out object? found) && found is Geometry geometry)
+        if (this.TryFindResource(IconResource, ActualThemeVariant, out object? found) && found is Geometry geometry)
         {
             _icon.Data = geometry;
         }

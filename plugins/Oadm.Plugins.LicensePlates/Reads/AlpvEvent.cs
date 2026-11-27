@@ -58,6 +58,12 @@ public sealed record AlpvEvent
 
     public string? VehicleModel { get; init; }
 
+    /// <summary><c>vehicleConfidence</c>, 0 to 1; null when the camera sends none (no vehicle detection).</summary>
+    public double? VehicleConfidence { get; init; }
+
+    /// <summary><c>regionCode</c>: the state of the plate (ALPV's <c>StatePriority</c> codes, "CMX"); null without one.</summary>
+    public string? State { get; init; }
+
     /// <summary>The plate crop (base64 as ALPV sends it); null when none.</summary>
     public string? Image { get; init; }
 
@@ -124,6 +130,8 @@ public sealed record AlpvEvent
             VehicleColor = Value("vehicleColor"),
             VehicleMake = Value("vehicleMake"),
             VehicleModel = Value("vehicleModel"),
+            VehicleConfidence = Value("vehicleConfidence") is { Length: > 0 } vehicle ? ConfidenceOf(vehicle) : null,
+            State = Value("regionCode") is { Length: > 0 } state ? state : null,
             Image = Value("lpImage"),
             Captured = long.TryParse(Value("capture_timestamp"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var ms) && ms > 0
                 ? DateTimeOffset.FromUnixTimeMilliseconds(ms)

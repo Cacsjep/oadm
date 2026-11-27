@@ -1,27 +1,16 @@
-using System.ComponentModel;
-
 using Avalonia.Controls;
-using Avalonia.Input;
-using Avalonia.Interactivity;
+
+using Oadm.Sdk.Client.Controls;
 
 namespace Oadm.Client.Devices;
 
 /// <summary>
-/// View glue between the device DataGrid and <see cref="ColumnLayoutViewModel"/>: applies saved visibility,
-/// order and widths (columns are matched by their Tag), and captures user reorder/resize for persistence.
+/// The device grid's use of the shared <see cref="GridColumnBinder"/>: the saved visibility, order and widths of
+/// <see cref="ColumnLayoutViewModel"/>, the columns a mode hides (<see cref="HiddenByGroupMode"/>), the icon column fixed.
 /// </summary>
-internal sealed class DeviceGridLayoutBinder : IDisposable
+internal static class DeviceGridLayoutBinder
 {
-    private readonly DataGrid _grid;
-    private readonly ColumnLayoutViewModel _layout;
-    private bool _listensToOptions;
-    private bool _disposed;
-
-    private DeviceGridLayoutBinder(DataGrid grid, ColumnLayoutViewModel layout)
-    {
-        _grid = grid;
-        _layout = layout;
-    }
+    private static readonly HashSet<string> Fixed = new(StringComparer.Ordinal) { ColumnLayoutViewModel.IconKey };
 
     /// <summary>
     /// Binds the grid to the layout until the result is disposed. The layout lives longer than a view: the view disposes
@@ -29,92 +18,9 @@ internal sealed class DeviceGridLayoutBinder : IDisposable
     /// </summary>
     public static IDisposable Attach(DataGrid grid, ColumnLayoutViewModel layout)
     {
-        var binder = new DeviceGridLayoutBinder(grid, layout);
-        binder.Apply();
-        foreach (ColumnOptionViewModel option in layout.Columns)
-        {
-            option.PropertyChanged += binder.OnOptionChanged;
-        }
-
-        binder._listensToOptions = true;
-        grid.ColumnReordered += binder.OnColumnReordered;
-        grid.AddHandler(InputElement.PointerReleasedEvent, binder.OnPointerReleased, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
-        grid.DetachedFromVisualTree += binder.OnDetached;
-        return binder;
-    }
-
-    public void Dispose()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-
-        _disposed = true;
-        StopListeningToOptions();
-        _grid.ColumnReordered -= OnColumnReordered;
-        _grid.RemoveHandler(InputElement.PointerReleasedEvent, OnPointerReleased);
-        _grid.DetachedFromVisualTree -= OnDetached;
-    }
-
-    private void OnColumnReordered(object? sender, DataGridColumnEventArgs e) => Capture();
-
-    private void OnPointerReleased(object? sender, PointerReleasedEventArgs e) => Capture();
-
-    private void OnDetached(object? sender, Avalonia.VisualTreeAttachmentEventArgs e)
-    {
-        Capture();
-        StopListeningToOptions();
-    }
-
-    private void StopListeningToOptions()
-    {
-        if (!_listensToOptions)
-        {
-            return;
-        }
-
-        _listensToOptions = false;
-        foreach (ColumnOptionViewModel option in _layout.Columns)
-        {
-            option.PropertyChanged -= OnOptionChanged;
-        }
-    }
-
-    private static string? KeyOf(DataGridColumn column) => column.Tag as string;
-
-    private void Apply()
-    {
-        var ordered = _grid.Columns
-            .Select(c => (Column: c, Option: KeyOf(c) is { } key ? _layout.Find(key) : null))
-            .Where(x => x.Option is not null)
-            .OrderBy(x => x.Option!.DisplayIndex)
-            .ToList();
-        for (int i = 0; i < ordered.Count; i++)
-        {
-            (DataGridColumn column, ColumnOptionViewModel? option) = ordered[i];
-            column.IsVisible = option!.IsVisible && !HiddenByGroupMode(_grid, option.Key);
-            // Saved widths are used as star weights: columns keep their proportions and the
-            // grid always fills its full width. The icon column stays fixed.
-            if (option.Width > 0 && option.Key != "icon")
-            {
-                column.Width = new DataGridLength(option.Width, DataGridLengthUnitType.Star);
-            }
-
-            column.DisplayIndex = i;
-        }
-    }
-
-    private void OnOptionChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (sender is ColumnOptionViewModel option && e.PropertyName == nameof(ColumnOptionViewModel.IsVisible))
-        {
-            DataGridColumn? column = _grid.Columns.FirstOrDefault(c => KeyOf(c) == option.Key);
-            if (column is not null)
-            {
-                column.IsVisible = option.IsVisible && !HiddenByGroupMode(_grid, option.Key);
-            }
-        }
+        ArgumentNullException.ThrowIfNull(grid);
+        ArgumentNullException.ThrowIfNull(layout);
+        return GridColumnBinder.Attach(grid, layout.Layout, key => HiddenByGroupMode(grid, key), Fixed);
     }
 
     /// <summary>
@@ -126,13 +32,4 @@ internal sealed class DeviceGridLayoutBinder : IDisposable
         (key == "tags" && grid.Classes.Contains("tagGroups"))
         || (key == DevicesViewModel.SiteColumnKey && grid.Classes.Contains("noSites"))
         || (key == ColumnLayoutViewModel.ComplianceKey && (grid.Classes.Contains("complianceExpanded") || grid.Classes.Contains("noCompliance")));
-
-    private void Capture()
-    {
-        var state = _grid.Columns
-            .Where(c => KeyOf(c) is not null)
-            .Select(c => (KeyOf(c)!, c.DisplayIndex, c.IsVisible && c.ActualWidth > 0 ? c.ActualWidth : _layout.Find(KeyOf(c)!)?.Width ?? 0))
-            .ToList();
-        _layout.Capture(state);
-    }
 }

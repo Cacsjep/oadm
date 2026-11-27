@@ -367,6 +367,95 @@ public sealed class ChartTests
         Assert.True(done);
     }
 
+    [Fact]
+    public async Task Many_bars_keep_their_width_scroll_sideways_and_draw_only_those_in_view()
+    {
+        var done = await HeadlessSession.Shared.Dispatch(() =>
+        {
+            var bars = Enumerable.Range(1, 1_000).Select(i => new ChartBar($"Camera {i}", 50 + (i % 50)) { Details = [$"{i} reads"] }).ToArray();
+            var chart = new BarChart { Bars = bars, Height = 240, Maximum = 100, Unit = "%", MinSlotWidth = 28, RotateLabels = true };
+            var (window, _) = Show(false, 800, 320, chart);
+            Assert.True(chart.LastScrolls);
+            Assert.Equal(0, chart.LastFirstVisible);
+            Assert.InRange(chart.LastDrawnBars, 10, 40); // about 700 px / 28 px, never 1,000
+            Assert.Equal("Camera 1", chart.LastLabels[0]);
+            Assert.Equal(chart.LastDrawnBars, chart.LastLabels.Count); // turned labels: every bar in view has its name
+
+            chart.ScrollTo(28 * 500);
+            Pump();
+            Assert.Equal(500, chart.LastFirstVisible);
+            Assert.Equal("Camera 501", chart.LastLabels[0]);
+            Assert.InRange(chart.LastDrawnBars, 10, 40);
+
+            window.MouseMove(chart.TranslatePoint(new Point(chart.Bounds.Width / 2, chart.Bounds.Height / 3), window)!.Value, RawInputModifiers.None);
+            Pump();
+            Assert.StartsWith("Camera 5", chart.LastHoverLines[0], StringComparison.Ordinal);
+            Assert.EndsWith(" reads", chart.LastHoverLines[^1], StringComparison.Ordinal);
+
+            chart.Bars = [.. bars.Take(10)];
+            Pump();
+            Assert.False(chart.LastScrolls); // ten fit
+            Assert.Equal(10, chart.LastDrawnBars);
+            window.Close();
+            return Task.FromResult(true);
+        }, CancellationToken.None);
+        Assert.True(done);
+    }
+
+    [Fact]
+    public async Task A_bar_without_a_value_draws_nothing_and_says_so()
+    {
+        var done = await HeadlessSession.Shared.Dispatch(() =>
+        {
+            var chart = new BarChart { Bars = [new("A", 80), new("B", double.NaN), new("C", 90)], Height = 200, Maximum = 100 };
+            var (window, _) = Show(false, 400, 260, chart);
+            Assert.Equal(2, chart.LastDrawnBars);
+            Assert.Equal(["A", "B", "C"], chart.LastLabels);
+            window.Close();
+            return Task.FromResult(true);
+        }, CancellationToken.None);
+        Assert.True(done);
+    }
+
+    [Fact]
+    public async Task A_line_chart_with_a_start_names_clock_times_or_days()
+    {
+        var done = await HeadlessSession.Shared.Dispatch(() =>
+        {
+            var culture = CultureInfo.CurrentCulture;
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-GB");
+            try
+            {
+                var start = new DateTimeOffset(2026, 11, 27, 0, 0, 0, TimeSpan.FromHours(1));
+                var chart = new LineChart
+                {
+                    Series = [new ChartSeries("Total", [.. Enumerable.Range(0, 24).Select(i => (double)i)], ChartColor.Strong), new ChartSeries("Gate", [.. Enumerable.Range(0, 24).Select(i => i / 2.0)], ChartColor.Palette2)],
+                    Start = start,
+                    Step = TimeSpan.FromHours(1),
+                    ShowLegend = false,
+                    Height = 200,
+                };
+                var (window, _) = Show(false, 800, 260, chart);
+                Assert.Equal("00:00", chart.LastTimeLabels[0]);
+                Assert.Empty(chart.LastLegend);
+                Assert.Equal("27 Nov 05:00", chart.TimeText(5, hover: true));
+
+                chart.Step = TimeSpan.FromDays(1);
+                Pump();
+                Assert.Equal("27 Nov", chart.LastTimeLabels[0]);
+                Assert.Equal(ChartColor.Palette3, ChartPalette.Of(10));
+                window.Close();
+            }
+            finally
+            {
+                CultureInfo.CurrentCulture = culture;
+            }
+
+            return Task.FromResult(true);
+        }, CancellationToken.None);
+        Assert.True(done);
+    }
+
     private static ChartBand[] Phases() => [new(0, 60, "25 %"), new(60, 120, "50 %"), new(120, 180, "75 %"), new(180, 240, "Normal"), new(240, 300, "Low light")];
 
     private static double[] RateValues() => Enumerable.Range(0, 300).Select(i =>

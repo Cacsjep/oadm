@@ -1,5 +1,6 @@
 using Avalonia;
 
+using Oadm.Sdk.Client.Controls;
 using Oadm.Plugins.LicensePlates.Client;
 using Oadm.Sdk.Plugins;
 
@@ -27,7 +28,7 @@ public sealed class CamerasTabTests
         Assert.Equal(11, rows.Count);
 
         var connected = rows[0];
-        Assert.Equal("nord-entry", connected.Camera);
+        Assert.Equal("Garage Nord entry", connected.Camera); // its own name in the plugin
         Assert.True(connected.IsOk);
         Assert.Equal(LicensePlateTexts.Connected, connected.StatusText);
         Assert.Equal(["Garage Nord", "Staff", "Visitors"], connected.AllowedTags.Select(t => t.Name));
@@ -169,8 +170,6 @@ public sealed class CamerasTabTests
         Assert.Equal(new Point(0.12, 0.42), setup.Areas[0].Points[0]);
         Assert.Equal(5, setup.Areas[1].Points.Count);
         Assert.True(setup.HasRegion && setup.HasCameraLocation && setup.HasPlateWidth && setup.HasCharacters && setup.HasThreshold);
-        Assert.Equal(PageTexts.EventsWillTurnOn, setup.EventsText); // Lost is off
-        Assert.False(setup.EventsOn);
 
         var unchanged = setup.ToRequest();
         Assert.Null(unchanged.Setup.Areas);
@@ -273,37 +272,77 @@ public sealed class CamerasTabTests
         Assert.Equal(Oadm.Sdk.Plugins.ServerFolderTexts.SystemFolder, settings.ErrorOf(nameof(SettingsViewModel.Folder)));
         Assert.Equal(5, ctx.LastPayload<LicensePlateSettings>(LicensePlatesMethods.SaveSettings).WaitSeconds);
     }
-
     [Fact]
-    public async Task Stats_count_by_result_draw_the_hours_of_the_day_and_list_the_cameras()
+    public async Task Stats_show_the_cards_a_bar_per_camera_and_the_lines_of_total_and_the_cameras()
     {
         var (page, ctx, _) = await Samples.OpenAsync();
         page.Show(page.StatsTab);
         await page.Stats.LoadTask;
         var stats = page.Stats;
 
-        Assert.Equal("1,501", stats.TotalText);
-        Assert.Equal("1,204", stats.AllowedText);
-        Assert.True(stats.HasNotAllowed);
-        Assert.Equal(24, stats.HourBars.Count);
-        Assert.Equal("08", stats.HourBars[8].Label);
-        Assert.Equal(246, stats.HourBars[8].Value);
-        Assert.Equal(4, stats.PerCamera.Count);
-        Assert.Equal("86 %", stats.PerCamera[0].AllowedText);
-        Assert.Equal("86", stats.AverageConfidenceText);
-        Assert.False(stats.IsConfidenceWarning || stats.IsConfidenceError);
-        Assert.Equal(["Below 60 · 5 %", "60 to 74 · 9 %", "75 to 89 · 27 %", "90 and above · 59 %"], stats.ConfidenceBars.Select(b => b.Label));
-        Assert.Equal([70d, 133, 412, 886], stats.ConfidenceBars.Select(b => b.Value));
-        Assert.Equal([Oadm.Sdk.Client.Controls.ChartColor.Error, Oadm.Sdk.Client.Controls.ChartColor.Warning], stats.ConfidenceBars.Take(2).Select(b => b.Color));
-        Assert.Equal("27 %", stats.PerCamera[2].Below75Text);
-        Assert.False(stats.PerCamera[2].IsLowConfidence || stats.PerCamera[2].IsVeryLowConfidence); // 78.2
-        Assert.True(new CameraStatsRow(stats.PerCamera[2].Stats with { AverageConfidence = 71.5 }, string.Empty).IsLowConfidence);
-        Assert.True(stats.PerCamera[3].IsVeryLowConfidence); // 58.5
+        Assert.Equal(["96", "1,812", "11.9k", "49.6k"], new[] { stats.LastHourText, stats.Last24HoursText, stats.Last7DaysText, stats.TotalText });
+        Assert.Equal("Allowed 1,204 · Not allowed 86 · Unknown plate 211 · Average confidence 86 %", stats.ResultsText);
 
-        stats.SelectedRange = StatsViewModel.RangeChoices[2];
+        // One bar per camera by name: the average, the Log's colours below 75 and below 60, the reads on hover.
+        Assert.Equal(["nord-entry", "nord-exit", "sued-entry", "sued-exit"], stats.PlateBars.Select(b => b.Label));
+        Assert.Equal([91.4, 89.9, 78.2, 58.5], stats.PlateBars.Select(b => b.Value));
+        Assert.Equal([ChartColor.Primary, ChartColor.Primary, ChartColor.Primary, ChartColor.Error], stats.PlateBars.Select(b => b.Color));
+        Assert.EndsWith(" reads", stats.PlateBars[0].Details![0], StringComparison.Ordinal);
+
+        // sued-exit sends no vehicle confidence: no bar, not 0.
+        Assert.True(stats.HasVehicleConfidence);
+        Assert.True(double.IsNaN(stats.VehicleBars[3].Value));
+        Assert.Equal(87.9, stats.VehicleBars[0].Value);
+
+        // Total first (strong), then the cameras busiest first in the palette; all shown with 4 cameras.
+        Assert.Equal(["Total", "nord-entry", "nord-exit", "sued-entry", "sued-exit"], stats.Legend.Select(l => l.Name));
+        Assert.Equal(ChartColor.Strong, stats.Legend[0].Color);
+        Assert.Equal(ChartColor.Palette1, stats.Legend[1].Color);
+        Assert.All(stats.Legend, l => Assert.True(l.IsShown));
+        Assert.Equal(5, stats.ReadSeries.Count);
+        Assert.Equal(15, stats.ReadSeries[0].Values.Count);
+        Assert.Equal(TimeSpan.FromHours(1), stats.ChartStep);
+
+        // A click in the legend hides the line in both charts.
+        stats.Legend[2].IsShown = false;
+        Assert.Equal(["Total", "nord-entry", "sued-entry", "sued-exit"], stats.ReadSeries.Select(s => s.Name));
+        Assert.Equal(4, stats.ConfidenceSeries.Count);
+
+        stats.SelectedRange = StatsViewModel.RangeChoices[3];
         await stats.LoadTask;
         var request = ctx.LastPayload<StatsRequest>(LicensePlatesMethods.Stats);
-        Assert.Equal(TimeSpan.FromDays(30), request.To - request.From);
+        Assert.Equal(StatsStep.Day, request.Step);
+        Assert.Equal(new DateTimeOffset(Samples.Now.Date.AddDays(-29), Samples.Now.Offset), request.From);
+        Assert.Equal("Test/Vienna", request.TimeZone);
         Assert.Null(request.CameraIds);
+        Assert.False(stats.Legend[2].IsShown); // the choice stays across a reload
     }
+
+    [Fact]
+    public async Task Stats_show_total_and_the_10_busiest_cameras_at_first_the_others_in_the_legend()
+    {
+        var (page, ctx, _) = await Samples.OpenAsync();
+        ctx.Answers[LicensePlatesMethods.Stats] = _ => Samples.Serialize(Samples.Stats(cameras: 55));
+        page.Show(page.StatsTab);
+        await page.Stats.LoadTask;
+        var stats = page.Stats;
+
+        Assert.Equal(56, stats.Legend.Count);
+        Assert.Equal(11, stats.Legend.Count(l => l.IsShown));
+        Assert.True(stats.Legend.Take(11).All(l => l.IsShown));
+        Assert.All(stats.Legend.Skip(1), l => Assert.NotNull(l.Detail)); // the reads of each camera
+        Assert.Equal(11, stats.ReadSeries.Count);
+        Assert.Equal(55, stats.PlateBars.Count);
+
+        stats.Legend[30].IsShown = true;
+        Assert.Equal(12, stats.ReadSeries.Count);
+    }
+
+    [Theory]
+    [InlineData(0, "0")]
+    [InlineData(9_999, "9,999")]
+    [InlineData(49_631, "49.6k")]
+    [InlineData(123_456, "123k")]
+    [InlineData(4_412_000, "4.4M")]
+    public void Stats_cards_use_compact_numbers(long value, string text) => Assert.Equal(text, StatsViewModel.Compact(value));
 }

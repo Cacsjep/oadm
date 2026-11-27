@@ -26,6 +26,26 @@ public enum ChartColor
 
     /// <summary>A neutral value (grey).</summary>
     Neutral = 5,
+
+    /// <summary>The sum of all lines (the text colour, a thicker line; SDK 0.17.0).</summary>
+    Strong = 6,
+
+    /// <summary>The series colours of many lines (one per camera): the tag palette in its order, Blue to Violet (SDK 0.17.0).</summary>
+    Palette1 = 11,
+    Palette2 = 12,
+    Palette3 = 13,
+    Palette4 = 14,
+    Palette5 = 15,
+    Palette6 = 16,
+    Palette7 = 17,
+    Palette8 = 18,
+}
+
+/// <summary>The series colours in order (SDK 0.17.0).</summary>
+public static class ChartPalette
+{
+    /// <summary>The colour of the <paramref name="index"/>th line (0 first), the palette over again after the eighth.</summary>
+    public static ChartColor Of(int index) => ChartColor.Palette1 + (((index % 8) + 8) % 8);
 }
 
 /// <summary>One line of a <see cref="LineChart"/>: one value per <see cref="LineChart.Step"/>, NaN = no value (a gap).</summary>
@@ -38,7 +58,11 @@ public sealed record ChartSeries(string Name, IReadOnlyList<double> Values, Char
 /// <param name="Label">The text under the bar ("25 %").</param>
 /// <param name="Value">The bar's value.</param>
 /// <param name="Color">The colour role (e.g. Error for a failed step).</param>
-public sealed record ChartBar(string Label, double Value, ChartColor Color = ChartColor.Primary);
+public sealed record ChartBar(string Label, double Value, ChartColor Color = ChartColor.Primary)
+{
+    /// <summary>More lines of the hover popup below the value ("1,204 reads"); null: none (SDK 0.17.0).</summary>
+    public IReadOnlyList<string>? Details { get; init; }
+}
 
 /// <summary>A named part of a <see cref="LineChart"/>'s time axis (a phase of a check).</summary>
 /// <param name="From">The first value index of the part.</param>
@@ -71,6 +95,10 @@ public sealed class LineChart : Control
     public static readonly StyledProperty<IReadOnlyList<ChartBand>?> BandsProperty =
         AvaloniaProperty.Register<LineChart, IReadOnlyList<ChartBand>?>(nameof(Bands));
 
+    public static readonly StyledProperty<DateTimeOffset?> StartProperty = AvaloniaProperty.Register<LineChart, DateTimeOffset?>(nameof(Start));
+
+    public static readonly StyledProperty<bool> ShowLegendProperty = AvaloniaProperty.Register<LineChart, bool>(nameof(ShowLegend), true);
+
     /// <summary>A legend names at most this many lines; with more (a line per camera) the hover popup names them.</summary>
     internal const int MaxLegendSeries = 8;
 
@@ -82,7 +110,34 @@ public sealed class LineChart : Control
 
     static LineChart()
     {
-        AffectsRender<LineChart>(SeriesProperty, UnitProperty, StepProperty, MaximumProperty, ThresholdProperty, EmptyTextProperty, BandsProperty);
+        AffectsRender<LineChart>(SeriesProperty, UnitProperty, StepProperty, MaximumProperty, ThresholdProperty, EmptyTextProperty, BandsProperty, StartProperty, ShowLegendProperty);
+    }
+
+    /// <summary>
+    /// The time of the first value (SDK 0.17.0): the time axis then says clock times ("14:00") or, with a step of a day or
+    /// more, days ("27 Nov"); null: the time since the start ("0:30").
+    /// </summary>
+    public DateTimeOffset? Start { get => GetValue(StartProperty); set => SetValue(StartProperty, value); }
+
+    /// <summary>False: no legend in the chart (the page shows its own, e.g. a <see cref="ChartLegend"/>; SDK 0.17.0).</summary>
+    public bool ShowLegend { get => GetValue(ShowLegendProperty); set => SetValue(ShowLegendProperty, value); }
+
+    /// <summary>The text of the time of value <paramref name="index"/>; <paramref name="hover"/>: the longer form of the popup.</summary>
+    internal string TimeText(int index, bool hover)
+    {
+        if (Start is not { } start)
+        {
+            return ChartScale.FormatTime(Step * index);
+        }
+
+        var at = start + Step * index;
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        if (Step >= TimeSpan.FromDays(1))
+        {
+            return at.ToString(hover ? "ddd d MMM yyyy" : "d MMM", culture);
+        }
+
+        return at.ToString(hover ? "d MMM HH:mm" : "HH:mm", culture);
     }
 
     /// <summary>The lines; a new list redraws (bind a new list per update, never change one in place).</summary>
@@ -198,7 +253,7 @@ public sealed class LineChart : Control
         // Rows: unit and legend, the band labels, the plot, the time labels.
         var lineHeight = paint.Small("0:00").Height;
         var unit = string.IsNullOrEmpty(Unit) ? null : paint.Small(Unit);
-        var legend = series.Count is > 1 and <= MaxLegendSeries ? Legend(paint, series, size.Width - (unit?.Width ?? 0) - 24) : null;
+        var legend = ShowLegend && series.Count is > 1 and <= MaxLegendSeries ? Legend(paint, series, size.Width - (unit?.Width ?? 0) - 24) : null;
         var top = unit is not null || legend is not null ? lineHeight + ChartPaint.Gap : 0;
         var bands = Bands ?? [];
         var bandTop = top;
@@ -328,7 +383,7 @@ public sealed class LineChart : Control
                 }
             }
 
-            lines.Add((geometry, new Pen(paint.Of(s.Color), thickness, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round)));
+            lines.Add((geometry, new Pen(paint.Of(s.Color), s.Color == ChartColor.Strong ? thickness + 1 : thickness, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round)));
         }
 
         LastPointCount = points;
@@ -445,12 +500,23 @@ public sealed class LineChart : Control
 
     private void DrawTimeAxis(DrawingContext context, ChartPaint paint, int count, Rect plot, double width, double timeWidth)
     {
-        var maxLabels = Math.Max(1, (int)Math.Floor(plot.Width / (timeWidth + 32)) + 1);
-        var every = ChartScale.TimeLabelEvery(count, Step, maxLabels);
         var labels = new List<string>();
+        int every;
+        if (Start is null)
+        {
+            var maxLabels = Math.Max(1, (int)Math.Floor(plot.Width / (timeWidth + 32)) + 1);
+            every = ChartScale.TimeLabelEvery(count, Step, maxLabels);
+        }
+        else
+        {
+            // Clock times or days: as many as fit without touching.
+            var widest = Enumerable.Range(0, Math.Min(count, 64)).Max(i => paint.Small(TimeText(i, hover: false)).Width);
+            every = Math.Max(1, (int)Math.Ceiling(count / Math.Max(1, Math.Floor(plot.Width / (widest + 24)))));
+        }
+
         for (var i = 0; i < count; i += every)
         {
-            var text = ChartScale.FormatTime(Step * i);
+            var text = TimeText(i, hover: false);
             var label = paint.Small(text);
             var x = Math.Clamp(ChartScale.X(i, count, plot) - label.Width / 2, 0, width - label.Width);
             context.DrawText(label, new Point(Math.Round(x), Math.Round(plot.Bottom + ChartPaint.Gap - 2)));
@@ -492,7 +558,7 @@ public sealed class LineChart : Control
 
     private List<ChartHoverLine> HoverLines(ChartPaint paint, int seriesCount, List<(ChartSeries Series, double Value)> values, IReadOnlyList<ChartBand> bands, int index)
     {
-        var time = ChartScale.FormatTime(Step * index);
+        var time = TimeText(index, hover: true);
         var band = bands.LastOrDefault(b => index >= b.From && index < b.To);
         var lines = new List<ChartHoverLine> { new(band is null ? time : $"{band.Label}, {time}", null, IsTitle: true) };
         if (values.Count == 0)
@@ -523,8 +589,11 @@ public sealed class LineChart : Control
 }
 
 /// <summary>
-/// A bar chart of a few named values (the Load test's ramp steps): one bar per <see cref="ChartBar"/>, a value
-/// axis with <see cref="Unit"/>, an optional <see cref="Threshold"/> line, the value on hover. Colours from the theme.
+/// A bar chart of named values (the Load test's ramp steps, a value per camera): one bar per <see cref="ChartBar"/>, a
+/// value axis with <see cref="Unit"/>, an optional <see cref="Threshold"/> line, the value on hover. With
+/// <see cref="MinSlotWidth"/> many bars keep their width and the bars scroll sideways under a fixed value axis (drag,
+/// Shift + wheel or the horizontal wheel); only the bars in view are drawn. <see cref="RotateLabels"/> turns the labels
+/// under the bars (long names). Colours from the theme.
 /// </summary>
 public sealed class BarChart : Control
 {
@@ -539,11 +608,25 @@ public sealed class BarChart : Control
 
     public static readonly StyledProperty<string?> EmptyTextProperty = AvaloniaProperty.Register<BarChart, string?>(nameof(EmptyText));
 
+    public static readonly StyledProperty<double> MinSlotWidthProperty = AvaloniaProperty.Register<BarChart, double>(nameof(MinSlotWidth));
+
+    public static readonly StyledProperty<bool> RotateLabelsProperty = AvaloniaProperty.Register<BarChart, bool>(nameof(RotateLabels));
+
+    /// <summary>The longest rotated label; longer names end with an ellipsis.</summary>
+    internal const double MaxRotatedLabelWidth = 110;
+
+    private const double ScrollTrack = 6;
+
     private Point? _pointer;
+    private Point? _dragFrom;
+    private double _dragOffset;
+    private double _offset;
+    private double _maxOffset;
+    private double _slot;
 
     static BarChart()
     {
-        AffectsRender<BarChart>(BarsProperty, UnitProperty, MaximumProperty, ThresholdProperty, EmptyTextProperty);
+        AffectsRender<BarChart>(BarsProperty, UnitProperty, MaximumProperty, ThresholdProperty, EmptyTextProperty, MinSlotWidthProperty, RotateLabelsProperty);
     }
 
     /// <summary>The bars, left to right; a new list redraws.</summary>
@@ -561,6 +644,12 @@ public sealed class BarChart : Control
     /// <summary>The line shown while there are no bars.</summary>
     public string? EmptyText { get => GetValue(EmptyTextProperty); set => SetValue(EmptyTextProperty, value); }
 
+    /// <summary>The narrowest room of a bar (SDK 0.17.0); when the bars do not fit, they scroll sideways. 0: they always fit.</summary>
+    public double MinSlotWidth { get => GetValue(MinSlotWidthProperty); set => SetValue(MinSlotWidthProperty, value); }
+
+    /// <summary>The labels under the bars turned up to the right, each under its bar (camera names; SDK 0.17.0).</summary>
+    public bool RotateLabels { get => GetValue(RotateLabelsProperty); set => SetValue(RotateLabelsProperty, value); }
+
     /// <summary>The hover popup's lines at the last render; empty without a pointer over a bar (tests).</summary>
     internal IReadOnlyList<string> LastHoverLines { get; private set; } = [];
 
@@ -569,6 +658,15 @@ public sealed class BarChart : Control
 
     /// <summary>The value axis of the last render (tests).</summary>
     internal ChartAxis? LastAxis { get; private set; }
+
+    /// <summary>The bars drawn at the last render: only those in view (tests).</summary>
+    internal int LastDrawnBars { get; private set; }
+
+    /// <summary>The first bar in view at the last render (tests).</summary>
+    internal int LastFirstVisible { get; private set; }
+
+    /// <summary>Whether the bars scrolled at the last render (tests).</summary>
+    internal bool LastScrolls { get; private set; }
 
     /// <summary>What a screen reader says when the page gave no automation name.</summary>
     internal string Summary
@@ -586,13 +684,73 @@ public sealed class BarChart : Control
         }
     }
 
+    /// <summary>Scrolls the bars to <paramref name="offset"/> pixels from the first (tests; the pointer does it otherwise).</summary>
+    internal void ScrollTo(double offset)
+    {
+        _offset = offset;
+        InvalidateVisual();
+    }
+
     protected override AutomationPeer OnCreateAutomationPeer() => new ChartAutomationPeer(this, () => Summary);
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == BarsProperty)
+        {
+            _offset = 0; // new bars start at the first
+        }
+    }
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        if (_maxOffset > 0 && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+        {
+            _dragFrom = e.GetPosition(this);
+            _dragOffset = _offset;
+            e.Pointer.Capture(this);
+        }
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        if (_dragFrom is not null)
+        {
+            _dragFrom = null;
+            e.Pointer.Capture(null);
+        }
+    }
 
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
         _pointer = e.GetPosition(this);
+        if (_dragFrom is { } from)
+        {
+            _offset = _dragOffset - (_pointer.Value.X - from.X);
+        }
+
         InvalidateVisual();
+    }
+
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        base.OnPointerWheelChanged(e);
+        if (_maxOffset <= 0)
+        {
+            return;
+        }
+
+        // Sideways only: the horizontal wheel or Shift; the plain wheel keeps scrolling the page.
+        var delta = e.Delta.X != 0 ? e.Delta.X : (e.KeyModifiers & KeyModifiers.Shift) != 0 ? e.Delta.Y : 0;
+        if (delta != 0)
+        {
+            _offset -= delta * Math.Max(_slot, 1) * 3;
+            e.Handled = true;
+            InvalidateVisual();
+        }
     }
 
     protected override void OnPointerExited(PointerEventArgs e)
@@ -608,6 +766,9 @@ public sealed class BarChart : Control
         LastHoverLines = [];
         LastLabels = [];
         LastAxis = null;
+        LastDrawnBars = 0;
+        LastScrolls = false;
+        _maxOffset = 0;
         var size = Bounds.Size;
         if (size.Width < 40 || size.Height < 40)
         {
@@ -626,20 +787,38 @@ public sealed class BarChart : Control
         var lineHeight = paint.Small("0").Height;
         var unit = string.IsNullOrEmpty(Unit) ? null : paint.Small(Unit);
         var top = (unit is not null ? lineHeight + ChartPaint.Gap : 0) + Math.Ceiling(lineHeight / 2);
-        var plotHeight = size.Height - top - lineHeight - ChartPaint.Gap;
+        var labels = bars.Select(b => Label(paint, b.Label)).ToList();
+        var labelRoom = RotateLabels ? Math.Ceiling(labels.Max(t => t.Width) * Math.Sqrt(0.5) + lineHeight) : lineHeight;
+
+        // A first pass for the axis width; the scroll track only when the bars do not fit.
+        var axis = Axis(bars, 4);
+        var left = paint.AxisLabelWidth(axis) + 8;
+        var width = Math.Max(1, size.Width - left - 2);
+        var scrolls = MinSlotWidth > 0 && width / bars.Count < MinSlotWidth;
+        var plotHeight = size.Height - top - labelRoom - ChartPaint.Gap - (scrolls ? ScrollTrack + 4 : 0);
         if (plotHeight < 16)
         {
             return;
         }
 
-        var axis = Axis(bars, (int)Math.Clamp(Math.Floor(plotHeight / 40), 2, 6));
+        axis = Axis(bars, (int)Math.Clamp(Math.Floor(plotHeight / 40), 2, 6));
         LastAxis = axis;
-        var left = paint.AxisLabelWidth(axis) + 8;
+        left = paint.AxisLabelWidth(axis) + 8;
         var plot = new Rect(left, top, Math.Max(1, size.Width - left - 2), plotHeight);
         if (plot.Width < 16)
         {
             return;
         }
+
+        var slot = scrolls ? MinSlotWidth : plot.Width / bars.Count;
+        _slot = slot;
+        _maxOffset = scrolls ? Math.Max(0, slot * bars.Count - plot.Width) : 0;
+        _offset = Math.Clamp(_offset, 0, _maxOffset);
+        LastScrolls = scrolls;
+        var first = scrolls ? Math.Max(0, (int)Math.Floor(_offset / slot)) : 0;
+        var last = scrolls ? Math.Min(bars.Count - 1, (int)Math.Ceiling((_offset + plot.Width) / slot)) : bars.Count - 1;
+        LastFirstVisible = first;
+        double Center(int i) => plot.Left + slot * (i + 0.5) - _offset;
 
         double Y(double v) => plot.Bottom - (Math.Clamp(v, axis.Min, axis.Max) - axis.Min) / (axis.Max - axis.Min) * plot.Height;
 
@@ -648,44 +827,57 @@ public sealed class BarChart : Control
             context.DrawText(unit, new Point(0, 0));
         }
 
-        var slot = plot.Width / bars.Count;
         var barWidth = Math.Clamp(Math.Floor(slot * 0.56), 2, 56);
-        var hovered = _pointer is { } p && p.X >= plot.Left && p.X < plot.Right && p.Y >= 0 && p.Y <= size.Height
-            ? Math.Clamp((int)Math.Floor((p.X - plot.Left) / slot), 0, bars.Count - 1)
+        var hovered = _pointer is { } p && _dragFrom is null && p.X >= plot.Left && p.X < plot.Right && p.Y >= 0 && p.Y <= plot.Bottom + labelRoom
+            ? Math.Clamp((int)Math.Floor((p.X - plot.Left + _offset) / slot), 0, bars.Count - 1)
             : -1;
-        if (hovered >= 0)
+        paint.DrawValueAxis(context, axis, plot, Y);
+        using (context.PushClip(new Rect(plot.Left, 0, plot.Width + 2, size.Height)))
         {
-            var column = Math.Min(slot - 2, barWidth + 16);
-            var center = plot.Left + slot * (hovered + 0.5);
-            context.FillRectangle(paint.Hover, new Rect(Math.Round(center - column / 2), plot.Top, Math.Round(column), plot.Height), 4);
+            if (hovered >= 0)
+            {
+                var column = Math.Min(slot - 2, barWidth + 16);
+                context.FillRectangle(paint.Hover, new Rect(Math.Round(Center(hovered) - column / 2), plot.Top, Math.Round(column), plot.Height), 4);
+            }
+
+            var zero = Y(0);
+            for (var i = first; i <= last; i++)
+            {
+                var value = bars[i].Value;
+                if (!double.IsFinite(value))
+                {
+                    continue;
+                }
+
+                var barLeft = Math.Round(Center(i) - barWidth / 2);
+                var end = Y(value);
+                var (high, low) = end < zero ? (end, zero) : (zero, end);
+                if (low - high < 0.5)
+                {
+                    continue;
+                }
+
+                context.DrawGeometry(paint.Of(bars[i].Color), null, Bar(barLeft, barLeft + barWidth, Math.Round(high), Math.Round(low), end < zero));
+                LastDrawnBars++;
+            }
         }
 
-        paint.DrawValueAxis(context, axis, plot, Y);
-
-        var zero = Y(0);
-        for (var i = 0; i < bars.Count; i++)
+        // The labels under the plot may run left under the value axis (a turned first label); never into the scroll track.
+        using (context.PushClip(new Rect(0, plot.Bottom, size.Width, size.Height - plot.Bottom - (scrolls ? ScrollTrack + 2 : 0))))
         {
-            var value = bars[i].Value;
-            if (!double.IsFinite(value))
-            {
-                continue;
-            }
-
-            var center = plot.Left + slot * (i + 0.5);
-            var barLeft = Math.Round(center - barWidth / 2);
-            var barRight = barLeft + barWidth;
-            var end = Y(value);
-            var (high, low) = end < zero ? (end, zero) : (zero, end);
-            if (low - high < 0.5)
-            {
-                continue;
-            }
-
-            context.DrawGeometry(paint.Of(bars[i].Color), null, Bar(barLeft, barRight, Math.Round(high), Math.Round(low), end < zero));
+            DrawLabels(context, labels, bars, plot, slot, first, last, Center);
         }
 
         paint.DrawThreshold(context, Threshold, axis, plot, Y);
-        DrawLabels(context, paint, bars, plot, slot);
+        if (scrolls)
+        {
+            // The scroll track: where the bars in view are among all.
+            var track = new Rect(plot.Left, size.Height - ScrollTrack, plot.Width, ScrollTrack);
+            context.FillRectangle(paint.Hover, track, (float)(ScrollTrack / 2));
+            var all = slot * bars.Count;
+            var thumb = new Rect(track.Left + _offset / all * track.Width, track.Top, Math.Max(16, plot.Width / all * track.Width), ScrollTrack);
+            context.FillRectangle(paint.Axis, thumb, (float)(ScrollTrack / 2));
+        }
 
         if (hovered >= 0)
         {
@@ -693,11 +885,25 @@ public sealed class BarChart : Control
             var lines = new List<ChartHoverLine>
             {
                 new(bar.Label, null, IsTitle: true),
-                new(ChartScale.FormatValue(bar.Value, Unit), paint.Of(bar.Color)),
+                new(double.IsFinite(bar.Value) ? ChartScale.FormatValue(bar.Value, Unit) : "No value", double.IsFinite(bar.Value) ? paint.Of(bar.Color) : null),
             };
+            lines.AddRange((bar.Details ?? []).Select(d => new ChartHoverLine(d, null)));
             LastHoverLines = lines.Select(l => l.Text).ToList();
-            paint.DrawPopup(context, lines, plot.Left + slot * (hovered + 0.5) + barWidth / 2, plot, size);
+            paint.DrawPopup(context, lines, Center(hovered) + barWidth / 2, plot, size);
         }
+    }
+
+    private FormattedText Label(ChartPaint paint, string text)
+    {
+        var label = paint.Small(text);
+        if (RotateLabels && label.Width > MaxRotatedLabelWidth)
+        {
+            label.MaxTextWidth = MaxRotatedLabelWidth;
+            label.MaxLineCount = 1;
+            label.Trimming = TextTrimming.CharacterEllipsis;
+        }
+
+        return label;
     }
 
     private ChartAxis Axis(IReadOnlyList<ChartBar> bars, int ticks)
@@ -752,17 +958,42 @@ public sealed class BarChart : Control
         return geometry;
     }
 
-    /// <summary>The labels under the bars; every second (third, ...) when they would touch.</summary>
-    private void DrawLabels(DrawingContext context, ChartPaint paint, IReadOnlyList<ChartBar> bars, Rect plot, double slot)
+    /// <summary>
+    /// The labels under the bars in view: level, every second (third, ...) when they would touch; turned, each one, ending
+    /// under its bar and rising to the right.
+    /// </summary>
+    private void DrawLabels(DrawingContext context, List<FormattedText> texts, IReadOnlyList<ChartBar> bars, Rect plot, double slot, int first, int last,
+        Func<int, double> center)
     {
-        var texts = bars.Select(b => paint.Small(b.Label)).ToList();
-        var widest = texts.Max(t => t.Width);
-        var every = Math.Max(1, (int)Math.Ceiling((widest + 8) / slot));
         var drawn = new List<string>();
-        for (var i = 0; i < bars.Count; i += every)
+        if (RotateLabels)
         {
-            var center = plot.Left + slot * (i + 0.5);
-            var x = Math.Clamp(center - texts[i].Width / 2, 0, Bounds.Width - texts[i].Width);
+            var rotation = Matrix.CreateRotation(-Math.PI / 4);
+            for (var i = first; i <= last; i++)
+            {
+                var anchor = new Point(Math.Round(center(i)), Math.Round(plot.Bottom + ChartPaint.Gap));
+                using (context.PushTransform(rotation * Matrix.CreateTranslation(anchor.X, anchor.Y)))
+                {
+                    context.DrawText(texts[i], new Point(-texts[i].Width, -texts[i].Height / 2));
+                }
+
+                drawn.Add(bars[i].Label);
+            }
+
+            LastLabels = drawn;
+            return;
+        }
+
+        var widest = texts.Skip(first).Take(last - first + 1).Max(t => t.Width);
+        var every = Math.Max(1, (int)Math.Ceiling((widest + 8) / slot));
+        for (var i = first - first % every; i <= last; i += every)
+        {
+            if (i < first)
+            {
+                continue;
+            }
+
+            var x = Math.Clamp(center(i) - texts[i].Width / 2, 0, Bounds.Width - texts[i].Width);
             context.DrawText(texts[i], new Point(Math.Round(x), Math.Round(plot.Bottom + ChartPaint.Gap - 2)));
             drawn.Add(bars[i].Label);
         }

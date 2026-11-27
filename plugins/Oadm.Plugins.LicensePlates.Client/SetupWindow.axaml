@@ -6,7 +6,7 @@
         x:Class="Oadm.Plugins.LicensePlates.Client.SetupWindow"
         x:DataType="vm:SetupViewModel"
         Title="{x:Static vm:PageTexts.SetUpTitle}"
-        Width="1180" Height="760" MinWidth="980" MinHeight="620"
+        Width="1180" Height="760" CanResize="False"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         WindowDecorations="BorderOnly">
@@ -44,6 +44,10 @@
       <Border Grid.Column="1" Classes="card">
         <ScrollViewer HorizontalScrollBarVisibility="Disabled">
           <StackPanel Spacing="18">
+            <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.Name}">
+              <TextBox x:Name="NameBox" Text="{Binding Name}" MaxLength="{x:Static vm:SetupViewModel.MaxNameLength}" />
+            </ui:FormField>
+
             <StackPanel Classes="form">
               <TextBlock Classes="cardTitle" Text="{x:Static vm:PageTexts.Recognition}" />
               <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.Region}" IsVisible="{Binding HasRegion}">
@@ -74,7 +78,8 @@
                 </ui:FormField>
               </Grid>
               <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.Threshold}" IsVisible="{Binding HasThreshold}">
-                <NumericUpDown x:Name="ThresholdBox" Value="{Binding ConfidenceThreshold}" Minimum="0" Maximum="1" Increment="0.05" FormatString="0.00" />
+                <ui:NumberSlider x:Name="ThresholdSlider" Text="{Binding ThresholdText}" Minimum="{x:Static vm:SetupViewModel.SliderMinimum}"
+                                 Maximum="{x:Static vm:SetupViewModel.SliderMaximum}" Step="{x:Static vm:SetupViewModel.SliderStep}" Unit="%" />
               </ui:FormField>
             </StackPanel>
 
@@ -83,15 +88,6 @@
               <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.AllowedTags}">
                 <ComboBox x:Name="TagsBox" Classes="multiSelect" ItemsSource="{Binding TagChoices.Items}" PlaceholderText="{Binding TagChoices.Summary}" MaxDropDownHeight="320" />
               </ui:FormField>
-            </StackPanel>
-
-            <StackPanel Spacing="8">
-              <TextBlock Classes="cardTitle" Text="{x:Static vm:PageTexts.Events}" />
-              <ui:StatusChip x:Name="EventsChip" Text="{Binding EventsText}" IsOk="{Binding EventsOn}" IsWarning="{Binding !EventsOn}" MaxLines="2" />
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBlock Classes="secondary" Text="{x:Static vm:PageTexts.LastRead}" />
-                <TextBlock x:Name="LastReadText" Text="{Binding LastReadText}" />
-              </StackPanel>
             </StackPanel>
 
             <TextBlock Classes="error" Text="{Binding ErrorText}" IsVisible="{Binding HasError}" TextWrapping="Wrap" />

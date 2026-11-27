@@ -64,15 +64,20 @@ internal sealed class ChartPaint
     public IBrush Threshold { get; }
 
     /// <summary>The theme brush of a colour role.</summary>
-    public IBrush Of(ChartColor color) => Brush(color switch
+    public IBrush Of(ChartColor color) => Brush(KeyOf(color));
+
+    /// <summary>The theme resource of a colour role.</summary>
+    public static string KeyOf(ChartColor color) => color switch
     {
         ChartColor.Secondary => "Oadm.TealBrush",
         ChartColor.Ok => "Oadm.StatusOkBrush",
         ChartColor.Warning => "Oadm.StatusWarningBrush",
         ChartColor.Error => "Oadm.StatusErrorBrush",
         ChartColor.Neutral => "Oadm.StatusNeutralBrush",
+        ChartColor.Strong => "Oadm.TextPrimaryBrush",
+        >= ChartColor.Palette1 and <= ChartColor.Palette8 => TagColors.ResourceKey(color - ChartColor.Palette1 + 1),
         _ => "Oadm.AccentBrush",
-    });
+    };
 
     public FormattedText Small(string text, IBrush? brush = null) => Make(text, _typeface, SmallSize, brush ?? Secondary);
 

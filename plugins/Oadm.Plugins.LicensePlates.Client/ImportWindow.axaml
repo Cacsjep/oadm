@@ -5,7 +5,7 @@
         x:Class="Oadm.Plugins.LicensePlates.Client.ImportWindow"
         x:DataType="vm:ImportViewModel"
         Title="{x:Static vm:PageTexts.ImportTitle}"
-        Width="1040" Height="660"
+        Width="1040" Height="660" CanResize="False"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         WindowDecorations="BorderOnly">

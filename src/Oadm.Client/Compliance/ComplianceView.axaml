@@ -73,23 +73,7 @@
                     Command="{Binding ToggleGroupByTagCommand}">
               <ui:OadmIcon Data="{StaticResource Icon.groupBy}" />
             </Button>
-            <Button Classes="toolbar iconOnly" ToolTip.Tip="Choose columns">
-              <ui:OadmIcon Data="{StaticResource Icon.columns}" />
-              <Button.Flyout>
-                <Flyout Placement="BottomEdgeAlignedRight">
-                  <StackPanel Spacing="4" MinWidth="220">
-                    <TextBlock Classes="secondary" Text="Visible columns" Margin="0,0,0,6" />
-                    <ItemsControl ItemsSource="{Binding ColumnOptions}">
-                      <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="dev:ColumnOptionViewModel">
-                          <CheckBox Content="{Binding Header}" IsChecked="{Binding IsVisible}" />
-                        </DataTemplate>
-                      </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                  </StackPanel>
-                </Flyout>
-              </Button.Flyout>
-            </Button>
+            <ui:ColumnChooserButton x:Name="ColumnChooser" Columns="{Binding ColumnOptions}" />
             <ui:SearchBox Width="220" VerticalAlignment="Center" Text="{Binding SearchText}" Placeholder="Search devices" />
           </StackPanel>
         </Grid>

@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Input;
 
 using Microsoft.Extensions.Logging;
 
+using Oadm.Sdk.Client.Controls;
 using Oadm.Client.Api;
 using Oadm.Client.Devices.Toolbar;
 using Oadm.Client.Dialogs;
@@ -160,7 +161,7 @@ public sealed partial class DevicesViewModel : ObservableObject
         {
             complianceColumn.PropertyChanged += (_, e) =>
             {
-                if (e.PropertyName == nameof(ColumnOptionViewModel.IsVisible))
+                if (e.PropertyName == nameof(GridColumnOption.IsVisible))
                 {
                     OnPropertyChanged(nameof(ComplianceColumnOn));
                     OnPropertyChanged(nameof(ShowComplianceToggle));

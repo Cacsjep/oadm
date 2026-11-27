@@ -17,7 +17,8 @@ Settings dialog is the shared `ui:ServerFolderPicker`.
 
 - **Cameras**: Add cameras, then Set up (areas, recognition, events), Allowed tags, Use recommended image settings.
 - **Plates**: add, import (ALPV's export or OADM's CSV), give plate tags. A camera allows the plates with its allowed tags.
-- **Log**: live reads, filters, Export (PDF report, CSV). **Stats**: counts by result, direction, hour, camera, plate.
+- **Log**: live reads, filters, the columns the user chooses, Export (PDF, CSV) in those columns. **Stats**: the reads of
+  the last hour, 24 hours, 7 days and in all; the plate and vehicle confidence per camera; reads and confidence over time.
 - **Settings** (Administrators): character deviation, wait for the best read, the log's days, size, folder, pictures,
   unknown plates. Without a folder nothing is stored; events still fire.
 
@@ -63,7 +64,9 @@ its native SQLite. PDFsharp is the plugin's own copy, as in Snapshot report.
   (the server's day; only JPEG, at most 512 KB, never converted). Writes: one writer, up to 2,000 rows per transaction.
   The Stats tab counts from the hourly table written with every read: per hour, camera, result and direction the reads,
   the confidence sum and the reads below 60, 60 to 74 and 75 to 89 (`low`, `mid`, `good`; `mid` and `good` are added to
-  older stores, their hours count as 90 and above). Gap rows ("Connection lost from 13:58 to 14:06") are rows with `gap_until`.
+  older stores, their hours count as 90 and above), the vehicle confidence sum and the reads with one (`vehicle`,
+  `vehicles`, added once to older stores). `StatsSeries` builds the steps (hours, or days from midnight of the caller's
+  zone) from it. The reads table has `state` and `vehicle_confidence` (added once). Gap rows ("Connection lost from 13:58 to 14:06") are rows with `gap_until`.
   A full disk or a folder that cannot be written stops storing (the problem is on the page and in Any camera problem);
   the folder is tried again every minute; the cleanup runs every hour.
 - **Folder**: no folder by default (nothing stored until an Administrator chooses one). Refused: a relative path, a folder
@@ -105,8 +108,8 @@ Center, **log** = View plate log, **export** = Export plate log, **plates** = Ma
 | `logCount` | `LogQuery` -> `CountReply` | log |
 | `logStatus` | none -> `LogStatus` (reads today, used and max bytes, days, folder, problem) | log |
 | `picture` | `ReadIdRequest` -> `PictureReply` (JPEG base64, null without one) | log |
-| `stats` | `StatsRequest` (cameras, from, to; at most 31 days) -> `StatsReply` | log |
-| `exportLog` (download) | `LogExportRequest` (query, `csv` or `pdf`, time zone, offset, range name) -> the file | export (and log) |
+| `stats` | `StatsRequest` (cameras, from, to, step hour or day, time zone; at most 31 days) -> `StatsReply` (the cards `Totals`, results, average confidence, `Start`, `Steps`, the Total line, a `CameraSeries` per camera) | log |
+| `exportLog` (download) | `LogExportRequest` (query, `csv` or `pdf`, time zone, offset, range name, the chosen `Columns` in order, `LogColumns` keys) -> the file | export (and log) |
 | `plates` | `PlatesRequest` (after, limit up to 5,000, search, tag) -> `PlatesPage` (plates, next, total) | show |
 | `savePlate` | `SavePlateRequest` (plate, original) -> `SavePlateReply` (plate, or errors by field) | plates |
 | `deletePlates` | `PlateTextsRequest` -> `CountReply` | plates |
@@ -123,6 +126,7 @@ Center, **log** = View plate log, **export** = Export plate log, **plates** = Ma
 | `setAllowedTags` | `AllowedTagsRequest` (devices, `set`, or `add` and `remove`) -> `CamerasReply` | cameras |
 | `readSetup` | `DeviceRequest` -> `SetupRead` (areas, recognition, events, rotated, last read, allowed tags, ALPV's page) | show |
 | `saveSetup` | `SaveSetupRequest` (device, `SetupPayload`, allowed tags) -> `TasksReply` | cameras |
+| `renameCamera` | `RenameCameraRequest` (device, name) -> `RenameCameraReply` (the refusal below the field, or none) | cameras |
 | `copySettings` | `CopySettingsRequest` (source, targets, areas) -> `TasksReply` | cameras |
 | `useRecommendedImageSettings` | `DevicesRequest` -> `TasksReply` | cameras |
 | `alpvLists` | none -> `AlpvLists` (regions, countries, states, vehicle types and colours of ALPV 3.1.7; `CountriesOf`, `StatesOf`) | show |
@@ -153,6 +157,7 @@ Confidence colours, filters, Pause, Add to plates, Export, pictures for shown ro
 button's chips), `GridSelectionTests` (a row clicked in the real grid reaches the toolbar, also after Remove and a reload),
 `AlpvListsClientTests` (the selects of ALPV's lists), `PlatesTabTests` (search, tag
 filter, rights, Delete, Change and Manage tags, the editor's errors and Delete when it ends, Import), `CamerasTabTests`
-(statuses, image settings, toolbar rights, Set up, Copy settings, Settings, Stats with the confidence); `ScreenshotTests` (headless, PNGs with
+(statuses, image settings, toolbar rights, Set up, Copy settings, Settings, Stats: cards, bars, lines and legend),
+`SetupAndColumnsTests` (fixed dialogs, the camera's name, the threshold in percent, the Log's chosen columns and the date); `ScreenshotTests` (headless, PNGs with
 `OADM_SCREENSHOT_DIR`, `OADM_TEST_APPEARANCE=Light` for the light theme); `ClientPerfTests` (`Category=Perf`: 100,000
 plates, 1,000 cameras).

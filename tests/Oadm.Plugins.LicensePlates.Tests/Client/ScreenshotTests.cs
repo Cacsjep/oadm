@@ -26,13 +26,13 @@ public sealed class ScreenshotTests
     private static int PrimaryButtons(Visual root) =>
         root.GetVisualDescendants().OfType<Button>().Count(b => b.IsEffectivelyVisible && b.Classes.Contains("primary"));
 
-    private static async Task<(LicensePlatesViewModel Page, LicensePlatesView View, Window Window, FakePageContext Ctx)> ShowPageAsync(FakePageContext? ctx = null)
+    private static async Task<(LicensePlatesViewModel Page, LicensePlatesView View, Window Window, FakePageContext Ctx)> ShowPageAsync(FakePageContext? ctx = null, int height = 900)
     {
         ctx ??= Samples.Context();
         var page = new LicensePlatesViewModel(ctx, Samples.Clock());
         page.Log.Decode = bytes => Headless.PlateCrop(Encoding.UTF8.GetString(bytes));
         var view = new LicensePlatesView { DataContext = page };
-        var window = Headless.Host(view);
+        var window = Headless.Host(view, height: height);
         window.Show();
         await Samples.SettleAsync(page);
         Headless.Pump();
@@ -99,6 +99,25 @@ public sealed class ScreenshotTests
             Assert.True(chip.Editor.IsOpen);
             Headless.Capture(window, $"log-filter-editor-{Suffix}.png");
             chip.Editor.Hide();
+            Headless.Pump();
+
+            // Choose columns open, then more columns shown (the vehicle, the view) and Tags hidden.
+            var chooser = view.FindControl<LogView>("LogPage")!.FindControl<ColumnChooserButton>("ColumnChooser")!;
+            chooser.Flyout!.ShowAt(chooser);
+            Headless.Pump();
+            Assert.Equal(LogColumns.All.Count, chooser.List.ItemCount);
+            Headless.Capture(window, $"log-columns-open-{Suffix}.png");
+            chooser.Flyout.Hide();
+            foreach (var key in new[] { LogColumns.VehicleType, LogColumns.VehicleColor, LogColumns.VehicleMake, LogColumns.VehicleModel, LogColumns.View })
+            {
+                page.Log.Columns.Find(key)!.IsVisible = true;
+            }
+
+            page.Log.Columns.Find(LogColumns.Tags)!.IsVisible = false;
+            page.Log.Columns.Find(LogColumns.Direction)!.IsVisible = false;
+            Headless.Pump();
+            Assert.NotEmpty(VisibleTexts(grid, "Volkswagen"));
+            Headless.Capture(window, $"log-extra-columns-{Suffix}.png");
             Close(page, window);
             return true;
         }, CancellationToken.None);
@@ -207,6 +226,7 @@ public sealed class ScreenshotTests
             Assert.Contains("danger", cameras.FindControl<ToolbarButton>("RemoveButton")!.Classes);
             Assert.Single(VisibleTexts(window, "Connection lost since 13:58"));
             Assert.Single(VisibleTexts(window, "Site offline: Site B"));
+            Assert.Single(VisibleTexts(window, "Garage Nord entry")); // the Name column: the camera's own name
             cameras.Grid.SelectedItem = page.Cameras.Rows[0]; // a selected camera: its buttons are on
             Headless.Pump();
             Assert.True(cameras.FindControl<ToolbarButton>("SetUpButton")!.IsEffectivelyEnabled);
@@ -250,7 +270,11 @@ public sealed class ScreenshotTests
             Assert.True(window.FindControl<ToolbarButton>("RemoveArea2Button")!.IsEffectivelyVisible);
             Assert.False(window.FindControl<ToolbarButton>("AddArea2Button")!.IsEffectivelyVisible);
             Assert.Equal(1, PrimaryButtons(window));
-            Assert.Single(VisibleTexts(window, PageTexts.EventsWillTurnOn));
+            Assert.Null(window.FindControl<StatusChip>("EventsChip")); // no Events section (decision 2026-11-27)
+            Assert.Equal("25", setup.ThresholdText); // 0.25 as percent
+            Assert.True(window.FindControl<NumberSlider>("ThresholdSlider")!.IsEffectivelyVisible);
+            Assert.Equal("Garage Nord entry", window.FindControl<TextBox>("NameBox")!.Text); // the first field
+            Assert.False(window.CanResize);
             Assert.Equal("Europe", window.FindControl<ComboBox>("RegionBox")!.SelectionBoxItem?.ToString());
             Headless.Capture(window, $"setup-{Suffix}.png");
 
@@ -267,21 +291,33 @@ public sealed class ScreenshotTests
         }, CancellationToken.None);
     }
 
-    [Fact]
-    public async Task The_stats_render_the_counts_the_hours_and_the_top_plates()
+    [Theory]
+    [InlineData(4, false)]
+    [InlineData(12, false)]
+    [InlineData(55, true)]
+    public async Task The_stats_render_the_cards_the_confidence_per_camera_and_the_lines(int cameras, bool byDay)
     {
         await Headless.Session.Dispatch(async () =>
         {
-            var (page, view, window, _) = await ShowPageAsync();
+            var ctx = Samples.Context();
+            ctx.Answers[LicensePlatesMethods.Stats] = _ => Samples.Serialize(Samples.Stats(cameras, byDay ? StatsStep.Day : StatsStep.Hour));
+            var (page, view, window, _) = await ShowPageAsync(ctx, height: 1640);
             page.Show(page.StatsTab);
+            if (byDay)
+            {
+                page.Stats.SelectedRange = StatsViewModel.RangeChoices[2];
+            }
+
             await page.Stats.LoadTask;
             Headless.Pump();
 
             var stats = view.FindControl<StatsView>("StatsPage")!;
-            Assert.Equal(24, stats.FindControl<BarChart>("HourChart")!.Bars!.Count);
-            Assert.Single(VisibleTexts(window, "1,501"));
+            var plate = stats.FindControl<BarChart>("PlateChart")!;
+            Assert.Equal(cameras, plate.Bars!.Count);
+            Assert.Equal(Math.Min(cameras, StatsViewModel.ShownCameras) + 1, stats.FindControl<LineChart>("ReadsChart")!.Series!.Count);
+            Assert.Equal(cameras + 1, stats.FindControl<ChartLegend>("ReadsLegend")!.List.ItemCount);
             Assert.Equal(0, PrimaryButtons(window));
-            Headless.Capture(window, $"stats-{Suffix}.png");
+            Headless.Capture(window, $"stats-{cameras}-cameras-{Suffix}.png");
             Close(page, window);
             return true;
         }, CancellationToken.None);

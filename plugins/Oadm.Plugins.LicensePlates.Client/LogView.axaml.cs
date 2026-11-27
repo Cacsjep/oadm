@@ -38,6 +38,17 @@ public partial class LogView : UserControl
         };
     }
 
+    private static readonly HashSet<string> FixedWidth = new(StringComparer.Ordinal) { LogColumns.Picture };
+    private IDisposable? _columns;
+
+    /// <summary>The chosen columns, their order and widths (Choose columns, like the device grid).</summary>
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        _columns?.Dispose();
+        _columns = DataContext is LogViewModel vm ? GridColumnBinder.Attach(LogGrid, vm.Columns, fixedWidth: FixedWidth) : null;
+    }
+
     /// <summary>The grid (tests).</summary>
     internal DataGrid Grid => LogGrid;
 }

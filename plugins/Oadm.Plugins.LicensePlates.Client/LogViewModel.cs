@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -31,8 +32,7 @@ public sealed partial class LogRow : ObservableObject
     {
         Read = read;
         var local = TimeZoneInfo.ConvertTime(read.Time, time.LocalTimeZone);
-        var today = TimeZoneInfo.ConvertTime(time.GetUtcNow(), time.LocalTimeZone).Date;
-        TimeText = local.ToString(local.Date == today ? "HH:mm:ss" : "d MMM HH:mm:ss", CultureInfo.CurrentCulture);
+        TimeText = TimeOf(local); // always with the date (decision 2026-11-27)
         Camera = read.Camera;
         if (read.Gap)
         {
@@ -48,7 +48,37 @@ public sealed partial class LogRow : ObservableObject
         ResultTip = LicensePlateTexts.Reason(read.Result, read.Reason, read.ReasonTime);
         DirectionText = LicensePlateTexts.Direction(read.Direction);
         ConfidenceText = read.Confidence.ToString(CultureInfo.CurrentCulture);
+        ReadAsText = LogColumns.Text(read, LogColumns.ReadAs);
+        AreaText = LogColumns.Text(read, LogColumns.Area);
+        CountryText = LogColumns.Text(read, LogColumns.Country);
+        StateText = LogColumns.Text(read, LogColumns.State);
+        VehicleTypeText = LogColumns.Text(read, LogColumns.VehicleType);
+        VehicleColorText = LogColumns.Text(read, LogColumns.VehicleColor);
+        VehicleMakeText = LogColumns.Text(read, LogColumns.VehicleMake);
+        VehicleModelText = LogColumns.Text(read, LogColumns.VehicleModel);
+        ViewText = LogColumns.Text(read, LogColumns.View);
     }
+
+    public string ReadAsText { get; } = string.Empty;
+
+    public string AreaText { get; } = string.Empty;
+
+    public string CountryText { get; } = string.Empty;
+
+    public string StateText { get; } = string.Empty;
+
+    public string VehicleTypeText { get; } = string.Empty;
+
+    public string VehicleColorText { get; } = string.Empty;
+
+    public string VehicleMakeText { get; } = string.Empty;
+
+    public string VehicleModelText { get; } = string.Empty;
+
+    public string ViewText { get; } = string.Empty;
+
+    /// <summary>"27 Nov 2026 14:04:14": the day and the time in this computer's zone, on every row.</summary>
+    public static string TimeOf(DateTimeOffset local) => LogColumns.TimeText(local, CultureInfo.CurrentCulture);
 
     public PlateRead Read { get; }
 
@@ -113,6 +143,30 @@ public sealed partial class LogRow : ObservableObject
 /// </summary>
 public sealed partial class LogViewModel : ObservableObject
 {
+    /// <summary>The local setting of the chosen columns (this computer, like the device grid's).</summary>
+    public const string ColumnsSetting = "logColumns";
+
+    /// <summary>The columns the user chose (Choose columns), kept on this computer; the export takes them in their order.</summary>
+    public GridColumnLayout Columns { get; }
+
+    /// <summary>The saved columns; a broken or missing setting: the defaults.</summary>
+    internal static IReadOnlyList<GridColumnState> LoadColumns(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<GridColumnState>>(json, LicensePlatesJson.Options) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
     /// <summary>Rows of one page.</summary>
     public const int PageSize = 200;
 
@@ -137,6 +191,10 @@ public sealed partial class LogViewModel : ObservableObject
     internal LogViewModel(LicensePlatesViewModel page)
     {
         _page = page;
+        Columns = new GridColumnLayout(
+            [.. LogColumns.All.Select(c => new GridColumnDefinition(c.Key, c.Header, IsDefault: c.IsDefault))],
+            LoadColumns(page.Client.Context.GetLocalSetting(ColumnsSetting)),
+            state => page.Client.Context.SetLocalSetting(ColumnsSetting, JsonSerializer.Serialize(state.ToList(), LicensePlatesJson.Options)));
         Range = new DateRangeChoice(page.Time);
         Range.Changed += (_, _) => Reload();
         ResultChoices = new CheckChoiceList(PageTexts.AllResults, PageTexts.AllResults);
@@ -295,18 +353,11 @@ public sealed partial class LogViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasError))]
     public partial string? ErrorText { get; private set; }
 
-    /// <summary>What the last export saved ("Saved: the newest 10,000 of 48,213 reads").</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasNotice))]
-    public partial string? Notice { get; private set; }
-
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ExportCsvCommand), nameof(ExportPdfCommand))]
     public partial bool IsExporting { get; private set; }
 
     public bool HasError => !string.IsNullOrEmpty(ErrorText);
-
-    public bool HasNotice => !string.IsNullOrEmpty(Notice);
 
     /// <summary>Why reads are not stored now ("No folder for the log. Choose one in Settings.").</summary>
     public string? Problem => Status?.Problem;
@@ -660,7 +711,6 @@ public sealed partial class LogViewModel : ObservableObject
         }
 
         IsExporting = true;
-        Notice = null;
         ErrorText = null;
         try
         {
@@ -668,7 +718,6 @@ public sealed partial class LogViewModel : ObservableObject
             {
                 await using (target.ConfigureAwait(true))
                 {
-                    var total = (await _page.Client.CallAsync<CountReply>(LicensePlatesMethods.LogCount, query).ConfigureAwait(true)).Count;
                     var zone = _page.Time.LocalTimeZone;
                     var request = new LogExportRequest
                     {
@@ -677,6 +726,7 @@ public sealed partial class LogViewModel : ObservableObject
                         TimeZone = zone.Id,
                         UtcOffsetMinutes = (int)zone.GetUtcOffset(_page.Time.GetUtcNow()).TotalMinutes,
                         RangeName = Range.Preset is DateRangePreset.All or DateRangePreset.Custom ? null : Range.Text,
+                        Columns = Columns.VisibleKeys,
                     };
                     var download = await _page.Client.DownloadAsync(LicensePlatesMethods.ExportLog, request).ConfigureAwait(true);
                     await using (download.ConfigureAwait(true))
@@ -684,9 +734,8 @@ public sealed partial class LogViewModel : ObservableObject
                         await download.Content.CopyToAsync(target).ConfigureAwait(true);
                     }
 
-                    Notice = PageTexts.ExportDone + ": " + (total > LicensePlateLimits.MaxExportRows
-                        ? LicensePlateTexts.Newest(LicensePlateLimits.MaxExportRows, total)
-                        : LicensePlateTexts.Reads(total));
+                    // No status line after a saved export (decision 2026-11-27): the save dialog is enough; the file's head says
+                    // "The newest 10,000 of 48,213 reads" when there were more.
                 }
             }).ConfigureAwait(true);
         }
