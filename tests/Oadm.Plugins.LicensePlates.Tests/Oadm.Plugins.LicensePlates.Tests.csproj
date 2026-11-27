@@ -16,6 +16,9 @@
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
     <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+    <!-- The page's and the dialogs' headless screenshots. -->
+    <PackageReference Include="Avalonia.Headless" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
   </ItemGroup>
 
   <ItemGroup>
@@ -26,6 +29,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Oadm.Sdk.Testing\Oadm.Sdk.Testing.csproj" />
     <ProjectReference Include="..\..\plugins\Oadm.Plugins.LicensePlates\Oadm.Plugins.LicensePlates.csproj" />
+    <!-- Oadm.Client supplies the host theme (OadmTheme.axaml), the host page around the view and the shared runtime
+         assemblies (Avalonia, CommunityToolkit, SDK) the client part compiles against only. -->
+    <ProjectReference Include="..\..\src\Oadm.Client\Oadm.Client.csproj" />
+    <ProjectReference Include="..\..\plugins\Oadm.Plugins.LicensePlates.Client\Oadm.Plugins.LicensePlates.Client.csproj" />
   </ItemGroup>
 
   <ItemGroup>
