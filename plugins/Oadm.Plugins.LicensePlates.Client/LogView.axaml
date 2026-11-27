@@ -30,25 +30,31 @@
                   HorizontalAlignment="Left" VerticalAlignment="Center" MaxDropDownHeight="360" />
         <ComboBox x:Name="AreaFilter" Width="130" ItemsSource="{x:Static vm:LogViewModel.AreaChoices}" SelectedItem="{Binding SelectedArea}" VerticalAlignment="Center" />
         <ComboBox x:Name="DirectionFilter" Width="150" ItemsSource="{x:Static vm:LogViewModel.DirectionChoices}" SelectedItem="{Binding SelectedDirection}" VerticalAlignment="Center" />
-        <TextBox x:Name="CountryFilter" Width="110" Text="{Binding Country}" PlaceholderText="{x:Static vm:PageTexts.Country}" MaxLength="3" VerticalAlignment="Center" />
+        <ComboBox x:Name="CountryFilter" Width="170" ItemsSource="{Binding CountryChoices}" SelectedItem="{Binding SelectedCountry}" IsTextSearchEnabled="True"
+                  MaxDropDownHeight="360" VerticalAlignment="Center" ToolTip.Tip="Type to find a country" />
         <ui:ToolbarButton x:Name="VehicleButton" IconKey="car" Text="{Binding VehicleText}" VerticalAlignment="Center">
           <ui:ToolbarButton.Flyout>
             <Flyout Placement="BottomEdgeAlignedLeft">
-              <StackPanel x:Name="VehicleForm" Classes="form" Width="300">
+              <StackPanel x:Name="VehicleForm" Classes="form" Width="320">
                 <ui:FormField Label="{x:Static vm:PageTexts.View}" LabelWidth="70">
                   <ComboBox ItemsSource="{x:Static vm:LogViewModel.ViewChoices}" SelectedItem="{Binding SelectedView}" HorizontalAlignment="Stretch" />
                 </ui:FormField>
                 <ui:FormField Label="{x:Static vm:PageTexts.Type}" LabelWidth="70">
-                  <TextBox Text="{Binding VehicleType}" />
+                  <ComboBox x:Name="VehicleTypeFilter" ItemsSource="{Binding VehicleTypeChoices}" SelectedItem="{Binding SelectedVehicleType}" HorizontalAlignment="Stretch" />
                 </ui:FormField>
                 <ui:FormField Label="{x:Static vm:PageTexts.Colour}" LabelWidth="70">
-                  <TextBox Text="{Binding VehicleColor}" />
+                  <ComboBox x:Name="VehicleColorFilter" ItemsSource="{Binding VehicleColorChoices}" SelectedItem="{Binding SelectedVehicleColor}" HorizontalAlignment="Stretch" />
                 </ui:FormField>
-                <ui:FormField Label="{x:Static vm:PageTexts.Make}" LabelWidth="70">
-                  <TextBox Text="{Binding VehicleMake}" />
+                <ui:FormField Label="{x:Static vm:PageTexts.Make}" LabelWidth="70" Error="{Binding NamesProblem}">
+                  <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <ComboBox x:Name="MakeFilter" ItemsSource="{Binding MakeChoices}" SelectedItem="{Binding SelectedMake}" IsTextSearchEnabled="True" MaxDropDownHeight="360"
+                              HorizontalAlignment="Stretch" />
+                    <ui:ProgressRing Grid.Column="1" Width="16" Height="16" IsVisible="{Binding IsLoadingNames}" ToolTip.Tip="{x:Static vm:PageTexts.ReadingMakes}" />
+                  </Grid>
                 </ui:FormField>
                 <ui:FormField Label="{x:Static vm:PageTexts.Model}" LabelWidth="70">
-                  <TextBox Text="{Binding VehicleModel}" />
+                  <ComboBox x:Name="ModelFilter" ItemsSource="{Binding ModelChoices}" SelectedItem="{Binding SelectedModel}" IsEnabled="{Binding CanChooseModel}"
+                            IsTextSearchEnabled="True" MaxDropDownHeight="360" HorizontalAlignment="Stretch" />
                 </ui:FormField>
               </StackPanel>
             </Flyout>

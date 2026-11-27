@@ -58,6 +58,10 @@ public static class PageTexts
     public const string AllAreas = "All areas";
     public const string AllDirections = "All directions";
     public const string Country = "Country";
+    public const string AllCountries = "All countries";
+    public const string None = "None";
+    public const string State = "State";
+    public const string ReadingMakes = "Reading the makes";
     public const string Vehicle = "Vehicle";
     public const string View = "View";
     public const string Type = "Type";

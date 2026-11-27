@@ -16,6 +16,8 @@ public partial class LogView : UserControl
     public LogView()
     {
         InitializeComponent();
+        // The makes of the Vehicle filter are read when its flyout opens first, never before.
+        VehicleButton.Flyout?.Opened += (_, _) => (DataContext as LogViewModel)?.EnsureMakes();
         LogGrid.LoadingRow += (_, e) =>
         {
             if (DataContext is not LogViewModel vm || e.Row.DataContext is not LogRow row)

@@ -45,8 +45,6 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
         _video = page.Client.Context.LiveVideo?.Create(VideoPlace);
         _video?.Start(camera.DeviceId, 1);
         Validation
-            .Rule(nameof(Region), () => Region is { Length: > 0 } r && !r.All(c => char.IsLetterOrDigit(c) || c is '_' or '-') ? "Use letters, digits, _ and -." : null)
-            .Rule(nameof(CameraLocation), () => CameraLocation is { Length: > 0 } l && (l.Trim().Length != 3 || !l.Trim().All(char.IsLetter)) ? "Enter three letters, like AUT." : null)
             .Rule(nameof(PlateWidthMin), () => Range(PlateWidthMin, PlateWidthMax, 1, 2000))
             .Rule(nameof(PlateWidthMax), () => RangeMax(PlateWidthMin, PlateWidthMax, 1, 2000))
             .Rule(nameof(CharactersMin), () => Range(CharactersMin, CharactersMax, 1, 20))
@@ -83,9 +81,32 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
 
     // ---- recognition: only the fields the camera returned show ----
 
-    [ObservableProperty] public partial string? Region { get; set; }
+    /// <summary>ALPV's regions (<c>lprUseCase</c>); a code the list does not know shows as itself.</summary>
+    [ObservableProperty] public partial IReadOnlyList<CodeChoice> RegionChoices { get; private set; } = [];
 
-    [ObservableProperty] public partial string? CameraLocation { get; set; }
+    [ObservableProperty] public partial CodeChoice? SelectedRegion { get; set; }
+
+    /// <summary>None, then the countries of the chosen region (<c>CountryPriority</c>).</summary>
+    [ObservableProperty] public partial IReadOnlyList<CodeChoice> LocationChoices { get; private set; } = [];
+
+    [ObservableProperty] public partial CodeChoice? SelectedLocation { get; set; }
+
+    /// <summary>None, then the states of the chosen country (<c>StatePriority</c>), for the regions with states.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowState))]
+    public partial IReadOnlyList<CodeChoice> StateChoices { get; private set; } = [];
+
+    [ObservableProperty] public partial CodeChoice? SelectedState { get; set; }
+
+    /// <summary>The values Save sends (the camera's until the user picks another).</summary>
+    public string? Region { get; private set; }
+
+    public string? CameraLocation { get; private set; }
+
+    public string? State { get; private set; }
+
+    /// <summary>The State select shows: the camera has the field and the region and country have states (or the camera has one).</summary>
+    public bool ShowState => _read?.Recognition.State is not null && StateChoices.Count > 1;
 
     [ObservableProperty] public partial decimal? PlateWidthMin { get; set; }
 
@@ -242,8 +263,9 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
         var read = _read?.Recognition ?? new RecognitionSettings();
         var recognition = new RecognitionSettings
         {
-            Region = Changed(read.Region, Clean(Region)),
-            CameraLocation = Changed(read.CameraLocation, Clean(CameraLocation)?.ToUpperInvariant()),
+            Region = Changed(read.Region, Region),
+            CameraLocation = Changed(read.CameraLocation, CameraLocation),
+            State = Changed(read.State, State),
             PlateWidthMin = Changed(read.PlateWidthMin, Whole(PlateWidthMin)),
             PlateWidthMax = Changed(read.PlateWidthMax, Whole(PlateWidthMax)),
             CharactersMin = Changed(read.CharactersMin, Whole(CharactersMin)),
@@ -263,6 +285,7 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
     {
         try
         {
+            await _page.ListsTask.ConfigureAwait(true); // the lists of the selects (read once per page)
             SetupRead? read = null;
             ErrorText = await GuardedRun.RunAsync(async () =>
                 read = await _page.Client.CallAsync<SetupRead>(LicensePlatesMethods.ReadSetup, new DeviceRequest(Camera.DeviceId)).ConfigureAwait(true)).ConfigureAwait(true);
@@ -292,6 +315,8 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
         var r = read.Recognition;
         Region = r.Region;
         CameraLocation = r.CameraLocation;
+        State = r.State;
+        BuildRegions();
         PlateWidthMin = r.PlateWidthMin;
         PlateWidthMax = r.PlateWidthMax;
         CharactersMin = r.CharactersMin;
@@ -305,6 +330,7 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
         TagChoices.Set(_page.Tags.All.Select(t => new CheckChoice(t.Id, t.Name)), false, read.AllowedTags.Cast<object?>());
         OnPropertyChanged(nameof(HasRegion));
         OnPropertyChanged(nameof(HasCameraLocation));
+        OnPropertyChanged(nameof(ShowState));
         OnPropertyChanged(nameof(HasPlateWidth));
         OnPropertyChanged(nameof(HasCharacters));
         OnPropertyChanged(nameof(HasThreshold));
@@ -344,6 +370,108 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
     /// <summary>A refusal names its field like "recognition.plateWidthMax: ..." only in field errors; the rest belongs to no field.</summary>
     private void ShowServerError(string error) => ErrorText = error;
 
+    private bool _building;
+
+    partial void OnSelectedRegionChanged(CodeChoice? value)
+    {
+        if (_building || value?.Value is not { } region)
+        {
+            return;
+        }
+
+        Region = region;
+        BuildLocations(keepUnknown: false);
+    }
+
+    partial void OnSelectedLocationChanged(CodeChoice? value)
+    {
+        if (_building || value?.Value is not { } location)
+        {
+            return;
+        }
+
+        CameraLocation = location;
+        BuildStates(keepUnknown: false);
+    }
+
+    partial void OnSelectedStateChanged(CodeChoice? value)
+    {
+        if (!_building && value?.Value is { } state)
+        {
+            State = state;
+        }
+    }
+
+    private AlpvLists Lists => _page.Lists ?? new AlpvLists();
+
+    private int RegionCode => int.TryParse(Region, System.Globalization.NumberStyles.Integer, CultureInfo.InvariantCulture, out var code) ? code : -1;
+
+    /// <summary>The regions of ALPV's list; the camera's region shows as its code when the list does not know it.</summary>
+    private void BuildRegions()
+    {
+        var choices = Lists.Regions.Select(r => new CodeChoice(r.Code.ToString(CultureInfo.InvariantCulture), r.Name)).ToList();
+        if (Region is { Length: > 0 } region && choices.All(c => c.Value != region))
+        {
+            choices.Insert(0, new CodeChoice(region, region));
+        }
+
+        _building = true;
+        RegionChoices = choices;
+        SelectedRegion = choices.FirstOrDefault(c => c.Value == Region);
+        _building = false;
+        BuildLocations(keepUnknown: true);
+    }
+
+    /// <summary>
+    /// None and the countries of the region. The camera's own location stays shown (as its code when the list does not know
+    /// it) until the user changes the region; a new region clears a location it does not offer, and the state with it.
+    /// </summary>
+    private void BuildLocations(bool keepUnknown)
+    {
+        var choices = new List<CodeChoice> { new(AlpvLists.NoCountry, PageTexts.None) };
+        choices.AddRange(Lists.CountriesOf(RegionCode).Select(c => new CodeChoice(c.Code, c.Name)));
+        if (CameraLocation is { Length: > 0 } location && choices.All(c => !string.Equals(c.Value, location, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (keepUnknown)
+            {
+                choices.Insert(1, new CodeChoice(location, Lists.Country(location)?.Name ?? location));
+            }
+            else
+            {
+                CameraLocation = AlpvLists.NoCountry;
+            }
+        }
+
+        _building = true;
+        LocationChoices = choices;
+        SelectedLocation = choices.FirstOrDefault(c => string.Equals(c.Value, CameraLocation, StringComparison.OrdinalIgnoreCase)) ?? choices[0];
+        _building = false;
+        BuildStates(keepUnknown);
+    }
+
+    /// <summary>None and the states of the country, for the regions with states; elsewhere a state no longer offered is cleared.</summary>
+    private void BuildStates(bool keepUnknown)
+    {
+        var choices = new List<CodeChoice> { new(string.Empty, PageTexts.None) };
+        choices.AddRange(Lists.StatesOf(RegionCode, CameraLocation).Select(s => new CodeChoice(s.Code, s.Name)));
+        if (State is { Length: > 0 } state && choices.All(c => !string.Equals(c.Value, state, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (keepUnknown)
+            {
+                choices.Add(new CodeChoice(state, state));
+            }
+            else
+            {
+                State = string.Empty;
+            }
+        }
+
+        _building = true;
+        StateChoices = choices;
+        SelectedState = choices.FirstOrDefault(c => string.Equals(c.Value, State, StringComparison.OrdinalIgnoreCase)) ?? choices[0];
+        _building = false;
+    }
+
     private void Publish() => Areas = [.. _areas.OrderBy(a => a.Id).Select(a => a with { IsSelected = a.Id == _selected })];
 
     private static AlpvArea ToAlpv(AreaShape area) => new()
@@ -357,8 +485,6 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
     private static bool SameAreas(List<AreaShape> a, List<AreaShape> b) =>
         a.Count == b.Count && a.OrderBy(x => x.Id).Zip(b.OrderBy(x => x.Id)).All(p => p.First.Id == p.Second.Id
             && Math.Abs(p.First.Angle - p.Second.Angle) < 0.5 && ToAlpv(p.First).Corners.SequenceEqual(ToAlpv(p.Second).Corners));
-
-    private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static int? Whole(decimal? value) => value is { } v ? (int)Math.Round(v) : null;
 

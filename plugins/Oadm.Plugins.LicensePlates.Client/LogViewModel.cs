@@ -159,6 +159,12 @@ public sealed partial class LogViewModel : ObservableObject
         SelectedArea = AreaChoices[0];
         SelectedDirection = DirectionChoices[0];
         SelectedView = ViewChoices[0];
+        SelectedCountry = AllCountries;
+        SelectedVehicleType = AnyChoice;
+        SelectedVehicleColor = AnyChoice;
+        SelectedMake = AnyChoice;
+        SelectedModel = AnyChoice;
+        page.ListsChanged += (_, _) => OnListsChanged();
         Decode = bytes =>
         {
             using var stream = new MemoryStream(bytes);
@@ -200,22 +206,55 @@ public sealed partial class LogViewModel : ObservableObject
 
     [ObservableProperty] public partial string SearchText { get; set; } = string.Empty;
 
-    [ObservableProperty] public partial string Country { get; set; } = string.Empty;
+    /// <summary>All countries, then ALPV's countries by name (the value is the code the events carry); type to jump.</summary>
+    [ObservableProperty] public partial IReadOnlyList<CodeChoice> CountryChoices { get; private set; } = [AllCountries];
 
-    [ObservableProperty] public partial string VehicleType { get; set; } = string.Empty;
+    [ObservableProperty] public partial CodeChoice? SelectedCountry { get; set; }
 
-    [ObservableProperty] public partial string VehicleColor { get; set; } = string.Empty;
+    /// <summary>Any, then ALPV's vehicle types ("Car"; the value is ALPV's "CAR").</summary>
+    [ObservableProperty] public partial IReadOnlyList<CodeChoice> VehicleTypeChoices { get; private set; } = [AnyChoice];
 
-    [ObservableProperty] public partial string VehicleMake { get; set; } = string.Empty;
+    [ObservableProperty] public partial CodeChoice? SelectedVehicleType { get; set; }
 
-    [ObservableProperty] public partial string VehicleModel { get; set; } = string.Empty;
+    [ObservableProperty] public partial IReadOnlyList<CodeChoice> VehicleColorChoices { get; private set; } = [AnyChoice];
 
-    /// <summary>"Vehicle", "Vehicle: rear, car" on the flyout's button.</summary>
+    [ObservableProperty] public partial CodeChoice? SelectedVehicleColor { get; set; }
+
+    /// <summary>Any, then the makes ALPV lists, read from a connected camera when the Vehicle flyout opens.</summary>
+    [ObservableProperty] public partial IReadOnlyList<CodeChoice> MakeChoices { get; private set; } = [AnyChoice];
+
+    [ObservableProperty] public partial CodeChoice? SelectedMake { get; set; }
+
+    [ObservableProperty] public partial IReadOnlyList<CodeChoice> ModelChoices { get; private set; } = [AnyChoice];
+
+    [ObservableProperty] public partial CodeChoice? SelectedModel { get; set; }
+
+    /// <summary>The makes or models are read (a ring beside Make; the page never waits for it).</summary>
+    [ObservableProperty] public partial bool IsLoadingNames { get; private set; }
+
+    /// <summary>Why the makes could not be read ("No camera is connected."), below Make.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNamesProblem))]
+    public partial string? NamesProblem { get; private set; }
+
+    public bool HasNamesProblem => !string.IsNullOrEmpty(NamesProblem);
+
+    /// <summary>A model is chosen only after a make.</summary>
+    public bool CanChooseModel => SelectedMake?.Value is not null;
+
+    /// <summary>The read of the makes or models that runs now (tests wait for it).</summary>
+    public Task NamesTask { get; private set; } = Task.CompletedTask;
+
+    private static readonly CodeChoice AllCountries = new(null, PageTexts.AllCountries);
+
+    private static readonly CodeChoice AnyChoice = new(null, PageTexts.Any);
+
+    /// <summary>"Vehicle", "Vehicle: rear, Car" on the flyout's button.</summary>
     public string VehicleText
     {
         get
         {
-            var parts = new[] { SelectedView?.Value is null ? null : SelectedView.Name.ToLowerInvariant(), VehicleType, VehicleColor, VehicleMake, VehicleModel }
+            var parts = new[] { SelectedView?.Value is null ? null : SelectedView.Name.ToLowerInvariant(), Named(SelectedVehicleType), Named(SelectedVehicleColor), Named(SelectedMake), Named(SelectedModel) }
                 .Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p!.Trim()).ToList();
             return parts.Count == 0 ? PageTexts.Vehicle : PageTexts.Vehicle + ": " + string.Join(", ", parts);
         }
@@ -223,9 +262,11 @@ public sealed partial class LogViewModel : ObservableObject
 
     /// <summary>A filter other than the time range is set (Clear filters is on).</summary>
     public bool HasFilters => !Range.IsAll || !ResultChoices.All.Chosen || !TagChoices.All.Chosen || SelectedArea?.Value is not null
-        || SelectedDirection?.Value is not null || SelectedView?.Value is not null || !string.IsNullOrWhiteSpace(Country)
-        || !string.IsNullOrWhiteSpace(VehicleType) || !string.IsNullOrWhiteSpace(VehicleColor) || !string.IsNullOrWhiteSpace(VehicleMake)
-        || !string.IsNullOrWhiteSpace(VehicleModel) || !string.IsNullOrWhiteSpace(SearchText);
+        || SelectedDirection?.Value is not null || SelectedView?.Value is not null || SelectedCountry?.Value is not null
+        || SelectedVehicleType?.Value is not null || SelectedVehicleColor?.Value is not null || SelectedMake?.Value is not null
+        || SelectedModel?.Value is not null || !string.IsNullOrWhiteSpace(SearchText);
+
+    private static string? Named(CodeChoice? choice) => choice?.Value is null ? null : choice.Name;
 
     public string CameraChoiceText => _page.CameraChoice.ButtonText;
 
@@ -324,12 +365,12 @@ public sealed partial class LogViewModel : ObservableObject
             Tags = TagChoices.All.Chosen ? null : [.. TagChoices.ChosenValues.OfType<string>()],
             Area = SelectedArea?.Value,
             Direction = SelectedDirection?.Value,
-            Country = Text(Country)?.ToUpperInvariant(),
+            Country = SelectedCountry?.Value,
             View = SelectedView?.Value,
-            VehicleType = Text(VehicleType),
-            VehicleColor = Text(VehicleColor),
-            VehicleMake = Text(VehicleMake),
-            VehicleModel = Text(VehicleModel),
+            VehicleType = SelectedVehicleType?.Value,
+            VehicleColor = SelectedVehicleColor?.Value,
+            VehicleMake = SelectedMake?.Value,
+            VehicleModel = SelectedModel?.Value,
             Search = Text(SearchText),
         };
     }
@@ -438,15 +479,88 @@ public sealed partial class LogViewModel : ObservableObject
 
     partial void OnSearchTextChanged(string value) => ReloadAfterTyping();
 
-    partial void OnCountryChanged(string value) => ReloadAfterTyping();
+    partial void OnSelectedCountryChanged(CodeChoice? value) => Reload();
 
-    partial void OnVehicleTypeChanged(string value) => ReloadAfterTyping(vehicle: true);
+    partial void OnSelectedVehicleTypeChanged(CodeChoice? value) => VehicleChanged();
 
-    partial void OnVehicleColorChanged(string value) => ReloadAfterTyping(vehicle: true);
+    partial void OnSelectedVehicleColorChanged(CodeChoice? value) => VehicleChanged();
 
-    partial void OnVehicleMakeChanged(string value) => ReloadAfterTyping(vehicle: true);
+    partial void OnSelectedModelChanged(CodeChoice? value) => VehicleChanged();
 
-    partial void OnVehicleModelChanged(string value) => ReloadAfterTyping(vehicle: true);
+    partial void OnSelectedMakeChanged(CodeChoice? value)
+    {
+        OnPropertyChanged(nameof(CanChooseModel));
+        ModelChoices = [AnyChoice];
+        SelectedModel = AnyChoice;
+        if (value?.Value is { } make)
+        {
+            NamesTask = LoadNamesAsync(make);
+        }
+
+        VehicleChanged();
+    }
+
+    private void VehicleChanged()
+    {
+        OnPropertyChanged(nameof(VehicleText));
+        Reload();
+    }
+
+    /// <summary>The Vehicle flyout opens: the makes are read once (never blocking the page).</summary>
+    public void EnsureMakes()
+    {
+        if (MakeChoices.Count <= 1 && !IsLoadingNames && _page.MayViewLog)
+        {
+            NamesTask = LoadNamesAsync(null);
+        }
+    }
+
+    /// <summary>ALPV's lists arrived: the countries, vehicle types and colours of the filters.</summary>
+    private void OnListsChanged()
+    {
+        if (_page.Lists is not { } lists)
+        {
+            return;
+        }
+
+        CountryChoices = [AllCountries, .. lists.Countries.OrderBy(c => c.Name, StringComparer.CurrentCultureIgnoreCase).Select(c => new CodeChoice(c.Code, c.Name))];
+        VehicleTypeChoices = [AnyChoice, .. lists.VehicleTypes.Select(t => new CodeChoice(t.Value, t.Name))];
+        VehicleColorChoices = [AnyChoice, .. lists.VehicleColors.Select(c => new CodeChoice(c.Value, c.Name))];
+        SelectedCountry = CountryChoices.FirstOrDefault(c => c.Value == SelectedCountry?.Value) ?? AllCountries;
+        SelectedVehicleType = VehicleTypeChoices.FirstOrDefault(c => c.Value == SelectedVehicleType?.Value) ?? AnyChoice;
+        SelectedVehicleColor = VehicleColorChoices.FirstOrDefault(c => c.Value == SelectedVehicleColor?.Value) ?? AnyChoice;
+    }
+
+    /// <summary>The makes (no <paramref name="make"/>) or the models of a make, from a connected camera of the camera choice.</summary>
+    private async Task LoadNamesAsync(string? make)
+    {
+        IsLoadingNames = true;
+        NamesProblem = null;
+        try
+        {
+            var choice = _page.CameraChoice;
+            var cameras = choice.Choice.Kind == DeviceChoiceKind.All ? null : choice.Resolve().Select(d => d.Id).ToList();
+            VehicleNamesReply? reply = null;
+            var error = await GuardedRun.RunAsync(async () => reply = await _page.Client.CallAsync<VehicleNamesReply>(
+                make is null ? LicensePlatesMethods.VehicleMakes : LicensePlatesMethods.VehicleModels, new VehicleNamesRequest(cameras, make)).ConfigureAwait(true)).ConfigureAwait(true);
+            NamesProblem = error ?? reply?.Problem;
+            var names = reply?.Names ?? [];
+            if (make is null)
+            {
+                MakeChoices = [AnyChoice, .. names.Select(n => new CodeChoice(n, n))];
+                SelectedMake = MakeChoices.FirstOrDefault(c => c.Value == SelectedMake?.Value) ?? AnyChoice;
+            }
+            else if (SelectedMake?.Value == make)
+            {
+                ModelChoices = [AnyChoice, .. names.Select(n => new CodeChoice(n, n))];
+                SelectedModel = AnyChoice;
+            }
+        }
+        finally
+        {
+            IsLoadingNames = false;
+        }
+    }
 
     partial void OnSelectedAreaChanged(FilterChoice<int?>? value) => Reload();
 
@@ -497,11 +611,11 @@ public sealed partial class LogViewModel : ObservableObject
             SelectedArea = AreaChoices[0];
             SelectedDirection = DirectionChoices[0];
             SelectedView = ViewChoices[0];
-            Country = string.Empty;
-            VehicleType = string.Empty;
-            VehicleColor = string.Empty;
-            VehicleMake = string.Empty;
-            VehicleModel = string.Empty;
+            SelectedCountry = AllCountries;
+            SelectedVehicleType = AnyChoice;
+            SelectedVehicleColor = AnyChoice;
+            SelectedMake = AnyChoice;
+            SelectedModel = AnyChoice;
             SearchText = string.Empty;
         }
         finally

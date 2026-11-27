@@ -128,6 +128,15 @@ public sealed partial class LicensePlatesViewModel : ObservableObject, IDisposab
 
     public bool SomeNotConnected => Cameras.Total > 0 && Cameras.Connected < Cameras.Total;
 
+    /// <summary>ALPV's lists (regions, countries, states, vehicle types and colours) from the server part; null until read.</summary>
+    public AlpvLists? Lists { get; private set; }
+
+    /// <summary>The lists were read.</summary>
+    public event EventHandler? ListsChanged;
+
+    /// <summary>The read of the lists (once per page; tests and the Set up dialog wait for it).</summary>
+    public Task ListsTask { get; private set; } = Task.CompletedTask;
+
     /// <summary>The read of the tags that runs now (tests wait for it).</summary>
     public Task TagsTask { get; private set; } = Task.CompletedTask;
 
@@ -141,6 +150,11 @@ public sealed partial class LicensePlatesViewModel : ObservableObject, IDisposab
 
         _active = new CancellationTokenSource();
         TagsTask = ReloadTagsAsync();
+        if (Lists is null)
+        {
+            ListsTask = LoadListsAsync();
+        }
+
         Cameras.RequestReload();
         Plates.RequestReload();
         if (MayViewLog)
@@ -170,6 +184,15 @@ public sealed partial class LicensePlatesViewModel : ObservableObject, IDisposab
 
     /// <summary>Reads the plate tags again (after a change of the tag dialog or a <c>plates</c> event).</summary>
     public Task ReloadTagsAsync() => TagsTask = LoadTagsAsync();
+
+    private async Task LoadListsAsync()
+    {
+        await GuardedRun.RunAsync(async () =>
+        {
+            Lists = await Client.CallAsync<AlpvLists>(LicensePlatesMethods.AlpvLists, null).ConfigureAwait(true);
+            ListsChanged?.Invoke(this, EventArgs.Empty);
+        }).ConfigureAwait(true);
+    }
 
     private async Task LoadTagsAsync()
     {

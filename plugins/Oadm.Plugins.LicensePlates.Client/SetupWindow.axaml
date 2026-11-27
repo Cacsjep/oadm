@@ -47,10 +47,15 @@
             <StackPanel Classes="form">
               <TextBlock Classes="cardTitle" Text="{x:Static vm:PageTexts.Recognition}" />
               <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.Region}" IsVisible="{Binding HasRegion}">
-                <TextBox x:Name="RegionBox" Text="{Binding Region}" MaxLength="40" />
+                <ComboBox x:Name="RegionBox" ItemsSource="{Binding RegionChoices}" SelectedItem="{Binding SelectedRegion}" HorizontalAlignment="Stretch" MaxDropDownHeight="360" />
               </ui:FormField>
               <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.CameraLocation}" IsVisible="{Binding HasCameraLocation}">
-                <TextBox x:Name="LocationBox" Text="{Binding CameraLocation}" MaxLength="3" />
+                <ComboBox x:Name="LocationBox" ItemsSource="{Binding LocationChoices}" SelectedItem="{Binding SelectedLocation}" HorizontalAlignment="Stretch"
+                          IsTextSearchEnabled="True" MaxDropDownHeight="360" />
+              </ui:FormField>
+              <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.State}" IsVisible="{Binding ShowState}">
+                <ComboBox x:Name="StateBox" ItemsSource="{Binding StateChoices}" SelectedItem="{Binding SelectedState}" HorizontalAlignment="Stretch"
+                          IsTextSearchEnabled="True" MaxDropDownHeight="360" />
               </ui:FormField>
               <Grid ColumnDefinitions="*,*" ColumnSpacing="8" IsVisible="{Binding HasPlateWidth}">
                 <ui:FormField Classes="wide" LabelAbove="True" Label="{x:Static vm:PageTexts.PlateWidth}" VerticalAlignment="Top">
