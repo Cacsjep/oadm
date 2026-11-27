@@ -1,0 +1,1 @@
+{ "roi": [ { "id": 1, "name": "roi1", "type": "polygon", "active": true, "angle": 180000, "coordinates": [ [ 50, 50 ], [ 950, 50 ], [ 950, 950 ], [ 50, 950 ] ] }, { "id": 2, "name": "roi1", "type": "polygon", "active": false, "angle": 180000, "coordinates": [ [ 525, 50 ], [ 950, 50 ], [ 950, 950 ], [ 525, 950 ] ] } ] }

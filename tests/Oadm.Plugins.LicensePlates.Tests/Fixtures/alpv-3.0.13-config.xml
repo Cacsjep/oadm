@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?><configuration><roi><left>9</left>
+<top>9</top>
+<right>989</right>
+<bottom>989</bottom>
+<width>989</width>
+<height>989</height>
+<angle>0</angle>
+</roi>
+<roitwo><left>9</left>
+<top>9</top>
+<right>990</right>
+<bottom>990</bottom>
+<width>989</width>
+<height>989</height>
+<angle>0</angle>
+</roitwo>
+<direction><angle>180000</angle>
+</direction>
+<direction2><angle>180000</angle>
+</direction2>
+<active_roi>1</active_roi>
+<roi1_view>2</roi1_view>
+<roi2_view>2</roi2_view>
+<plate><plate_min_size_percent>300</plate_min_size_percent>
+<plate_min_size>50</plate_min_size>
+<plate_max_size>300</plate_max_size>
+<plate_min_size_symb>4</plate_min_size_symb>
+<plate_max_size_symb>10</plate_max_size_symb>
+<threshold>0.250000</threshold>
+<mmr_threshold>10</mmr_threshold>
+</plate>
+<sdCardStatus>1</sdCardStatus>
+<mmr_enabled>1</mmr_enabled>
+<enableCarAnalytics>0</enableCarAnalytics>
+<enableOnlyOnePlate>1</enableOnlyOnePlate>
+<minRowForReliable>1</minRowForReliable>
+<timeToReliable>1000</timeToReliable>
+<paDebugCSV>0</paDebugCSV>
+<cropModeFlag toggle="yes">0</cropModeFlag>
+<smallPicModeFlag toggle="no">1</smallPicModeFlag>
+<rulesEnableFlag toggle="yes">1</rulesEnableFlag>
+<dumpYUVFlag toggle="yes">0</dumpYUVFlag>
+<detectorOnlyFlag toggle="yes">0</detectorOnlyFlag>
+<saveReportsFlag toggle="yes">0</saveReportsFlag>
+<showColorFlag toggle="yes">0</showColorFlag>
+<showColorConfidenceFlag toggle="yes">0</showColorConfidenceFlag>
+<showPlateConfFlag toggle="yes">0</showPlateConfFlag>
+<showDirectionFlag toggle="yes">0</showDirectionFlag>
+<showProcessedTimeFlag toggle="yes">0</showProcessedTimeFlag>
+<showDebug toggle="yes">0</showDebug>
+<ttl>2000</ttl>
+<result_delay>0</result_delay>
+<barrier_mode>0</barrier_mode>
+<barrier_priority>0</barrier_priority>
+<barrier_vehicle_direction>0</barrier_vehicle_direction>
+<barrier_roi>0</barrier_roi>
+<ipc_login>fixture-secret-ipc_login</ipc_login>
+<ipc_password>fixture-secret-ipc_password</ipc_password>
+<relay_port>2</relay_port>
+<relay_port_virtual>-1</relay_port_virtual>
+<relay_type>0</relay_type>
+<full_frame>0</full_frame>
+<full_frame_downscale>2</full_frame_downscale>
+<bw_ldist>1</bw_ldist>
+<bw_strict>0</bw_strict>
+<getframe_driver>0</getframe_driver>
+<lpr_text_overlay>0</lpr_text_overlay>
+<lpr_text_overlay_duration>2</lpr_text_overlay_duration>
+<lpr_text_overlay_format>JUYgJVggeyVwbGF0ZX0=</lpr_text_overlay_format>
+<lpr_text_overlay_identity>0</lpr_text_overlay_identity>
+<regional_settings>metric</regional_settings>
+<config_version>1</config_version>
+<frame_rotate>0</frame_rotate>
+<keep_events>0</keep_events>
+<keep_events_period>0</keep_events_period>
+<stored_events>4</stored_events>
+<defaultActionID>3</defaultActionID>
+<pulseDuration>3000</pulseDuration>
+<lprUseCase>5</lprUseCase>
+<debugLevel>1</debugLevel>
+<login>fixture-secret-login</login>
+<password>fixture-secret-password</password>
+<security><use_https>1</use_https>
+<selfsigned_allow>0</selfsigned_allow>
+<curl_CApath>/etc/certs/mgmt/ca/</curl_CApath>
+<curl_CApath_enabled>1</curl_CApath_enabled>
+</security>
+<camera><iskit>0</iskit>
+<isparamsoptimal>0</isparamsoptimal>
+<isRadar>0</isRadar>
+<wdr>0</wdr>
+<contrast>49</contrast>
+<localcontrast>3</localcontrast>
+<tonemapping>13</tonemapping>
+<maxgain>51</maxgain>
+<localDateTime>2026-11-27T13:44:19+01:00</localDateTime>
+<videoChannelId>1</videoChannelId>
+<maxexposuretime>1/100</maxexposuretime>
+<recommended><wdr>0</wdr>
+<maxexposuretime>1/500</maxexposuretime>
+<maxgain>21</maxgain>
+<contrast>65</contrast>
+<localcontrast>65</localcontrast>
+<tonemapping>20</tonemapping>
+</recommended>
+</camera>
+<initialsetupdone>1</initialsetupdone>
+<initialsetupstage>0</initialsetupstage>
+<CountryPriority>AUT</CountryPriority>
+<StatePriority></StatePriority>
+<curl_connect_timeout>10000</curl_connect_timeout>
+<curl_timeout>180</curl_timeout>
+<curl_verbose>0</curl_verbose>
+<events_storage_size>10</events_storage_size>
+<resolution><width access="priv">1920</width>
+<height access="priv">1080</height>
+<fk access="priv">0</fk>
+<ipc_password_valid access="priv">1</ipc_password_valid>
+</resolution>
+<configFileName access="const">localdata/cfg/fflprapp_config.xml</configFileName>
+<sqliteName access="const">/var/spool/storage/SD_DISK/fflprapp/fflprapp_events_mmr04.db</sqliteName>
+<imagesPath access="priv">/var/spool/storage/SD_DISK/fflprapp/images</imagesPath>
+<logsPath access="priv">/var/spool/storage/SD_DISK/fflprapp/logs</logsPath>
+<exportPath access="priv">export</exportPath>
+<maxEventsCount access="priv">100000</maxEventsCount>
+<logfileSize access="priv">1000</logfileSize>
+<logfilesNum access="priv">10</logfilesNum>
+<httpPort access="priv">8765</httpPort>
+<documentRoot access="priv">.</documentRoot>
+</configuration>
