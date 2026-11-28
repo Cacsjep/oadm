@@ -2,7 +2,6 @@ using System.Globalization;
 using System.Text.Json;
 
 using Avalonia.Media;
-using Avalonia.Media.Imaging;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -233,11 +232,7 @@ public sealed partial class LogViewModel : ObservableObject
         SelectedModel = AnyChoice;
         page.ListsChanged += (_, _) => OnListsChanged();
         Filters = BuildFilters();
-        Decode = bytes =>
-        {
-            using var stream = new MemoryStream(bytes);
-            return new Bitmap(stream);
-        };
+        Decode = PlateCrop.Decode;
     }
 
     public RangeObservableCollection<LogRow> Rows { get; } = [];

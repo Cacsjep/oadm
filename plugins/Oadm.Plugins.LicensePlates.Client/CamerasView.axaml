@@ -27,7 +27,7 @@
 
       <StackPanel Grid.Row="1" Spacing="6">
         <ui:StatusChip x:Name="LogProblemChip" Text="{Binding LogProblem}" IsWarning="True" MaxLines="2" IsVisible="{Binding HasLogProblem}" />
-        <ui:StatusChip x:Name="NoticeChip" Text="{Binding Notice}" IsAccent="True" IsVisible="{Binding HasNotice}" />
+        <ui:StatusChip x:Name="NoticeChip" Text="{Binding Notice}" IsInfo="True" IsVisible="{Binding HasNotice}" />
       </StackPanel>
 
       <Panel Grid.Row="2">

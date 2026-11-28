@@ -147,4 +147,46 @@ public sealed class SetupAndColumnsTests
         Assert.Equal("27 Nov 2026 14:04:14", page.Log.Rows[0].TimeText); // today too
         Assert.Equal(LogColumns.All.Count, await Headless.Session.Dispatch(() => new LogView().Grid.Columns.Count(c => c.Tag is string), CancellationToken.None));
     }
+
+    /// <summary>After another rail page the Log's chooser still hides and shows columns (it stopped once the page was left).</summary>
+    [Fact]
+    public async Task The_chooser_still_works_after_another_page()
+    {
+        var ctx = Samples.Context();
+        var page = new LicensePlatesViewModel(ctx, Samples.Clock());
+        page.Log.Decode = _ => null;
+        var shown = await Headless.Session.Dispatch(async () =>
+        {
+            var view = new LicensePlatesView { DataContext = page };
+            var window = Headless.Host(view);
+            window.Show();
+            await Samples.SettleAsync(page);
+            Headless.Pump();
+            var host = window.Content;
+            window.Content = new TextBlock(); // another rail page
+            Headless.Pump();
+            window.Content = host; // back
+            Headless.Pump();
+
+            page.Log.Columns.Find(LogColumns.Tags)!.IsVisible = false;
+            page.Log.Columns.Find(LogColumns.VehicleMake)!.IsVisible = true;
+            Headless.Pump();
+            var grid = view.FindControl<LogView>("LogPage")!.Grid;
+            var keys = grid.Columns.Where(c => c.IsVisible).Select(c => (string)c.Tag!).ToList();
+            page.Deactivate();
+            window.Close();
+            return keys;
+        }, CancellationToken.None);
+
+        Assert.DoesNotContain(LogColumns.Tags, shown);
+        Assert.Contains(LogColumns.VehicleMake, shown);
+    }
+
+    [Theory]
+    [InlineData(new byte[] { 255, 121, 255, 255, 250, 124, 252, 255 }, true)] // ALPV's last column
+    [InlineData(new byte[] { 255, 121, 255, 255, 49, 51, 48, 255 }, false)] // one dark pixel
+    [InlineData(new byte[] { 255, 255, 255, 255, 255, 255, 255, 255 }, false)] // a white plate edge
+    [InlineData(new byte[0], false)]
+    public void A_crop_loses_only_a_last_column_that_is_magenta_from_top_to_bottom(byte[] column, bool magenta) =>
+        Assert.Equal(magenta, PlateCrop.IsMagentaColumn(column));
 }
