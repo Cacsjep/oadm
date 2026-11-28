@@ -200,16 +200,11 @@ public sealed class GridColumnBinder : IDisposable
         ArgumentNullException.ThrowIfNull(grid);
         ArgumentNullException.ThrowIfNull(layout);
         var binder = new GridColumnBinder(grid, layout, hidden, fixedWidth ?? new HashSet<string>(StringComparer.Ordinal));
-        binder.Apply();
-        foreach (var option in layout.Columns)
-        {
-            option.PropertyChanged += binder.OnOptionChanged;
-        }
-
-        binder._listens = true;
+        binder.StartListening();
         grid.ColumnReordered += binder.OnColumnReordered;
         grid.AddHandler(InputElement.PointerReleasedEvent, binder.OnPointerReleased, RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
         grid.DetachedFromVisualTree += binder.OnDetached;
+        grid.AttachedToVisualTree += binder.OnAttached;
         return binder;
     }
 
@@ -240,9 +235,32 @@ public sealed class GridColumnBinder : IDisposable
         _grid.ColumnReordered -= OnColumnReordered;
         _grid.RemoveHandler(InputElement.PointerReleasedEvent, OnPointerReleased);
         _grid.DetachedFromVisualTree -= OnDetached;
+        _grid.AttachedToVisualTree -= OnAttached;
     }
 
     private static string? KeyOf(DataGridColumn column) => column.Tag as string;
+
+    /// <summary>
+    /// The grid is shown again (a tab switched back): the chooser's changes while it was away apply, and it follows the
+    /// chooser again.
+    /// </summary>
+    private void OnAttached(object? sender, VisualTreeAttachmentEventArgs e) => StartListening();
+
+    private void StartListening()
+    {
+        if (_listens || _disposed)
+        {
+            return;
+        }
+
+        Apply();
+        foreach (var option in _layout.Columns)
+        {
+            option.PropertyChanged += OnOptionChanged;
+        }
+
+        _listens = true;
+    }
 
     private void OnColumnReordered(object? sender, DataGridColumnEventArgs e) => Capture();
 

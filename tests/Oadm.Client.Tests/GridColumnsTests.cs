@@ -63,6 +63,36 @@ public sealed class GridColumnsTests
         Assert.True(done);
     }
 
+    /// <summary>A tab switch takes the grid away and back: the chooser still hides and shows its columns.</summary>
+    [Fact]
+    public async Task The_chooser_still_works_after_the_grid_was_away()
+    {
+        var done = await HeadlessSession.Shared.Dispatch(() =>
+        {
+            var grid = Grid(3);
+            var layout = new GridColumnLayout([.. Enumerable.Range(0, 3).Select(i => new GridColumnDefinition("c" + i, "Column " + i))], [], _ => { });
+            using var binder = GridColumnBinder.Attach(grid, layout);
+            var window = new Window { Width = 800, Height = 400, Content = grid };
+            window.Show();
+            Pump();
+
+            window.Content = new TextBlock(); // another page
+            Pump();
+            layout.Find("c1")!.IsVisible = false; // chosen while away
+            window.Content = grid; // back
+            Pump();
+            Assert.False(grid.Columns[1].IsVisible);
+
+            layout.Find("c2")!.IsVisible = false;
+            layout.Find("c1")!.IsVisible = true;
+            Pump();
+            Assert.Equal([true, true, false], grid.Columns.Select(c => c.IsVisible));
+            window.Close();
+            return Task.FromResult(true);
+        }, CancellationToken.None);
+        Assert.True(done);
+    }
+
     [Fact]
     public void The_saved_order_comes_back_and_reset_restores_the_default_columns()
     {
