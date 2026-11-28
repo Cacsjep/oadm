@@ -14,6 +14,7 @@ Each entry is one short line in plain words (what the user gets, not how); no ne
 ### Changed
 
 - Plugins page: plugins are tiles you click to turn on or off, with a search and filters for on, off and optional plugins.
+- Snapshot report and Text overlays are under Maintenance.
 
 ## [5.4.3] - 2026-11-25
 

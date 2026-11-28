@@ -1,0 +1,199 @@
+---
+title: License Plate Center
+description: One plate list with tags for every camera with AXIS License Plate Verifier, a live log of every read and events for your rules.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import { Image } from 'astro:assets';
+import log from '../../../assets/screens/license-plates-log.png';
+import plates from '../../../assets/screens/license-plates-plates.png';
+import wildcard from '../../../assets/screens/license-plates-plate-editor-wildcard-hint.png';
+import importPreview from '../../../assets/screens/license-plates-import-preview.png';
+import cameras from '../../../assets/screens/license-plates-cameras.png';
+import setup from '../../../assets/screens/license-plates-setup.png';
+import stats from '../../../assets/screens/license-plates-stats-12-cameras.png';
+import settings from '../../../assets/screens/license-plates-settings.png';
+
+AXIS License Plate Verifier (ALPV) reads plates on the camera. Each camera keeps its own lists. License Plate Center keeps
+**one plate list** for all of your cameras. **Tags** decide on which cameras a plate is allowed. OADM decides on every
+read whether the plate is allowed there, shows every read in a live log and sends events to your
+[event rules](../event-rules/), for example to open a barrier.
+
+License Plate Center is off by default. An administrator turns it on on the **Plugins** page. It is in the navigation
+rail under Integrations.
+
+<Aside>
+License Plate Center works with ALPV 3 only. ALPV 3.1.7 needs AXIS OS 12.11.77 or newer. Install ALPV and its license
+with the [Applications](../../tasks/applications/) tasks.
+</Aside>
+
+## How it works
+
+- A plate is in the list once, with its tags, for example **Garage Nord** and **Staff**.
+- Each camera has its **allowed tags**. A plate is allowed on a camera when it has one of them. A camera without allowed
+  tags allows no plate.
+- **Allowed from** and **Allowed to** limit a plate to a time, for example a visitor for three days.
+- OADM connects to every camera itself. Nothing is set up on the camera for it, and the server needs no open port.
+- The cameras' own lists (Allow, Block, Custom) and ALPV's access control (relay, I/O, door controller) are never read
+  or changed.
+
+Every read gets one result:
+
+| Result | When |
+| --- | --- |
+| **Allowed** | The plate is in the list and allowed on this camera now. |
+| **Not allowed** | The plate is in the list, but not on this camera, not yet or no longer. |
+| **Unknown plate** | The plate is not in the list. |
+
+A plate the camera reads exactly as in the list is decided at once. Other reads wait up to 3 seconds for the camera's
+best read of that car, so a misread at the first sight does not count.
+
+## Get started
+
+<Steps>
+
+1. On the **Cameras** tab, click **Add cameras** and choose the cameras with ALPV.
+2. Select a camera and click **Set up**: draw the areas, check the region and the camera location, choose the
+   **Allowed tags** and click **Save**.
+3. An administrator chooses the folder for the log in **Settings**. Without a folder, nothing is kept, but the events
+   still fire.
+4. On the **Plates** tab, add your plates with their tags, or **Import** a list.
+5. Watch the reads arrive on the **Log** tab.
+
+</Steps>
+
+## Log
+
+<Image src={log} alt="The Log tab with reads, plate pictures, results and confidence" class="screen" />
+
+Every read, newest first and live. **Pause** stops the list from moving; reads are still kept.
+
+- **Plate** is the plate of the list, or what the camera read when no plate matched. A warning triangle means the camera
+  read it with a small difference; the tooltip shows what it read.
+- **Result** is an icon: green check Allowed, red Not allowed, grey question mark Unknown plate. The tooltip says why,
+  for example "Not allowed, ended 31 Oct 2026".
+- **Confidence** is how sure the camera was, 0 to 100. Below 75 it shows in orange, below 60 in red.
+- A row "Connection lost from 13:58 to 14:06" shows when OADM could not hear a camera. Reads of that time are lost.
+
+**Filter** adds a filter: time, result, tags, area, direction, country or vehicle (type, colour, make, model). Each
+filter shows as a chip below the toolbar. Click a chip to change it, its x to remove it. The search finds a plate from
+its start or a name of the list.
+
+**Choose columns** (the icon left of the search) shows more columns, such as Read as, Country or Vehicle make. Drag a
+header to move a column. OADM remembers your columns on this computer.
+
+**Add to plates** adds the selected unknown plate to the list. **Export** saves what the log shows, at most the newest
+10,000 reads, as **CSV** or **PDF** with the columns you chose. The PDF has the plate pictures when it has at most 2,000
+reads and 11 other columns.
+
+## Plates
+
+<Image src={plates} alt="The Plates tab with plates, names, tags and dates" class="screen" />
+
+- **Add plate**: the plate, a name, tags, **Allowed from** and **Allowed to** (both optional). With **Delete when it
+  ends**, OADM deletes the plate after its Allowed to. Without it, the plate stays and is Not allowed from then on.
+- A plate is stored in capitals, without spaces, dashes or dots: "W-123 45 A" becomes W12345A.
+- **Change tags** adds or removes tags of the selected plates. **Manage tags** renames tags and changes their colours.
+- **Delete** deletes the selected plates.
+
+### Company cars
+
+<Image src={wildcard} alt="The Add plate dialog with the plate AXIS12** and the hint below it" class="screen" />
+
+One entry for many cars: `*` stands for exactly one letter or digit. `AXIS12**` allows AXIS1234 and AXIS12AB, not
+AXIS123 or AXIS12345. Combine it with Allowed to for a fleet that ends at a date.
+
+- A wildcard plate needs at least 3 letters or digits besides `*`. At most 1,000 wildcard plates.
+- A plate entered on its own always decides first. If AXIS1234 ended yesterday, it is Not allowed, even though AXIS12**
+  would allow it.
+- The Log shows what the camera read (AXIS1234); the tooltip of the plate says "Matches AXIS12**".
+
+### Import and export
+
+<Image src={importPreview} alt="The import preview with new, changed and refused rows" class="screen" />
+
+**Import** takes a CSV file: ALPV's own export (plate, date, description; the description becomes the name) or OADM's
+export. Before anything is saved, the dialog shows the new, changed and refused plates. Choose **Tags for every plate**
+to tag all imported plates at once. **Export** saves the list as CSV.
+
+## Cameras
+
+<Image src={cameras} alt="The Cameras tab with status, allowed tags and image settings" class="screen" />
+
+- **Name** is the camera's name in License Plate Center. The Log, the statistics and the events use it. Change it in Set
+  up. The device keeps its own name in OADM.
+- **Status** says whether OADM hears the camera, or what is wrong: Events are off in ALPV, ALPV is stopped, ALPV is not
+  installed, ALPV has no license, ALPV 3 is needed, ALPV reads another sensor, Site offline.
+- **Image settings** shows whether the camera's image settings are the ones ALPV recommends for plates. The tooltip lists
+  each value next to the recommended one. **Use recommended image settings** applies them on the selected cameras, one
+  task per camera.
+- **Allowed tags** sets the tags of the selected cameras. **Copy settings** copies the recognition settings of one camera
+  to others, the areas only when you choose so, one task per camera.
+- **Remove** takes the cameras out of License Plate Center. Nothing on the cameras changes.
+
+### Set up a camera
+
+<Image src={setup} alt="The Set up dialog with two areas on the live picture and the recognition settings" class="screen" />
+
+- **Areas**: drag the corners on the live picture. Double-click an edge to add a corner, a corner to remove it (3 to 8
+  corners). Turn the arrow to the driving direction that counts as **In**. **Add area 2** for a second lane.
+- **Recognition**: Region, Camera location, the plate width in pixels, the number of characters and the **Confidence
+  threshold**. Only the settings the camera has are shown.
+- **Allowed tags**: the plates allowed on this camera.
+
+**Save** writes the changes to the camera right away and checks that the camera kept them. Only what you changed is
+written. Save also turns on the events OADM needs in ALPV.
+
+ALPV reads the first sensor of a camera, and License Plate Center works with that sensor only. For barrier, relay,
+storage and ALPV's own lists, use ALPV's own page on the camera.
+
+## Stats
+
+<Image src={stats} alt="The Stats tab with read counts, confidence per camera and charts over time" class="screen" />
+
+The reads of the last hour, 24 hours, 7 days and in total; the average plate and vehicle confidence per camera; reads and
+confidence over time, in total and per camera. Click a camera in the legend to show or hide its line. A camera with a
+low confidence often needs other image settings, a better angle or another plate width.
+
+## Events for your rules
+
+| Event | When |
+| --- | --- |
+| **Plate allowed** | A read was Allowed. |
+| **Plate not allowed** | A read was Not allowed. |
+| **Unknown plate** | A read was an Unknown plate. |
+| **Plate read** | Every read, with its result. |
+| **Camera problem** | A camera has been lost for 30 seconds, ALPV stopped or its events are off. |
+| **Any camera problem** | Any camera has a problem, or the log cannot be kept. |
+
+The read events carry the plate, what the camera read, the name, the tags, the direction, the area, the country, the
+confidence and the vehicle's type and colour. To open a gate, make a rule on **Plate allowed** for that camera with the
+action that switches its output.
+
+## Settings
+
+<Image src={settings} alt="The settings dialog of License Plate Center" class="screen" />
+
+Administrators only.
+
+- **Allowed character deviation**: Exact, 1 or 2 characters (default 1). A wrong, a missing or an extra character each
+  count as 1. A near match is only made with plates allowed on that camera.
+- **Wait for the best read**: 1 to 10 seconds (default 3).
+- **Keep reads for** (days) and **Maximum size** (GB): older reads go first.
+- **Folder on the server**: where the log is kept. **Choose folder** browses the server's folders. The log is not part
+  of a backup.
+- **Keep plate pictures** and **Keep unknown plates in the log**.
+
+## Good to know
+
+- Plates are personal data. Choose the days and size of the log to fit your rules, and give the log permissions only to
+  those who need them.
+- Reads while OADM cannot reach a camera are lost; the camera does not keep them for OADM.
+- A camera with a rotated picture is set up on ALPV's own page.
+- License Plate Center is no parking management: no tickets, no payment and no occupancy count.
+
+<Aside>
+Permissions: **View License Plate Center**, **View plate log**, **Export plate log**, **Manage plates** and **Set up
+cameras**. Users limited to a device group see only the cameras and reads of their group. The plate list is the same for
+everyone.
+</Aside>

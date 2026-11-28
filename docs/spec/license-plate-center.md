@@ -495,8 +495,9 @@ Details the spec left open, decided while building the page; none changes a rule
   `ChartLegend` (one legend list, the same items for both charts). Last 7 and 30 days start at midnight 6 and 29 days
   ago. The reply grows with the cameras (at most 1,000, a value per step each), never with the reads.
 - **Plate crops**: the magenta line at the right edge of some crops (W19925L, BN805RT, read on .48 from the LPV
-  Simulator) is in the JPEG ALPV sends: the last pixel column of every stored crop checked is about RGB 255, 123, 255;
-  OADM shows the picture as it is.
+  Simulator) is in the JPEG ALPV sends: the last pixel column of every stored crop checked is about RGB 255, 123, 255.
+  The Log leaves out a last column that is magenta from top to bottom (`PlateCrop`, decision 2026-11-28); the stored file
+  and the PDF keep it (the server does not decode pictures).
 - **Selection**: a grid that gets new rows (after Remove, a reload, a filter) keeps the selection it shows itself and hands
   it to the page; the page never puts back a selection the grid no longer shows (the toolbar stayed off after Remove).
 - **Settings**: the folder is optional (without one nothing is stored); the number limits of the dialog are Wait 1 to 10 s,

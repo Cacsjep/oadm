@@ -168,6 +168,7 @@ export default defineConfig({
 						{ label: 'Hardening scan', slug: 'tools/hardening-scan' },
 						{ label: 'I/O Monitor', slug: 'tools/io-monitor' },
 						{ label: 'Image Health Dashboard', slug: 'tools/image-health-dashboard' },
+						{ label: 'License Plate Center', slug: 'tools/license-plate-center' },
 						{ label: 'Live View', slug: 'tools/live-view' },
 						{ label: 'Load test', slug: 'tools/load-test' },
 						{ label: 'Metadata Monitor', slug: 'tools/metadata-monitor' },
