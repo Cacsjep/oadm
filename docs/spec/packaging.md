@@ -331,7 +331,7 @@ cacsjep.github.io/oadm addresses redirect). Texts follow "Wording".
 - **OADM PRO** (`OadmPro.astro`, `#pro`): its own panel with a violet glow; below its lead **Start 30-day trial** (accent,
   to the License section of the Settings docs: the trial starts in OADM itself) and **Activate license** (to
   `/activate/`); icon cards; a plan lights up on hover (none recommended); no buy button: "Estimated launch: end of
-  November 2026"; commercial support with an SLA, feature requests with a higher priority, the enterprise plugin EST
+  December 2026"; commercial support with an SLA, feature requests with a higher priority, the enterprise plugin EST
   server.
   - Plans per year: up to 200 devices per server €440, up to 1,000
     per server €1,940, up to 100,000 per server €4,870 (`OadmPro.astro`; the devices a plan supports, never enforced), Unlimited (a
