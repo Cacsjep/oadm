@@ -24,7 +24,7 @@ public sealed class SnapshotReportPlugin : ICorePlugin, ICorePluginDownloads, ID
     public string DisplayName => SnapshotReportPluginInfo.DisplayName;
 
     public string? IconKey => SnapshotReportPluginInfo.IconKey;
-    public CorePluginGroup Group => CorePluginGroup.Reporting;
+    public CorePluginGroup Group => CorePluginGroup.Maintenance;
 
     public IReadOnlyList<ITaskPlugin> TaskPlugins => [];
 

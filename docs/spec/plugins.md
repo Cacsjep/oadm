@@ -751,7 +751,8 @@ restart. Own rail page (not a Settings card); core functionality is always on. C
 - gRPC `PluginService.ListPackages` (any user: clients hide toolbar entries of packages that are off) /
   `SetPackageEnabled` (Admin, audited "Turned plugin on" / "Turned plugin off", target the plugin name);
   `PluginPackageInfo.always_on = 8`, `description = 9`, `group = 10` (`PluginPackageState.Group`: the rail group of the
-  package's core plugin with a page, else of its first core plugin; without a core plugin "Extensions", like the rail).
+  package's core plugin with a page, else of its first core plugin; without a core plugin "Maintenance" when a task plugin
+  is in the menu group Maintenance or Overlays (Text overlays), else "Extensions", like the rail).
 - Client: `Plugins/PluginPackageStore` (loaded on every connect; `Changed` reloads the rail pages and the task catalog and
   hides the toolbar entries of packages that are off: `DeviceToolbar.ApplyPackageStates`, the package of a client part
   from the plugin.json next to its dll, `IClientPluginRegistry.PackageOf`). Rail page **Plugins** (Admin only, key

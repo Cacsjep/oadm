@@ -49,8 +49,8 @@ tests render light with `OADM_TEST_APPEARANCE=Light` (client tests).
   page, grouped by `ICorePlugin.Group` (`CorePluginGroup`, in this order: Servers (NTP, DHCP), Automation (the built-in
   Event rules first, then VAPIX Commander, Device triggers, Action Rule Editor), Security (PKI, Hardening scan), Monitoring
   (Live View, Dashboards, Metadata Monitor, I/O Monitor, Image Health Dashboard, Load test), Vision (Text recognition, Vision Center;
-  `CorePluginGroups.RailOrder`), Reporting (Snapshot report; System report
-  has no page), Maintenance (Edge Recording Export, Edge storage), Integrations, Utilities (Web View), Extensions (default,
+  `CorePluginGroups.RailOrder`), Reporting (System report, no page), Maintenance (Snapshot report, Edge Recording
+  Export, Edge storage; decision 2026-11-28), Integrations, Utilities (Web View), Extensions (default,
   third-party)): only groups with pages appear, the server's order inside a group; expanded rail = a small grey header (`TextBlock.navGroup`) above
   each group (in the lighter accent color), collapsed = a separator at each group start; the pages scroll when they do not fit. Pinned bottom, top to bottom: Plugins with a divider below it (it changes what the whole client offers), Permissions, Credentials
   (these three Admin only: hidden for operators, follow the session role live), Logs, MCP & Assistant (every user: the cards

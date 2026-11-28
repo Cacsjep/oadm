@@ -390,7 +390,11 @@ public sealed partial class PluginRegistry
         var core = cores.Find(c => SafeHasPage(c.Plugin)) ?? cores.FirstOrDefault();
         if (core is null)
         {
-            return CorePluginGroup.Extensions;
+            // Only device tasks: those of the context menu's Maintenance and Overlays groups count as Maintenance (Text
+            // overlays), every other one stays in Extensions.
+            return _tasks.Exists(t => SamePackage(t.Origin, origin) && t.Group is TaskGroups.Maintenance or TaskGroups.Overlays)
+                ? CorePluginGroup.Maintenance
+                : CorePluginGroup.Extensions;
         }
 
         try

@@ -24,6 +24,7 @@ public sealed class PluginPackageTests
         var registry = host.Get<PluginRegistry>();
         registry.RegisterCorePlugin(core, new PluginOrigin("test.dashboard", "1.0.0", null) { DisplayName = "Dashboard", EnabledByDefault = false });
         registry.RegisterTaskPlugin(new MenuTask("test.restart"), new PluginOrigin("test.restart", "1.0.0", null) { DisplayName = "Restart" });
+        registry.RegisterTaskPlugin(new MenuTask("test.overlays", TaskGroups.Overlays), new PluginOrigin("test.overlays", "1.0.0", null) { DisplayName = "Overlays" });
         await host.Get<PluginActivation>().LoadAsync(CancellationToken.None);
         await host.Get<CorePluginHost>().StartAllAsync(CancellationToken.None);
 
@@ -34,13 +35,14 @@ public sealed class PluginPackageTests
         Assert.Equal(("Dashboard", false, false, true), (dashboard.DisplayName, dashboard.Enabled, dashboard.EnabledByDefault, dashboard.HasPage));
         Assert.Equal(1, packages.Single(p => p.Id == "test.restart").MenuTaskCount);
         Assert.Equal("Extensions", packages.Single(p => p.Id == "test.restart").Group); // no core plugin: Extensions, like the rail
+        Assert.Equal("Maintenance", packages.Single(p => p.Id == "test.overlays").Group); // tasks of the Overlays menu: Maintenance
         var invoke = new Proto.InvokeRequest { PluginId = "test.dashboard", Method = "ping" };
         var off = await Assert.ThrowsAsync<RpcException>(async () => await host.Plugins.InvokeAsync(invoke));
         Assert.Equal((StatusCode.FailedPrecondition, "The Dashboard plugin is turned off."), (off.StatusCode, off.Status.Detail));
 
         // Operators see the list but cannot change it.
         var op = new Proto.PluginService.PluginServiceClient(await host.InvokerForUserAsync("operator1", UserRole.Operator));
-        Assert.Equal(2, (await op.ListPackagesAsync(new Proto.Empty())).Packages.Count);
+        Assert.Equal(3, (await op.ListPackagesAsync(new Proto.Empty())).Packages.Count);
         var denied = await Assert.ThrowsAsync<RpcException>(async () => await op.SetPackageEnabledAsync(new Proto.SetPackageEnabledRequest { Id = "test.dashboard", Enabled = true }));
         Assert.Equal(StatusCode.PermissionDenied, denied.StatusCode);
 
@@ -268,9 +270,11 @@ public sealed class PluginPackageTests
         public Task<string?> InvokeAsync(string method, string? payloadJson, CancellationToken ct) => Task.FromResult<string?>("pong");
     }
 
-    private sealed class MenuTask(string id) : ITaskPlugin
+    private sealed class MenuTask(string id, string group = TaskGroups.General) : ITaskPlugin
     {
         public string Id => id;
+
+        public string Group => group;
 
         public string DisplayName => id;
 
