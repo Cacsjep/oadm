@@ -15,8 +15,8 @@ namespace Oadm.Plugins.LicensePlates.Client;
 /// <summary>
 /// The Set up dialog of one camera (docs/spec/license-plate-center.md "Set up"): the live picture of the first sensor with the
 /// two areas (3 to 8 corners each, a direction arrow; area 2 added and removed), Recognition (only the fields the camera
-/// returned), the camera's allowed tags, whether the events are on and the last read, a link to ALPV's own page. Save starts
-/// the task "Set up License Plate Verifier" with only what changed. Read fresh from the camera when the dialog opens.
+/// returned), the camera's allowed tags. Save writes only what changed to the camera directly while the dialog waits (a ring
+/// over the form; a refusal stays in the dialog). Read fresh from the camera when the dialog opens.
 /// </summary>
 public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
 {
@@ -257,10 +257,6 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
         Publish();
     }
 
-    /// <summary>ALPV's own page for barrier, relay and storage, in Web View.</summary>
-    [RelayCommand]
-    private void OpenAlpvPage() => _page.Client.Context.OpenDevicePage(Camera.DeviceId, "/" + (_read?.AlpvPage ?? LicensePlatesInfo.AlpvPage).TrimStart('/'));
-
     private bool CanSave() => !IsLoading && !IsSaving && IsFormValid;
 
     [RelayCommand(CanExecute = nameof(CanSave))]
@@ -388,7 +384,7 @@ public sealed partial class SetupViewModel : ValidatingViewModel, IDisposable
                     }
                 }
 
-                await _page.Client.CallAsync<TasksReply>(LicensePlatesMethods.SaveSetup, ToRequest()).ConfigureAwait(true);
+                await _page.Client.CallAsync<SetupSavedReply>(LicensePlatesMethods.SaveSetup, ToRequest()).ConfigureAwait(true);
                 CloseRequested?.Invoke(this, true);
             }).ConfigureAwait(true);
             if (error is not null)

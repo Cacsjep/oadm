@@ -169,19 +169,12 @@ public sealed partial class CamerasViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasError))]
     public partial string? ErrorText { get; private set; }
 
-    /// <summary>What the last change started ("Set up started on 1 camera").</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasNotice))]
-    public partial string? Notice { get; private set; }
-
     /// <summary>A problem of the log store (no folder, a full disk) from the server.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasLogProblem))]
     public partial string? LogProblem { get; private set; }
 
     public bool HasError => !string.IsNullOrEmpty(ErrorText);
-
-    public bool HasNotice => !string.IsNullOrEmpty(Notice);
 
     public bool HasLogProblem => !string.IsNullOrEmpty(LogProblem);
 
@@ -267,9 +260,10 @@ public sealed partial class CamerasViewModel : ObservableObject
 
         var setup = new SetupViewModel(_page, row);
         _ = setup.LoadAsync();
+        // Saved directly while the dialog waited: the list shows the camera's new state.
         if (await dialogs.SetupAsync(setup).ConfigureAwait(true))
         {
-            Notice = PageTexts.TasksStarted(PageTexts.SetUp, 1);
+            RequestReload();
         }
     }
 
@@ -301,10 +295,7 @@ public sealed partial class CamerasViewModel : ObservableObject
         }
 
         var copy = new CopySettingsViewModel(_page, source);
-        if (await dialogs.CopySettingsAsync(copy).ConfigureAwait(true))
-        {
-            Notice = PageTexts.TasksStarted(PageTexts.CopySettings, copy.TargetIds.Count);
-        }
+        _ = await dialogs.CopySettingsAsync(copy).ConfigureAwait(true); // the tasks show in the tasks pane
     }
 
     [RelayCommand(CanExecute = nameof(CanChangeSelected))]
@@ -318,8 +309,7 @@ public sealed partial class CamerasViewModel : ObservableObject
 
         await ChangeAsync(async () =>
         {
-            var reply = await _page.Client.CallAsync<TasksReply>(LicensePlatesMethods.UseRecommendedImageSettings, new DevicesRequest(ids)).ConfigureAwait(true);
-            Notice = PageTexts.TasksStarted(PageTexts.UseRecommended, reply.TaskIds.Count);
+            await _page.Client.CallAsync<TasksReply>(LicensePlatesMethods.UseRecommendedImageSettings, new DevicesRequest(ids)).ConfigureAwait(true); // the tasks show in the tasks pane
         }).ConfigureAwait(true);
     }
 
@@ -463,7 +453,6 @@ public sealed partial class CamerasViewModel : ObservableObject
     {
         IsBusy = true;
         ErrorText = null;
-        Notice = null;
         try
         {
             ErrorText = await GuardedRun.RunAsync(change).ConfigureAwait(true);

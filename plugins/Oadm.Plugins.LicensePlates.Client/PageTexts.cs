@@ -162,9 +162,8 @@ public static class PageTexts
     public const string NameTooLong = "Use at most 64 characters.";
     public const string Plates = "Plates";
     public const string LastRead = "Last read";
-    public const string AlpvPageLink = "Open the ALPV page";
-    public const string AlpvPageTip = "Barrier, relay and storage";
     public const string ReadingCamera = "Reading the camera";
+    public const string SavingToCamera = "Saving to the camera";
     public const string AreaHint = "Drag a corner to move it. Double-click an edge to add a corner, a corner to remove it.";
     public const string DirectionTip = "Drag the arrow's head: the driving direction that counts as In";
     public const string From = "From";
@@ -286,9 +285,6 @@ public static class PageTexts
         ImportRowStatus.Unchanged => "Unchanged",
         _ => "Refused",
     };
-
-    /// <summary>"Set up started on 1 camera"; "Copy started on 3 cameras".</summary>
-    public static string TasksStarted(string what, int count) => $"{what} started on {CameraCount(count)}";
 
     /// <summary>"3.1" (one decimal below 10 GB).</summary>
     public static string Gigabytes(long bytes)

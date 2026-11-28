@@ -716,7 +716,7 @@ internal static class Samples
         ctx.Answers[LicensePlatesMethods.RefreshCameras] = _ => Serialize(CamerasReply());
         ctx.Answers[LicensePlatesMethods.SetAllowedTags] = _ => Serialize(CamerasReply());
         ctx.Answers[LicensePlatesMethods.ReadSetup] = _ => Serialize(Setup());
-        ctx.Answers[LicensePlatesMethods.SaveSetup] = _ => Serialize(new TasksReply([Guid.NewGuid()]));
+        ctx.Answers[LicensePlatesMethods.SaveSetup] = _ => Serialize(new SetupSavedReply(["Saved the areas."]));
         ctx.Answers[LicensePlatesMethods.CopySettings] = payload => Serialize(new TasksReply([.. Parse<CopySettingsRequest>(payload).TargetIds.Select(_ => Guid.NewGuid())]));
         ctx.Answers[LicensePlatesMethods.UseRecommendedImageSettings] = payload => Serialize(new TasksReply([.. Parse<DevicesRequest>(payload).DeviceIds.Select(_ => Guid.NewGuid())]));
         ctx.Answers[LicensePlatesMethods.Settings] = _ => Serialize(new LicensePlateSettings { Folder = @"D:\Plates" });

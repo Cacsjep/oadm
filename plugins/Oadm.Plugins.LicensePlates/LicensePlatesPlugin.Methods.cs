@@ -828,7 +828,12 @@ public sealed partial class LicensePlatesPlugin
         };
     }
 
-    internal async Task<TasksReply> SaveSetupAsync(ICallContext caller, SaveSetupRequest request, CancellationToken ct)
+    /// <summary>
+    /// Save of the Set up dialog, directly while the dialog waits (one camera; no task): the allowed tags, then the writes of
+    /// <see cref="SetupTask.RunAsync"/> with every check before the first write. A refusal or a failed write is the call's
+    /// error, shown in the dialog.
+    /// </summary>
+    internal async Task<SetupSavedReply> SaveSetupAsync(ICallContext caller, SaveSetupRequest request, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(request);
         await RequireCameraAsync(caller, request.DeviceId, ct).ConfigureAwait(false);
@@ -843,7 +848,32 @@ public sealed partial class LicensePlatesPlugin
             await SetAllowedTagsAsync(caller, new AllowedTagsRequest([request.DeviceId], Set: tags), ct).ConfigureAwait(false);
         }
 
-        return new TasksReply(await RunTaskAsync(caller, LicensePlatesInfo.SetupTaskId, [request.DeviceId], PluginJson.Serialize(payload, LicensePlatesJson.Options), "Set up License Plate Verifier", ct).ConfigureAwait(false));
+        var steps = new SavedSteps();
+        try
+        {
+            var alpv = new AlpvClient(await caller.Vapix.CreateAsync(request.DeviceId, ct).ConfigureAwait(false));
+            await SetupTask.RunAsync(alpv, payload, steps, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            Running.Runtime.Recheck([request.DeviceId]);
+        }
+
+        return new SetupSavedReply(steps.Lines);
+    }
+
+    /// <summary>The lines of a direct save (what was written); the steps themselves only run.</summary>
+    private sealed class SavedSteps : SetupTask.ISteps
+    {
+        public List<string> Lines { get; } = [];
+
+        public Task<T> StepAsync<T>(string name, Func<Task<T>> body) => body();
+
+        public void Skip(string name, string reason)
+        {
+        }
+
+        public void Log(string message) => Lines.Add(message);
     }
 
     /// <summary>The payload Copy settings starts on the targets: the source's recognition (and its areas when asked), read fresh.</summary>

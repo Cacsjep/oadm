@@ -20,9 +20,6 @@ public static class LicensePlatesInfo
     /// <summary>The package name of AXIS License Plate Verifier in the application list.</summary>
     public const string AppName = "fflprapp";
 
-    /// <summary>ALPV's own page, relative to the camera (the Set up footer opens it in Web View).</summary>
-    public const string AlpvPage = "local/fflprapp/setup.html";
-
     /// <summary>The group and folder of the events in the rule dialog.</summary>
     public const string EventGroup = DisplayName;
 
@@ -219,7 +216,10 @@ public static class LicensePlatesMethods
     /// <summary><see cref="DeviceRequest"/> -> <see cref="SetupRead"/>: the Set up dialog's read, fresh from the camera ("show").</summary>
     public const string ReadSetup = "readSetup";
 
-    /// <summary><see cref="SaveSetupRequest"/> -> <see cref="TasksReply"/>: the allowed tags, then the task Set up.</summary>
+    /// <summary>
+    /// <see cref="SaveSetupRequest"/> -> <see cref="SetupSavedReply"/>: the allowed tags, then the writes to the camera directly
+    /// (no task; the dialog waits).
+    /// </summary>
     public const string SaveSetup = "saveSetup";
 
     /// <summary><see cref="CopySettingsRequest"/> -> <see cref="TasksReply"/>: one Set up task per target.</summary>
@@ -559,9 +559,6 @@ public sealed record SetupRead
     public DateTimeOffset? LastRead { get; init; }
 
     public IReadOnlyList<Guid> AllowedTags { get; init; } = [];
-
-    /// <summary>ALPV's page on the camera, for Web View.</summary>
-    public string AlpvPage { get; init; } = LicensePlatesInfo.AlpvPage;
 }
 
 /// <summary>
@@ -578,6 +575,9 @@ public sealed record SetupPayload
 
 /// <summary>Saves the allowed tags of the camera (null: unchanged) and starts the task with <see cref="Setup"/>.</summary>
 public sealed record SaveSetupRequest(Guid DeviceId, SetupPayload Setup, IReadOnlyList<Guid>? AllowedTags = null);
+
+/// <summary>A direct save of Set up done: what was written ("Saved the areas."); empty when the camera was already so.</summary>
+public sealed record SetupSavedReply(IReadOnlyList<string> Saved);
 
 /// <summary>Recognition and the event switches of <see cref="SourceId"/> to <see cref="TargetIds"/>; the areas only with <see cref="Areas"/>.</summary>
 public sealed record CopySettingsRequest(Guid SourceId, IReadOnlyList<Guid> TargetIds, bool Areas = false);

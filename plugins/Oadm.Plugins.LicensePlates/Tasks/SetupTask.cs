@@ -60,7 +60,7 @@ internal sealed class SetupTask(Action<Guid>? afterTask = null) : ITaskPlugin
         ctx.PlanSteps(CheckStep, AreasStep, RecognitionStep, EventsStep);
         try
         {
-            await RunAsync(ctx, payload, ct).ConfigureAwait(false);
+            await RunAsync(new AlpvClient(ctx.Vapix), payload, new TaskSteps(ctx), ct).ConfigureAwait(false);
         }
         finally
         {
@@ -68,12 +68,39 @@ internal sealed class SetupTask(Action<Guid>? afterTask = null) : ITaskPlugin
         }
     }
 
-    private static async Task RunAsync(ITaskExecutionContext ctx, SetupPayload payload, CancellationToken ct)
+    /// <summary>Where the run reports its steps: the task's steps, or the lines of a direct save (the Set up dialog).</summary>
+    internal interface ISteps
     {
-        var alpv = new AlpvClient(ctx.Vapix);
+        Task<T> StepAsync<T>(string name, Func<Task<T>> body);
 
+        async Task StepAsync(string name, Func<Task> body) => await StepAsync(name, async () =>
+        {
+            await body().ConfigureAwait(false);
+            return true;
+        }).ConfigureAwait(false);
+
+        void Skip(string name, string reason);
+
+        void Log(string message);
+    }
+
+    private sealed class TaskSteps(ITaskExecutionContext ctx) : ISteps
+    {
+        public Task<T> StepAsync<T>(string name, Func<Task<T>> body) => ctx.StepAsync(name, _ => body());
+
+        public void Skip(string name, string reason) => ctx.SkipStep(name, reason);
+
+        public void Log(string message) => ctx.Log(TaskLogLevel.Info, message);
+    }
+
+    /// <summary>
+    /// The writes of Set up for one camera: every read and check before the first write, then only what differs, each part
+    /// read back. The task and the Set up dialog's direct save both run it.
+    /// </summary>
+    internal static async Task RunAsync(AlpvClient alpv, SetupPayload payload, ISteps ctx, CancellationToken ct)
+    {
         // Every read and check before the first write.
-        var (config, areas, events) = await ctx.StepAsync(CheckStep, async _ =>
+        var (config, areas, events) = await ctx.StepAsync(CheckStep, async () =>
         {
             var app = await alpv.RequireAsync(ct).ConfigureAwait(false);
             var config = await alpv.ReadConfigAsync(ct).ConfigureAwait(false);
@@ -94,7 +121,7 @@ internal sealed class SetupTask(Action<Guid>? afterTask = null) : ITaskPlugin
             }
 
             var events = await alpv.ReadEventsAsync(ct).ConfigureAwait(false);
-            ctx.Log(TaskLogLevel.Info, "License Plate Verifier " + app.Version);
+            ctx.Log("License Plate Verifier " + app.Version);
             return (config, areas, events);
         }).ConfigureAwait(false);
 
@@ -103,11 +130,11 @@ internal sealed class SetupTask(Action<Guid>? afterTask = null) : ITaskPlugin
         {
             if (Same(areas, wanted))
             {
-                ctx.SkipStep(AreasStep, "The areas are as chosen.");
+                ctx.Skip(AreasStep, "The areas are as chosen.");
             }
             else
             {
-                await ctx.StepAsync(AreasStep, async _ =>
+                await ctx.StepAsync(AreasStep, async () =>
                 {
                     await alpv.WriteAreasAsync(AlpvClient.AreasBody(areas, wanted), ct).ConfigureAwait(false);
                     var back = await alpv.ReadAreasAsync(ct).ConfigureAwait(false);
@@ -116,18 +143,18 @@ internal sealed class SetupTask(Action<Guid>? afterTask = null) : ITaskPlugin
                         throw new AlpvException("ALPV did not keep the areas.");
                     }
 
-                    ctx.Log(TaskLogLevel.Info, "Saved the areas.");
+                    ctx.Log("Saved the areas.");
                 }).ConfigureAwait(false);
             }
         }
         else
         {
-            ctx.SkipStep(AreasStep, "The areas stay as they are.");
+            ctx.Skip(AreasStep, "The areas stay as they are.");
         }
 
         if (AlpvClient.ConfigBody(changes) is { } body)
         {
-            await ctx.StepAsync(RecognitionStep, async _ =>
+            await ctx.StepAsync(RecognitionStep, async () =>
             {
                 await alpv.WriteConfigAsync(body, ct).ConfigureAwait(false);
                 var back = await alpv.ReadConfigAsync(ct).ConfigureAwait(false);
@@ -138,18 +165,18 @@ internal sealed class SetupTask(Action<Guid>? afterTask = null) : ITaskPlugin
 
                 foreach (var (path, value) in changes.OrderBy(c => c.Key, StringComparer.Ordinal))
                 {
-                    ctx.Log(TaskLogLevel.Info, $"{path}: {config.Get(path)} -> {value}");
+                    ctx.Log($"{path}: {config.Get(path)} -> {value}");
                 }
             }).ConfigureAwait(false);
         }
         else
         {
-            ctx.SkipStep(RecognitionStep, "The recognition settings are as chosen.");
+            ctx.Skip(RecognitionStep, "The recognition settings are as chosen.");
         }
 
         if (AlpvClient.EventsBody(events) is { } switches)
         {
-            await ctx.StepAsync(EventsStep, async _ =>
+            await ctx.StepAsync(EventsStep, async () =>
             {
                 await alpv.WriteEventsAsync(switches, ct).ConfigureAwait(false);
                 var back = AlpvClient.SwitchesOf(await alpv.ReadEventsAsync(ct).ConfigureAwait(false));
@@ -158,12 +185,12 @@ internal sealed class SetupTask(Action<Guid>? afterTask = null) : ITaskPlugin
                     throw new AlpvException("ALPV did not turn on its events New, Update and Lost.");
                 }
 
-                ctx.Log(TaskLogLevel.Info, "Turned on the events New, Update and Lost.");
+                ctx.Log("Turned on the events New, Update and Lost.");
             }).ConfigureAwait(false);
         }
         else
         {
-            ctx.SkipStep(EventsStep, "The events are on.");
+            ctx.Skip(EventsStep, "The events are on.");
         }
     }
 

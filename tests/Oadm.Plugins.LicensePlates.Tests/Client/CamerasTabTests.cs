@@ -110,7 +110,6 @@ public sealed class CamerasTabTests
         await cameras.UseRecommendedCommand.ExecuteAsync(null);
         Assert.Equal("Use the image settings ALPV recommends on 3 cameras? One task per camera.", ctx.Confirmations.Single().Message);
         Assert.Equal(3, ctx.LastPayload<DevicesRequest>(LicensePlatesMethods.UseRecommendedImageSettings).DeviceIds.Count);
-        Assert.Equal("Use recommended image settings started on 3 cameras", cameras.Notice);
 
         ctx.ConfirmAnswer = false;
         await cameras.UseRecommendedCommand.ExecuteAsync(null);
@@ -157,7 +156,7 @@ public sealed class CamerasTabTests
     }
 
     [Fact]
-    public async Task Set_up_reads_the_camera_and_starts_the_task_with_only_what_changed()
+    public async Task Set_up_reads_the_camera_and_saves_only_what_changed()
     {
         var (page, ctx, _) = await Samples.OpenAsync();
         using var setup = new SetupViewModel(page, page.Cameras.Rows[0]);
@@ -189,10 +188,12 @@ public sealed class CamerasTabTests
         Assert.True(setup.CanAddArea2);
         Assert.Equal([1], setup.ToRequest().Setup.Areas!.Select(a => a.Id)); // area 2 missing: turned off
 
+        var closed = false;
+        setup.CloseRequested += (_, saved) => closed = saved;
         await setup.SaveCommand.ExecuteAsync(null);
         Assert.Equal(1, ctx.CallsOf(LicensePlatesMethods.SaveSetup));
-        setup.OpenAlpvPageCommand.Execute(null);
-        Assert.Equal((Samples.CameraId(1), "/" + LicensePlatesInfo.AlpvPage), ctx.OpenedPages.Single());
+        Assert.True(closed); // saved: the dialog closes
+        Assert.Empty(ctx.OpenedPages); // no link to ALPV's page (decision 2026-11-28)
     }
 
     [Fact]

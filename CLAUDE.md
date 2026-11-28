@@ -257,7 +257,8 @@ must never break.
   free, off by default): one plate list with tags for every camera with AXIS License Plate Verifier 3; the server
   decides per read (Allowed, Not allowed, Unknown plate) over its own event connection per camera, an exact match fires
   at once, other reads wait for the best one; the cameras' own lists and ALPV's access control are never touched; a live
-  log with retention in its own folder, never in a backup; first sensor only; writes only fields the camera has, as tasks.
+  log with retention in its own folder, never in a backup; first sensor only; writes only fields the camera has, checked before the first write (Set up of one camera
+  directly in its dialog, changes of many cameras as tasks).
 - **[Removing plugins](docs/spec/plugin-removal.md)** (built): what a release ships is the truth; a generated
   manifest of the bundled plugins, folders not in it skipped and deleted, all state of an id no longer shipped deleted
   once (also after a restore); never a retired list, a rename is a new id; turned off, failed, data-folder plugins and

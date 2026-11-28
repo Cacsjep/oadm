@@ -46,8 +46,10 @@ checked read only on an AXIS P3265-V (AXIS OS 12.11.147) with ALPV 3.0.13 and 3.
 6. **Only fields the camera has.** A write sends only the values the user changed, only fields the camera's
    configuration returned in the read right before, and reads back after the write. Unknown fields are never sent and
    never removed.
-7. **Every change on a camera is a task** of the plugin's task part (one task per device, named steps), with the HARD
-   RULE of `CLAUDE.md` "device safety". All values are validated before the first write.
+7. **Every change on a camera follows the HARD RULE** of `CLAUDE.md` "device safety": all values validated and ALPV
+   read fresh before the first write. Changes of many cameras (Copy settings, Use recommended image settings) are tasks
+   of the plugin's task part (one task per device, named steps); the Set up dialog of one camera saves directly while it
+   waits (decision 2026-11-28), with the same checks and read-backs.
 8. **First sensor only** (decision 2026-11-27, `CLAUDE.md` "ask about multi-sensor cameras"). ALPV reads one video
    channel (`camera.videoChannelId`). A camera whose ALPV reads another channel than the first shows "ALPV reads
    another sensor" and takes part in nothing; OADM never changes the channel. Extra view areas and group views are not
@@ -310,7 +312,10 @@ offered). Nothing is read from a camera before that.
 
 A dialog with several sections, a fixed size like every dialog of the plugin (decision 2026-11-27: `CanResize` false;
 Set up, Copy settings, Settings, Plate editor, Import, Tags). Save first saves a changed **Name** (a refusal shows below
-the field and nothing else is saved), then starts the task "Set up License Plate Verifier" for the camera.
+the field and nothing else is saved), then writes to the camera directly while the dialog waits (no task; decision
+2026-11-28): a ring "Saving to the camera" over the form, the dialog closes when the camera kept everything, a refusal or a
+failed write stays in the dialog. The same writes as the task (`SetupTask.RunAsync`), audited as before; the Cameras tab
+reads the camera again. No notice "started" on the Cameras tab, for any change (tasks show in the tasks pane).
 
 - The live picture (the host's live video, first sensor) with the two **areas**: polygons of 3 to 8 corners, drawn
   and changed on the picture with the shared picture controls of the vision plugins (`plugins/Shared/Vision.Client`);
@@ -328,7 +333,7 @@ the field and nothing else is saved), then starts the task "Set up License Plate
   Status still says "Events are off in ALPV".
 - Corners are stored as ALPV keeps them (0 to 1000 relative to the picture), so the drawing is independent of the
   stream resolution.
-- Footer: a link to ALPV's own page for barrier, relay and storage (Web View), Cancel, Save.
+- Footer: Cancel, Save. No link to ALPV's own page (decision 2026-11-28).
 
 **Copy settings**: Recognition and the event switches of one camera to the chosen cameras, one task each; areas only
 when asked, since they belong to the picture of one camera.

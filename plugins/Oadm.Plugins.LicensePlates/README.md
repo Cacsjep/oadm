@@ -36,7 +36,7 @@ Settings dialog is the shared `ui:ServerFolderPicker`.
 | `Alpv/` | `AlpvClient` (every ALPV call, also the make and model lists), `AlpvConfig` (the configuration, secrets dropped while parsed), `AlpvLists` with `alpv-lists-3.1.7.json` (ALPV's regions, countries, states, vehicle types and colours, embedded) |
 | `Log/` | `PlateLogStore` (SQLite), `PlateLog` (folder, problems, hourly cleanup), `PlateLogExport` (CSV, PDF) |
 | `Events/` | The rule events and the problem reporter |
-| `Tasks/` | The page tasks Set up License Plate Verifier and Use recommended image settings, `SetupRules` |
+| `Tasks/` | The page tasks Set up License Plate Verifier (Copy settings; its `RunAsync` also saves the Set up dialog directly) and Use recommended image settings, `SetupRules` |
 | `Tools/` | The MCP tools (`oadm_license_plates_*`) |
 | `../Oadm.Plugins.LicensePlates.Client` | The page: `LicensePlatesViewModel` (tabs, the header's connected count, the live events, the plate tags and camera choice the tabs share), `LogViewModel`, `PlatesViewModel`, `CamerasViewModel`, `StatsViewModel`; the dialogs `PlateEditorViewModel`, `ImportViewModel`, `TagsDialogViewModel` (Change tags, Allowed tags, Manage tags), `SetupViewModel` with `AreaPicture` (the areas over the live video), `CopySettingsViewModel`, `SettingsViewModel`; `PageClient` (the calls) and `IPageDialogs` (the view shows the dialogs; tests replace it); `PageTexts` |
 
@@ -133,7 +133,7 @@ Center, **log** = View plate log, **export** = Export plate log, **plates** = Ma
 | `addCameras`, `removeCameras`, `refreshCameras` | `DevicesRequest` -> `CamerasReply` | cameras |
 | `setAllowedTags` | `AllowedTagsRequest` (devices, `set`, or `add` and `remove`) -> `CamerasReply` | cameras |
 | `readSetup` | `DeviceRequest` -> `SetupRead` (areas, recognition, events, rotated, last read, allowed tags, ALPV's page) | show |
-| `saveSetup` | `SaveSetupRequest` (device, `SetupPayload`, allowed tags) -> `TasksReply` | cameras |
+| `saveSetup` | `SaveSetupRequest` (device, `SetupPayload`, allowed tags) -> `SetupSavedReply` (written directly, no task) | cameras |
 | `renameCamera` | `RenameCameraRequest` (device, name) -> `RenameCameraReply` (the refusal below the field, or none) | cameras |
 | `copySettings` | `CopySettingsRequest` (source, targets, areas) -> `TasksReply` | cameras |
 | `useRecommendedImageSettings` | `DevicesRequest` -> `TasksReply` | cameras |

@@ -612,6 +612,29 @@ public sealed class PluginTests
         Assert.DoesNotContain("W12345", plugin.AuditDetail(LicensePlatesMethods.SavePlate, """{"plate":{"text":"W12345"}}"""), StringComparison.Ordinal);
     }
 
+    /// <summary>Set up's Save writes directly while the dialog waits (decision 2026-11-28): no task, a refusal is the call's error.</summary>
+    [Fact]
+    public async Task Set_up_saves_to_the_camera_directly_without_a_task()
+    {
+        await using var rig = await Rig.StartAsync(cameras: 1);
+        await rig.CallAsync(LicensePlatesMethods.AddCameras, new DevicesRequest([rig.Id(0)]));
+        var camera = rig.Camera(0);
+
+        var reply = await rig.CallAsync<SetupSavedReply>(LicensePlatesMethods.SaveSetup,
+            new SaveSetupRequest(rig.Id(0), new SetupPayload { Recognition = new RecognitionSettings { CameraLocation = "DEU" } }));
+
+        Assert.Contains(reply.Saved, l => l.Contains("CountryPriority: AUT -> DEU", StringComparison.Ordinal));
+        Assert.Contains("<CountryPriority>DEU</CountryPriority>", camera.ConfigXml, StringComparison.Ordinal);
+        Assert.Empty(rig.Ctx.TaskRuns); // no task
+
+        camera.AppsXml = Fixture.AppsWith("3.1.7", "Stopped", "Valid");
+        var writes = camera.AlpvWrites.Count;
+        var refused = await Assert.ThrowsAnyAsync<Exception>(() => rig.CallAsync<SetupSavedReply>(LicensePlatesMethods.SaveSetup,
+            new SaveSetupRequest(rig.Id(0), new SetupPayload { Recognition = new RecognitionSettings { CameraLocation = "AUT" } })));
+        Assert.Contains("ALPV is stopped", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(writes, camera.AlpvWrites.Count); // nothing written
+    }
+
     [Fact]
     public async Task No_method_reaches_a_device_outside_the_users_group()
     {
